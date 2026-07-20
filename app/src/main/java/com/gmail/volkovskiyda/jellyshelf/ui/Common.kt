@@ -22,7 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.JellyshelfApplication
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
+import com.gmail.volkovskiyda.jellyshelf.data.repository.AnchorPosition
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPosition
 import com.gmail.volkovskiyda.jellyshelf.di.AppContainer
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
@@ -75,6 +80,79 @@ fun rememberPersistedLazyListState(key: String): LazyListState {
         }
     }
     return state
+}
+
+/**
+ * A [LazyListState] whose scroll position is persisted under [key], anchored to the first
+ * visible item's [anchorOf] value (its file name) rather than a raw index. On restore it
+ * scrolls back to that exact item; if it is gone (removed or renamed), it scrolls to the
+ * nearest item that sorts at or just above it. [items] must be sorted ascending by [anchorOf]
+ * — the same order the list is displayed in.
+ */
+@Composable
+fun <T> rememberAnchoredLazyListState(
+    key: String,
+    items: List<T>,
+    anchorOf: (T) -> String,
+): LazyListState {
+    val store = rememberContainer().scrollPositionRepository
+    val state = rememberSaveable(key, saver = LazyListState.Saver) { LazyListState(0, 0) }
+    val currentItems by rememberUpdatedState(items)
+    val currentAnchorOf by rememberUpdatedState(anchorOf)
+    // Guards against re-restoring (which would fight the user's own scrolling) once we've
+    // either restored or confirmed there was nothing to restore.
+    var restored by rememberSaveable(key) { mutableStateOf(false) }
+
+    // Restore once, after the (async-loaded) list first becomes non-empty.
+    LaunchedEffect(key, items) {
+        if (restored || items.isEmpty()) return@LaunchedEffect
+        val saved = store.peekAnchor(key)
+        if (saved != null && saved.anchor.isNotEmpty()) {
+            val index = items.floorIndexOfAnchor(saved.anchor, anchorOf)
+            if (index >= 0) {
+                val exact = anchorOf(items[index]) == saved.anchor
+                state.scrollToItem(index, if (exact) saved.offset else 0)
+            }
+        }
+        restored = true
+    }
+
+    // Persist the first visible item's anchor as the user scrolls.
+    LaunchedEffect(key, state) {
+        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
+            .debounce(250)
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                if (!restored) return@collect
+                val item = currentItems.getOrNull(index) ?: return@collect
+                store.saveAnchor(key, AnchorPosition(currentAnchorOf(item), offset))
+            }
+    }
+
+    DisposableEffect(key, state) {
+        onDispose {
+            if (!restored) return@onDispose
+            val item = currentItems.getOrNull(state.firstVisibleItemIndex) ?: return@onDispose
+            store.saveAnchor(
+                key,
+                AnchorPosition(currentAnchorOf(item), state.firstVisibleItemScrollOffset),
+            )
+        }
+    }
+    return state
+}
+
+/**
+ * Index of the last item whose anchor is `<=` [anchor] in a list sorted ascending by [anchorOf]
+ * — i.e. the target item itself, or the nearest one just above it. Returns -1 if every item
+ * sorts after [anchor] (restore to the top).
+ */
+private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> String): Int {
+    var result = -1
+    for (i in indices) {
+        if (anchorOf(this[i]) <= anchor) result = i else break
+    }
+    return result
 }
 
 @Composable

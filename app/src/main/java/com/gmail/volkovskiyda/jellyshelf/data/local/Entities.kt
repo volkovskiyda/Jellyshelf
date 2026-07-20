@@ -12,6 +12,7 @@ const val CATEGORY_TYPE_MANUAL = "MANUAL"
 data class VideoEntity(
     @PrimaryKey val youtubeId: String,
     val jellyfinItemId: String?,
+    val fileName: String,
     val title: String,
     val channel: String?,
     val channelId: String?,

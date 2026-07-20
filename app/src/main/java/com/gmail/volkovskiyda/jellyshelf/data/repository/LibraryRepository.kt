@@ -9,6 +9,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.VideoCategoryCrossRef
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
+import com.gmail.volkovskiyda.jellyshelf.util.fileNameFromPath
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import kotlinx.coroutines.flow.Flow
 
@@ -77,6 +78,7 @@ class LibraryRepository(
             videos += VideoEntity(
                 youtubeId = youtubeId,
                 jellyfinItemId = item.id,
+                fileName = fileNameFromPath(item.path) ?: (meta?.title ?: item.name ?: youtubeId),
                 title = meta?.title ?: item.name ?: youtubeId,
                 channel = meta?.channel,
                 channelId = meta?.channelId,

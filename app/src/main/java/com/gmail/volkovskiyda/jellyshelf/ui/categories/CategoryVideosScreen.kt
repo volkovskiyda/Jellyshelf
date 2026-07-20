@@ -19,8 +19,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberContainer
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,7 +49,7 @@ fun CategoryVideosScreen(
             EmptyState("No videos in this category.")
         } else {
             LazyColumn(
-                state = rememberPersistedLazyListState("category.$categoryId"),
+                state = rememberAnchoredLazyListState("category.$categoryId", videos) { it.fileName },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(videos, key = { it.youtubeId }) { video ->

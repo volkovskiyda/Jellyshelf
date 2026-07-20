@@ -11,9 +11,15 @@ object YoutubeId {
 
     fun fromPath(path: String?): String? {
         if (path.isNullOrBlank()) return null
-        val name = path.substringAfterLast('/').substringAfterLast('\\')
+        val name = fileNameFromPath(path) ?: return null
         BRACKET.findAll(name).lastOrNull()?.let { return it.groupValues[1] }
         val stem = name.substringBeforeLast('.')
         return TOKEN.findAll(stem).lastOrNull()?.value
     }
+}
+
+/** Basename of a yt-dlp / Jellyfin path (strips directories); the library sort key. */
+fun fileNameFromPath(path: String?): String? {
+    if (path.isNullOrBlank()) return null
+    return path.substringAfterLast('/').substringAfterLast('\\').takeIf { it.isNotBlank() }
 }

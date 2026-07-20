@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,7 +25,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,8 +52,15 @@ fun LibraryScreen(
         if (videos.isEmpty()) {
             EmptyState("No videos yet. Connect to Jellyfin in Settings and run a sync.")
         } else {
+            // Only the full, unfiltered list restores its scroll position; search results
+            // are a transient, filtered set and start from the top.
+            val listState = if (query.isBlank()) {
+                rememberAnchoredLazyListState("library", videos) { it.fileName }
+            } else {
+                rememberLazyListState()
+            }
             LazyColumn(
-                state = rememberPersistedLazyListState("library"),
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(videos, key = { it.youtubeId }) { video ->

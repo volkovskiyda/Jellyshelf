@@ -13,19 +13,19 @@ interface VideoDao {
     @Upsert
     suspend fun upsert(video: VideoEntity)
 
-    @Query("SELECT * FROM videos ORDER BY uploadDate DESC")
+    @Query("SELECT * FROM videos ORDER BY fileName")
     fun observeAll(): Flow<List<VideoEntity>>
 
     @Query(
         "SELECT * FROM videos WHERE title LIKE '%' || :query || '%' " +
-            "OR channel LIKE '%' || :query || '%' ORDER BY uploadDate DESC"
+            "OR channel LIKE '%' || :query || '%' ORDER BY fileName"
     )
     fun search(query: String): Flow<List<VideoEntity>>
 
     @Query(
         "SELECT v.* FROM videos v " +
             "INNER JOIN video_category vc ON vc.youtubeId = v.youtubeId " +
-            "WHERE vc.categoryId = :categoryId ORDER BY v.uploadDate DESC"
+            "WHERE vc.categoryId = :categoryId ORDER BY v.fileName"
     )
     fun observeByCategory(categoryId: String): Flow<List<VideoEntity>>
 
