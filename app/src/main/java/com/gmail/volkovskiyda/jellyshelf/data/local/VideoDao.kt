@@ -40,4 +40,7 @@ interface VideoDao {
 
     @Query("SELECT COUNT(*) FROM videos")
     fun count(): Flow<Int>
+
+    @Query("DELETE FROM videos")
+    suspend fun clear()
 }

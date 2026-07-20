@@ -122,6 +122,18 @@ class LibraryRepository(
         )
     }
 
+    /**
+     * Wipe all locally cached library data (videos, categories, their links) and
+     * reset the last-sync marker. Connection settings — server URL, API key, user,
+     * folder scope — are left untouched, so a subsequent sync rebuilds from scratch.
+     */
+    suspend fun clearLocalData() {
+        categoryDao.clearCrossRefs()
+        categoryDao.clearCategories()
+        videoDao.clear()
+        settings.setLastSyncAt(0L)
+    }
+
     suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean {
         val video = videoDao.get(youtubeId) ?: return false
         val position = if (played) video.playbackPositionTicks else 0L

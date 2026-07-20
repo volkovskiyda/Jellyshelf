@@ -182,6 +182,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // ----------------------------------------------------------------------
 
+    /** Clear all locally cached videos/categories, keeping connection settings. */
+    fun resetLocalData() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(busy = true, status = "Clearing local data…")
+            libraryRepo.clearLocalData()
+            _state.value = _state.value.copy(
+                busy = false,
+                status = "Local data cleared. Sync now to rebuild.",
+                lastSyncAt = 0L,
+            )
+        }
+    }
+
     fun syncNow() {
         viewModelScope.launch {
             _state.value = _state.value.copy(busy = true, status = "Syncing…")
