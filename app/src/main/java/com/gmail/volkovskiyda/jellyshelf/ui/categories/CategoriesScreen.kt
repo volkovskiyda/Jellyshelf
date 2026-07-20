@@ -35,6 +35,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_DURATION
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YT_CATEGORY
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
@@ -180,6 +181,7 @@ private val DIMENSIONS = listOf(
     CATEGORY_TYPE_AUTO_MONTH to "Months",
     CATEGORY_TYPE_AUTO_DURATION to "Durations",
     CATEGORY_TYPE_MANUAL to "Manual",
+    CATEGORY_TYPE_AUTO_UNCATEGORIZED to "Uncategorized",
 )
 
 /**
@@ -209,5 +211,6 @@ private fun categoryTypeLabel(type: String): String = when (type) {
     CATEGORY_TYPE_AUTO_YEAR -> "Year"
     CATEGORY_TYPE_AUTO_MONTH -> "Month"
     CATEGORY_TYPE_AUTO_DURATION -> "Duration"
+    CATEGORY_TYPE_AUTO_UNCATEGORIZED -> "Uncategorized"
     else -> "Manual"
 }

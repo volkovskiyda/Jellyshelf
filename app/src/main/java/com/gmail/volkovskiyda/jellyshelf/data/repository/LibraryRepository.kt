@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.data.repository
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_DURATION
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
+import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YEAR
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YT_CATEGORY
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
@@ -88,10 +89,14 @@ class LibraryRepository(
         val now = System.currentTimeMillis()
         val serverBase = s.serverUrl.trim().removeSuffix("/")
         val videos = mutableListOf<VideoEntity>()
+        // Videos with no jellyshelf-index.json / yt-dlp metadata match. They may still land in
+        // Jellyfin-derived dimensions (year, duration, genre) but get their own "Uncategorized" tab.
+        val uncategorizedIds = mutableSetOf<String>()
 
         for (item in items) {
             val youtubeId = YoutubeId.fromPath(item.path) ?: continue
             val meta = index[youtubeId]
+            if (meta == null) uncategorizedIds += youtubeId
             val duration = meta?.duration
                 ?: item.runTimeTicks?.let { ticksToSeconds(it) }
                 ?: 0L
@@ -148,6 +153,9 @@ class LibraryRepository(
             for (raw in video.youtubeCategories) {
                 val name = raw.trim()
                 if (name.isNotBlank()) assign(video.youtubeId, "ytcat:$name", name, CATEGORY_TYPE_AUTO_YT_CATEGORY)
+            }
+            if (video.youtubeId in uncategorizedIds) {
+                assign(video.youtubeId, "uncategorized", "Uncategorized", CATEGORY_TYPE_AUTO_UNCATEGORIZED)
             }
         }
 
