@@ -36,11 +36,12 @@ class YtDlpMetadataSource(context: Context) {
 
     /**
      * Best-effort yt-dlp self-update so extractors stay current without an app release. Not run
-     * automatically — exposed for a future "Update yt-dlp" action.
+     * automatically — exposed for a future "Update yt-dlp" action. Returns whether it succeeded,
+     * so that action can report an outcome.
      */
-    suspend fun update(): Unit = withContext(Dispatchers.IO) {
+    suspend fun update(): Boolean = withContext(Dispatchers.IO) {
         ensureInit()
-        runCatching { YoutubeDL.getInstance().updateYoutubeDL(appContext) }
+        runCatching { YoutubeDL.getInstance().updateYoutubeDL(appContext) }.isSuccess
     }
 
     /**

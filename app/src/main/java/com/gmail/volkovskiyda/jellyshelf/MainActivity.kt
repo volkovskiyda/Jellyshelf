@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -37,7 +38,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 
-private data class TopLevel(val key: AppNavKey, val label: String, val icon: ImageVector)
+private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: ImageVector)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,9 +67,9 @@ private fun JellyshelfNav(startKey: AppNavKey) {
     val viewModelStoreDecorator = rememberViewModelStoreNavEntryDecorator<NavKey>()
 
     val topLevel = listOf(
-        TopLevel(AppNavKey.Library, "Library", Icons.Filled.VideoLibrary),
-        TopLevel(AppNavKey.Categories, "Categories", Icons.AutoMirrored.Filled.ViewList),
-        TopLevel(AppNavKey.Settings, "Settings", Icons.Filled.Settings),
+        TopLevel(AppNavKey.Library, R.string.tab_library, Icons.Filled.VideoLibrary),
+        TopLevel(AppNavKey.Categories, R.string.tab_categories, Icons.AutoMirrored.Filled.ViewList),
+        TopLevel(AppNavKey.Settings, R.string.tab_settings, Icons.Filled.Settings),
     )
     val current = backStack.lastOrNull()
     val showBottomBar = topLevel.any { it.key == current }
@@ -85,11 +86,12 @@ private fun JellyshelfNav(startKey: AppNavKey) {
             if (showBottomBar) {
                 NavigationBar {
                     topLevel.forEach { item ->
+                        val label = stringResource(item.labelRes)
                         NavigationBarItem(
                             selected = current == item.key,
                             onClick = { switchTo(item.key) },
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
+                            icon = { Icon(item.icon, contentDescription = label) },
+                            label = { Text(label) },
                         )
                     }
                 }

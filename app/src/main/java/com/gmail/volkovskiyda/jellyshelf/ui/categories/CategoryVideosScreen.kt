@@ -33,14 +33,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.local.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
+import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 
@@ -57,9 +61,10 @@ fun CategoryVideosScreen(
     val viewModel: CategoryVideosViewModel = viewModel {
         CategoryVideosViewModel(checkNotNull(this[APPLICATION_KEY]), categoryId)
     }
-    val videos by viewModel.videos.collectAsStateWithLifecycle()
+    val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
     val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
+    val videos = videosOrNull.orEmpty()
 
     val isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED
     var showDialog by rememberSaveable { mutableStateOf(false) }
@@ -78,20 +83,23 @@ fun CategoryVideosScreen(
             title = { Text(title) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back),
+                    )
                 }
             },
             actions = {
                 if (videos.isNotEmpty()) {
                     Text(
-                        "${videos.size} video${if (videos.size == 1) "" else "s"}",
+                        pluralStringResource(R.plurals.video_count, videos.size, videos.size),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     IconButton(onClick = { showDialog = true }) {
                         Icon(
                             Icons.AutoMirrored.Filled.PlaylistAdd,
-                            contentDescription = "Create playlist",
+                            contentDescription = stringResource(R.string.create_playlist),
                         )
                     }
                 }
@@ -109,10 +117,14 @@ fun CategoryVideosScreen(
             )
         }
 
-        if (videos.isEmpty()) {
+        if (videosOrNull == null) {
+            // First Room emission still pending — don't flash the empty-state guidance.
+            LoadingState()
+        } else if (videos.isEmpty()) {
             EmptyState(
-                if (isUncategorized) "No uncategorized videos — everything has metadata."
-                else "No videos in this category.",
+                stringResource(
+                    if (isUncategorized) R.string.empty_uncategorized else R.string.empty_category
+                ),
             )
         } else {
             LazyColumn(
@@ -169,12 +181,15 @@ private fun FetchMissingHeader(
                 ) {
                     Text(
                         buildString {
-                            append("Fetching metadata… ${state.done}/${state.total}")
-                            if (state.failed > 0) append(" • ${state.failed} failed")
+                            append(stringResource(R.string.fetching_progress, state.done, state.total))
+                            if (state.failed > 0) {
+                                append(" • ")
+                                append(stringResource(R.string.failed_count, state.failed))
+                            }
                         },
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
                 }
             }
 
@@ -186,12 +201,21 @@ private fun FetchMissingHeader(
                 ) {
                     Text(
                         buildString {
-                            append("Fetched ${state.total - state.failed}/${state.total}")
-                            if (state.failed > 0) append(" • ${state.failed} failed")
+                            append(
+                                stringResource(
+                                    R.string.fetched_summary,
+                                    state.total - state.failed,
+                                    state.total,
+                                )
+                            )
+                            if (state.failed > 0) {
+                                append(" • ")
+                                append(stringResource(R.string.failed_count, state.failed))
+                            }
                         },
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    TextButton(onClick = onDismiss) { Text("Dismiss") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.dismiss)) }
                 }
             }
 
@@ -201,7 +225,7 @@ private fun FetchMissingHeader(
                     enabled = missingCount > 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Fetch metadata for $missingCount missing")
+                    Text(stringResource(R.string.fetch_missing, missingCount))
                 }
             }
         }
@@ -221,11 +245,14 @@ private fun CreatePlaylistDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create playlist") },
+        title = { Text(stringResource(R.string.create_playlist)) },
         text = {
             Column {
                 Text(
-                    "$videoCount video${if (videoCount == 1) "" else "s"}, ordered by file name.",
+                    stringResource(
+                        R.string.playlist_dialog_summary,
+                        pluralStringResource(R.plurals.video_count, videoCount, videoCount),
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -234,7 +261,7 @@ private fun CreatePlaylistDialog(
                     onValueChange = { name = it },
                     modifier = Modifier.padding(top = 12.dp),
                     singleLine = true,
-                    label = { Text("Playlist name") },
+                    label = { Text(stringResource(R.string.playlist_name)) },
                 )
             }
         },
@@ -242,10 +269,12 @@ private fun CreatePlaylistDialog(
             TextButton(
                 enabled = !creating && name.isNotBlank(),
                 onClick = { onCreate(name.trim()) },
-            ) { Text(if (creating) "Creating…" else "Create") }
+            ) { Text(stringResource(if (creating) R.string.creating else R.string.create)) }
         },
         dismissButton = {
-            TextButton(enabled = !creating, onClick = onDismiss) { Text("Cancel") }
+            TextButton(enabled = !creating, onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
         },
     )
 }

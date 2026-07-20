@@ -58,8 +58,22 @@ class JellyfinRepository(
     ): List<BaseItemDto> {
         val api = api(serverUrl, apiKey)
         val pid = parentId?.takeIf { it.isNotBlank() }
-        val items = if (pid == null) api.getViews(userId).items
-        else api.getChildFolders(userId = userId, parentId = pid).items
+        val items = if (pid == null) {
+            api.getViews(userId).items
+        } else {
+            // Page through so a folder with more than one page of children isn't silently
+            // truncated in the browser.
+            val all = mutableListOf<BaseItemDto>()
+            val pageSize = 500
+            var startIndex = 0
+            while (true) {
+                val page = api.getChildFolders(userId = userId, parentId = pid, startIndex = startIndex)
+                all += page.items
+                startIndex += page.items.size
+                if (page.items.size < pageSize || page.items.isEmpty() || startIndex >= page.totalRecordCount) break
+            }
+            all
+        }
         // Server already filters via IsFolder=true; drop anything explicitly not a folder
         // as a safety net so only folders (never video files) appear in the browser.
         return items.filter { it.isFolder != false }

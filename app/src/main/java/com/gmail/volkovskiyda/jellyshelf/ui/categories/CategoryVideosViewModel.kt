@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.categories
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.BulkFetch
@@ -21,8 +22,9 @@ class CategoryVideosViewModel(
 
     private val repo = container.libraryRepository
 
-    val videos: StateFlow<List<VideoEntity>> = repo.observeVideosByCategory(categoryId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
+    val videos: StateFlow<List<VideoEntity>?> = repo.observeVideosByCategory(categoryId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val bulkFetch: StateFlow<BulkFetch> = repo.bulkFetch
 
@@ -43,9 +45,13 @@ class CategoryVideosViewModel(
         _creatingPlaylist.value = true
         viewModelScope.launch {
             val result = repo.createPlaylistFromCategory(categoryId, name)
+            val resources = getApplication<Application>().resources
             _message.value = when (result) {
-                is PlaylistResult.Success ->
-                    "Created \"${result.name}\" with ${result.count} video${if (result.count == 1) "" else "s"}"
+                is PlaylistResult.Success -> resources.getString(
+                    R.string.playlist_created,
+                    result.name,
+                    resources.getQuantityString(R.plurals.video_count, result.count, result.count),
+                )
                 is PlaylistResult.Error -> result.message
             }
             _creatingPlaylist.value = false

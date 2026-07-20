@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.detail
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.FetchResult
@@ -11,8 +12,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+/** Detail screen state: distinguishes "still loading" from "this id has no local row". */
+sealed interface VideoDetailState {
+    data object Loading : VideoDetailState
+    data object NotFound : VideoDetailState
+    data class Loaded(val video: VideoEntity) : VideoDetailState
+}
 
 class DetailViewModel(
     application: Application,
@@ -21,8 +30,9 @@ class DetailViewModel(
 
     private val repo = container.libraryRepository
 
-    val video: StateFlow<VideoEntity?> = repo.observeVideo(youtubeId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val video: StateFlow<VideoDetailState> = repo.observeVideo(youtubeId)
+        .map { it?.let(VideoDetailState::Loaded) ?: VideoDetailState.NotFound }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VideoDetailState.Loading)
 
     val settings: StateFlow<Settings?> = container.settingsState
 
@@ -38,7 +48,7 @@ class DetailViewModel(
     }
 
     fun toggleWatched() {
-        val current = video.value ?: return
+        val current = (video.value as? VideoDetailState.Loaded)?.video ?: return
         viewModelScope.launch { repo.setPlayed(youtubeId, !current.played) }
     }
 
@@ -54,7 +64,8 @@ class DetailViewModel(
         viewModelScope.launch {
             val result = repo.fetchMetadata(youtubeId)
             _message.value = when (result) {
-                is FetchResult.Success -> "Metadata updated for ${result.title}"
+                is FetchResult.Success ->
+                    getApplication<Application>().getString(R.string.metadata_updated_for, result.title)
                 is FetchResult.Error -> result.message
             }
             _fetching.value = false

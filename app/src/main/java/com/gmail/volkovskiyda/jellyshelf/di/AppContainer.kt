@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.di
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.room.Room
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
@@ -32,7 +33,15 @@ class AppContainer(context: Context) {
     private val moshi: Moshi = Moshi.Builder().build()
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+        .apply {
+            // Log request URLs only in debuggable builds — production must not write every
+            // Jellyfin/index URL to logcat.
+            val debuggable =
+                (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            if (debuggable) {
+                addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            }
+        }
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()

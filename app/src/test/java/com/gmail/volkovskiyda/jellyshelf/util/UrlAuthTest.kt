@@ -72,4 +72,12 @@ class UrlAuthTest {
         assertEquals(jellyfinThumb, stripApiKey(jellyfinThumb))
         assertNull(stripApiKey(null))
     }
+
+    @Test
+    fun `escapeLikePattern escapes wildcards and backslashes`() {
+        assertEquals("100\\% legit", escapeLikePattern("100% legit"))
+        assertEquals("a\\_b", escapeLikePattern("a_b"))
+        assertEquals("c\\\\d", escapeLikePattern("c\\d"))
+        assertEquals("plain", escapeLikePattern("plain"))
+    }
 }

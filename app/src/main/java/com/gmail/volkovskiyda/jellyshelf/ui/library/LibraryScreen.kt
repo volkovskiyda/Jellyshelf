@@ -28,12 +28,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
+import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
@@ -45,10 +48,11 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel(),
 ) {
-    val videos by viewModel.videos.collectAsStateWithLifecycle()
+    val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val durationFilter by viewModel.durationFilter.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
+    val videos = videosOrNull.orEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -59,10 +63,12 @@ fun LibraryScreen(
                     // shown list is the filtered set (duration is a hard filter; search only
                     // reorders), so its size is the numerator.
                     val label = if (durationFilter == null) "$totalCount" else "${videos.size}/$totalCount"
+                    val shownDescription = stringResource(R.string.shown_of_total, videos.size, totalCount)
                     Text(
                         label,
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.semantics { contentDescription = shownDescription },
                     )
                 }
                 DurationFilterAction(
@@ -79,12 +85,16 @@ fun LibraryScreen(
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             singleLine = true,
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            placeholder = { Text("Search title or channel") },
+            placeholder = { Text(stringResource(R.string.search_title_or_channel)) },
         )
-        if (videos.isEmpty()) {
+        if (videosOrNull == null) {
+            // First Room emission still pending — don't flash the empty-state guidance.
+            LoadingState()
+        } else if (videos.isEmpty()) {
             val message = when {
-                durationFilter != null -> "No videos with a ${durationFilter!!.label} duration."
-                else -> "No videos yet. Connect to Jellyfin in Settings and run a sync."
+                durationFilter != null ->
+                    stringResource(R.string.empty_duration_filter, durationFilter!!.label)
+                else -> stringResource(R.string.empty_library)
             }
             EmptyState(message)
         } else {
@@ -116,12 +126,12 @@ private fun DurationFilterAction(
     IconButton(onClick = { expanded = true }) {
         Icon(
             Icons.Filled.FilterList,
-            contentDescription = "Filter by duration",
+            contentDescription = stringResource(R.string.filter_by_duration),
             tint = if (selected != null) MaterialTheme.colorScheme.primary else LocalContentColor.current,
         )
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        DurationMenuItem("Any duration", selected == null) {
+        DurationMenuItem(stringResource(R.string.any_duration), selected == null) {
             onSelect(null)
             expanded = false
         }
@@ -139,6 +149,8 @@ private fun DurationMenuItem(label: String, checked: Boolean, onClick: () -> Uni
     DropdownMenuItem(
         text = { Text(label) },
         onClick = onClick,
-        leadingIcon = { RadioButton(selected = checked, onClick = onClick) },
+        // Display-only radio (onClick = null): the menu item is the single accessible target,
+        // instead of TalkBack seeing two nested clickables per row.
+        leadingIcon = { RadioButton(selected = checked, onClick = null) },
     )
 }

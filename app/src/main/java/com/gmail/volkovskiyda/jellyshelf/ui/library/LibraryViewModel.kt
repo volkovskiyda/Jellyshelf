@@ -30,13 +30,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val totalCount: StateFlow<Int> =
         repo.videoCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    val videos: StateFlow<List<VideoEntity>> =
+    /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
+    val videos: StateFlow<List<VideoEntity>?> =
         combine(_query, _durationFilter) { q, filter -> q to filter }
             .flatMapLatest { (q, filter) ->
                 if (q.isBlank() && filter == null) repo.observeVideos()
                 else repo.searchVideos(q, filter)
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun onQueryChange(value: String) {
         _query.value = value

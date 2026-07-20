@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import com.gmail.volkovskiyda.jellyshelf.R
 
 object Playback {
 
@@ -30,6 +31,7 @@ object Playback {
      * to [parseResult]. Only MX Player and VLC return a position; other players simply won't.
      */
     fun externalPlayerIntent(
+        context: Context,
         serverUrl: String,
         itemId: String,
         apiKey: String,
@@ -48,7 +50,7 @@ object Playback {
                 putExtra("extra_position", resumeMs)      // VLC resume (long ms)
             }
         }
-        return Intent.createChooser(view, "Play with")
+        return Intent.createChooser(view, context.getString(R.string.play_with))
     }
 
     /**
@@ -87,7 +89,7 @@ object Playback {
         try {
             context.startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(context, "No app found to handle this", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.no_app_found), Toast.LENGTH_SHORT).show()
         }
     }
 }

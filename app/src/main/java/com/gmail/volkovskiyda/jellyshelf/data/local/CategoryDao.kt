@@ -30,10 +30,10 @@ interface CategoryDao {
     @Query(
         "SELECT c.*, (SELECT COUNT(*) FROM video_category vc WHERE vc.categoryId = c.id) AS videoCount " +
             "FROM categories c " +
-            "ORDER BY (CASE WHEN c.name LIKE '%' || :query || '%' " +
+            "ORDER BY (CASE WHEN c.name LIKE '%' || :query || '%' ESCAPE '\\' " +
             "OR EXISTS (SELECT 1 FROM video_category vc " +
             "INNER JOIN videos v ON v.youtubeId = vc.youtubeId " +
-            "WHERE vc.categoryId = c.id AND v.description LIKE '%' || :query || '%') " +
+            "WHERE vc.categoryId = c.id AND v.description LIKE '%' || :query || '%' ESCAPE '\\') " +
             "THEN 0 ELSE 1 END), c.type, c.name"
     )
     fun searchWithCounts(query: String): Flow<List<CategoryWithCount>>

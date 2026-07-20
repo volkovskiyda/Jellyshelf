@@ -20,6 +20,9 @@ class SyncWorker(
 
     override suspend fun doWork(): Result {
         val app = applicationContext as? JellyshelfApplication ?: return Result.failure()
+        // No credentials yet is a configuration state, not a transient failure — retrying with
+        // backoff would spin forever, since the worker is scheduled before setup completes.
+        if (!app.container.settingsRepository.snapshot().isConnected) return Result.success()
         return when (app.container.libraryRepository.sync()) {
             is SyncResult.Success -> Result.success()
             is SyncResult.Error -> Result.retry()

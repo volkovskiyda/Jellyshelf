@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.data.repository.SyncResult
@@ -52,6 +53,7 @@ data class SettingsUiState(
 }
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
+    private val app: Application get() = getApplication()
     private val settingsRepo = container.settingsRepository
     private val libraryRepo = container.libraryRepository
     private val jellyfin = container.jellyfinRepository
@@ -98,11 +100,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun connect(silent: Boolean = false) {
         val s = _state.value
         if (s.serverUrl.isBlank() || s.apiKey.isBlank()) {
-            _state.value = s.copy(status = "Enter server URL and API key first")
+            _state.value = s.copy(status = app.getString(R.string.enter_server_and_key))
             return
         }
         viewModelScope.launch {
-            _state.value = s.copy(busy = true, status = if (silent) s.status else "Connecting…")
+            _state.value = s.copy(busy = true, status = if (silent) s.status else app.getString(R.string.connecting))
             try {
                 val users = jellyfin.getUsers(s.serverUrl, s.apiKey)
                 // Persist only after the server accepted the credentials, so a typo can never
@@ -117,13 +119,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     users = users,
                     selectedUserId = selected?.id ?: current.selectedUserId,
                     selectedUserName = selected?.name ?: current.selectedUserName,
-                    status = if (users.isEmpty()) "Connected, but no users returned" else "Connected — ${users.size} user(s)",
+                    status = if (users.isEmpty()) app.getString(R.string.connected_no_users)
+                    else app.getString(R.string.connected_users, users.size),
                 )
                 selected?.let { settingsRepo.setUser(it.id, it.name) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(busy = false, status = "Connection failed: ${e.message}")
+                _state.value = _state.value.copy(busy = false, status = app.getString(R.string.connection_failed, e.message))
             }
         }
     }
@@ -204,7 +207,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 _state.value = _state.value.copy(
                     childFolders = emptyList(),
                     loadingFolders = false,
-                    status = "Failed to load folders: ${e.message}",
+                    status = app.getString(R.string.folders_load_failed, e.message),
                 )
             }
         }
@@ -215,11 +218,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     /** Clear all locally cached videos/categories, keeping connection settings. */
     fun resetLocalData() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, status = "Clearing local data…")
+            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.clearing_local_data))
             libraryRepo.clearLocalData()
             _state.value = _state.value.copy(
                 busy = false,
-                status = "Local data cleared. Sync now to rebuild.",
+                status = app.getString(R.string.local_data_cleared),
                 lastSyncAt = 0L,
             )
         }
@@ -227,12 +230,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun syncNow() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, status = "Syncing…")
+            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.syncing))
             settingsRepo.setIndexUrl(_state.value.indexUrl)
             val result = libraryRepo.sync()
             val message = when (result) {
                 is SyncResult.Success ->
-                    "Synced ${result.indexed}/${result.matched} videos with metadata into ${result.categories} channels"
+                    app.getString(R.string.sync_summary, result.indexed, result.matched, result.categories)
                 is SyncResult.Error -> result.message
             }
             val s = settingsRepo.snapshot()

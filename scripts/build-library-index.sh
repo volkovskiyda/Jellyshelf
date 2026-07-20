@@ -18,13 +18,18 @@ OUT="${2:-jellyshelf-index.json}"
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq not found on PATH." >&2; exit 1; }
 [[ -d "$DIR" ]] || { echo "ERROR: not a directory: $DIR" >&2; exit 1; }
 
-count=$(find "$DIR" -type f -name '*.info.json' | wc -l | tr -d ' ')
+# Single scan, NUL-delimited (filenames with newlines can't break the count) and sorted so
+# the generated index is deterministic across runs and filesystems.
+files=()
+while IFS= read -r -d '' f; do files+=("$f"); done \
+  < <(find "$DIR" -type f -name '*.info.json' -print0 | sort -z)
+count=${#files[@]}
 if [[ "$count" -eq 0 ]]; then
   echo "No .info.json files found under $DIR. Run fetch-youtube-metadata.sh first." >&2
   exit 1
 fi
 
-find "$DIR" -type f -name '*.info.json' -exec cat {} + \
+cat "${files[@]}" \
   | jq -s 'map({
       id:          .id,
       title:       .title,

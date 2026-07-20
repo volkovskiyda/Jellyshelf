@@ -25,6 +25,7 @@ interface JellyfinApi {
         @Query("IsFolder") isFolder: Boolean = true,
         @Query("SortBy") sortBy: String = "SortName",
         @Query("Fields") fields: String = "Path",
+        @Query("StartIndex") startIndex: Int = 0,
         @Query("Limit") limit: Int = 500,
     ): ItemsResponse
 

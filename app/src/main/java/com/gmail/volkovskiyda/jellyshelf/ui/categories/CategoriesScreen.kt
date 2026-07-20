@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
@@ -25,12 +26,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_DURATION
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
@@ -40,6 +46,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_OTHERS
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
+import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
 import kotlinx.coroutines.launch
 
@@ -50,13 +57,14 @@ fun CategoriesScreen(
     modifier: Modifier = Modifier,
     viewModel: CategoriesViewModel = viewModel(),
 ) {
-    val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val categoriesOrNull by viewModel.categories.collectAsStateWithLifecycle()
     val others by viewModel.others.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val searchAll by viewModel.searchAll.collectAsStateWithLifecycle()
+    val categories = categoriesOrNull.orEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Categories") })
+        TopAppBar(title = { Text(stringResource(R.string.tab_categories)) })
         OutlinedTextField(
             value = query,
             onValueChange = viewModel::onQueryChange,
@@ -65,7 +73,7 @@ fun CategoriesScreen(
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             singleLine = true,
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            placeholder = { Text("Search categories") },
+            placeholder = { Text(stringResource(R.string.search_categories)) },
         )
 
         val searching = query.isNotBlank()
@@ -75,17 +83,23 @@ fun CategoriesScreen(
 
         // The "Others" tab (virtual watch/uncategorized filters) is browse-only; it is left out of
         // search, whose scope is the stored, name-searchable categories.
-        val tabs = tabsOf(categories, searching).let { stored ->
-            if (!searching && others.isNotEmpty()) {
-                stored + CategoryTab(CATEGORY_TYPE_OTHERS, "Others", others)
-            } else {
-                stored
+        val othersTitle = stringResource(R.string.dim_others)
+        val tabs = remember(categories, others, searching, othersTitle) {
+            tabsOf(categories, searching).let { stored ->
+                if (!searching && others.isNotEmpty()) {
+                    stored + CategoryTab(CATEGORY_TYPE_OTHERS, null, others, othersTitle)
+                } else {
+                    stored
+                }
             }
         }
 
-        if (searching && searchAll) {
+        if (categoriesOrNull == null) {
+            // First Room emission still pending — don't flash the empty-state guidance.
+            LoadingState()
+        } else if (searching && searchAll) {
             if (categories.isEmpty()) {
-                EmptyState("No categories match \"$query\".")
+                EmptyState(stringResource(R.string.no_categories_match, query))
             } else {
                 // Cross-dimension search: one flat, matches-first list (see searchWithCounts), each
                 // row tagged with its kind since there are no tabs to convey it.
@@ -98,9 +112,9 @@ fun CategoriesScreen(
             }
         } else if (tabs.isEmpty()) {
             val message = if (searching) {
-                "No categories match \"$query\"."
+                stringResource(R.string.no_categories_match, query)
             } else {
-                "No categories yet. Sync to auto-group videos by channel, year, duration and more."
+                stringResource(R.string.empty_categories)
             }
             EmptyState(message)
         } else {
@@ -116,14 +130,15 @@ fun CategoriesScreen(
 @Composable
 private fun SearchAllToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
+        // toggleable merges the row and checkbox into one accessible checkbox target.
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
-        Text("Search all categories", style = MaterialTheme.typography.bodyMedium)
+        Checkbox(checked = checked, onCheckedChange = null)
+        Text(stringResource(R.string.search_all_categories), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -143,11 +158,17 @@ private fun TabbedCategories(
             Tab(
                 selected = selected == index,
                 onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                text = { Text(tab.title) },
+                text = { Text(tab.title()) },
             )
         }
     }
-    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+    // Pages keyed by dimension so page state stays with its tab when the tab set changes
+    // (a dimension appearing after sync, "Others" loading in, search filtering tabs out).
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        key = { tabs[it].type },
+    ) { page ->
         val tab = tabs[page]
         val listState = if (persistScroll) {
             rememberPersistedLazyListState("categories.${tab.type}")
@@ -176,8 +197,12 @@ private fun CategoryRow(
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Text(item.category.name, style = MaterialTheme.typography.bodyLarge)
-        val count = "${item.videoCount} video${if (item.videoCount == 1) "" else "s"}"
-        val subtitle = if (showType) "${categoryTypeLabel(item.category.type)}  •  $count" else count
+        val count = pluralStringResource(R.plurals.video_count, item.videoCount, item.videoCount)
+        val subtitle = if (showType) {
+            "${stringResource(categoryTypeLabelRes(item.category.type))}  •  $count"
+        } else {
+            count
+        }
         Text(
             subtitle,
             style = MaterialTheme.typography.labelSmall,
@@ -186,16 +211,25 @@ private fun CategoryRow(
     }
 }
 
-private data class CategoryTab(val type: String, val title: String, val items: List<CategoryWithCount>)
+private data class CategoryTab(
+    val type: String,
+    val titleRes: Int?,
+    val items: List<CategoryWithCount>,
+    /** Pre-resolved title when the tab is built outside a composable resource lookup. */
+    val resolvedTitle: String = "",
+)
+
+@Composable
+private fun CategoryTab.title(): String = titleRes?.let { stringResource(it) } ?: resolvedTitle
 
 /** Ordered tab titles, one per dimension. Only dimensions with at least one category get a tab. */
 private val DIMENSIONS = listOf(
-    CATEGORY_TYPE_AUTO_CHANNEL to "Channels",
-    CATEGORY_TYPE_AUTO_YT_CATEGORY to "YouTube categories",
-    CATEGORY_TYPE_AUTO_YEAR to "Years",
-    CATEGORY_TYPE_AUTO_MONTH to "Months",
-    CATEGORY_TYPE_AUTO_DURATION to "Durations",
-    CATEGORY_TYPE_MANUAL to "Manual",
+    CATEGORY_TYPE_AUTO_CHANNEL to R.string.dim_channels,
+    CATEGORY_TYPE_AUTO_YT_CATEGORY to R.string.dim_youtube_categories,
+    CATEGORY_TYPE_AUTO_YEAR to R.string.dim_years,
+    CATEGORY_TYPE_AUTO_MONTH to R.string.dim_months,
+    CATEGORY_TYPE_AUTO_DURATION to R.string.dim_durations,
+    CATEGORY_TYPE_MANUAL to R.string.dim_manual,
 )
 
 /**
@@ -206,10 +240,10 @@ private val DIMENSIONS = listOf(
  */
 private fun tabsOf(all: List<CategoryWithCount>, searching: Boolean): List<CategoryTab> {
     val byType = all.groupBy { it.category.type }
-    return DIMENSIONS.mapNotNull { (type, title) ->
+    return DIMENSIONS.mapNotNull { (type, titleRes) ->
         val items = byType[type].orEmpty()
         if (items.isEmpty()) null
-        else CategoryTab(type, title, if (searching) items else naturalSort(type, items))
+        else CategoryTab(type, titleRes, if (searching) items else naturalSort(type, items))
     }
 }
 
@@ -219,12 +253,12 @@ private fun naturalSort(type: String, items: List<CategoryWithCount>): List<Cate
     else -> items.sortedBy { it.category.name.lowercase() }
 }
 
-private fun categoryTypeLabel(type: String): String = when (type) {
-    CATEGORY_TYPE_AUTO_CHANNEL -> "Channel"
-    CATEGORY_TYPE_AUTO_YT_CATEGORY -> "YouTube category"
-    CATEGORY_TYPE_AUTO_YEAR -> "Year"
-    CATEGORY_TYPE_AUTO_MONTH -> "Month"
-    CATEGORY_TYPE_AUTO_DURATION -> "Duration"
-    CATEGORY_TYPE_OTHERS -> "Others"
-    else -> "Manual"
+private fun categoryTypeLabelRes(type: String): Int = when (type) {
+    CATEGORY_TYPE_AUTO_CHANNEL -> R.string.type_channel
+    CATEGORY_TYPE_AUTO_YT_CATEGORY -> R.string.type_youtube_category
+    CATEGORY_TYPE_AUTO_YEAR -> R.string.type_year
+    CATEGORY_TYPE_AUTO_MONTH -> R.string.type_month
+    CATEGORY_TYPE_AUTO_DURATION -> R.string.type_duration
+    CATEGORY_TYPE_OTHERS -> R.string.type_others
+    else -> R.string.type_manual
 }

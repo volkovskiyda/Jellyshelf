@@ -1,3 +1,113 @@
 <resources>
     <string name="app_name">Jellyshelf</string>
+
+    <!-- Navigation -->
+    <string name="tab_library">Library</string>
+    <string name="tab_categories">Categories</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="watched">Watched</string>
+    <plurals name="video_count">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%d videos</item>
+    </plurals>
+
+    <!-- Library -->
+    <string name="search_title_or_channel">Search title or channel</string>
+    <string name="filter_by_duration">Filter by duration</string>
+    <string name="any_duration">Any duration</string>
+    <string name="shown_of_total">%1$d of %2$d videos shown</string>
+    <string name="empty_library">No videos yet. Connect to Jellyfin in Settings and run a sync.</string>
+    <string name="empty_duration_filter">No videos with a %1$s duration.</string>
+
+    <!-- Categories -->
+    <string name="search_categories">Search categories</string>
+    <string name="search_all_categories">Search all categories</string>
+    <string name="no_categories_match">No categories match \"%1$s\".</string>
+    <string name="empty_categories">No categories yet. Sync to auto-group videos by channel, year, duration and more.</string>
+    <string name="dim_channels">Channels</string>
+    <string name="dim_youtube_categories">YouTube categories</string>
+    <string name="dim_years">Years</string>
+    <string name="dim_months">Months</string>
+    <string name="dim_durations">Durations</string>
+    <string name="dim_manual">Manual</string>
+    <string name="dim_others">Others</string>
+    <string name="type_channel">Channel</string>
+    <string name="type_youtube_category">YouTube category</string>
+    <string name="type_year">Year</string>
+    <string name="type_month">Month</string>
+    <string name="type_duration">Duration</string>
+    <string name="type_others">Others</string>
+    <string name="type_manual">Manual</string>
+
+    <!-- Category videos -->
+    <string name="create_playlist">Create playlist</string>
+    <string name="playlist_name">Playlist name</string>
+    <string name="create">Create</string>
+    <string name="creating">Creating…</string>
+    <string name="playlist_dialog_summary">%1$s, ordered by file name.</string>
+    <string name="playlist_created">Created \"%1$s\" with %2$s</string>
+    <string name="empty_uncategorized">No uncategorized videos — everything has metadata.</string>
+    <string name="empty_category">No videos in this category.</string>
+    <string name="fetch_missing">Fetch metadata for %1$d missing</string>
+    <string name="fetching_progress">Fetching metadata… %1$d/%2$d</string>
+    <string name="fetched_summary">Fetched %1$d/%2$d</string>
+    <string name="failed_count">%1$d failed</string>
+
+    <!-- Detail -->
+    <string name="video_fallback_title">Video</string>
+    <string name="video_not_found">Video not found.</string>
+    <string name="play">Play</string>
+    <string name="play_with">Play with</string>
+    <string name="open_in_jellyfin">Open in Jellyfin</string>
+    <string name="mark_watched">Mark as watched</string>
+    <string name="mark_unwatched">Mark as unwatched</string>
+    <string name="get_metadata">Get metadata</string>
+    <string name="update_metadata">Update metadata</string>
+    <string name="fetching_metadata">Fetching metadata…</string>
+    <string name="metadata_updated_for">Metadata updated for %1$s</string>
+    <string name="description">Description</string>
+    <string name="source_ytdlp">In-app · yt-dlp</string>
+    <string name="source_index">Script · index</string>
+    <string name="source_jellyfin">Jellyfin only</string>
+    <string name="no_app_found">No app found to handle this</string>
+
+    <!-- Settings -->
+    <string name="jellyfin_connection">Jellyfin connection</string>
+    <string name="server_url">Server URL</string>
+    <string name="server_url_hint">http://192.168.1.10:8096</string>
+    <string name="api_key">API key</string>
+    <string name="index_url_label">Metadata index URL (optional)</string>
+    <string name="index_url_hint">http://host/jellyshelf-index.json</string>
+    <string name="fill">Fill</string>
+    <string name="connect_load_users">Connect &amp; load users</string>
+    <string name="user">User</string>
+    <string name="sync_scope">Sync scope</string>
+    <string name="change_folder">Change folder…</string>
+    <string name="all_collections">All collections</string>
+    <string name="use_this_folder">Use this folder</string>
+    <string name="no_subfolders">No subfolders here.</string>
+    <string name="open">Open</string>
+    <string name="sync_now">Sync now</string>
+    <string name="reset_local_data">Reset local data</string>
+    <string name="reset_dialog_title">Reset local data?</string>
+    <string name="reset_dialog_text">This clears all synced videos and categories on this device. Server URL, API key, user and folder are kept. Tap Sync now afterwards to rebuild.</string>
+    <string name="reset">Reset</string>
+    <string name="library_summary">Library: %1$d videos</string>
+    <string name="last_sync_recorded">last sync recorded</string>
+    <string name="never_synced">never synced</string>
+    <string name="enter_server_and_key">Enter server URL and API key first</string>
+    <string name="connecting">Connecting…</string>
+    <string name="connected_users">Connected — %1$d user(s)</string>
+    <string name="connected_no_users">Connected, but no users returned</string>
+    <string name="connection_failed">Connection failed: %1$s</string>
+    <string name="folders_load_failed">Failed to load folders: %1$s</string>
+    <string name="clearing_local_data">Clearing local data…</string>
+    <string name="local_data_cleared">Local data cleared. Sync now to rebuild.</string>
+    <string name="syncing">Syncing…</string>
+    <string name="sync_summary">Synced %1$d/%2$d videos with metadata into %3$d categories</string>
 </resources>

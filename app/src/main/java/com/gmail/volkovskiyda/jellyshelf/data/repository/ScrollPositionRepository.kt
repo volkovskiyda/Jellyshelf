@@ -41,44 +41,49 @@ class ScrollPositionRepository(context: Context) {
     private val cache = ConcurrentHashMap<String, ScrollPosition>()
     private val anchorCache = ConcurrentHashMap<String, AnchorPosition>()
 
-    // Seeded exactly once (lazy is synchronized), blocking the first reader until disk has
-    // been read. The init warm-up only primes DataStore's in-memory cache off the main thread
-    // so that the first reader's blocking read is near-instant; it never touches [cache], so
-    // seedFromDisk() runs on a single thread and its read-modify-writes can't race.
+    // Seeded exactly once (lazy is synchronized). The init block forces the seed on an IO
+    // thread at construction, so by the time the first frame calls peek() the value is usually
+    // already computed and the synchronized read returns instantly; a cold-start race only
+    // blocks the UI for whatever remains of the small DataStore read.
     private val seed = lazy { runBlocking { seedFromDisk() } }
 
     init {
-        scope.launch { runCatching { ds.data.first() } }
+        scope.launch { seed.value }
     }
 
     private suspend fun seedFromDisk() {
+        // Assemble complete positions first, then merge with putIfAbsent: a position saved
+        // during this session (before seeding finished) always wins over the disk value —
+        // merging field-by-field into the live cache could mix stale and fresh halves.
+        val positions = HashMap<String, ScrollPosition>()
+        val anchors = HashMap<String, AnchorPosition>()
         ds.data.first().asMap().forEach { (key, value) ->
             val name = key.name
             when {
                 name.endsWith(ANCHOR_SUFFIX) -> {
                     val screen = name.removeSuffix(ANCHOR_SUFFIX)
                     val anchor = value as? String ?: return@forEach
-                    anchorCache[screen] =
-                        (anchorCache[screen] ?: AnchorPosition("", 0)).copy(anchor = anchor)
+                    anchors[screen] = (anchors[screen] ?: AnchorPosition("", 0)).copy(anchor = anchor)
                 }
                 name.endsWith(ANCHOR_OFFSET_SUFFIX) -> {
                     val screen = name.removeSuffix(ANCHOR_OFFSET_SUFFIX)
                     val offset = value as? Int ?: return@forEach
-                    anchorCache[screen] =
-                        (anchorCache[screen] ?: AnchorPosition("", 0)).copy(offset = offset)
+                    anchors[screen] = (anchors[screen] ?: AnchorPosition("", 0)).copy(offset = offset)
                 }
                 name.endsWith(INDEX_SUFFIX) -> {
                     val screen = name.removeSuffix(INDEX_SUFFIX)
                     val v = value as? Int ?: return@forEach
-                    cache[screen] = (cache[screen] ?: ScrollPosition.Zero).copy(index = v)
+                    positions[screen] = (positions[screen] ?: ScrollPosition.Zero).copy(index = v)
                 }
                 name.endsWith(OFFSET_SUFFIX) -> {
                     val screen = name.removeSuffix(OFFSET_SUFFIX)
                     val v = value as? Int ?: return@forEach
-                    cache[screen] = (cache[screen] ?: ScrollPosition.Zero).copy(offset = v)
+                    positions[screen] = (positions[screen] ?: ScrollPosition.Zero).copy(offset = v)
                 }
             }
         }
+        positions.forEach { (k, v) -> cache.putIfAbsent(k, v) }
+        anchors.forEach { (k, v) -> anchorCache.putIfAbsent(k, v) }
     }
 
     /** Last known scroll position for [key], or [ScrollPosition.Zero] if none was saved. */

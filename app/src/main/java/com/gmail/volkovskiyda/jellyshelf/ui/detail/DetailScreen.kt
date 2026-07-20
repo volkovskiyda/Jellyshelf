@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -33,13 +34,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
+import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
@@ -68,7 +73,7 @@ fun DetailScreen(
         viewModel.reportPlaybackStopped(playback.positionMs, playback.completed)
     }
 
-    val video by viewModel.video.collectAsStateWithLifecycle()
+    val videoState by viewModel.video.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val fetching by viewModel.fetching.collectAsStateWithLifecycle()
 
@@ -80,23 +85,31 @@ fun DetailScreen(
         }
     }
 
-    val current = video
+    val current = (videoState as? VideoDetailState.Loaded)?.video
 
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text(current?.channel ?: "Video") },
+                title = { Text(current?.channel ?: stringResource(R.string.video_fallback_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
+                        )
                     }
                 },
             )
         },
     ) { padding ->
         if (current == null) {
-            Column(modifier = Modifier.fillMaxSize().padding(padding)) {}
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                when (videoState) {
+                    VideoDetailState.Loading -> LoadingState()
+                    else -> EmptyState(stringResource(R.string.video_not_found))
+                }
+            }
             return@Scaffold
         }
 
@@ -139,6 +152,7 @@ fun DetailScreen(
                         if (s != null && itemId != null) {
                             playerLauncher.launch(
                                 Playback.externalPlayerIntent(
+                                    context = context,
                                     serverUrl = s.serverUrl,
                                     itemId = itemId,
                                     apiKey = s.apiKey,
@@ -151,7 +165,7 @@ fun DetailScreen(
                     enabled = s != null && itemId != null,
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Text("Play")
+                    Text(stringResource(R.string.play))
                 }
                 OutlinedButton(
                     onClick = {
@@ -159,7 +173,7 @@ fun DetailScreen(
                     },
                     enabled = s != null && itemId != null,
                 ) {
-                    Text("Open in Jellyfin")
+                    Text(stringResource(R.string.open_in_jellyfin))
                 }
             }
 
@@ -168,7 +182,11 @@ fun DetailScreen(
                 onClick = { viewModel.toggleWatched() },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (current.played) "Mark as unwatched" else "Mark as watched")
+                Text(
+                    stringResource(
+                        if (current.played) R.string.mark_unwatched else R.string.mark_watched
+                    )
+                )
             }
 
             // Fetch / refresh YouTube metadata in-app with the bundled yt-dlp. "Get" when the video
@@ -181,16 +199,18 @@ fun DetailScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    when {
-                        fetching -> "Fetching metadata…"
-                        hasMetadata -> "Update metadata"
-                        else -> "Get metadata"
-                    }
+                    stringResource(
+                        when {
+                            fetching -> R.string.fetching_metadata
+                            hasMetadata -> R.string.update_metadata
+                            else -> R.string.get_metadata
+                        }
+                    )
                 )
             }
 
             current.description?.takeIf { it.isNotBlank() }?.let { desc ->
-                Text("Description", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.description), style = MaterialTheme.typography.titleMedium)
                 Text(desc, style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -200,26 +220,26 @@ fun DetailScreen(
 /** A small colour-coded chip showing where this video's metadata came from. */
 @Composable
 private fun MetadataSourceBadge(source: String) {
-    val (label, container, content) = when (source) {
+    val (labelRes, container, content) = when (source) {
         METADATA_SOURCE_YTDLP -> Triple(
-            "In-app · yt-dlp",
+            R.string.source_ytdlp,
             MaterialTheme.colorScheme.primaryContainer,
             MaterialTheme.colorScheme.onPrimaryContainer,
         )
         METADATA_SOURCE_INDEX -> Triple(
-            "Script · index",
+            R.string.source_index,
             MaterialTheme.colorScheme.tertiaryContainer,
             MaterialTheme.colorScheme.onTertiaryContainer,
         )
         else -> Triple(
-            "Jellyfin only",
+            R.string.source_jellyfin,
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
     Surface(color = container, contentColor = content, shape = RoundedCornerShape(6.dp)) {
         Text(
-            label,
+            stringResource(labelRes),
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )

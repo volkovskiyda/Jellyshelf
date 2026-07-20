@@ -24,11 +24,12 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
     private val _searchAll = MutableStateFlow(false)
     val searchAll: StateFlow<Boolean> = _searchAll.asStateFlow()
 
-    val categories: StateFlow<List<CategoryWithCount>> = _query
+    /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
+    val categories: StateFlow<List<CategoryWithCount>?> = _query
         .flatMapLatest { q ->
             if (q.isBlank()) repo.observeCategories() else repo.searchCategories(q)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
     val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()

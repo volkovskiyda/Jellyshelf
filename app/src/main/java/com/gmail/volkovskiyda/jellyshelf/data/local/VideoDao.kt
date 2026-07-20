@@ -68,7 +68,8 @@ interface VideoDao {
         "SELECT * FROM videos " +
             "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
             "ORDER BY (CASE WHEN :query = '' " +
-            "OR title LIKE '%' || :query || '%' OR channel LIKE '%' || :query || '%' " +
+            "OR title LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "OR channel LIKE '%' || :query || '%' ESCAPE '\\' " +
             "THEN 0 ELSE 1 END), fileName"
     )
     fun search(query: String, minSeconds: Long, maxSeconds: Long): Flow<List<VideoEntity>>

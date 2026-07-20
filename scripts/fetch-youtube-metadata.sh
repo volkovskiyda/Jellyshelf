@@ -70,6 +70,10 @@ extract_id() {
   printf '%s' "$id"
 }
 
+# Split YTDLP_OPTS on whitespace into an array once, instead of unquoted expansion at the call
+# site (which would also glob). Flag values containing spaces are not supported.
+read -r -a ytdlp_extra <<<"${YTDLP_OPTS:-}"
+
 # Build the find expression for the requested extensions.
 find_args=()
 for ext in $EXTS; do
@@ -114,7 +118,7 @@ while IFS= read -r -d '' file; do
       --ignore-config \
       --sleep-requests "$SLEEP" \
       -o "${stem//%/%%}.%(ext)s" \
-      ${YTDLP_OPTS:-} \
+      ${ytdlp_extra[@]+"${ytdlp_extra[@]}"} \
       "https://www.youtube.com/watch?v=${id}" >/dev/null 2>>"$FAIL_LOG"; then
     fetched=$((fetched + 1))
   else

@@ -7,5 +7,4 @@ build
 /captures
 .externalNativeBuild
 .cxx
-local.properties
 /internal

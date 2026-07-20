@@ -23,6 +23,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import androidx.room.withTransaction
 import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
+import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
@@ -107,7 +108,11 @@ class LibraryRepository(
      * by file name.
      */
     fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<VideoEntity>> =
-        videoDao.search(query, bucket?.minSeconds ?: 0L, bucket?.maxSeconds ?: Long.MAX_VALUE)
+        videoDao.search(
+            escapeLikePattern(query),
+            bucket?.minSeconds ?: 0L,
+            bucket?.maxSeconds ?: Long.MAX_VALUE,
+        )
 
     /** Videos in [categoryId], routing the "Others" virtual filters to live queries. */
     fun observeVideosByCategory(categoryId: String): Flow<List<VideoEntity>> = when (categoryId) {
@@ -121,7 +126,7 @@ class LibraryRepository(
     fun observeVideo(youtubeId: String): Flow<VideoEntity?> = videoDao.observe(youtubeId)
     fun observeCategories(): Flow<List<CategoryWithCount>> = categoryDao.observeWithCounts()
     fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
-        categoryDao.searchWithCounts(query)
+        categoryDao.searchWithCounts(escapeLikePattern(query))
 
     /**
      * The "Others" tab's virtual filters with live counts: Uncategorized (no yt-dlp/index metadata),
