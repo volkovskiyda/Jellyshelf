@@ -24,7 +24,18 @@ import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 
 sealed interface SyncResult {
-    data class Success(val itemCount: Int, val matched: Int, val categories: Int) : SyncResult
+    /**
+     * @param itemCount total Jellyfin items scanned.
+     * @param matched videos with a parseable YouTube id (the library total).
+     * @param indexed videos that also had a jellyshelf-index.json / yt-dlp metadata match.
+     * @param categories distinct auto-categories produced.
+     */
+    data class Success(
+        val itemCount: Int,
+        val matched: Int,
+        val indexed: Int,
+        val categories: Int,
+    ) : SyncResult
     data class Error(val message: String) : SyncResult
 }
 
@@ -92,11 +103,13 @@ class LibraryRepository(
         // Videos with no jellyshelf-index.json / yt-dlp metadata match. They may still land in
         // Jellyfin-derived dimensions (year, duration, genre) but get their own "Uncategorized" tab.
         val uncategorizedIds = mutableSetOf<String>()
+        // Videos that did get a jellyshelf-index.json / yt-dlp metadata match.
+        val indexedIds = mutableSetOf<String>()
 
         for (item in items) {
             val youtubeId = YoutubeId.fromPath(item.path) ?: continue
             val meta = index[youtubeId]
-            if (meta == null) uncategorizedIds += youtubeId
+            if (meta == null) uncategorizedIds += youtubeId else indexedIds += youtubeId
             val duration = meta?.duration
                 ?: item.runTimeTicks?.let { ticksToSeconds(it) }
                 ?: 0L
@@ -166,6 +179,7 @@ class LibraryRepository(
         return SyncResult.Success(
             itemCount = items.size,
             matched = videos.size,
+            indexed = indexedIds.size,
             categories = autoCategories.size,
         )
     }

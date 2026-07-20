@@ -209,7 +209,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val result = libraryRepo.sync()
             val message = when (result) {
                 is SyncResult.Success ->
-                    "Synced ${result.matched} of ${result.itemCount} items into ${result.categories} channels"
+                    "Synced ${result.indexed}/${result.matched} videos with metadata into ${result.categories} channels"
                 is SyncResult.Error -> result.message
             }
             val s = settingsRepo.snapshot()
