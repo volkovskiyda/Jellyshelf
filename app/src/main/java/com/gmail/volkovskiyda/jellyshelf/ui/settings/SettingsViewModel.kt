@@ -81,6 +81,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun onApiKeyChange(value: String) { _state.value = _state.value.copy(apiKey = value) }
     fun onIndexUrlChange(value: String) { _state.value = _state.value.copy(indexUrl = value) }
 
+    /** Prefill the metadata index URL from the entered server URL. */
+    fun fillIndexUrlFromServer() {
+        val base = _state.value.serverUrl.trim().trimEnd('/')
+        if (base.isBlank()) return
+        _state.value = _state.value.copy(indexUrl = "$base/jellyshelf-index.json")
+    }
+
     /** Save server + key, load users, auto-select the saved/first user. */
     fun connect(silent: Boolean = false) {
         val s = _state.value

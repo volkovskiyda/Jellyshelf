@@ -84,6 +84,14 @@ fun SettingsScreen(
                 label = { Text("Metadata index URL (optional)") },
                 placeholder = { Text("http://host/jellyshelf-index.json") },
                 singleLine = true,
+                trailingIcon = if (state.indexUrl.isBlank()) {
+                    {
+                        TextButton(
+                            onClick = viewModel::fillIndexUrlFromServer,
+                            enabled = state.serverUrl.isNotBlank(),
+                        ) { Text("Fill") }
+                    }
+                } else null,
                 modifier = Modifier.fillMaxWidth(),
             )
 
