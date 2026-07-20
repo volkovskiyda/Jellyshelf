@@ -29,6 +29,13 @@ interface VideoDao {
     )
     fun observeByCategory(categoryId: String): Flow<List<VideoEntity>>
 
+    @Query(
+        "SELECT v.* FROM videos v " +
+            "INNER JOIN video_category vc ON vc.youtubeId = v.youtubeId " +
+            "WHERE vc.categoryId = :categoryId ORDER BY v.fileName"
+    )
+    suspend fun getByCategory(categoryId: String): List<VideoEntity>
+
     @Query("SELECT * FROM videos WHERE youtubeId = :youtubeId")
     fun observe(youtubeId: String): Flow<VideoEntity?>
 

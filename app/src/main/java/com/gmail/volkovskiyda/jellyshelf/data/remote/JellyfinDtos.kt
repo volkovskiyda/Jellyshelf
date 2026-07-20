@@ -38,6 +38,12 @@ data class UserDataDto(
     @Json(name = "LastPlayedDate") val lastPlayedDate: String? = null,
 )
 
+/** Response from POST /Playlists — Jellyfin's PlaylistCreationResult. */
+@JsonClass(generateAdapter = true)
+data class PlaylistCreationResult(
+    @Json(name = "Id") val id: String,
+)
+
 /** Body for POST /Sessions/Playing/Progress — a minimal PlaybackProgressInfo. */
 @JsonClass(generateAdapter = true)
 data class ProgressBody(

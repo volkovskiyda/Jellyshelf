@@ -53,4 +53,16 @@ interface JellyfinApi {
 
     @POST("Sessions/Playing/Progress")
     suspend fun reportProgress(@Body body: ProgressBody): Response<Unit>
+
+    /**
+     * Creates a playlist. The playlist keeps the order of [ids] (comma-separated item ids),
+     * so pass them pre-sorted. Returns the new playlist's id.
+     */
+    @POST("Playlists")
+    suspend fun createPlaylist(
+        @Query("name") name: String,
+        @Query("ids") ids: String,
+        @Query("userId") userId: String,
+        @Query("mediaType") mediaType: String = "Video",
+    ): PlaylistCreationResult
 }

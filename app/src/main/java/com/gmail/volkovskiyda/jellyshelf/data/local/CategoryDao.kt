@@ -25,6 +25,21 @@ interface CategoryDao {
     )
     fun observeWithCounts(): Flow<List<CategoryWithCount>>
 
+    /**
+     * Search categories by name (uploader) or, with lower priority, by the description of
+     * any video they contain. Name matches sort first; within each group by type then name.
+     */
+    @Query(
+        "SELECT c.*, (SELECT COUNT(*) FROM video_category vc WHERE vc.categoryId = c.id) AS videoCount " +
+            "FROM categories c " +
+            "WHERE c.name LIKE '%' || :query || '%' " +
+            "OR EXISTS (SELECT 1 FROM video_category vc " +
+            "INNER JOIN videos v ON v.youtubeId = vc.youtubeId " +
+            "WHERE vc.categoryId = c.id AND v.description LIKE '%' || :query || '%') " +
+            "ORDER BY (CASE WHEN c.name LIKE '%' || :query || '%' THEN 0 ELSE 1 END), c.type, c.name"
+    )
+    fun searchWithCounts(query: String): Flow<List<CategoryWithCount>>
+
     @Query(
         "SELECT c.* FROM categories c " +
             "INNER JOIN video_category vc ON vc.categoryId = c.id " +

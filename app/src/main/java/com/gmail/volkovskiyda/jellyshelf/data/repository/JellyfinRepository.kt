@@ -100,6 +100,17 @@ class JellyfinRepository(
         api(serverUrl, apiKey).reportProgress(ProgressBody(itemId = itemId, positionTicks = positionTicks))
     }
 
+    /** Creates a Jellyfin playlist from ordered [itemIds]; returns the new playlist id. */
+    suspend fun createPlaylist(
+        serverUrl: String,
+        apiKey: String,
+        userId: String,
+        name: String,
+        itemIds: List<String>,
+    ): String = api(serverUrl, apiKey)
+        .createPlaylist(name = name, ids = itemIds.joinToString(","), userId = userId)
+        .id
+
     /** Fetches the aggregated yt-dlp metadata index from an arbitrary URL. */
     suspend fun fetchIndex(indexUrl: String): List<IndexEntry> = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(indexUrl).build()

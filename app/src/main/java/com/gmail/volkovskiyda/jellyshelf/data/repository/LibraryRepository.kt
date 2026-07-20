@@ -18,6 +18,11 @@ sealed interface SyncResult {
     data class Error(val message: String) : SyncResult
 }
 
+sealed interface PlaylistResult {
+    data class Success(val name: String, val count: Int) : PlaylistResult
+    data class Error(val message: String) : PlaylistResult
+}
+
 class LibraryRepository(
     private val db: JellyshelfDatabase,
     private val jellyfin: JellyfinRepository,
@@ -33,6 +38,8 @@ class LibraryRepository(
 
     fun observeVideo(youtubeId: String): Flow<VideoEntity?> = videoDao.observe(youtubeId)
     fun observeCategories(): Flow<List<CategoryWithCount>> = categoryDao.observeWithCounts()
+    fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
+        categoryDao.searchWithCounts(query)
     fun observeManualCategories(): Flow<List<CategoryEntity>> =
         categoryDao.observeByType(CATEGORY_TYPE_MANUAL)
 
@@ -169,5 +176,28 @@ class LibraryRepository(
     suspend fun setVideoInCategory(youtubeId: String, categoryId: String, inCategory: Boolean) {
         if (inCategory) categoryDao.upsertCrossRef(VideoCategoryCrossRef(youtubeId, categoryId))
         else categoryDao.removeCrossRef(youtubeId, categoryId)
+    }
+
+    /**
+     * Creates a Jellyfin playlist named [name] from every video in [categoryId] that has a
+     * Jellyfin item, ordered by file name.
+     */
+    suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult {
+        val s = settings.snapshot()
+        if (!s.isConnected) return PlaylistResult.Error("Not connected. Configure Jellyfin in Settings.")
+
+        val playlistName = name.trim()
+        if (playlistName.isBlank()) return PlaylistResult.Error("Playlist name can't be empty.")
+
+        // getByCategory already orders by fileName; keep that order for the playlist.
+        val itemIds = videoDao.getByCategory(categoryId).mapNotNull { it.jellyfinItemId }
+        if (itemIds.isEmpty()) return PlaylistResult.Error("No playable videos in this category.")
+
+        return try {
+            jellyfin.createPlaylist(s.serverUrl, s.apiKey, s.userId, playlistName, itemIds)
+            PlaylistResult.Success(playlistName, itemIds.size)
+        } catch (e: Exception) {
+            PlaylistResult.Error("Failed to create playlist: ${e.message}")
+        }
     }
 }
