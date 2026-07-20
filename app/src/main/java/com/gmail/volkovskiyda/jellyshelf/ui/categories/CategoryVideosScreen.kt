@@ -62,6 +62,11 @@ fun CategoryVideosScreen(
             },
             actions = {
                 if (videos.isNotEmpty()) {
+                    Text(
+                        "${videos.size} video${if (videos.size == 1) "" else "s"}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     IconButton(onClick = { showDialog = true }) {
                         Icon(
                             Icons.AutoMirrored.Filled.PlaylistAdd,
