@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPositionRepository
@@ -39,5 +40,8 @@ class AppContainer(context: Context) {
 
     val jellyfinRepository = JellyfinRepository(jellyfinClient, okHttpClient, moshi)
 
-    val libraryRepository = LibraryRepository(database, jellyfinRepository, settingsRepository)
+    private val ytDlpMetadataSource = YtDlpMetadataSource(appContext)
+
+    val libraryRepository =
+        LibraryRepository(database, jellyfinRepository, settingsRepository, ytDlpMetadataSource)
 }

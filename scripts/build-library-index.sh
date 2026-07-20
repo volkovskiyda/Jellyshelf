@@ -35,7 +35,8 @@ find "$DIR" -type f -name '*.info.json' -exec cat {} + \
       tags:        (.tags // []),
       categories:  (.categories // []),
       description: .description,
-      thumbnail:   .thumbnail
+      thumbnail:   .thumbnail,
+      fetchedAt:   .epoch
     })' > "$OUT"
 
 echo "Wrote $OUT with $(jq 'length' "$OUT") entries (from $count sidecar files)."

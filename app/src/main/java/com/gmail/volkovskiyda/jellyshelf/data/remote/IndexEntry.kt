@@ -20,4 +20,6 @@ data class IndexEntry(
     @Json(name = "categories") val categories: List<String>? = null,
     @Json(name = "description") val description: String? = null,
     @Json(name = "thumbnail") val thumbnail: String? = null,
+    /** yt-dlp's extraction time (its `epoch`, in seconds), when the script emits it. Drives newest-wins. */
+    @Json(name = "fetchedAt") val fetchedAt: Long? = null,
 )

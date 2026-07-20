@@ -30,6 +30,10 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
+    val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun onQueryChange(value: String) {
         _query.value = value
     }

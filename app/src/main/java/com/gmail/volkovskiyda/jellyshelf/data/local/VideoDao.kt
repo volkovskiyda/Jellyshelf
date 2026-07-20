@@ -16,6 +16,49 @@ interface VideoDao {
     @Query("SELECT * FROM videos ORDER BY fileName")
     fun observeAll(): Flow<List<VideoEntity>>
 
+    @Query("SELECT * FROM videos")
+    suspend fun getAll(): List<VideoEntity>
+
+    // --- Virtual "Others" filters: live lists ---
+
+    @Query("SELECT * FROM videos WHERE metadataSource = :source ORDER BY fileName")
+    fun observeBySource(source: String): Flow<List<VideoEntity>>
+
+    @Query("SELECT * FROM videos WHERE metadataSource = :source ORDER BY fileName")
+    suspend fun getBySource(source: String): List<VideoEntity>
+
+    @Query("SELECT * FROM videos WHERE played = 1 ORDER BY fileName")
+    fun observeWatched(): Flow<List<VideoEntity>>
+
+    @Query("SELECT * FROM videos WHERE played = 0 ORDER BY fileName")
+    fun observeUnwatched(): Flow<List<VideoEntity>>
+
+    @Query("SELECT * FROM videos WHERE played = 0 AND playbackPositionTicks > 0 ORDER BY fileName")
+    fun observeContinueWatching(): Flow<List<VideoEntity>>
+
+    @Query("SELECT * FROM videos WHERE played = 1 ORDER BY fileName")
+    suspend fun getWatched(): List<VideoEntity>
+
+    @Query("SELECT * FROM videos WHERE played = 0 ORDER BY fileName")
+    suspend fun getUnwatched(): List<VideoEntity>
+
+    @Query("SELECT * FROM videos WHERE played = 0 AND playbackPositionTicks > 0 ORDER BY fileName")
+    suspend fun getContinueWatching(): List<VideoEntity>
+
+    // --- Virtual "Others" filters: live counts ---
+
+    @Query("SELECT COUNT(*) FROM videos WHERE metadataSource = :source")
+    fun countBySource(source: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM videos WHERE played = 1")
+    fun countWatched(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM videos WHERE played = 0")
+    fun countUnwatched(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM videos WHERE played = 0 AND playbackPositionTicks > 0")
+    fun countContinueWatching(): Flow<Int>
+
     /**
      * Videos whose duration is in [[minSeconds], [maxSeconds]) — a hard filter — with those whose
      * title or channel match [query] sorted first and the rest after. A blank [query] leaves every

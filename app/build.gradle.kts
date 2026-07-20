@@ -17,6 +17,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers
+        // virtually all modern physical devices and keeps the APK from ballooning across ABIs.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
@@ -32,6 +38,16 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        // youtubedl-android extracts its bundled Python/binaries from the APK at runtime, which
+        // requires the native libraries to be stored uncompressed and extractable.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -68,6 +84,7 @@ dependencies {
     implementation(libs.moshi.kotlin)
     implementation(libs.okhttp)
     implementation(libs.retrofit)
+    implementation(libs.youtubedl.android.library)
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.junit)

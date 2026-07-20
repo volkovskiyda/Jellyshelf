@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -22,12 +23,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -35,6 +39,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.data.repository.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberContainer
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
@@ -67,6 +74,8 @@ fun DetailScreen(
     val video by remember(youtubeId) { repo.observeVideo(youtubeId) }
         .collectAsStateWithLifecycle(null)
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(null)
+
+    var fetching by remember(youtubeId) { mutableStateOf(false) }
 
     val current = video
 
@@ -116,6 +125,8 @@ fun DetailScreen(
                 Text(meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
+            MetadataSourceBadge(current.metadataSource)
+
             // Playback actions
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val itemId = current.jellyfinItemId
@@ -157,10 +168,68 @@ fun DetailScreen(
                 Text(if (current.played) "Mark as unwatched" else "Mark as watched")
             }
 
+            // Fetch / refresh YouTube metadata in-app with the bundled yt-dlp. "Get" when the video
+            // only has Jellyfin data, "Update" once it has index or yt-dlp metadata.
+            val hasMetadata = current.metadataSource == METADATA_SOURCE_INDEX ||
+                current.metadataSource == METADATA_SOURCE_YTDLP
+            OutlinedButton(
+                onClick = {
+                    fetching = true
+                    scope.launch {
+                        val result = repo.fetchMetadata(youtubeId)
+                        fetching = false
+                        val message = when (result) {
+                            is FetchResult.Success -> "Metadata updated for ${result.title}"
+                            is FetchResult.Error -> result.message
+                        }
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                },
+                enabled = !fetching,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    when {
+                        fetching -> "Fetching metadata…"
+                        hasMetadata -> "Update metadata"
+                        else -> "Get metadata"
+                    }
+                )
+            }
+
             current.description?.takeIf { it.isNotBlank() }?.let { desc ->
                 Text("Description", style = MaterialTheme.typography.titleMedium)
                 Text(desc, style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
+}
+
+/** A small colour-coded chip showing where this video's metadata came from. */
+@Composable
+private fun MetadataSourceBadge(source: String) {
+    val (label, container, content) = when (source) {
+        METADATA_SOURCE_YTDLP -> Triple(
+            "In-app · yt-dlp",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+        METADATA_SOURCE_INDEX -> Triple(
+            "Script · index",
+            MaterialTheme.colorScheme.tertiaryContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer,
+        )
+        else -> Triple(
+            "Jellyfin only",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Surface(color = container, contentColor = content, shape = RoundedCornerShape(6.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
     }
 }

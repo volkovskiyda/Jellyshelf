@@ -38,6 +38,20 @@ interface CategoryDao {
     @Query("DELETE FROM categories WHERE id = :categoryId")
     suspend fun deleteCategory(categoryId: String)
 
+    /** Drop this video's memberships in auto categories (keeping [keepType], i.e. manual), before re-deriving them. */
+    @Query(
+        "DELETE FROM video_category WHERE youtubeId = :youtubeId AND categoryId IN " +
+            "(SELECT id FROM categories WHERE type != :keepType)"
+    )
+    suspend fun removeAutoCrossRefsForVideo(youtubeId: String, keepType: String)
+
+    /** Delete auto categories (keeping [keepType]) that no longer have any members. */
+    @Query(
+        "DELETE FROM categories WHERE type != :keepType AND id NOT IN " +
+            "(SELECT DISTINCT categoryId FROM video_category)"
+    )
+    suspend fun pruneEmptyCategories(keepType: String)
+
     @Query("DELETE FROM categories")
     suspend fun clearCategories()
 

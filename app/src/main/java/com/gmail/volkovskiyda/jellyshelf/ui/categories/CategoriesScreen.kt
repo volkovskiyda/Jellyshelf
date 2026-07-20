@@ -35,9 +35,9 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_DURATION
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YEAR
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YT_CATEGORY
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
+import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_OTHERS
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
@@ -51,6 +51,7 @@ fun CategoriesScreen(
     viewModel: CategoriesViewModel = viewModel(),
 ) {
     val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val others by viewModel.others.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val searchAll by viewModel.searchAll.collectAsStateWithLifecycle()
 
@@ -72,25 +73,39 @@ fun CategoriesScreen(
             SearchAllToggle(checked = searchAll, onCheckedChange = viewModel::onSearchAllChange)
         }
 
-        if (categories.isEmpty()) {
+        // The "Others" tab (virtual watch/uncategorized filters) is browse-only; it is left out of
+        // search, whose scope is the stored, name-searchable categories.
+        val tabs = tabsOf(categories, searching).let { stored ->
+            if (!searching && others.isNotEmpty()) {
+                stored + CategoryTab(CATEGORY_TYPE_OTHERS, "Others", others)
+            } else {
+                stored
+            }
+        }
+
+        if (searching && searchAll) {
+            if (categories.isEmpty()) {
+                EmptyState("No categories match \"$query\".")
+            } else {
+                // Cross-dimension search: one flat, matches-first list (see searchWithCounts), each
+                // row tagged with its kind since there are no tabs to convey it.
+                LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize()) {
+                    items(categories, key = { it.category.id }) { item ->
+                        CategoryRow(item = item, showType = true, onClick = onCategoryClick)
+                        HorizontalDivider()
+                    }
+                }
+            }
+        } else if (tabs.isEmpty()) {
             val message = if (searching) {
                 "No categories match \"$query\"."
             } else {
                 "No categories yet. Sync to auto-group videos by channel, year, duration and more."
             }
             EmptyState(message)
-        } else if (searching && searchAll) {
-            // Cross-dimension search: one flat, matches-first list (see searchWithCounts), each
-            // row tagged with its kind since there are no tabs to convey it.
-            LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize()) {
-                items(categories, key = { it.category.id }) { item ->
-                    CategoryRow(item = item, showType = true, onClick = onCategoryClick)
-                    HorizontalDivider()
-                }
-            }
         } else {
             TabbedCategories(
-                tabs = tabsOf(categories, searching),
+                tabs = tabs,
                 persistScroll = !searching,
                 onCategoryClick = onCategoryClick,
             )
@@ -181,7 +196,6 @@ private val DIMENSIONS = listOf(
     CATEGORY_TYPE_AUTO_MONTH to "Months",
     CATEGORY_TYPE_AUTO_DURATION to "Durations",
     CATEGORY_TYPE_MANUAL to "Manual",
-    CATEGORY_TYPE_AUTO_UNCATEGORIZED to "Uncategorized",
 )
 
 /**
@@ -211,6 +225,6 @@ private fun categoryTypeLabel(type: String): String = when (type) {
     CATEGORY_TYPE_AUTO_YEAR -> "Year"
     CATEGORY_TYPE_AUTO_MONTH -> "Month"
     CATEGORY_TYPE_AUTO_DURATION -> "Duration"
-    CATEGORY_TYPE_AUTO_UNCATEGORIZED -> "Uncategorized"
+    CATEGORY_TYPE_OTHERS -> "Others"
     else -> "Manual"
 }
