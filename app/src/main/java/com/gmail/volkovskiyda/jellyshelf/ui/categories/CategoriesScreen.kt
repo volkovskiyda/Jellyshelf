@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberContainer
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,7 +38,10 @@ fun CategoriesScreen(
         if (categories.isEmpty()) {
             EmptyState("No categories yet. Sync to auto-group videos by channel.")
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = rememberPersistedLazyListState("categories"),
+                modifier = Modifier.fillMaxSize(),
+            ) {
                 items(categories, key = { it.category.id }) { item ->
                     Column(
                         modifier = Modifier

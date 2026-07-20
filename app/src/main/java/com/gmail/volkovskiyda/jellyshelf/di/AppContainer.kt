@@ -6,6 +6,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.SettingsRepository
 import com.squareup.moshi.Moshi
 import okhttp3.OkHttpClient
@@ -31,6 +32,8 @@ class AppContainer(context: Context) {
     ).fallbackToDestructiveMigration(true).build()
 
     val settingsRepository = SettingsRepository(appContext)
+
+    val scrollPositionRepository = ScrollPositionRepository(appContext)
 
     private val jellyfinClient = JellyfinClient(okHttpClient, moshi)
 

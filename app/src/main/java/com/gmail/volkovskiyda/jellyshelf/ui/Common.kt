@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -19,6 +20,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,15 +34,47 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.JellyshelfApplication
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
+import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPosition
 import com.gmail.volkovskiyda.jellyshelf.di.AppContainer
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
 fun rememberContainer(): AppContainer {
     val context = LocalContext.current
     return (context.applicationContext as JellyshelfApplication).container
+}
+
+/**
+ * A [LazyListState] whose scroll position is persisted under [key] via
+ * [com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPositionRepository].
+ *
+ * Restores the last position on tab switch and across app restart. `rememberSaveable` still
+ * covers the fast list → detail → back and configuration-change cases in memory; the store
+ * seeds the initial value whenever that saved state has been discarded.
+ */
+@Composable
+fun rememberPersistedLazyListState(key: String): LazyListState {
+    val store = rememberContainer().scrollPositionRepository
+    val state = rememberSaveable(key, saver = LazyListState.Saver) {
+        val pos = store.peek(key)
+        LazyListState(pos.index, pos.offset)
+    }
+    LaunchedEffect(key, state) {
+        snapshotFlow { ScrollPosition(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset) }
+            .debounce(250)
+            .distinctUntilChanged()
+            .collect { store.save(key, it) }
+    }
+    DisposableEffect(key, state) {
+        onDispose {
+            store.save(key, ScrollPosition(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset))
+        }
+    }
+    return state
 }
 
 @Composable

@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDe
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
@@ -48,7 +49,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun JellyshelfApp() {
     val backStack = rememberNavBackStack(AppNavKey.Library)
-    val decorator = rememberViewModelStoreNavEntryDecorator<NavKey>()
+    val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
+    val viewModelStoreDecorator = rememberViewModelStoreNavEntryDecorator<NavKey>()
 
     val topLevel = listOf(
         TopLevel(AppNavKey.Library, "Library", Icons.Filled.VideoLibrary),
@@ -84,7 +86,7 @@ private fun JellyshelfApp() {
         NavDisplay(
             backStack = backStack,
             modifier = Modifier.padding(innerPadding),
-            entryDecorators = listOf(decorator),
+            entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
             onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
         ) { key ->
             when (key) {

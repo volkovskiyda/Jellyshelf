@@ -24,6 +24,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +51,10 @@ fun LibraryScreen(
         if (videos.isEmpty()) {
             EmptyState("No videos yet. Connect to Jellyfin in Settings and run a sync.")
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = rememberPersistedLazyListState("library"),
+                modifier = Modifier.fillMaxSize(),
+            ) {
                 items(videos, key = { it.youtubeId }) { video ->
                     VideoRow(video = video, onClick = { onVideoClick(video) })
                 }
