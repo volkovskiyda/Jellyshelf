@@ -16,6 +16,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
+/** Paging safety cap — far above any real library, purely an infinite-loop backstop. */
+private const val MAX_PAGED_ITEMS = 1_000_000
+
 class JellyfinRepository(
     private val client: JellyfinClient,
     private val okHttpClient: OkHttpClient,
@@ -76,7 +79,7 @@ class JellyfinRepository(
                 ).items
                 all += page
                 startIndex += page.size
-                if (page.size < pageSize) break
+                if (page.size < pageSize || startIndex >= MAX_PAGED_ITEMS) break
             }
             all
         }
@@ -108,7 +111,9 @@ class JellyfinRepository(
             ).items
             all += page
             startIndex += page.size
-            if (page.size < pageSize) break
+            // Backstop against a broken server that ignores StartIndex and returns full pages
+            // forever; no real library needs this many items.
+            if (page.size < pageSize || startIndex >= MAX_PAGED_ITEMS) break
         }
         return all
     }

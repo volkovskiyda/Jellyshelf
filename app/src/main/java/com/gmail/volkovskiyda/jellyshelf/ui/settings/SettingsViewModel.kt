@@ -120,7 +120,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 // overwrite a previously working configuration.
                 settingsRepo.setConnection(s.serverUrl, s.apiKey)
                 settingsRepo.setIndexUrl(s.indexUrl)
-                container.settingsCache.store(s.serverUrl, users)
+                // Trimmed to match what setConnection persists, so the next init's lookup hits.
+                container.settingsCache.store(s.serverUrl.trim(), users)
                 val current = _state.value
                 val selected = users.firstOrNull { it.id == current.selectedUserId } ?: users.firstOrNull()
                 _state.value = current.copy(
