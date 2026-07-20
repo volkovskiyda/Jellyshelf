@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,11 +16,13 @@ import kotlinx.coroutines.flow.stateIn
 class CategoriesViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = container.libraryRepository
 
-    private val _query = MutableStateFlow("")
+    // Container-owned so query and toggle survive tab switches (which clear this ViewModel).
+    private val filters = container.categoriesFilterState
+    private val _query = filters.query
     val query: StateFlow<String> = _query.asStateFlow()
 
     /** When true, a query searches across every dimension instead of just the active tab. */
-    private val _searchAll = MutableStateFlow(false)
+    private val _searchAll = filters.searchAll
     val searchAll: StateFlow<Boolean> = _searchAll.asStateFlow()
 
     /** Null while the first Room emission is pending, so the UI can tell loading from empty. */

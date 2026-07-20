@@ -8,12 +8,15 @@ import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.data.repository.PlaylistResult
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CategoryVideosViewModel(
     application: Application,
@@ -39,22 +42,35 @@ class CategoryVideosViewModel(
         _message.value = null
     }
 
-    /** Creates the playlist in the ViewModel scope, so rotation can't abort it mid-flight. */
+    /**
+     * Creates the playlist. The repository call runs non-cancellable so neither rotation nor
+     * popping the screen aborts it mid-flight; the finally block guarantees the dialog's
+     * creating flag can never get stuck if something outside the repository's own try throws.
+     */
     fun createPlaylist(name: String) {
         if (_creatingPlaylist.value) return
         _creatingPlaylist.value = true
         viewModelScope.launch {
-            val result = repo.createPlaylistFromCategory(categoryId, name)
-            val resources = getApplication<Application>().resources
-            _message.value = when (result) {
-                is PlaylistResult.Success -> resources.getString(
-                    R.string.playlist_created,
-                    result.name,
-                    resources.getQuantityString(R.plurals.video_count, result.count, result.count),
-                )
-                is PlaylistResult.Error -> result.message
+            try {
+                val result = withContext(NonCancellable) {
+                    repo.createPlaylistFromCategory(categoryId, name)
+                }
+                val resources = getApplication<Application>().resources
+                _message.value = when (result) {
+                    is PlaylistResult.Success -> resources.getString(
+                        R.string.playlist_created,
+                        result.name,
+                        resources.getQuantityString(R.plurals.video_count, result.count, result.count),
+                    )
+                    is PlaylistResult.Error -> result.message
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _message.value = e.message ?: e.javaClass.simpleName
+            } finally {
+                _creatingPlaylist.value = false
             }
-            _creatingPlaylist.value = false
         }
     }
 

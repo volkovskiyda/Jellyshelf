@@ -62,15 +62,21 @@ class JellyfinRepository(
             api.getViews(userId).items
         } else {
             // Page through so a folder with more than one page of children isn't silently
-            // truncated in the browser.
+            // truncated in the browser. A short page is the sole terminator — some servers
+            // omit TotalRecordCount, and a full page with total=0 must not stop the loop.
             val all = mutableListOf<BaseItemDto>()
             val pageSize = 500
             var startIndex = 0
             while (true) {
-                val page = api.getChildFolders(userId = userId, parentId = pid, startIndex = startIndex)
-                all += page.items
-                startIndex += page.items.size
-                if (page.items.size < pageSize || page.items.isEmpty() || startIndex >= page.totalRecordCount) break
+                val page = api.getChildFolders(
+                    userId = userId,
+                    parentId = pid,
+                    startIndex = startIndex,
+                    limit = pageSize,
+                ).items
+                all += page
+                startIndex += page.size
+                if (page.size < pageSize) break
             }
             all
         }
@@ -92,16 +98,17 @@ class JellyfinRepository(
         var startIndex = 0
         val pageSize = 200
         while (true) {
+            // A short page is the sole terminator — some servers omit TotalRecordCount, and
+            // stopping early would look like server-side deletions to the sync.
             val page = api.getItems(
                 userId = userId,
                 parentId = scopedParent,
                 startIndex = startIndex,
                 limit = pageSize,
-            )
-            all += page.items
-            startIndex += page.items.size
-            if (page.items.size < pageSize || startIndex >= page.totalRecordCount) break
-            if (page.items.isEmpty()) break
+            ).items
+            all += page
+            startIndex += page.size
+            if (page.size < pageSize) break
         }
         return all
     }
@@ -160,7 +167,11 @@ class JellyfinRepository(
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Index fetch failed: HTTP ${response.code}")
             val body = response.body?.string().orEmpty()
-            if (body.isBlank()) emptyList() else indexAdapter.fromJson(body).orEmpty()
+            // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at
+            // minimum). A blank 200 — captive portal, file caught mid-rewrite — must count as a
+            // failed fetch, or it would downgrade every index-sourced row.
+            if (body.isBlank()) throw IOException("Index fetch returned an empty body")
+            indexAdapter.fromJson(body).orEmpty()
         }
     }
 }

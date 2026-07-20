@@ -45,8 +45,8 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberThumbnailModel
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
-import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
@@ -122,7 +122,7 @@ fun DetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AsyncImage(
-                model = authorizedImageUrl(current.thumbnailUrl, settings?.apiKey),
+                model = rememberThumbnailModel(current.thumbnailUrl),
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxWidth()

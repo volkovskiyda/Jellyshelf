@@ -179,6 +179,25 @@ class VideoMergeTest {
         assertEquals(600L, merged.durationSeconds) // from runTimeTicks
     }
 
+    @Test
+    fun `local watch state written after the server snapshot is kept`() {
+        val local = existing(METADATA_SOURCE_INDEX).copy(played = true, playbackPositionTicks = 999L)
+        val merged = mergeVideo(
+            existing = local,
+            youtubeId = youtubeId,
+            item = item(played = false, positionTicks = 0L), // stale pre-write server snapshot
+            meta = meta(),
+            indexAvailable = true,
+            serverBase = serverBase,
+            now = now,
+            keepLocalWatchState = true,
+        )
+        assertTrue(merged.played)
+        assertEquals(999L, merged.playbackPositionTicks)
+        // Metadata still merges normally.
+        assertEquals("Index Title", merged.title)
+    }
+
     // --- credentials never persisted ---
 
     @Test

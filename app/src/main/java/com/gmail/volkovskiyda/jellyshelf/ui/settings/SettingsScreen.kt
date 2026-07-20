@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -140,11 +141,19 @@ fun SettingsScreen(
             if (state.busy) CircularProgressIndicator()
 
             state.status?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (state.statusIsError) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
+                )
             }
 
             Text(
-                stringResource(R.string.library_summary, videoCount) + "  •  " +
+                stringResource(
+                    R.string.library_summary,
+                    pluralStringResource(R.plurals.video_count, videoCount, videoCount),
+                ) + "  •  " +
                     stringResource(if (state.lastSyncAt > 0) R.string.last_sync_recorded else R.string.never_synced),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

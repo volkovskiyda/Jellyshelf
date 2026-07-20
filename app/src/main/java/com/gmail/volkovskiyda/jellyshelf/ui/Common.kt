@@ -59,13 +59,20 @@ fun rememberContainer(): AppContainer {
 }
 
 /**
- * The current Jellyfin api key, for authorizing thumbnail loads at display time — stored
- * thumbnail URLs deliberately carry no credentials.
+ * Resolves a stored thumbnail [url] to a loadable model. Stored URLs deliberately carry no
+ * credentials, so Jellyfin-hosted images get the current api key appended at display time —
+ * and while settings are still loading on cold start, Jellyfin URLs resolve to null instead
+ * of firing a doomed unauthenticated request that would 401 and reload.
  */
 @Composable
-fun rememberApiKey(): String? {
+fun rememberThumbnailModel(url: String?): String? {
     val settings by rememberContainer().settingsState.collectAsStateWithLifecycle()
-    return settings?.apiKey
+    val loaded = settings
+    return when {
+        url == null -> null
+        loaded == null -> url.takeUnless { "/Items/" in it && "/Images/" in it }
+        else -> authorizedImageUrl(url, loaded.apiKey)
+    }
 }
 
 /**
@@ -192,7 +199,7 @@ fun VideoRow(
             contentAlignment = Alignment.BottomCenter,
         ) {
             AsyncImage(
-                model = authorizedImageUrl(video.thumbnailUrl, rememberApiKey()),
+                model = rememberThumbnailModel(video.thumbnailUrl),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

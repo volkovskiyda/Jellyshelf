@@ -25,6 +25,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
+import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
@@ -93,6 +94,14 @@ class LibraryRepository(
      */
     private val writeMutex = Mutex()
 
+    /**
+     * When this process last wrote a video's watch state locally. Sync's Jellyfin snapshot is
+     * taken before it acquires [writeMutex], so a local write that lands during the (possibly
+     * multi-second) fetch would otherwise be reverted to the server's pre-write state; the
+     * merge keeps the local values whenever this stamp postdates the fetch start.
+     */
+    private val localWatchWrites = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     // Long-running work (bulk fetch, playback reports) runs here so it outlives the screen
     // that started it.
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -158,6 +167,7 @@ class LibraryRepository(
         val s = settings.snapshot()
         if (!s.isConnected) return SyncResult.Error("Not connected. Set server URL, API key and user in Settings.")
 
+        val fetchStartedAt = System.currentTimeMillis()
         val items = try {
             jellyfin.fetchAllItems(s.serverUrl, s.apiKey, s.userId, s.libraryId)
         } catch (e: CancellationException) {
@@ -200,8 +210,11 @@ class LibraryRepository(
                     indexAvailable = indexAvailable,
                     serverBase = serverBase,
                     now = now,
+                    // A local watch-state write that landed after the server snapshot was taken
+                    // is newer than that snapshot — keep it.
+                    keepLocalWatchState = (localWatchWrites[youtubeId] ?: 0L) > fetchStartedAt,
                 )
-            }
+            }.distinctBy { it.youtubeId }
 
             // Auto-categorize each video along several dimensions: channel, upload year, upload
             // month, duration band and YouTube category. Categories are deduped by id; every
@@ -294,7 +307,8 @@ class LibraryRepository(
                 description = entry.description ?: existing.description,
                 tags = entry.tags ?: existing.tags,
                 youtubeCategories = entry.categories ?: existing.youtubeCategories,
-                thumbnailUrl = entry.thumbnail ?: existing.thumbnailUrl,
+                // Strip a legacy embedded api key so it can't persist past this write.
+                thumbnailUrl = entry.thumbnail ?: stripApiKey(existing.thumbnailUrl),
                 metadataSource = METADATA_SOURCE_YTDLP,
                 metadataUpdatedAt = now,
                 lastSyncedAt = now,
@@ -376,6 +390,7 @@ class LibraryRepository(
         val video = writeMutex.withLock {
             val v = videoDao.get(youtubeId) ?: return false
             videoDao.updateWatchState(youtubeId, played, if (played) v.playbackPositionTicks else 0L)
+            localWatchWrites[youtubeId] = System.currentTimeMillis()
             v
         }
         val s = settings.snapshot()
@@ -419,6 +434,7 @@ class LibraryRepository(
             finished = completed ||
                 (v.durationSeconds > 0 && ticksToSeconds(positionTicks) >= v.durationSeconds - 5)
             videoDao.updateWatchState(youtubeId, finished, if (finished) 0L else positionTicks)
+            localWatchWrites[youtubeId] = System.currentTimeMillis()
             v
         }
 

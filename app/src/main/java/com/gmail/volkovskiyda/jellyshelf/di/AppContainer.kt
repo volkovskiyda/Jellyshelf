@@ -11,6 +11,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.Settings
 import com.gmail.volkovskiyda.jellyshelf.data.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.squareup.moshi.Moshi
@@ -67,6 +68,7 @@ class AppContainer(context: Context) {
 
     // Per-process UI state that must survive tab switches, which clear tab ViewModels.
     val libraryFilterState = LibraryFilterState()
+    val categoriesFilterState = CategoriesFilterState()
     val settingsCache = SettingsCache()
 
     private val jellyfinClient = JellyfinClient(okHttpClient, moshi)

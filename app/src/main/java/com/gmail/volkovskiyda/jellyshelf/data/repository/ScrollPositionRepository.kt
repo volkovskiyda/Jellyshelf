@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -37,6 +38,11 @@ data class AnchorPosition(val anchor: String, val offset: Int)
  */
 class ScrollPositionRepository(context: Context) {
     private val ds = context.applicationContext.scrollDataStore
+
+    // Disk writes run on a single-parallelism dispatcher so two rapid saves for the same key
+    // can't commit in reverse order and leave the older position on disk.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val writeDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val cache = ConcurrentHashMap<String, ScrollPosition>()
     private val anchorCache = ConcurrentHashMap<String, AnchorPosition>()
@@ -95,10 +101,13 @@ class ScrollPositionRepository(context: Context) {
     /** Records [position] for [key] in memory immediately and persists it to disk. */
     fun save(key: String, position: ScrollPosition) {
         if (cache.put(key, position) == position) return
-        scope.launch {
+        scope.launch(writeDispatcher) {
+            // Read the latest cached value at commit time, so even a delayed write can only
+            // ever persist the newest position.
+            val latest = cache[key] ?: return@launch
             ds.edit {
-                it[intPreferencesKey("$key$INDEX_SUFFIX")] = position.index
-                it[intPreferencesKey("$key$OFFSET_SUFFIX")] = position.offset
+                it[intPreferencesKey("$key$INDEX_SUFFIX")] = latest.index
+                it[intPreferencesKey("$key$OFFSET_SUFFIX")] = latest.offset
             }
         }
     }
@@ -112,10 +121,11 @@ class ScrollPositionRepository(context: Context) {
     /** Records the anchor [position] for [key] in memory immediately and persists it to disk. */
     fun saveAnchor(key: String, position: AnchorPosition) {
         if (anchorCache.put(key, position) == position) return
-        scope.launch {
+        scope.launch(writeDispatcher) {
+            val latest = anchorCache[key] ?: return@launch
             ds.edit {
-                it[stringPreferencesKey("$key$ANCHOR_SUFFIX")] = position.anchor
-                it[intPreferencesKey("$key$ANCHOR_OFFSET_SUFFIX")] = position.offset
+                it[stringPreferencesKey("$key$ANCHOR_SUFFIX")] = latest.anchor
+                it[intPreferencesKey("$key$ANCHOR_OFFSET_SUFFIX")] = latest.offset
             }
         }
     }

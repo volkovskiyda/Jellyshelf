@@ -36,6 +36,10 @@ interface JellyfinApi {
         @Query("Recursive") recursive: Boolean = true,
         @Query("IncludeItemTypes") includeItemTypes: String = "Video,Movie,Episode,MusicVideo",
         @Query("Fields") fields: String = "Path,ProviderIds,Overview,Genres,Tags,ProductionYear",
+        // Stable ordering matters: paging without a sort can skip items when the library
+        // changes mid-sync, and a skipped item now gets deleted locally by the sync.
+        @Query("SortBy") sortBy: String = "SortName",
+        @Query("SortOrder") sortOrder: String = "Ascending",
         @Query("StartIndex") startIndex: Int = 0,
         @Query("Limit") limit: Int = 200,
     ): ItemsResponse

@@ -41,6 +41,7 @@ data class SettingsUiState(
     val loadingFolders: Boolean = false,
     val busy: Boolean = false,
     val status: String? = null,
+    val statusIsError: Boolean = false,
     val lastSyncAt: Long = 0L,
 ) {
     /** ParentId of the folder currently being browsed ("" == root). */
@@ -67,7 +68,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch {
             val s = settingsRepo.snapshot()
-            val cachedUsers = container.settingsCache.users
+            val cachedUsers = container.settingsCache.usersFor(s.serverUrl)
             _state.value = _state.value.copy(
                 serverUrl = s.serverUrl,
                 apiKey = s.apiKey,
@@ -85,7 +86,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun onServerUrlChange(value: String) { _state.value = _state.value.copy(serverUrl = value) }
+    fun onServerUrlChange(value: String) {
+        // A different server has different users — drop the chips until the next connect so
+        // a stale selection can't be persisted against the new URL.
+        _state.value = _state.value.copy(serverUrl = value, users = emptyList())
+    }
     fun onApiKeyChange(value: String) { _state.value = _state.value.copy(apiKey = value) }
     fun onIndexUrlChange(value: String) { _state.value = _state.value.copy(indexUrl = value) }
 
@@ -100,18 +105,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun connect(silent: Boolean = false) {
         val s = _state.value
         if (s.serverUrl.isBlank() || s.apiKey.isBlank()) {
-            _state.value = s.copy(status = app.getString(R.string.enter_server_and_key))
+            _state.value = s.copy(status = app.getString(R.string.enter_server_and_key), statusIsError = true)
             return
         }
         viewModelScope.launch {
-            _state.value = s.copy(busy = true, status = if (silent) s.status else app.getString(R.string.connecting))
+            _state.value = s.copy(
+                busy = true,
+                status = if (silent) s.status else app.getString(R.string.connecting),
+                statusIsError = false,
+            )
             try {
                 val users = jellyfin.getUsers(s.serverUrl, s.apiKey)
                 // Persist only after the server accepted the credentials, so a typo can never
                 // overwrite a previously working configuration.
                 settingsRepo.setConnection(s.serverUrl, s.apiKey)
                 settingsRepo.setIndexUrl(s.indexUrl)
-                container.settingsCache.users = users
+                container.settingsCache.store(s.serverUrl, users)
                 val current = _state.value
                 val selected = users.firstOrNull { it.id == current.selectedUserId } ?: users.firstOrNull()
                 _state.value = current.copy(
@@ -120,13 +129,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     selectedUserId = selected?.id ?: current.selectedUserId,
                     selectedUserName = selected?.name ?: current.selectedUserName,
                     status = if (users.isEmpty()) app.getString(R.string.connected_no_users)
-                    else app.getString(R.string.connected_users, users.size),
+                    else app.getString(
+                        R.string.connected_users,
+                        app.resources.getQuantityString(R.plurals.user_count, users.size, users.size),
+                    ),
+                    statusIsError = false,
                 )
                 selected?.let { settingsRepo.setUser(it.id, it.name) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(busy = false, status = app.getString(R.string.connection_failed, e.message))
+                _state.value = _state.value.copy(
+                    busy = false,
+                    status = app.getString(
+                        R.string.connection_failed,
+                        e.message ?: app.getString(R.string.unknown_error),
+                    ),
+                    statusIsError = true,
+                )
             }
         }
     }
@@ -207,7 +227,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 _state.value = _state.value.copy(
                     childFolders = emptyList(),
                     loadingFolders = false,
-                    status = app.getString(R.string.folders_load_failed, e.message),
+                    status = app.getString(
+                        R.string.folders_load_failed,
+                        e.message ?: app.getString(R.string.unknown_error),
+                    ),
+                    statusIsError = true,
                 )
             }
         }
@@ -218,11 +242,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     /** Clear all locally cached videos/categories, keeping connection settings. */
     fun resetLocalData() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.clearing_local_data))
+            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.clearing_local_data), statusIsError = false)
             libraryRepo.clearLocalData()
             _state.value = _state.value.copy(
                 busy = false,
                 status = app.getString(R.string.local_data_cleared),
+                statusIsError = false,
                 lastSyncAt = 0L,
             )
         }
@@ -230,7 +255,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun syncNow() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.syncing))
+            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.syncing), statusIsError = false)
             settingsRepo.setIndexUrl(_state.value.indexUrl)
             val result = libraryRepo.sync()
             val message = when (result) {
@@ -239,7 +264,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 is SyncResult.Error -> result.message
             }
             val s = settingsRepo.snapshot()
-            _state.value = _state.value.copy(busy = false, status = message, lastSyncAt = s.lastSyncAt)
+            _state.value = _state.value.copy(
+                busy = false,
+                status = message,
+                statusIsError = result is SyncResult.Error,
+                lastSyncAt = s.lastSyncAt,
+            )
         }
     }
 }

@@ -97,13 +97,18 @@
     <string name="reset_dialog_title">Reset local data?</string>
     <string name="reset_dialog_text">This clears all synced videos and categories on this device. Server URL, API key, user and folder are kept. Tap Sync now afterwards to rebuild.</string>
     <string name="reset">Reset</string>
-    <string name="library_summary">Library: %1$d videos</string>
+    <string name="library_summary">Library: %1$s</string>
     <string name="last_sync_recorded">last sync recorded</string>
     <string name="never_synced">never synced</string>
     <string name="enter_server_and_key">Enter server URL and API key first</string>
     <string name="connecting">Connecting…</string>
-    <string name="connected_users">Connected — %1$d user(s)</string>
+    <string name="connected_users">Connected — %1$s</string>
+    <plurals name="user_count">
+        <item quantity="one">%d user</item>
+        <item quantity="other">%d users</item>
+    </plurals>
     <string name="connected_no_users">Connected, but no users returned</string>
+    <string name="unknown_error">unknown error</string>
     <string name="connection_failed">Connection failed: %1$s</string>
     <string name="folders_load_failed">Failed to load folders: %1$s</string>
     <string name="clearing_local_data">Clearing local data…</string>

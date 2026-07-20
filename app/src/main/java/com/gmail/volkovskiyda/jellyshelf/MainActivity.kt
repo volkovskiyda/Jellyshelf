@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -80,6 +81,12 @@ private fun JellyshelfNav(startKey: AppNavKey) {
         backStack.add(key)
     }
 
+    // Same guard as the system-back handler: NavDisplay requires a non-empty stack, so a
+    // double-tapped back arrow must never pop the last entry.
+    fun pop() {
+        if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
@@ -90,7 +97,9 @@ private fun JellyshelfNav(startKey: AppNavKey) {
                         NavigationBarItem(
                             selected = current == item.key,
                             onClick = { switchTo(item.key) },
-                            icon = { Icon(item.icon, contentDescription = label) },
+                            // The visible label already names the item; a duplicate icon
+                            // description would make TalkBack announce it twice.
+                            icon = { Icon(item.icon, contentDescription = null) },
                             label = { Text(label) },
                         )
                     }
@@ -101,10 +110,11 @@ private fun JellyshelfNav(startKey: AppNavKey) {
         NavDisplay(
             backStack = backStack,
             // consumeWindowInsets keeps each screen's own TopAppBar from applying the status-bar
-            // inset a second time on top of the scaffold padding.
-            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
+            // inset a second time on top of the scaffold padding; imePadding keeps the keyboard
+            // from covering search fields and the lower Settings inputs.
+            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding(),
             entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
-            onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+            onBack = { pop() },
         ) { key ->
             when (key) {
                 is AppNavKey.Library -> NavEntry(key) {
@@ -126,14 +136,14 @@ private fun JellyshelfNav(startKey: AppNavKey) {
                         categoryId = key.categoryId,
                         title = key.title,
                         onVideoClick = { backStack.add(AppNavKey.Detail(it.youtubeId)) },
-                        onBack = { backStack.removeAt(backStack.lastIndex) },
+                        onBack = ::pop,
                     )
                 }
 
                 is AppNavKey.Detail -> NavEntry(key) {
                     DetailScreen(
                         youtubeId = key.youtubeId,
-                        onBack = { backStack.removeAt(backStack.lastIndex) },
+                        onBack = ::pop,
                     )
                 }
 

@@ -19,7 +19,9 @@ import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
  *    only a successfully fetched index that lacks the entry does;
  *  - otherwise the row is rebuilt from the index entry, falling back to Jellyfin item fields.
  *
- * Jellyfin-owned fields (item id, file name, watch state) always refresh from [item].
+ * Jellyfin-owned fields (item id, file name, watch state) refresh from [item] — except when
+ * [keepLocalWatchState] is set, meaning this device wrote the row's watch state after the
+ * server snapshot in [item] was taken, so the local values are the newer ones.
  */
 internal fun mergeVideo(
     existing: VideoEntity?,
@@ -29,11 +31,14 @@ internal fun mergeVideo(
     indexAvailable: Boolean,
     serverBase: String,
     now: Long,
+    keepLocalWatchState: Boolean = false,
 ): VideoEntity {
     val indexUpdatedAt = meta?.fetchedAt?.let { it * 1000 } // epoch seconds -> millis
-    val played = item.userData?.played ?: false
-    val positionTicks = item.userData?.playbackPositionTicks ?: 0L
-    val playCount = item.userData?.playCount ?: 0
+    val keepWatch = keepLocalWatchState && existing != null
+    val played = if (keepWatch) existing!!.played else item.userData?.played ?: false
+    val positionTicks =
+        if (keepWatch) existing!!.playbackPositionTicks else item.userData?.playbackPositionTicks ?: 0L
+    val playCount = if (keepWatch) existing!!.playCount else item.userData?.playCount ?: 0
 
     val fileName = fileNameFromPath(item.path)
         ?: (meta?.title ?: existing?.title ?: item.name ?: youtubeId)
