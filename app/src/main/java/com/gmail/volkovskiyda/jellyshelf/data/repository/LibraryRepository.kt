@@ -46,7 +46,7 @@ class LibraryRepository(
         if (!s.isConnected) return SyncResult.Error("Not connected. Set server URL, API key and user in Settings.")
 
         val items = try {
-            jellyfin.fetchAllItems(s.serverUrl, s.apiKey, s.userId)
+            jellyfin.fetchAllItems(s.serverUrl, s.apiKey, s.userId, s.libraryId)
         } catch (e: Exception) {
             return SyncResult.Error("Failed to load library: ${e.message}")
         }

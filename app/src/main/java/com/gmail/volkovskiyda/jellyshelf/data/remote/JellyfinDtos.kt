@@ -20,6 +20,7 @@ data class BaseItemDto(
     @Json(name = "Id") val id: String,
     @Json(name = "Name") val name: String?,
     @Json(name = "Path") val path: String? = null,
+    @Json(name = "IsFolder") val isFolder: Boolean? = null,
     @Json(name = "RunTimeTicks") val runTimeTicks: Long? = null,
     @Json(name = "ProductionYear") val productionYear: Int? = null,
     @Json(name = "Overview") val overview: String? = null,

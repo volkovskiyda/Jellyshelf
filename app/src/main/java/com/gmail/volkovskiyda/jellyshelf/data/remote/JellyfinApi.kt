@@ -17,6 +17,17 @@ interface JellyfinApi {
     @GET("Users/{userId}/Views")
     suspend fun getViews(@Path("userId") userId: String): ItemsResponse
 
+    /** Immediate child folders of a given item — one level, for the folder browser. */
+    @GET("Items")
+    suspend fun getChildFolders(
+        @Query("userId") userId: String,
+        @Query("ParentId") parentId: String,
+        @Query("IsFolder") isFolder: Boolean = true,
+        @Query("SortBy") sortBy: String = "SortName",
+        @Query("Fields") fields: String = "Path",
+        @Query("Limit") limit: Int = 500,
+    ): ItemsResponse
+
     @GET("Items")
     suspend fun getItems(
         @Query("userId") userId: String,

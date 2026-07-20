@@ -1,26 +1,36 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -72,7 +82,7 @@ fun SettingsScreen(
             )
 
             Button(
-                onClick = viewModel::connect,
+                onClick = { viewModel.connect() },
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Connect & load users") }
@@ -90,6 +100,10 @@ fun SettingsScreen(
                 }
             }
 
+            if (state.selectedUserId.isNotBlank()) {
+                ScopeSection(state = state, viewModel = viewModel)
+            }
+
             HorizontalDivider()
 
             OutlinedButton(
@@ -98,9 +112,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Sync now") }
 
-            if (state.busy) {
-                CircularProgressIndicator()
-            }
+            if (state.busy) CircularProgressIndicator()
 
             state.status?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
@@ -112,6 +124,69 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ScopeSection(state: SettingsUiState, viewModel: SettingsViewModel) {
+    Text("Sync scope", style = MaterialTheme.typography.titleSmall)
+    Text(
+        state.selectedScopePath,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.primary,
+    )
+
+    if (!state.browserOpen) {
+        TextButton(onClick = viewModel::openBrowser) { Text("Change folder…") }
+        return
+    }
+
+    // Breadcrumb: All collections › folder › subfolder …
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AssistChip(onClick = { viewModel.navigateTo(-1) }, label = { Text("All collections") })
+        state.breadcrumb.forEachIndexed { index, folder ->
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+            AssistChip(onClick = { viewModel.navigateTo(index) }, label = { Text(folder.name) })
+        }
+    }
+
+    // Action row kept ABOVE the folder list so it stays reachable when a folder
+    // has many children (the whole screen scrolls; the list can be very long).
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = viewModel::useCurrentFolder) { Text("Use this folder") }
+        TextButton(onClick = viewModel::closeBrowser) { Text("Cancel") }
+    }
+
+    when {
+        state.loadingFolders -> CircularProgressIndicator()
+        state.childFolders.isEmpty() ->
+            Text(
+                "No subfolders here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        else -> state.childFolders.forEach { folder ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.enterFolder(folder) }
+                    .padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(20.dp))
+                Text(folder.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open")
+            }
         }
     }
 }

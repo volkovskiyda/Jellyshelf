@@ -41,14 +41,48 @@ class JellyfinRepository(
     suspend fun getUsers(serverUrl: String, apiKey: String): List<UserDto> =
         api(serverUrl, apiKey).getUsers()
 
-    /** Pages through the whole library. */
-    suspend fun fetchAllItems(serverUrl: String, apiKey: String, userId: String): List<BaseItemDto> {
+    /** Top-level libraries/collections for the user. */
+    suspend fun getViews(serverUrl: String, apiKey: String, userId: String): List<BaseItemDto> =
+        api(serverUrl, apiKey).getViews(userId).items
+
+    /**
+     * Immediate child folders of [parentId]. A blank [parentId] returns the user's
+     * top-level collections (views); anything deeper returns that folder's subfolders.
+     */
+    suspend fun getChildFolders(
+        serverUrl: String,
+        apiKey: String,
+        userId: String,
+        parentId: String?,
+    ): List<BaseItemDto> {
         val api = api(serverUrl, apiKey)
+        val pid = parentId?.takeIf { it.isNotBlank() }
+        val items = if (pid == null) api.getViews(userId).items
+        else api.getChildFolders(userId = userId, parentId = pid).items
+        // Server already filters via IsFolder=true; drop anything explicitly not a folder
+        // as a safety net so only folders (never video files) appear in the browser.
+        return items.filter { it.isFolder != false }
+    }
+
+    /** Pages through the library. A blank [parentId] means the whole (root) library. */
+    suspend fun fetchAllItems(
+        serverUrl: String,
+        apiKey: String,
+        userId: String,
+        parentId: String? = null,
+    ): List<BaseItemDto> {
+        val api = api(serverUrl, apiKey)
+        val scopedParent = parentId?.takeIf { it.isNotBlank() }
         val all = mutableListOf<BaseItemDto>()
         var startIndex = 0
         val pageSize = 200
         while (true) {
-            val page = api.getItems(userId = userId, startIndex = startIndex, limit = pageSize)
+            val page = api.getItems(
+                userId = userId,
+                parentId = scopedParent,
+                startIndex = startIndex,
+                limit = pageSize,
+            )
             all += page.items
             startIndex += page.items.size
             if (page.items.size < pageSize || startIndex >= page.totalRecordCount) break
