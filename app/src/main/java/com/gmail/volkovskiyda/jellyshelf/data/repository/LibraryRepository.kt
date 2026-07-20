@@ -10,7 +10,9 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.fileNameFromPath
+import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
+import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 
 sealed interface SyncResult {
@@ -158,6 +160,42 @@ class LibraryRepository(
             }
         }
         return true
+    }
+
+    /**
+     * Record where an external player stopped: persist the resume position locally and, on
+     * Jellyfin, write the playstate directly to the user's item data. Writing UserData (rather
+     * than posting /Sessions/Playing/Stopped) is what actually persists the position and lands
+     * the item in "Continue Watching" — the session endpoints only commit playstate for a live,
+     * progress-tracked session, which an external-player handoff can't sustain.
+     *
+     * When the video finished (or stopped within a few seconds of the end) it is marked played and
+     * the resume position cleared, matching Jellyfin's own behaviour. Best-effort — network
+     * failures are swallowed so local state still updates.
+     */
+    suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
+        val video = videoDao.get(youtubeId) ?: return
+        val positionTicks = millisToTicks(positionMs)
+        val finished = completed ||
+            (video.durationSeconds > 0 && ticksToSeconds(positionTicks) >= video.durationSeconds - 5)
+
+        videoDao.updateWatchState(youtubeId, finished, if (finished) 0L else positionTicks)
+
+        val s = settings.snapshot()
+        val itemId = video.jellyfinItemId
+        if (s.isConnected && itemId != null) {
+            runCatching {
+                jellyfin.updatePlaybackState(
+                    serverUrl = s.serverUrl,
+                    apiKey = s.apiKey,
+                    userId = s.userId,
+                    itemId = itemId,
+                    positionTicks = if (finished) 0L else positionTicks,
+                    played = finished,
+                    lastPlayedDate = Instant.now().toString(),
+                )
+            }
+        }
     }
 
     suspend fun createManualCategory(name: String): String {

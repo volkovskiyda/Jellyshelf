@@ -52,3 +52,16 @@ data class ProgressBody(
     @Json(name = "IsPaused") val isPaused: Boolean = true,
     @Json(name = "PlayMethod") val playMethod: String = "DirectPlay",
 )
+
+/**
+ * Body for POST /Users/{userId}/Items/{itemId}/UserData — a minimal UpdateUserItemDataDto.
+ * Writing the resume position here persists it directly (and surfaces the item in "Continue
+ * Watching"), unlike /Sessions/Playing/Stopped which only commits playstate for a live,
+ * progress-tracked session — impossible to sustain once playback is handed to an external player.
+ */
+@JsonClass(generateAdapter = true)
+data class UserItemDataBody(
+    @Json(name = "PlaybackPositionTicks") val playbackPositionTicks: Long,
+    @Json(name = "Played") val played: Boolean = false,
+    @Json(name = "LastPlayedDate") val lastPlayedDate: String? = null,
+)

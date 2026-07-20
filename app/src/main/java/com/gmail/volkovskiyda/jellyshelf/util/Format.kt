@@ -6,6 +6,11 @@ const val TICKS_PER_SECOND = 10_000_000L
 fun secondsToTicks(seconds: Long): Long = seconds * TICKS_PER_SECOND
 fun ticksToSeconds(ticks: Long): Long = ticks / TICKS_PER_SECOND
 
+/** 10,000 ticks == 1 millisecond. External players report positions in milliseconds. */
+private const val TICKS_PER_MILLI = TICKS_PER_SECOND / 1000
+fun millisToTicks(millis: Long): Long = millis * TICKS_PER_MILLI
+fun ticksToMillis(ticks: Long): Long = ticks / TICKS_PER_MILLI
+
 /** Formats a duration in seconds as H:MM:SS or M:SS. */
 fun formatDuration(totalSeconds: Long): String {
     if (totalSeconds <= 0) return "--:--"

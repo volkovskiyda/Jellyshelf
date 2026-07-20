@@ -54,6 +54,14 @@ interface JellyfinApi {
     @POST("Sessions/Playing/Progress")
     suspend fun reportProgress(@Body body: ProgressBody): Response<Unit>
 
+    /** Writes user-scoped playstate (resume position / played flag) directly to the item. */
+    @POST("Users/{userId}/Items/{itemId}/UserData")
+    suspend fun updateUserData(
+        @Path("userId") userId: String,
+        @Path("itemId") itemId: String,
+        @Body body: UserItemDataBody,
+    ): Response<Unit>
+
     /**
      * Creates a playlist. The playlist keeps the order of [ids] (comma-separated item ids),
      * so pass them pre-sorted. Returns the new playlist's id.

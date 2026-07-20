@@ -1,5 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -43,6 +45,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.rememberContainer
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
+import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -56,6 +59,16 @@ fun DetailScreen(
     val container = rememberContainer()
     val repo = container.libraryRepository
     val scope = rememberCoroutineScope()
+
+    // Launch the external player for a result; MX Player / VLC hand back the final position,
+    // which we persist locally and report to Jellyfin as PlaybackStopped.
+    val playerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val playback = Playback.parseResult(result.data)
+            ?: return@rememberLauncherForActivityResult
+        scope.launch { repo.onPlaybackStopped(youtubeId, playback.positionMs, playback.completed) }
+    }
 
     val video by remember(youtubeId) { repo.observeVideo(youtubeId) }
         .collectAsStateWithLifecycle(null)
@@ -122,7 +135,15 @@ fun DetailScreen(
                 Button(
                     onClick = {
                         if (s != null && itemId != null) {
-                            Playback.openInExternalPlayer(context, s.serverUrl, itemId, s.apiKey)
+                            playerLauncher.launch(
+                                Playback.externalPlayerIntent(
+                                    serverUrl = s.serverUrl,
+                                    itemId = itemId,
+                                    apiKey = s.apiKey,
+                                    title = current.title,
+                                    resumeMs = ticksToMillis(current.playbackPositionTicks),
+                                )
+                            )
                         }
                     },
                     enabled = s != null && itemId != null,

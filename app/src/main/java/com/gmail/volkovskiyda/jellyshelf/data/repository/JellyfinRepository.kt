@@ -5,6 +5,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinApi
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.ProgressBody
+import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -98,6 +99,30 @@ class JellyfinRepository(
 
     suspend fun reportProgress(serverUrl: String, apiKey: String, itemId: String, positionTicks: Long) {
         api(serverUrl, apiKey).reportProgress(ProgressBody(itemId = itemId, positionTicks = positionTicks))
+    }
+
+    /**
+     * Writes the resume position (and optionally the played flag / last-played time) directly to
+     * the user's playstate for [itemId]. This is what lands the item in "Continue Watching".
+     */
+    suspend fun updatePlaybackState(
+        serverUrl: String,
+        apiKey: String,
+        userId: String,
+        itemId: String,
+        positionTicks: Long,
+        played: Boolean = false,
+        lastPlayedDate: String? = null,
+    ) {
+        api(serverUrl, apiKey).updateUserData(
+            userId = userId,
+            itemId = itemId,
+            body = UserItemDataBody(
+                playbackPositionTicks = positionTicks,
+                played = played,
+                lastPlayedDate = lastPlayedDate,
+            ),
+        )
     }
 
     /** Creates a Jellyfin playlist from ordered [itemIds]; returns the new playlist id. */
