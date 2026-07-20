@@ -9,6 +9,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -23,20 +24,18 @@ class JellyfinRepository(
         Types.newParameterizedType(List::class.java, IndexEntry::class.java)
     )
 
-    // Cache the built API by "url|key" so we don't rebuild Retrofit each call.
-    @Volatile
-    private var cachedKey: String? = null
+    // Cache the built API by "url|key" so we don't rebuild Retrofit each call. A single volatile
+    // pair keeps the key and its API published atomically, so a concurrent settings change can
+    // never pair one server's key with another server's client.
+    private data class CachedApi(val key: String, val api: JellyfinApi)
 
     @Volatile
-    private var cachedApi: JellyfinApi? = null
+    private var cached: CachedApi? = null
 
     private fun api(serverUrl: String, apiKey: String): JellyfinApi {
         val key = "$serverUrl|$apiKey"
-        cachedApi?.let { if (key == cachedKey) return it }
-        return client.create(serverUrl, apiKey).also {
-            cachedApi = it
-            cachedKey = key
-        }
+        cached?.let { if (it.key == key) return it.api }
+        return client.create(serverUrl, apiKey).also { cached = CachedApi(key, it) }
     }
 
     suspend fun getUsers(serverUrl: String, apiKey: String): List<UserDto> =
@@ -136,11 +135,15 @@ class JellyfinRepository(
         .createPlaylist(name = name, ids = itemIds.joinToString(","), userId = userId)
         .id
 
-    /** Fetches the aggregated yt-dlp metadata index from an arbitrary URL. */
+    /**
+     * Fetches the aggregated yt-dlp metadata index from an arbitrary URL. Throws on HTTP failure
+     * — callers must be able to tell a failed fetch from an index that is genuinely empty, since
+     * the former must never degrade existing index-sourced metadata.
+     */
     suspend fun fetchIndex(indexUrl: String): List<IndexEntry> = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(indexUrl).build()
         okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@withContext emptyList()
+            if (!response.isSuccessful) throw IOException("Index fetch failed: HTTP ${response.code}")
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) emptyList() else indexAdapter.fromJson(body).orEmpty()
         }

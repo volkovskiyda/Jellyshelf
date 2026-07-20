@@ -11,6 +11,9 @@ interface CategoryDao {
     suspend fun upsert(category: CategoryEntity)
 
     @Upsert
+    suspend fun upsertAll(categories: List<CategoryEntity>)
+
+    @Upsert
     suspend fun upsertCrossRefs(refs: List<VideoCategoryCrossRef>)
 
     @Query(

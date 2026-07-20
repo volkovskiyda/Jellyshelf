@@ -126,5 +126,7 @@ else
   echo "skipped      : $skipped (already had .info.json)"
   echo "no ID found  : $noid"
   echo "failed       : $failed"
-  [[ "$failed" -gt 0 || "$noid" -gt 0 ]] && echo "see          : $FAIL_LOG"
+  if [[ "$failed" -gt 0 || "$noid" -gt 0 ]]; then
+    echo "see          : $FAIL_LOG"
+  fi
 fi

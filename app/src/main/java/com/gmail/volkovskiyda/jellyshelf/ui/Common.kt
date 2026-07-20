@@ -35,12 +35,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.JellyshelfApplication
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.AnchorPosition
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPosition
 import com.gmail.volkovskiyda.jellyshelf.di.AppContainer
+import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
@@ -51,6 +53,16 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 fun rememberContainer(): AppContainer {
     val context = LocalContext.current
     return (context.applicationContext as JellyshelfApplication).container
+}
+
+/**
+ * The current Jellyfin api key, for authorizing thumbnail loads at display time — stored
+ * thumbnail URLs deliberately carry no credentials.
+ */
+@Composable
+fun rememberApiKey(): String? {
+    val settings by rememberContainer().settingsState.collectAsStateWithLifecycle()
+    return settings?.apiKey
 }
 
 /**
@@ -177,7 +189,7 @@ fun VideoRow(
             contentAlignment = Alignment.BottomCenter,
         ) {
             AsyncImage(
-                model = video.thumbnailUrl,
+                model = authorizedImageUrl(video.thumbnailUrl, rememberApiKey()),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

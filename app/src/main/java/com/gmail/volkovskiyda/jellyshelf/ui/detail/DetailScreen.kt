@@ -44,6 +44,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.data.repository.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberContainer
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
@@ -68,7 +69,8 @@ fun DetailScreen(
     ) { result ->
         val playback = Playback.parseResult(result.data)
             ?: return@rememberLauncherForActivityResult
-        scope.launch { repo.onPlaybackStopped(youtubeId, playback.positionMs, playback.completed) }
+        // Repository-scoped so the report survives leaving this screen mid-write.
+        repo.reportPlaybackStopped(youtubeId, playback.positionMs, playback.completed)
     }
 
     val video by remember(youtubeId) { repo.observeVideo(youtubeId) }
@@ -106,7 +108,7 @@ fun DetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AsyncImage(
-                model = current.thumbnailUrl,
+                model = authorizedImageUrl(current.thumbnailUrl, settings?.apiKey),
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxWidth()

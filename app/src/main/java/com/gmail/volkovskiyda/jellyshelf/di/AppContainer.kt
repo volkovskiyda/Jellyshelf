@@ -8,8 +8,15 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPositionRepository
+import com.gmail.volkovskiyda.jellyshelf.data.repository.Settings
 import com.gmail.volkovskiyda.jellyshelf.data.repository.SettingsRepository
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
@@ -17,6 +24,8 @@ import java.util.concurrent.TimeUnit
 /** Lightweight manual DI graph, owned by [JellyshelfApplication]. */
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val moshi: Moshi = Moshi.Builder().build()
 
@@ -33,6 +42,13 @@ class AppContainer(context: Context) {
     ).fallbackToDestructiveMigration(true).build()
 
     val settingsRepository = SettingsRepository(appContext)
+
+    /**
+     * App-wide settings snapshot for cheap synchronous reads from composition (e.g. appending
+     * the api key to thumbnail URLs at display time); null until the first DataStore read lands.
+     */
+    val settingsState: StateFlow<Settings?> =
+        settingsRepository.settings.stateIn(appScope, SharingStarted.Eagerly, null)
 
     val scrollPositionRepository = ScrollPositionRepository(appContext)
 

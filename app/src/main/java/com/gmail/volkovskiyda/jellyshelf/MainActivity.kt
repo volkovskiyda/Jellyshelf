@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -97,7 +98,9 @@ private fun JellyshelfNav(startKey: AppNavKey) {
     ) { innerPadding ->
         NavDisplay(
             backStack = backStack,
-            modifier = Modifier.padding(innerPadding),
+            // consumeWindowInsets keeps each screen's own TopAppBar from applying the status-bar
+            // inset a second time on top of the scaffold padding.
+            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
             entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
             onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
         ) { key ->
