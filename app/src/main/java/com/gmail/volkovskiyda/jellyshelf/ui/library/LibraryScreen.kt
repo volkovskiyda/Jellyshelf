@@ -48,11 +48,23 @@ fun LibraryScreen(
     val videos by viewModel.videos.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val durationFilter by viewModel.durationFilter.collectAsStateWithLifecycle()
+    val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(stringResource(R.string.app_name)) },
             actions = {
+                if (totalCount > 0) {
+                    // Bare total when unfiltered, filtered/all once a duration is picked. The
+                    // shown list is the filtered set (duration is a hard filter; search only
+                    // reorders), so its size is the numerator.
+                    val label = if (durationFilter == null) "$totalCount" else "${videos.size}/$totalCount"
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 DurationFilterAction(
                     selected = durationFilter,
                     onSelect = viewModel::onDurationFilterChange,

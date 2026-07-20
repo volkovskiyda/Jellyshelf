@@ -25,6 +25,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _durationFilter = MutableStateFlow<DurationBucket?>(null)
     val durationFilter: StateFlow<DurationBucket?> = _durationFilter.asStateFlow()
 
+    /** Total videos in the library, independent of the current filter — the "all" denominator. */
+    val totalCount: StateFlow<Int> =
+        repo.videoCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     val videos: StateFlow<List<VideoEntity>> =
         combine(_query, _durationFilter) { q, filter -> q to filter }
             .flatMapLatest { (q, filter) ->
