@@ -11,7 +11,9 @@ import androidx.room.TypeConverters
         VideoCategoryCrossRef::class,
     ],
     version = 4,
-    exportSchema = false,
+    // Schemas are checked in under app/schemas so future version bumps get real migrations —
+    // manual categories and in-app yt-dlp metadata are user-authored and must survive updates.
+    exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class JellyshelfDatabase : RoomDatabase() {

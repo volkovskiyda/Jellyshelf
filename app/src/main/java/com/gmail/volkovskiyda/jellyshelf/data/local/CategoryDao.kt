@@ -48,6 +48,20 @@ interface CategoryDao {
     )
     suspend fun removeAutoCrossRefsForVideo(youtubeId: String, keepType: String)
 
+    /**
+     * Drop every auto-category membership (keeping [keepType], i.e. manual) ahead of a full
+     * rebuild during sync, so memberships that no longer apply don't accumulate forever.
+     */
+    @Query(
+        "DELETE FROM video_category WHERE categoryId IN " +
+            "(SELECT id FROM categories WHERE type != :keepType)"
+    )
+    suspend fun clearAutoCrossRefs(keepType: String)
+
+    /** Drop memberships pointing at videos that no longer exist (deleted on the server). */
+    @Query("DELETE FROM video_category WHERE youtubeId NOT IN (SELECT youtubeId FROM videos)")
+    suspend fun pruneOrphanCrossRefs()
+
     /** Delete auto categories (keeping [keepType]) that no longer have any members. */
     @Query(
         "DELETE FROM categories WHERE type != :keepType AND id NOT IN " +

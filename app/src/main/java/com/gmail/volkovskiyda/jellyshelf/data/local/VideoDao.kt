@@ -99,6 +99,13 @@ interface VideoDao {
     @Query("SELECT COUNT(*) FROM videos")
     fun count(): Flow<Int>
 
+    /**
+     * Removes rows the last sync didn't touch — i.e. videos deleted or renamed on the server.
+     * Every row a sync keeps is stamped with that sync's [syncedAt], so anything else is stale.
+     */
+    @Query("DELETE FROM videos WHERE lastSyncedAt != :syncedAt")
+    suspend fun deleteNotSyncedAt(syncedAt: Long)
+
     @Query("DELETE FROM videos")
     suspend fun clear()
 }

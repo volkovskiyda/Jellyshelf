@@ -10,6 +10,8 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.Settings
 import com.gmail.volkovskiyda.jellyshelf.data.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
+import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,11 +37,13 @@ class AppContainer(context: Context) {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    // No destructive fallback: manual categories and in-app yt-dlp metadata are user-authored
+    // and not reconstructible, so future schema bumps must ship explicit migrations.
     private val database: JellyshelfDatabase = Room.databaseBuilder(
         appContext,
         JellyshelfDatabase::class.java,
         "jellyshelf.db",
-    ).fallbackToDestructiveMigration(true).build()
+    ).build()
 
     val settingsRepository = SettingsRepository(appContext)
 
@@ -51,6 +55,10 @@ class AppContainer(context: Context) {
         settingsRepository.settings.stateIn(appScope, SharingStarted.Eagerly, null)
 
     val scrollPositionRepository = ScrollPositionRepository(appContext)
+
+    // Per-process UI state that must survive tab switches, which clear tab ViewModels.
+    val libraryFilterState = LibraryFilterState()
+    val settingsCache = SettingsCache()
 
     private val jellyfinClient = JellyfinClient(okHttpClient, moshi)
 

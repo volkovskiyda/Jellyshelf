@@ -53,16 +53,19 @@ fi
 [[ -d "$DIR" ]] || { echo "ERROR: not a directory: $DIR" >&2; exit 1; }
 
 FAIL_LOG="$DIR/metadata-failures.log"
-: > "$FAIL_LOG"
+# Keep the previous run's failure log intact during a dry run — it's diagnostic history.
+[[ "$DRY_RUN" -eq 1 ]] || : > "$FAIL_LOG"
 
 # Extract the YouTube ID from a filename.
-# Prefers the last [XXXXXXXXXXX] bracketed group (yt-dlp default naming);
-# falls back to the last standalone 11-char token in the stem.
+# Prefers the last [XXXXXXXXXXX] bracketed group (yt-dlp default naming); falls back to the
+# last delimited 11-char token in the stem (whole token only — never a slice of a longer word).
+# The "|| true" guards matter: under pipefail a no-match grep would otherwise fail the
+# assignment and, with set -e, kill the whole script.
 extract_id() {
   local name="$1" id=""
-  id="$(grep -oE '\[[A-Za-z0-9_-]{11}\]' <<<"$name" | tail -1 | tr -d '[]')"
+  id="$(grep -oE '\[[A-Za-z0-9_-]{11}\]' <<<"$name" | tail -1 | tr -d '[]' || true)"
   if [[ -z "$id" ]]; then
-    id="$(grep -oE '[A-Za-z0-9_-]{11}' <<<"${name%.*}" | tail -1)"
+    id="$(tr -c 'A-Za-z0-9_-' '\n' <<<"${name%.*}" | grep -Ex '[A-Za-z0-9_-]{11}' | tail -1 || true)"
   fi
   printf '%s' "$id"
 }
@@ -85,7 +88,11 @@ while IFS= read -r -d '' file; do
 
   if [[ -z "$id" ]]; then
     noid=$((noid + 1))
-    echo "NO-ID   $base" | tee -a "$FAIL_LOG"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "NO-ID   $base"
+    else
+      echo "NO-ID   $base" | tee -a "$FAIL_LOG"
+    fi
     continue
   fi
 
@@ -106,7 +113,7 @@ while IFS= read -r -d '' file; do
       --no-write-playlist-metafiles \
       --ignore-config \
       --sleep-requests "$SLEEP" \
-      -o "${stem}.%(ext)s" \
+      -o "${stem//%/%%}.%(ext)s" \
       ${YTDLP_OPTS:-} \
       "https://www.youtube.com/watch?v=${id}" >/dev/null 2>>"$FAIL_LOG"; then
     fetched=$((fetched + 1))

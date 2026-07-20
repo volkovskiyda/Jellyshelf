@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
+import com.gmail.volkovskiyda.jellyshelf.data.remote.CreatePlaylistBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinApi
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
@@ -132,7 +133,7 @@ class JellyfinRepository(
         name: String,
         itemIds: List<String>,
     ): String = api(serverUrl, apiKey)
-        .createPlaylist(name = name, ids = itemIds.joinToString(","), userId = userId)
+        .createPlaylist(CreatePlaylistBody(name = name, ids = itemIds, userId = userId))
         .id
 
     /**

@@ -40,6 +40,12 @@ class YoutubeIdTest {
     }
 
     @Test
+    fun `fallback never slices an id out of a longer token`() {
+        // "compilations" is 12 chars of the id alphabet; a naive scan would carve 11 out of it.
+        assertNull(YoutubeId.fromPath("/media/great compilations.mp4"))
+    }
+
+    @Test
     fun `fileNameFromPath strips directories`() {
         assertEquals("clip.mp4", fileNameFromPath("/a/b/clip.mp4"))
         assertEquals("clip.mp4", fileNameFromPath("""C:\a\clip.mp4"""))

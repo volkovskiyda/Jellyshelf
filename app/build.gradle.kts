@@ -51,6 +51,11 @@ android {
     }
 }
 
+ksp {
+    // Check generated Room schemas into app/schemas so version bumps can ship real migrations.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

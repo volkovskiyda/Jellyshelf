@@ -27,28 +27,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
-import com.gmail.volkovskiyda.jellyshelf.data.repository.FetchResult
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberContainer
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,9 +54,9 @@ fun DetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val container = rememberContainer()
-    val repo = container.libraryRepository
-    val scope = rememberCoroutineScope()
+    val viewModel: DetailViewModel = viewModel {
+        DetailViewModel(checkNotNull(this[APPLICATION_KEY]), youtubeId)
+    }
 
     // Launch the external player for a result; MX Player / VLC hand back the final position,
     // which we persist locally and report to Jellyfin as PlaybackStopped.
@@ -69,15 +65,20 @@ fun DetailScreen(
     ) { result ->
         val playback = Playback.parseResult(result.data)
             ?: return@rememberLauncherForActivityResult
-        // Repository-scoped so the report survives leaving this screen mid-write.
-        repo.reportPlaybackStopped(youtubeId, playback.positionMs, playback.completed)
+        viewModel.reportPlaybackStopped(playback.positionMs, playback.completed)
     }
 
-    val video by remember(youtubeId) { repo.observeVideo(youtubeId) }
-        .collectAsStateWithLifecycle(null)
-    val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(null)
+    val video by viewModel.video.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val fetching by viewModel.fetching.collectAsStateWithLifecycle()
 
-    var fetching by remember(youtubeId) { mutableStateOf(false) }
+    val message by viewModel.message.collectAsStateWithLifecycle()
+    LaunchedEffect(message) {
+        message?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.consumeMessage()
+        }
+    }
 
     val current = video
 
@@ -164,7 +165,7 @@ fun DetailScreen(
 
             // Watched toggle
             OutlinedButton(
-                onClick = { scope.launch { repo.setPlayed(youtubeId, !current.played) } },
+                onClick = { viewModel.toggleWatched() },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (current.played) "Mark as unwatched" else "Mark as watched")
@@ -175,18 +176,7 @@ fun DetailScreen(
             val hasMetadata = current.metadataSource == METADATA_SOURCE_INDEX ||
                 current.metadataSource == METADATA_SOURCE_YTDLP
             OutlinedButton(
-                onClick = {
-                    fetching = true
-                    scope.launch {
-                        val result = repo.fetchMetadata(youtubeId)
-                        fetching = false
-                        val message = when (result) {
-                            is FetchResult.Success -> "Metadata updated for ${result.title}"
-                            is FetchResult.Error -> result.message
-                        }
-                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                    }
-                },
+                onClick = { viewModel.fetchMetadata() },
                 enabled = !fetching,
                 modifier = Modifier.fillMaxWidth(),
             ) {

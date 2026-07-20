@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.data.repository.SyncResult
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -63,17 +65,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch {
             val s = settingsRepo.snapshot()
+            val cachedUsers = container.settingsCache.users
             _state.value = _state.value.copy(
                 serverUrl = s.serverUrl,
                 apiKey = s.apiKey,
                 indexUrl = s.indexUrl,
+                users = cachedUsers.orEmpty(),
                 selectedUserId = s.userId,
                 selectedUserName = s.userName,
                 selectedScopeId = s.libraryId,
                 selectedScopePath = s.libraryName.ifBlank { ROOT_SCOPE_NAME },
                 lastSyncAt = s.lastSyncAt,
             )
-            if (s.hasCredentials) connect(silent = true)
+            // Only hit the server when this process hasn't loaded users yet — tab switches
+            // recreate this ViewModel, and re-connecting on every visit is wasted work.
+            if (s.hasCredentials && cachedUsers == null) connect(silent = true)
         }
     }
 
@@ -97,10 +103,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             _state.value = s.copy(busy = true, status = if (silent) s.status else "Connecting…")
-            settingsRepo.setConnection(s.serverUrl, s.apiKey)
-            settingsRepo.setIndexUrl(s.indexUrl)
             try {
                 val users = jellyfin.getUsers(s.serverUrl, s.apiKey)
+                // Persist only after the server accepted the credentials, so a typo can never
+                // overwrite a previously working configuration.
+                settingsRepo.setConnection(s.serverUrl, s.apiKey)
+                settingsRepo.setIndexUrl(s.indexUrl)
+                container.settingsCache.users = users
                 val current = _state.value
                 val selected = users.firstOrNull { it.id == current.selectedUserId } ?: users.firstOrNull()
                 _state.value = current.copy(
@@ -111,6 +120,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     status = if (users.isEmpty()) "Connected, but no users returned" else "Connected — ${users.size} user(s)",
                 )
                 selected?.let { settingsRepo.setUser(it.id, it.name) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(busy = false, status = "Connection failed: ${e.message}")
             }
@@ -173,17 +184,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { settingsRepo.setLibrary(id, path) }
     }
 
+    private var loadChildrenJob: Job? = null
+
     private fun loadChildren() {
         val s = _state.value
-        viewModelScope.launch {
+        // Cancel any in-flight load: a slower earlier response must not overwrite the list for
+        // the folder the user has since navigated to.
+        loadChildrenJob?.cancel()
+        loadChildrenJob = viewModelScope.launch {
             _state.value = _state.value.copy(loadingFolders = true)
-            val folders = try {
-                jellyfin.getChildFolders(s.serverUrl, s.apiKey, s.selectedUserId, s.currentParentId)
+            try {
+                val folders = jellyfin
+                    .getChildFolders(s.serverUrl, s.apiKey, s.selectedUserId, s.currentParentId)
                     .map { FolderRef(it.id, it.name ?: it.id, it.path) }
+                _state.value = _state.value.copy(childFolders = folders, loadingFolders = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                emptyList()
+                _state.value = _state.value.copy(
+                    childFolders = emptyList(),
+                    loadingFolders = false,
+                    status = "Failed to load folders: ${e.message}",
+                )
             }
-            _state.value = _state.value.copy(childFolders = folders, loadingFolders = false)
         }
     }
 

@@ -7,7 +7,6 @@ import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,10 +18,12 @@ import kotlinx.coroutines.flow.stateIn
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = container.libraryRepository
 
-    private val _query = MutableStateFlow("")
+    // Container-owned so query and filter survive tab switches (which clear this ViewModel).
+    private val filters = container.libraryFilterState
+    private val _query = filters.query
     val query: StateFlow<String> = _query.asStateFlow()
 
-    private val _durationFilter = MutableStateFlow<DurationBucket?>(null)
+    private val _durationFilter = filters.durationFilter
     val durationFilter: StateFlow<DurationBucket?> = _durationFilter.asStateFlow()
 
     /** Total videos in the library, independent of the current filter — the "all" denominator. */

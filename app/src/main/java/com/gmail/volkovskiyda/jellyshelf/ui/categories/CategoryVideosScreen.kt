@@ -25,25 +25,24 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gmail.volkovskiyda.jellyshelf.data.local.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.BulkFetch
-import com.gmail.volkovskiyda.jellyshelf.data.repository.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberContainer
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,15 +53,25 @@ fun CategoryVideosScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val container = rememberContainer()
-    val repo = container.libraryRepository
-    val videos by remember(categoryId) {
-        repo.observeVideosByCategory(categoryId)
-    }.collectAsStateWithLifecycle(emptyList())
-    val bulkFetch by repo.bulkFetch.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val viewModel: CategoryVideosViewModel = viewModel {
+        CategoryVideosViewModel(checkNotNull(this[APPLICATION_KEY]), categoryId)
+    }
+    val videos by viewModel.videos.collectAsStateWithLifecycle()
+    val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
+    val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
 
     val isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+
+    val message by viewModel.message.collectAsStateWithLifecycle()
+    LaunchedEffect(message) {
+        message?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            showDialog = false
+            viewModel.consumeMessage()
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -94,9 +103,9 @@ fun CategoryVideosScreen(
             FetchMissingHeader(
                 state = bulkFetch,
                 missingCount = videos.size,
-                onStart = { repo.startFetchMissing() },
-                onCancel = { repo.cancelFetchMissing() },
-                onDismiss = { repo.acknowledgeBulkFetch() },
+                onStart = viewModel::startFetchMissing,
+                onCancel = viewModel::cancelFetchMissing,
+                onDismiss = viewModel::acknowledgeBulkFetch,
             )
         }
 
@@ -121,8 +130,9 @@ fun CategoryVideosScreen(
         CreatePlaylistDialog(
             defaultName = title,
             videoCount = videos.size,
-            onDismiss = { showDialog = false },
-            onCreate = { name -> container.libraryRepository.createPlaylistFromCategory(categoryId, name) },
+            creating = creating,
+            onDismiss = { if (!creating) showDialog = false },
+            onCreate = viewModel::createPlaylist,
         )
     }
 }
@@ -203,16 +213,14 @@ private fun FetchMissingHeader(
 private fun CreatePlaylistDialog(
     defaultName: String,
     videoCount: Int,
+    creating: Boolean,
     onDismiss: () -> Unit,
-    onCreate: suspend (name: String) -> PlaylistResult,
+    onCreate: (name: String) -> Unit,
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(defaultName) }
-    var creating by remember { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf(defaultName) }
 
     AlertDialog(
-        onDismissRequest = { if (!creating) onDismiss() },
+        onDismissRequest = onDismiss,
         title = { Text("Create playlist") },
         text = {
             Column {
@@ -233,20 +241,7 @@ private fun CreatePlaylistDialog(
         confirmButton = {
             TextButton(
                 enabled = !creating && name.isNotBlank(),
-                onClick = {
-                    creating = true
-                    scope.launch {
-                        val result = onCreate(name.trim())
-                        creating = false
-                        onDismiss()
-                        val message = when (result) {
-                            is PlaylistResult.Success ->
-                                "Created \"${result.name}\" with ${result.count} video${if (result.count == 1) "" else "s"}"
-                            is PlaylistResult.Error -> result.message
-                        }
-                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                    }
-                },
+                onClick = { onCreate(name.trim()) },
             ) { Text(if (creating) "Creating…" else "Create") }
         },
         dismissButton = {

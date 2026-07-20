@@ -63,14 +63,9 @@ interface JellyfinApi {
     ): Response<Unit>
 
     /**
-     * Creates a playlist. The playlist keeps the order of [ids] (comma-separated item ids),
-     * so pass them pre-sorted. Returns the new playlist's id.
+     * Creates a playlist. The playlist keeps the order of the body's ids, so pass them
+     * pre-sorted. Returns the new playlist's id.
      */
     @POST("Playlists")
-    suspend fun createPlaylist(
-        @Query("name") name: String,
-        @Query("ids") ids: String,
-        @Query("userId") userId: String,
-        @Query("mediaType") mediaType: String = "Video",
-    ): PlaylistCreationResult
+    suspend fun createPlaylist(@Body body: CreatePlaylistBody): PlaylistCreationResult
 }

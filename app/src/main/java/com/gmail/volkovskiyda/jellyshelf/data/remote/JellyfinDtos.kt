@@ -44,6 +44,18 @@ data class PlaylistCreationResult(
     @Json(name = "Id") val id: String,
 )
 
+/**
+ * Body for POST /Playlists — a minimal CreatePlaylistDto. Item ids travel in the JSON body
+ * (not the query string), so large categories can't overflow URL length limits.
+ */
+@JsonClass(generateAdapter = true)
+data class CreatePlaylistBody(
+    @Json(name = "Name") val name: String,
+    @Json(name = "Ids") val ids: List<String>,
+    @Json(name = "UserId") val userId: String,
+    @Json(name = "MediaType") val mediaType: String = "Video",
+)
+
 /** Body for POST /Sessions/Playing/Progress — a minimal PlaybackProgressInfo. */
 @JsonClass(generateAdapter = true)
 data class ProgressBody(

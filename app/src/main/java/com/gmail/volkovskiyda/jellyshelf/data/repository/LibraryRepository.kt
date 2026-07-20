@@ -213,8 +213,15 @@ class LibraryRepository(
 
             db.withTransaction {
                 videoDao.upsert(videos)
+                // Videos gone from the server (deleted/renamed) leave the library, and auto
+                // memberships are rebuilt from scratch so stale assignments (changed channel,
+                // date or duration) don't accumulate across syncs. Manual memberships survive
+                // except where their video disappeared.
+                videoDao.deleteNotSyncedAt(now)
+                categoryDao.clearAutoCrossRefs(keepType = CATEGORY_TYPE_MANUAL)
                 categoryDao.upsertAll(autoCategories.values.toList())
                 if (crossRefs.isNotEmpty()) categoryDao.upsertCrossRefs(crossRefs)
+                categoryDao.pruneOrphanCrossRefs()
                 categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
             }
 
