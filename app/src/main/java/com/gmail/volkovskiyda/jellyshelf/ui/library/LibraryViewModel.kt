@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -30,14 +31,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val totalCount: StateFlow<Int> =
         repo.videoCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
+    /**
+     * Null while the very first Room emission is pending, so the UI can tell loading from
+     * empty. Seeded from the container-held last emission on recreation (tab switch), so a
+     * revisit shows the previous list immediately instead of a loading flash.
+     */
     val videos: StateFlow<List<VideoEntity>?> =
         combine(_query, _durationFilter) { q, filter -> q to filter }
             .flatMapLatest { (q, filter) ->
                 if (q.isBlank() && filter == null) repo.observeVideos()
                 else repo.searchVideos(q, filter)
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+            .onEach { filters.lastVideos = it }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), filters.lastVideos)
 
     fun onQueryChange(value: String) {
         _query.value = value

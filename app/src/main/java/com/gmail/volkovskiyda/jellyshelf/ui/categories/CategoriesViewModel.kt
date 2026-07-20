@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -25,16 +26,22 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
     private val _searchAll = filters.searchAll
     val searchAll: StateFlow<Boolean> = _searchAll.asStateFlow()
 
-    /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
+    /**
+     * Null while the very first Room emission is pending, so the UI can tell loading from
+     * empty. Seeded from the container-held last emission on recreation (tab switch), so a
+     * revisit shows the previous list immediately instead of a loading flash.
+     */
     val categories: StateFlow<List<CategoryWithCount>?> = _query
         .flatMapLatest { q ->
             if (q.isBlank()) repo.observeCategories() else repo.searchCategories(q)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        .onEach { filters.lastCategories = it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), filters.lastCategories)
 
     /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
     val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .onEach { filters.lastOthers = it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), filters.lastOthers.orEmpty())
 
     fun onQueryChange(value: String) {
         _query.value = value

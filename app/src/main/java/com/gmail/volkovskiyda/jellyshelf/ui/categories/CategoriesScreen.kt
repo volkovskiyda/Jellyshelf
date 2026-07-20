@@ -25,9 +25,14 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -152,6 +157,20 @@ private fun TabbedCategories(
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     val scope = rememberCoroutineScope()
     val selected = pagerState.currentPage.coerceAtMost(tabs.lastIndex)
+
+    // Selection is anchored to the dimension, not the raw index: when the tab set changes (a
+    // dimension appears after sync, "Others" loads in, search filters tabs out), the pager
+    // follows the previously selected dimension to its new position, then resumes tracking
+    // the settled page. Restore-before-track ordering keeps the tracker from recording the
+    // shifted page a set change momentarily leaves under the old index.
+    var selectedType by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(tabs) {
+        val target = selectedType?.let { type -> tabs.indexOfFirst { it.type == type } } ?: -1
+        if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            tabs.getOrNull(page)?.let { selectedType = it.type }
+        }
+    }
 
     ScrollableTabRow(selectedTabIndex = selected, edgePadding = 8.dp) {
         tabs.forEachIndexed { index, tab ->
