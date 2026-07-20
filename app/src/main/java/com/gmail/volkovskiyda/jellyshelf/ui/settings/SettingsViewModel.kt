@@ -114,10 +114,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _state.value = _state.value.copy(
             selectedUserId = user.id,
             selectedUserName = user.name,
-            // A different user has a different tree — reset scope + close browser.
+            // A different user has a different tree — reset scope and open the
+            // folder browser so its collections are ready to pick from.
             selectedScopeId = ROOT_SCOPE_ID,
             selectedScopePath = ROOT_SCOPE_NAME,
-            browserOpen = false,
+            browserOpen = true,
             breadcrumb = emptyList(),
             childFolders = emptyList(),
         )
@@ -125,6 +126,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             settingsRepo.setUser(user.id, user.name)
             settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_NAME)
         }
+        loadChildren()
     }
 
     // --- Folder browser ---------------------------------------------------
