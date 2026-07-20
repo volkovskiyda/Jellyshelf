@@ -16,7 +16,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavEntry
@@ -27,6 +30,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
+import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
@@ -47,8 +51,16 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun JellyshelfApp() {
-    val backStack = rememberNavBackStack(AppNavKey.Library)
+private fun JellyshelfApp(viewModel: MainViewModel = viewModel()) {
+    val startKey by viewModel.startKey.collectAsStateWithLifecycle()
+
+    // Render nothing until the start destination is resolved, so Library never flashes first.
+    startKey?.let { JellyshelfNav(it) }
+}
+
+@Composable
+private fun JellyshelfNav(startKey: AppNavKey) {
+    val backStack = rememberNavBackStack(startKey)
     val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
     val viewModelStoreDecorator = rememberViewModelStoreNavEntryDecorator<NavKey>()
 
