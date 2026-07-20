@@ -6,6 +6,10 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 const val CATEGORY_TYPE_AUTO_CHANNEL = "AUTO_CHANNEL"
+const val CATEGORY_TYPE_AUTO_YEAR = "AUTO_YEAR"
+const val CATEGORY_TYPE_AUTO_MONTH = "AUTO_MONTH"
+const val CATEGORY_TYPE_AUTO_DURATION = "AUTO_DURATION"
+const val CATEGORY_TYPE_AUTO_YT_CATEGORY = "AUTO_YT_CATEGORY"
 const val CATEGORY_TYPE_MANUAL = "MANUAL"
 
 @Entity(tableName = "videos")
@@ -20,6 +24,7 @@ data class VideoEntity(
     val uploadDate: String?,
     val description: String?,
     val tags: List<String>,
+    val youtubeCategories: List<String>,
     val thumbnailUrl: String?,
     val played: Boolean,
     val playbackPositionTicks: Long,

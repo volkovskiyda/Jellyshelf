@@ -20,6 +20,10 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /** When true, a query searches across every dimension instead of just the active tab. */
+    private val _searchAll = MutableStateFlow(false)
+    val searchAll: StateFlow<Boolean> = _searchAll.asStateFlow()
+
     val categories: StateFlow<List<CategoryWithCount>> = _query
         .flatMapLatest { q ->
             if (q.isBlank()) repo.observeCategories() else repo.searchCategories(q)
@@ -28,5 +32,9 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onQueryChange(value: String) {
         _query.value = value
+    }
+
+    fun onSearchAllChange(value: Boolean) {
+        _searchAll.value = value
     }
 }

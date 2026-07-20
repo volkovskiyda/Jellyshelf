@@ -26,6 +26,28 @@ fun formatUploadDate(yyyymmdd: String?): String? {
     return "${yyyymmdd.substring(0, 4)}-${yyyymmdd.substring(4, 6)}-${yyyymmdd.substring(6, 8)}"
 }
 
+/**
+ * The four-digit year from an upload-date string, or null if it has no leading year. Accepts
+ * yt-dlp "YYYYMMDD" as well as the bare "YYYY" fallback stored from Jellyfin's ProductionYear.
+ */
+fun yearOf(uploadDate: String?): String? {
+    val d = uploadDate ?: return null
+    if (d.length < 4) return null
+    val year = d.substring(0, 4)
+    return if (year.all { it.isDigit() }) year else null
+}
+
+/** The "YYYY-MM" month from a "YYYYMMDD" upload date, or null if it lacks a month (bare year). */
+fun yearMonthOf(uploadDate: String?): String? {
+    val d = uploadDate ?: return null
+    if (d.length < 6) return null
+    val yearMonth = d.substring(0, 6)
+    if (!yearMonth.all { it.isDigit() }) return null
+    val month = yearMonth.substring(4, 6).toInt()
+    if (month !in 1..12) return null
+    return "${yearMonth.substring(0, 4)}-${yearMonth.substring(4, 6)}"
+}
+
 /** Fraction 0f..1f of a video watched, for a progress bar. */
 fun watchedFraction(positionTicks: Long, durationSeconds: Long): Float {
     if (durationSeconds <= 0) return 0f

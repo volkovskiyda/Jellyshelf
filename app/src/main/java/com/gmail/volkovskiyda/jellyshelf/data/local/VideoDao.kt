@@ -16,11 +16,19 @@ interface VideoDao {
     @Query("SELECT * FROM videos ORDER BY fileName")
     fun observeAll(): Flow<List<VideoEntity>>
 
+    /**
+     * Videos whose duration is in [[minSeconds], [maxSeconds]) — a hard filter — with those whose
+     * title or channel match [query] sorted first and the rest after. A blank [query] leaves every
+     * row in the first group, so the result is simply the duration-filtered list by file name.
+     */
     @Query(
-        "SELECT * FROM videos WHERE title LIKE '%' || :query || '%' " +
-            "OR channel LIKE '%' || :query || '%' ORDER BY fileName"
+        "SELECT * FROM videos " +
+            "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
+            "ORDER BY (CASE WHEN :query = '' " +
+            "OR title LIKE '%' || :query || '%' OR channel LIKE '%' || :query || '%' " +
+            "THEN 0 ELSE 1 END), fileName"
     )
-    fun search(query: String): Flow<List<VideoEntity>>
+    fun search(query: String, minSeconds: Long, maxSeconds: Long): Flow<List<VideoEntity>>
 
     @Query(
         "SELECT v.* FROM videos v " +

@@ -8,14 +8,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -26,6 +36,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
+import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,9 +47,18 @@ fun LibraryScreen(
 ) {
     val videos by viewModel.videos.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
+    val durationFilter by viewModel.durationFilter.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(stringResource(R.string.app_name)) })
+        TopAppBar(
+            title = { Text(stringResource(R.string.app_name)) },
+            actions = {
+                DurationFilterAction(
+                    selected = durationFilter,
+                    onSelect = viewModel::onDurationFilterChange,
+                )
+            },
+        )
         OutlinedTextField(
             value = query,
             onValueChange = viewModel::onQueryChange,
@@ -50,11 +70,15 @@ fun LibraryScreen(
             placeholder = { Text("Search title or channel") },
         )
         if (videos.isEmpty()) {
-            EmptyState("No videos yet. Connect to Jellyfin in Settings and run a sync.")
+            val message = when {
+                durationFilter != null -> "No videos with a ${durationFilter!!.label} duration."
+                else -> "No videos yet. Connect to Jellyfin in Settings and run a sync."
+            }
+            EmptyState(message)
         } else {
-            // Only the full, unfiltered list restores its scroll position; search results
-            // are a transient, filtered set and start from the top.
-            val listState = if (query.isBlank()) {
+            // Only the pristine list — no query, no filter — restores its scroll position. Search
+            // and filter results are transient, reordered sets and start from the top.
+            val listState = if (query.isBlank() && durationFilter == null) {
                 rememberAnchoredLazyListState("library", videos) { it.fileName }
             } else {
                 rememberLazyListState()
@@ -69,4 +93,40 @@ fun LibraryScreen(
             }
         }
     }
+}
+
+@Composable
+private fun DurationFilterAction(
+    selected: DurationBucket?,
+    onSelect: (DurationBucket?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    IconButton(onClick = { expanded = true }) {
+        Icon(
+            Icons.Filled.FilterList,
+            contentDescription = "Filter by duration",
+            tint = if (selected != null) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+        )
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DurationMenuItem("Any duration", selected == null) {
+            onSelect(null)
+            expanded = false
+        }
+        for (bucket in DurationBucket.entries) {
+            DurationMenuItem(bucket.label, selected == bucket) {
+                onSelect(bucket)
+                expanded = false
+            }
+        }
+    }
+}
+
+@Composable
+private fun DurationMenuItem(label: String, checked: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label) },
+        onClick = onClick,
+        leadingIcon = { RadioButton(selected = checked, onClick = onClick) },
+    )
 }

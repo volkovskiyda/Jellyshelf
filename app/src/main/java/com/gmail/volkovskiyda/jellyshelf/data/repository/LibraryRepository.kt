@@ -1,6 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
+import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_DURATION
+import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
+import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YT_CATEGORY
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
@@ -8,10 +12,13 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoCategoryCrossRef
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
+import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.fileNameFromPath
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
+import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
+import com.gmail.volkovskiyda.jellyshelf.util.yearOf
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 
@@ -34,7 +41,14 @@ class LibraryRepository(
     private val categoryDao = db.categoryDao()
 
     fun observeVideos(): Flow<List<VideoEntity>> = videoDao.observeAll()
-    fun searchVideos(query: String): Flow<List<VideoEntity>> = videoDao.search(query)
+
+    /**
+     * Videos filtered to [bucket] (all durations when null), with those matching [query] listed
+     * first and the rest after it — a soft search, so nothing is hidden. Each group stays sorted
+     * by file name.
+     */
+    fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<VideoEntity>> =
+        videoDao.search(query, bucket?.minSeconds ?: 0L, bucket?.maxSeconds ?: Long.MAX_VALUE)
     fun observeVideosByCategory(categoryId: String): Flow<List<VideoEntity>> =
         videoDao.observeByCategory(categoryId)
 
@@ -95,6 +109,7 @@ class LibraryRepository(
                 uploadDate = meta?.uploadDate ?: item.productionYear?.toString(),
                 description = meta?.description ?: item.overview,
                 tags = meta?.tags ?: item.tags ?: emptyList(),
+                youtubeCategories = meta?.categories ?: item.genres ?: emptyList(),
                 thumbnailUrl = thumb,
                 played = item.userData?.played ?: false,
                 playbackPositionTicks = item.userData?.playbackPositionTicks ?: 0L,
@@ -105,24 +120,38 @@ class LibraryRepository(
 
         videoDao.upsert(videos)
 
-        // Auto-categorize by channel.
-        val autoCategories = mutableSetOf<String>()
+        // Auto-categorize each video along several dimensions: channel, upload year, upload
+        // month, duration band and YouTube category. Categories are deduped by id; every
+        // membership becomes a cross-ref.
+        val autoCategories = LinkedHashMap<String, CategoryEntity>()
         val crossRefs = mutableListOf<VideoCategoryCrossRef>()
-        for (video in videos) {
-            val channel = video.channel?.takeIf { it.isNotBlank() } ?: continue
-            val categoryId = "channel:" + (video.channelId?.takeIf { it.isNotBlank() } ?: channel)
-            if (autoCategories.add(categoryId)) {
-                categoryDao.upsert(
-                    CategoryEntity(
-                        id = categoryId,
-                        name = channel,
-                        type = CATEGORY_TYPE_AUTO_CHANNEL,
-                        createdAt = now,
-                    )
-                )
-            }
-            crossRefs += VideoCategoryCrossRef(video.youtubeId, categoryId)
+
+        fun assign(youtubeId: String, id: String, name: String, type: String) {
+            autoCategories.getOrPut(id) { CategoryEntity(id = id, name = name, type = type, createdAt = now) }
+            crossRefs += VideoCategoryCrossRef(youtubeId, id)
         }
+
+        for (video in videos) {
+            video.channel?.takeIf { it.isNotBlank() }?.let { channel ->
+                val id = "channel:" + (video.channelId?.takeIf { it.isNotBlank() } ?: channel)
+                assign(video.youtubeId, id, channel, CATEGORY_TYPE_AUTO_CHANNEL)
+            }
+            yearOf(video.uploadDate)?.let { year ->
+                assign(video.youtubeId, "year:$year", year, CATEGORY_TYPE_AUTO_YEAR)
+            }
+            yearMonthOf(video.uploadDate)?.let { month ->
+                assign(video.youtubeId, "month:$month", month, CATEGORY_TYPE_AUTO_MONTH)
+            }
+            DurationBucket.of(video.durationSeconds)?.let { bucket ->
+                assign(video.youtubeId, "duration:${bucket.id}", bucket.label, CATEGORY_TYPE_AUTO_DURATION)
+            }
+            for (raw in video.youtubeCategories) {
+                val name = raw.trim()
+                if (name.isNotBlank()) assign(video.youtubeId, "ytcat:$name", name, CATEGORY_TYPE_AUTO_YT_CATEGORY)
+            }
+        }
+
+        for (category in autoCategories.values) categoryDao.upsert(category)
         if (crossRefs.isNotEmpty()) categoryDao.upsertCrossRefs(crossRefs)
 
         settings.setLastSyncAt(now)
