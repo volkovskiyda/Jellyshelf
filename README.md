@@ -17,23 +17,94 @@ videos/*.mp4  ──fetch-youtube-metadata.sh──►  *.info.json (sidecars)
 Jellyfin  ──REST (X-Emby-Token)──►  items + watch state  ──join by YouTube id──►  Room  ──►  UI
 ```
 
-1. **`scripts/fetch-youtube-metadata.sh`** — scans your download dir, extracts the
-   11-char YouTube id from each filename, writes a `<video>.info.json` sidecar. Idempotent
-   and resumable; `--dry-run` verifies id extraction first.
+1. **`scripts/fetch-youtube-metadata.sh`** (requires [`yt-dlp`](https://github.com/yt-dlp/yt-dlp)
+   on `PATH`) — recurses your download dir, extracts the 11-char YouTube id from each
+   filename, writes a `<video>.info.json` sidecar next to the video (same stem). Idempotent
+   (skips videos that already have a sidecar) and resumable (safe to Ctrl-C and re-run).
    ```bash
-   scripts/fetch-youtube-metadata.sh --dry-run /media/youtube
-   scripts/fetch-youtube-metadata.sh /media/youtube
+   scripts/fetch-youtube-metadata.sh --dry-run /media/youtube   # print "id <- filename", fetch nothing
+   scripts/fetch-youtube-metadata.sh /media/youtube             # write the sidecars
    ```
-2. **`scripts/build-library-index.sh`** — aggregates every `*.info.json` into one
-   `jellyshelf-index.json` (id, title, channel, duration, uploadDate, tags, …). Serve it
-   from any static file server the phone can reach.
+   Options: `--sleep N` throttles requests (default `2`s); `--exts "mp4 mkv …"` overrides the
+   scanned extensions. For age/region-gated videos, pass yt-dlp flags via `YTDLP_OPTS`:
    ```bash
-   scripts/build-library-index.sh /media/youtube jellyshelf-index.json
+   YTDLP_OPTS="--cookies-from-browser firefox" scripts/fetch-youtube-metadata.sh /media/youtube
    ```
+   Filenames that yield no id and failed fetches are logged to `<DIR>/metadata-failures.log`.
+2. **`scripts/build-library-index.sh`** (requires [`jq`](https://jqlang.github.io/jq/)) —
+   aggregates every `*.info.json` under a dir into one flat `jellyshelf-index.json` array
+   (id, title, channel, channelId, duration, uploadDate, tags, categories, description,
+   thumbnail). Re-run it whenever you add videos.
+   ```bash
+   scripts/build-library-index.sh /media/youtube jellyshelf-index.json   # args: DIR [OUT]
+   ```
+   Then serve the output over HTTP so the phone can reach it — see
+   [Serving the index](#serving-the-index).
 3. **The app** pulls Jellyfin items (→ Jellyfin ItemId, watch state, duration) and the
    index (→ channel, tags, upload date, description, thumbnail), joins them by YouTube id
    into Room, and auto-groups by channel. The index URL is optional — without it the app
    falls back to Jellyfin's own metadata (no channel grouping).
+
+## Serving the index
+
+`jellyshelf-index.json` just needs to be reachable from the phone over HTTP(S) at a stable
+URL you paste into **Settings → Metadata index URL**. Any static file server works; two
+common setups below. Regenerate the file (step 2) and it's picked up on the next sync — no
+server restart needed.
+
+### nginx
+
+Drop the file into a webroot and serve it directly. This exposes only that one path:
+
+```nginx
+# /etc/nginx/conf.d/jellyshelf.conf
+server {
+    listen 80;
+    server_name media.example.com;
+
+    # file lives at /srv/jellyshelf/jellyshelf-index.json
+    location = /jellyshelf-index.json {
+        root         /srv/jellyshelf;
+        default_type application/json;
+        add_header   Cache-Control "no-cache";   # always serve the freshest index
+    }
+}
+```
+
+`https://media.example.com/jellyshelf-index.json` is then your index URL. Point
+`build-library-index.sh`'s output straight at the webroot to skip a copy step:
+
+```bash
+scripts/build-library-index.sh /media/youtube /srv/jellyshelf/jellyshelf-index.json
+```
+
+### Traefik
+
+Traefik is a reverse proxy, not a file server, so put a tiny static server behind it and let
+Traefik terminate TLS. This `docker-compose.yml` serves the file over HTTPS with an
+automatic Let's Encrypt certificate:
+
+```yaml
+services:
+  jellyshelf-index:
+    image: nginx:alpine
+    volumes:
+      - /srv/jellyshelf:/usr/share/nginx/html:ro   # jellyshelf-index.json goes here
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyshelf.rule=Host(`media.example.com`) && Path(`/jellyshelf-index.json`)"
+      - "traefik.http.routers.jellyshelf.entrypoints=websecure"
+      - "traefik.http.routers.jellyshelf.tls.certresolver=le"
+      - "traefik.http.services.jellyshelf.loadbalancer.server.port=80"
+```
+
+This assumes a Traefik instance with a `websecure` (443) entrypoint and an ACME
+`certresolver` named `le` already configured. If Jellyfin itself runs behind the same
+Traefik, add this as another labelled service on the shared proxy network and both share
+one certificate/host. Index URL: `https://media.example.com/jellyshelf-index.json`.
+
+> Serving over HTTPS is recommended when the index leaves your LAN. Plain `http://` LAN URLs
+> also work — debug builds allow cleartext traffic (see [Build](#build)).
 
 ## Setup in the app (Settings tab)
 
