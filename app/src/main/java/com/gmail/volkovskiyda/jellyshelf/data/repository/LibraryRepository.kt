@@ -6,7 +6,6 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YEAR
 import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YT_CATEGORY
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
@@ -68,11 +67,6 @@ class LibraryRepository(
     fun observeCategories(): Flow<List<CategoryWithCount>> = categoryDao.observeWithCounts()
     fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
         categoryDao.searchWithCounts(query)
-    fun observeManualCategories(): Flow<List<CategoryEntity>> =
-        categoryDao.observeByType(CATEGORY_TYPE_MANUAL)
-
-    fun observeCategoriesForVideo(youtubeId: String): Flow<List<CategoryEntity>> =
-        categoryDao.observeForVideo(youtubeId)
 
     fun videoCount(): Flow<Int> = videoDao.count()
 
@@ -247,24 +241,6 @@ class LibraryRepository(
                 )
             }
         }
-    }
-
-    suspend fun createManualCategory(name: String): String {
-        val id = "manual:" + name.trim().lowercase().replace(Regex("\\s+"), "-")
-        categoryDao.upsert(
-            CategoryEntity(
-                id = id,
-                name = name.trim(),
-                type = CATEGORY_TYPE_MANUAL,
-                createdAt = System.currentTimeMillis(),
-            )
-        )
-        return id
-    }
-
-    suspend fun setVideoInCategory(youtubeId: String, categoryId: String, inCategory: Boolean) {
-        if (inCategory) categoryDao.upsertCrossRef(VideoCategoryCrossRef(youtubeId, categoryId))
-        else categoryDao.removeCrossRef(youtubeId, categoryId)
     }
 
     /**

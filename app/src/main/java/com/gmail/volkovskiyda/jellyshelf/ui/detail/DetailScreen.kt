@@ -4,8 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,12 +17,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -32,8 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -48,7 +42,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(
     youtubeId: String,
@@ -73,13 +67,7 @@ fun DetailScreen(
     val video by remember(youtubeId) { repo.observeVideo(youtubeId) }
         .collectAsStateWithLifecycle(null)
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(null)
-    val assigned by remember(youtubeId) { repo.observeCategoriesForVideo(youtubeId) }
-        .collectAsStateWithLifecycle(emptyList())
-    val manualCategories by remember { repo.observeManualCategories() }
-        .collectAsStateWithLifecycle(emptyList())
 
-    var newCategory by remember { mutableStateOf("") }
-    val assignedIds = assigned.map { it.id }.toSet()
     val current = video
 
     Scaffold(
@@ -167,45 +155,6 @@ fun DetailScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (current.played) "Mark as unwatched" else "Mark as watched")
-            }
-
-            // Categories
-            Text("Categories", style = MaterialTheme.typography.titleMedium)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                manualCategories.forEach { category ->
-                    val selected = category.id in assignedIds
-                    FilterChip(
-                        selected = selected,
-                        onClick = {
-                            scope.launch { repo.setVideoInCategory(youtubeId, category.id, !selected) }
-                        },
-                        label = { Text(category.name) },
-                    )
-                }
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                OutlinedTextField(
-                    value = newCategory,
-                    onValueChange = { newCategory = it },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    placeholder = { Text("New category") },
-                )
-                Button(
-                    onClick = {
-                        val name = newCategory.trim()
-                        if (name.isNotEmpty()) {
-                            scope.launch {
-                                val id = repo.createManualCategory(name)
-                                repo.setVideoInCategory(youtubeId, id, true)
-                            }
-                            newCategory = ""
-                        }
-                    },
-                ) { Text("Add") }
             }
 
             current.description?.takeIf { it.isNotBlank() }?.let { desc ->
