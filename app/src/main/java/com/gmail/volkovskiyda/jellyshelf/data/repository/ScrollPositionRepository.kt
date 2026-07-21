@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import android.content.Context
-import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -13,6 +12,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
 private val Context.scrollDataStore by preferencesDataStore(name = "scroll_positions")
@@ -48,7 +48,7 @@ class ScrollPositionRepository(context: Context) {
     // these are all fire-and-forget best-effort writes.
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO +
-            CoroutineExceptionHandler { _, e -> Log.w(TAG, "scroll persistence failed", e) },
+            CoroutineExceptionHandler { _, e -> Timber.tag(TAG).w(e, "scroll persistence failed") },
     )
     private val cache = ConcurrentHashMap<String, ScrollPosition>()
     private val anchorCache = ConcurrentHashMap<String, AnchorPosition>()

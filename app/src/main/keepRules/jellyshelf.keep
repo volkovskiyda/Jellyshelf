@@ -6,3 +6,40 @@
 # Navigation 3 back-stack keys are (de)serialized via kotlinx-serialization when saved state
 # is restored; keep the app's @Serializable classes and their generated serializers.
 -keep @kotlinx.serialization.Serializable class com.gmail.volkovskiyda.jellyshelf.** { *; }
+
+# Strip ALL Timber logging from release builds. Release plants no Tree (see
+# JellyshelfApplication), so these calls are already runtime no-ops; these rules also remove
+# the calls — and the string building feeding them — from the bytecode entirely. R8 only drops
+# a call when its return value is unused, so tag(...) is removed once the chained log call is.
+# These rules apply to release only (R8 optimization is off for debug), so DebugTree logging
+# is untouched there. Covers static Timber.*, the Forest companion, and the Tree instance the
+# tag(...) chain routes through.
+-assumenosideeffects class timber.log.Timber {
+    public static *** v(...);
+    public static *** d(...);
+    public static *** i(...);
+    public static *** w(...);
+    public static *** e(...);
+    public static *** wtf(...);
+    public static *** log(...);
+    public static *** tag(...);
+}
+-assumenosideeffects class timber.log.Timber$Forest {
+    public *** v(...);
+    public *** d(...);
+    public *** i(...);
+    public *** w(...);
+    public *** e(...);
+    public *** wtf(...);
+    public *** log(...);
+    public *** tag(...);
+}
+-assumenosideeffects class timber.log.Timber$Tree {
+    public *** v(...);
+    public *** d(...);
+    public *** i(...);
+    public *** w(...);
+    public *** e(...);
+    public *** wtf(...);
+    public *** log(...);
+}

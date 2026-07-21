@@ -31,7 +31,6 @@ import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
-import android.util.Log
 import java.time.Instant
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +47,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import retrofit2.HttpException
+import timber.log.Timber
 
 sealed interface SyncResult {
     /**
@@ -131,7 +131,7 @@ class LibraryRepository(
     // unexpected DataStore/DB failure — log and move on.
     private val repoScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO +
-            CoroutineExceptionHandler { _, e -> Log.w("LibraryRepository", "background work failed", e) },
+            CoroutineExceptionHandler { _, e -> Timber.tag("LibraryRepository").w(e, "background work failed") },
     )
     private val _bulkFetch = MutableStateFlow<BulkFetch>(BulkFetch.Idle)
     val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
@@ -458,16 +458,16 @@ class LibraryRepository(
 
     private suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
         val positionTicks = millisToTicks(positionMs)
-        Log.d(Playback.TAG, "onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")
+        Timber.tag(Playback.TAG).d("onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")
         var finished = completed
         val video = writeMutex.withLock {
             val v = videoDao.get(youtubeId) ?: run {
-                Log.w(Playback.TAG, "onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report")
+                Timber.tag(Playback.TAG).w("onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report")
                 return
             }
             finished = completed ||
                 (v.durationSeconds > 0 && ticksToSeconds(positionTicks) >= v.durationSeconds - 5)
-            Log.d(Playback.TAG, "onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> local write played=$finished position=${if (finished) 0L else positionTicks}")
+            Timber.tag(Playback.TAG).d("onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> local write played=$finished position=${if (finished) 0L else positionTicks}")
             videoDao.updateWatchState(youtubeId, finished, if (finished) 0L else positionTicks)
             localWatchWrites[youtubeId] = System.currentTimeMillis()
             v
@@ -476,7 +476,7 @@ class LibraryRepository(
         val s = settings.snapshot()
         val itemId = video.jellyfinItemId
         if (!s.isConnected || itemId == null) {
-            Log.d(Playback.TAG, "onPlaybackStopped: skipping server report (connected=${s.isConnected} itemId=$itemId)")
+            Timber.tag(Playback.TAG).d("onPlaybackStopped: skipping server report (connected=${s.isConnected} itemId=$itemId)")
             return
         }
         // Best-effort: the local resume position is already saved, so a failed server
@@ -489,11 +489,11 @@ class LibraryRepository(
                 if (latest.played) {
                     // Finished — record the play in Jellyfin's watch history via the endpoint
                     // that actually marks items played (PlayCount++, LastPlayedDate, resume cleared).
-                    Log.d(Playback.TAG, "onPlaybackStopped: marking played on Jellyfin itemId=$itemId")
+                    Timber.tag(Playback.TAG).d("onPlaybackStopped: marking played on Jellyfin itemId=$itemId")
                     jellyfin.setPlayed(s.serverUrl, s.apiKey, s.userId, itemId, played = true)
                 } else {
                     // Stopped partway — persist the resume position for "Continue Watching".
-                    Log.d(Playback.TAG, "onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId positionTicks=${latest.playbackPositionTicks}")
+                    Timber.tag(Playback.TAG).d("onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId positionTicks=${latest.playbackPositionTicks}")
                     jellyfin.updatePlaybackState(
                         serverUrl = s.serverUrl,
                         apiKey = s.apiKey,
@@ -505,9 +505,9 @@ class LibraryRepository(
                     )
                 }
             }
-            Log.d(Playback.TAG, "onPlaybackStopped: server report succeeded for itemId=$itemId")
+            Timber.tag(Playback.TAG).d("onPlaybackStopped: server report succeeded for itemId=$itemId")
         }.onFailure { e ->
-            Log.w(Playback.TAG, "onPlaybackStopped: server report failed for itemId=$itemId", e)
+            Timber.tag(Playback.TAG).w(e, "onPlaybackStopped: server report failed for itemId=$itemId")
         }
     }
 

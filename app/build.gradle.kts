@@ -96,6 +96,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.okhttp)
     implementation(libs.retrofit)
+    implementation(libs.timber)
     implementation(libs.youtubedl.android.library)
     testImplementation(libs.junit)
     debugImplementation(libs.androidx.compose.ui.tooling)

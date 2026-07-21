@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,6 +40,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import timber.log.Timber
 
 private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: ImageVector)
 
@@ -82,7 +82,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     LaunchedEffect(Unit) {
         snapshotFlow { backStack.toList() }
             .collect { stack ->
-                Log.d("Navigation", "backStack (${stack.size}): ${stack.joinToString(" -> ")}")
+                Timber.tag("Navigation").d("backStack (${stack.size}): ${stack.joinToString(" -> ")}")
             }
     }
 

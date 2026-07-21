@@ -9,7 +9,6 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.ProgressBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
-import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import java.io.IOException
@@ -17,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import timber.log.Timber
 
 /** Paging safety cap — far above any real library, purely an infinite-loop backstop. */
 private const val MAX_PAGED_ITEMS = 1_000_000
@@ -123,7 +123,7 @@ class JellyfinRepository(
     suspend fun setPlayed(serverUrl: String, apiKey: String, userId: String, itemId: String, played: Boolean) {
         val api = api(serverUrl, apiKey)
         val response = if (played) api.markPlayed(userId, itemId) else api.markUnplayed(userId, itemId)
-        Log.d(Playback.TAG, "setPlayed(played=$played) itemId=$itemId -> HTTP ${response.code()}")
+        Timber.tag(Playback.TAG).d("setPlayed(played=$played) itemId=$itemId -> HTTP ${response.code()}")
         // Response<Unit> does not throw on 4xx/5xx — surface it so callers' best-effort/toggle
         // failure handling actually sees a failed mark-played rather than treating it as success.
         if (!response.isSuccessful) {
@@ -157,7 +157,7 @@ class JellyfinRepository(
                 lastPlayedDate = lastPlayedDate,
             ),
         )
-        Log.d(Playback.TAG, "updatePlaybackState itemId=$itemId positionTicks=$positionTicks played=$played -> HTTP ${response.code()}")
+        Timber.tag(Playback.TAG).d("updatePlaybackState itemId=$itemId positionTicks=$positionTicks played=$played -> HTTP ${response.code()}")
         if (!response.isSuccessful) {
             throw IOException("updateUserData failed for $itemId: HTTP ${response.code()}")
         }

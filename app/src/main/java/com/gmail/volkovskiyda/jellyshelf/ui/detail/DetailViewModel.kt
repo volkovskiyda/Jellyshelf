@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
 import android.app.Application
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
@@ -20,6 +19,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 /** Detail screen state: distinguishes "still loading" from "this id has no local row". */
 sealed interface VideoDetailState {
@@ -65,7 +65,7 @@ class DetailViewModel(
 
     /** Repository-scoped, so the report survives leaving this screen mid-write. */
     fun reportPlaybackStopped(positionMs: Long, completed: Boolean) {
-        Log.d(Playback.TAG, "DetailViewModel.reportPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs completed=$completed")
+        Timber.tag(Playback.TAG).d("DetailViewModel.reportPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs completed=$completed")
         repo.reportPlaybackStopped(youtubeId, positionMs, completed)
     }
 
