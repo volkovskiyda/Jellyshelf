@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
@@ -8,6 +9,7 @@ import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.data.repository.Settings
+import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +65,7 @@ class DetailViewModel(
 
     /** Repository-scoped, so the report survives leaving this screen mid-write. */
     fun reportPlaybackStopped(positionMs: Long, completed: Boolean) {
+        Log.d(Playback.TAG, "DetailViewModel.reportPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs completed=$completed")
         repo.reportPlaybackStopped(youtubeId, positionMs, completed)
     }
 

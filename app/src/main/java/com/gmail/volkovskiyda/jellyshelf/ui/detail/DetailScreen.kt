@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,8 +69,10 @@ fun DetailScreen(
     val playerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        Log.d(Playback.TAG, "player returned: resultCode=${result.resultCode} hasData=${result.data != null}")
         val playback = Playback.parseResult(result.data)
             ?: return@rememberLauncherForActivityResult
+        Log.d(Playback.TAG, "reporting playback stopped: positionMs=${playback.positionMs} completed=${playback.completed}")
         viewModel.reportPlaybackStopped(playback.positionMs, playback.completed)
     }
 

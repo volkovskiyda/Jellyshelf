@@ -8,6 +8,8 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.ProgressBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
+import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import java.io.IOException
@@ -120,7 +122,13 @@ class JellyfinRepository(
 
     suspend fun setPlayed(serverUrl: String, apiKey: String, userId: String, itemId: String, played: Boolean) {
         val api = api(serverUrl, apiKey)
-        if (played) api.markPlayed(userId, itemId) else api.markUnplayed(userId, itemId)
+        val response = if (played) api.markPlayed(userId, itemId) else api.markUnplayed(userId, itemId)
+        Log.d(Playback.TAG, "setPlayed(played=$played) itemId=$itemId -> HTTP ${response.code()}")
+        // Response<Unit> does not throw on 4xx/5xx — surface it so callers' best-effort/toggle
+        // failure handling actually sees a failed mark-played rather than treating it as success.
+        if (!response.isSuccessful) {
+            throw IOException("setPlayed failed for $itemId: HTTP ${response.code()}")
+        }
     }
 
     suspend fun reportProgress(serverUrl: String, apiKey: String, itemId: String, positionTicks: Long) {
@@ -140,7 +148,7 @@ class JellyfinRepository(
         played: Boolean = false,
         lastPlayedDate: String? = null,
     ) {
-        api(serverUrl, apiKey).updateUserData(
+        val response = api(serverUrl, apiKey).updateUserData(
             userId = userId,
             itemId = itemId,
             body = UserItemDataBody(
@@ -149,6 +157,10 @@ class JellyfinRepository(
                 lastPlayedDate = lastPlayedDate,
             ),
         )
+        Log.d(Playback.TAG, "updatePlaybackState itemId=$itemId positionTicks=$positionTicks played=$played -> HTTP ${response.code()}")
+        if (!response.isSuccessful) {
+            throw IOException("updateUserData failed for $itemId: HTTP ${response.code()}")
+        }
     }
 
     /** Creates a Jellyfin playlist from ordered [itemIds]; returns the new playlist id. */

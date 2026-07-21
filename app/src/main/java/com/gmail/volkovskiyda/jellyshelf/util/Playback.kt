@@ -3,10 +3,14 @@ package com.gmail.volkovskiyda.jellyshelf.util
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import com.gmail.volkovskiyda.jellyshelf.R
 
 object Playback {
+
+    /** Shared logcat tag for the whole external-player flow: `adb logcat -s Playback`. */
+    const val TAG = "Playback"
 
     /** Treat a stop within this many ms of the end as "finished" (players rarely report the exact end). */
     private const val COMPLETION_TOLERANCE_MS = 5_000L
@@ -50,6 +54,8 @@ object Playback {
                 putExtra("extra_position", resumeMs)      // VLC resume (long ms)
             }
         }
+        // api_key is a secret — log the stream URL without it.
+        Log.d(TAG, "launch external player: itemId=$itemId title=$title resumeMs=$resumeMs url=${stripApiKey(streamUrl(serverUrl, itemId, apiKey))}")
         return Intent.createChooser(view, context.getString(R.string.play_with))
     }
 
@@ -59,24 +65,53 @@ object Playback {
      * player reported nothing (e.g. the user cancelled the chooser, or the player doesn't support it).
      */
     fun parseResult(data: Intent?): Result? {
-        if (data == null) return null
-        // MX Player
-        if (data.hasExtra("position")) {
-            val pos = data.getIntExtra("position", -1)
-            if (pos >= 0) {
-                val completed = data.getStringExtra("end_by") == "playback_completion"
-                return Result(pos.toLong(), completed)
+        if (data == null) {
+            Log.d(TAG, "parseResult: no data returned (chooser/player cancelled, or player did not report)")
+            return null
+        }
+        // Dump every returned extra so an unrecognized player's result keys are visible in logcat.
+        data.extras?.let { extras ->
+            val dump = extras.keySet().joinToString(", ") { key ->
+                @Suppress("DEPRECATION")
+                "$key=${extras.get(key)}"
             }
+            Log.d(TAG, "parseResult: result extras -> {$dump}")
+        } ?: Log.d(TAG, "parseResult: result has no extras")
+        // MX Player: reports `end_by` and, when the user stopped mid-video, `position`. On a
+        // natural finish it sends `end_by=playback_completion` but omits `position` entirely — so
+        // key off `end_by`, not `position`, or completions would be missed.
+        if (data.hasExtra("end_by") || data.hasExtra("position")) {
+            val endBy = data.getStringExtra("end_by")
+            val pos = data.getIntExtra("position", -1)
+            val duration = data.getIntExtra("duration", -1)
+            Log.d(TAG, "parseResult: MX Player result position=$pos end_by=$endBy duration=$duration")
+            if (endBy == "playback_completion") {
+                // Finished — position is irrelevant (marked played, resume cleared) and usually absent.
+                val result = Result(if (pos >= 0) pos.toLong() else 0L, completed = true)
+                Log.d(TAG, "parseResult: parsed $result")
+                return result
+            }
+            if (pos >= 0) {
+                val result = Result(pos.toLong(), completed = false)
+                Log.d(TAG, "parseResult: parsed $result")
+                return result
+            }
+            Log.w(TAG, "parseResult: MX Player returned no usable position (end_by=$endBy); ignoring")
         }
         // VLC — no explicit completion flag, so infer it from proximity to the end.
         if (data.hasExtra("extra_position")) {
             val pos = data.getLongExtra("extra_position", -1L)
+            val duration = data.getLongExtra("extra_duration", 0L)
+            Log.d(TAG, "parseResult: VLC result extra_position=$pos extra_duration=$duration")
             if (pos >= 0) {
-                val duration = data.getLongExtra("extra_duration", 0L)
                 val completed = duration > 0 && pos >= duration - COMPLETION_TOLERANCE_MS
-                return Result(pos, completed)
+                val result = Result(pos, completed)
+                Log.d(TAG, "parseResult: parsed $result")
+                return result
             }
+            Log.w(TAG, "parseResult: VLC returned an invalid position ($pos); ignoring")
         }
+        Log.w(TAG, "parseResult: no recognizable position extra; player did not report a resume point. extras=${data.extras?.keySet()}")
         return null
     }
 

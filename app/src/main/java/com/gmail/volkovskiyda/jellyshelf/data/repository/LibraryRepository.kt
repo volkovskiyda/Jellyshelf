@@ -22,6 +22,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import androidx.room.withTransaction
 import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
+import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
@@ -435,30 +436,38 @@ class LibraryRepository(
     }
 
     /**
-     * Record where an external player stopped: persist the resume position locally and, on
-     * Jellyfin, write the playstate directly to the user's item data. Writing UserData (rather
-     * than posting /Sessions/Playing/Stopped) is what actually persists the position and lands
-     * the item in "Continue Watching" — the session endpoints only commit playstate for a live,
-     * progress-tracked session, which an external-player handoff can't sustain.
+     * Record where an external player stopped: persist the resume position locally and mirror the
+     * result to Jellyfin.
      *
-     * When the video finished (or stopped within a few seconds of the end) it is marked played and
-     * the resume position cleared, matching Jellyfin's own behaviour. Best-effort — network
-     * failures are swallowed so local state still updates.
+     * - Finished (played to the end, or stopped within a few seconds of it): mark played through
+     *   the dedicated /PlayedItems endpoint — the same one the manual "watched" toggle uses. That
+     *   is what increments PlayCount, stamps LastPlayedDate and lands the item in the server's
+     *   watch history. Writing UserData with Played=true does *not* reliably register a play.
+     * - Stopped partway: write the resume position to the user's item data, which is what surfaces
+     *   the item in "Continue Watching" (the /Sessions endpoints only commit for a live,
+     *   progress-tracked session, which an external-player handoff can't sustain).
+     *
+     * Best-effort — network failures are swallowed so local state still updates.
      */
     fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
         // Fire-and-forget on the repository's own scope: the screen that launched the external
-        // player may be gone (back press, rotation) before the local write and the up-to-30s
-        // network report finish, and losing the resume position is not acceptable.
+        // player may be gone (back press, rotation) before the local write and the network
+        // report finish, and losing the resume position is not acceptable.
         repoScope.launch { onPlaybackStopped(youtubeId, positionMs, completed) }
     }
 
     private suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
         val positionTicks = millisToTicks(positionMs)
+        Log.d(Playback.TAG, "onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")
         var finished = completed
         val video = writeMutex.withLock {
-            val v = videoDao.get(youtubeId) ?: return
+            val v = videoDao.get(youtubeId) ?: run {
+                Log.w(Playback.TAG, "onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report")
+                return
+            }
             finished = completed ||
                 (v.durationSeconds > 0 && ticksToSeconds(positionTicks) >= v.durationSeconds - 5)
+            Log.d(Playback.TAG, "onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> local write played=$finished position=${if (finished) 0L else positionTicks}")
             videoDao.updateWatchState(youtubeId, finished, if (finished) 0L else positionTicks)
             localWatchWrites[youtubeId] = System.currentTimeMillis()
             v
@@ -466,25 +475,39 @@ class LibraryRepository(
 
         val s = settings.snapshot()
         val itemId = video.jellyfinItemId
-        if (s.isConnected && itemId != null) {
-            // Best-effort: the local resume position is already saved, so a failed server
-            // write is swallowed.
-            runCatchingCancellable {
-                playstateMutex.withLock {
-                    // Re-read at send time (see setPlayed): a toggle that landed while this
-                    // report waited for the lock must not be overwritten with older state.
-                    val latest = videoDao.get(youtubeId) ?: return
+        if (!s.isConnected || itemId == null) {
+            Log.d(Playback.TAG, "onPlaybackStopped: skipping server report (connected=${s.isConnected} itemId=$itemId)")
+            return
+        }
+        // Best-effort: the local resume position is already saved, so a failed server
+        // write is swallowed.
+        runCatchingCancellable {
+            playstateMutex.withLock {
+                // Re-read at send time (see setPlayed): a toggle that landed while this
+                // report waited for the lock must not be overwritten with older state.
+                val latest = videoDao.get(youtubeId) ?: return
+                if (latest.played) {
+                    // Finished — record the play in Jellyfin's watch history via the endpoint
+                    // that actually marks items played (PlayCount++, LastPlayedDate, resume cleared).
+                    Log.d(Playback.TAG, "onPlaybackStopped: marking played on Jellyfin itemId=$itemId")
+                    jellyfin.setPlayed(s.serverUrl, s.apiKey, s.userId, itemId, played = true)
+                } else {
+                    // Stopped partway — persist the resume position for "Continue Watching".
+                    Log.d(Playback.TAG, "onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId positionTicks=${latest.playbackPositionTicks}")
                     jellyfin.updatePlaybackState(
                         serverUrl = s.serverUrl,
                         apiKey = s.apiKey,
                         userId = s.userId,
                         itemId = itemId,
                         positionTicks = latest.playbackPositionTicks,
-                        played = latest.played,
+                        played = false,
                         lastPlayedDate = Instant.now().toString(),
                     )
                 }
             }
+            Log.d(Playback.TAG, "onPlaybackStopped: server report succeeded for itemId=$itemId")
+        }.onFailure { e ->
+            Log.w(Playback.TAG, "onPlaybackStopped: server report failed for itemId=$itemId", e)
         }
     }
 
