@@ -34,11 +34,11 @@ internal fun mergeVideo(
     keepLocalWatchState: Boolean = false,
 ): VideoEntity {
     val indexUpdatedAt = meta?.fetchedAt?.let { it * 1000 } // epoch seconds -> millis
-    val keepWatch = keepLocalWatchState && existing != null
-    val played = if (keepWatch) existing!!.played else item.userData?.played ?: false
+    val retainedWatch = existing?.takeIf { keepLocalWatchState }
+    val played = retainedWatch?.played ?: item.userData?.played ?: false
     val positionTicks =
-        if (keepWatch) existing!!.playbackPositionTicks else item.userData?.playbackPositionTicks ?: 0L
-    val playCount = if (keepWatch) existing!!.playCount else item.userData?.playCount ?: 0
+        retainedWatch?.playbackPositionTicks ?: item.userData?.playbackPositionTicks ?: 0L
+    val playCount = retainedWatch?.playCount ?: item.userData?.playCount ?: 0
 
     val fileName = fileNameFromPath(item.path)
         ?: (meta?.title ?: existing?.title ?: item.name ?: youtubeId)
