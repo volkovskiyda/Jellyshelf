@@ -41,6 +41,7 @@ class SettingsRepository(context: Context) {
         val INDEX_URL = stringPreferencesKey("index_url")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
         val SELECTED_CATEGORY_TYPE = stringPreferencesKey("selected_category_type")
+        val BACK_STACK = stringPreferencesKey("back_stack")
     }
 
     val settings: Flow<Settings> = ds.data
@@ -103,5 +104,18 @@ class SettingsRepository(context: Context) {
 
     suspend fun setSelectedCategoryType(type: String) {
         ds.edit { it[Keys.SELECTED_CATEGORY_TYPE] = type }
+    }
+
+    /**
+     * The serialized navigation back stack, or null if none has been saved yet. Persisted on every
+     * navigation so the app reopens on the exact screen the user left, restored by MainViewModel.
+     * Serialization (an AppNavKey list) lives in the ViewModel; the repo stays a plain string store.
+     */
+    val backStackJson: Flow<String?> = ds.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[Keys.BACK_STACK] }
+
+    suspend fun setBackStackJson(json: String) {
+        ds.edit { it[Keys.BACK_STACK] = json }
     }
 }

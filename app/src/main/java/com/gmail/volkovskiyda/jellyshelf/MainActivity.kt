@@ -18,7 +18,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,17 +57,24 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun JellyshelfApp(viewModel: MainViewModel = viewModel()) {
-    val startKey by viewModel.startKey.collectAsStateWithLifecycle()
+    val startStack by viewModel.startStack.collectAsStateWithLifecycle()
 
-    // Render nothing until the start destination is resolved, so Library never flashes first.
-    startKey?.let { JellyshelfNav(it) }
+    // Render nothing until the start stack is resolved, so Library never flashes first.
+    startStack?.let { JellyshelfNav(it, viewModel) }
 }
 
 @Composable
-private fun JellyshelfNav(startKey: AppNavKey) {
-    val backStack = rememberNavBackStack(startKey)
+private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel) {
+    val backStack = rememberNavBackStack(*startStack.toTypedArray())
     val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
     val viewModelStoreDecorator = rememberViewModelStoreNavEntryDecorator<NavKey>()
+
+    // Persist the stack on every change so the app reopens on the exact screen the user left.
+    // The first emission is the just-restored stack, so re-saving it is a harmless no-op.
+    LaunchedEffect(Unit) {
+        snapshotFlow { backStack.filterIsInstance<AppNavKey>() }
+            .collect { viewModel.saveBackStack(it) }
+    }
 
     val topLevel = listOf(
         TopLevel(AppNavKey.Library, R.string.tab_library, Icons.Filled.VideoLibrary),
@@ -75,14 +84,17 @@ private fun JellyshelfNav(startKey: AppNavKey) {
     val current = backStack.lastOrNull()
     val showBottomBar = topLevel.any { it.key == current }
 
+    // Library is the app's home and always the stack root: switching to any other tab rebuilds the
+    // stack as [Library, tab] so Back returns to Library, and one more Back exits.
     fun switchTo(key: AppNavKey) {
         if (backStack.lastOrNull() == key) return
         backStack.clear()
-        backStack.add(key)
+        backStack.add(AppNavKey.Library)
+        if (key != AppNavKey.Library) backStack.add(key)
     }
 
-    // Same guard as the system-back handler: NavDisplay requires a non-empty stack, so a
-    // double-tapped back arrow must never pop the last entry.
+    // NavDisplay requires a non-empty stack, so never pop the last (Library) entry — the system
+    // back gesture then finishes the activity instead.
     fun pop() {
         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
     }
