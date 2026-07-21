@@ -27,11 +27,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +50,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +64,7 @@ fun CategoriesScreen(
     val others by viewModel.others.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val searchAll by viewModel.searchAll.collectAsStateWithLifecycle()
+    val selectedType by viewModel.selectedType.collectAsStateWithLifecycle()
     val categories = categoriesOrNull.orEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -125,6 +124,8 @@ fun CategoriesScreen(
         } else {
             TabbedCategories(
                 tabs = tabs,
+                selectedType = selectedType,
+                onSelectedTypeChange = viewModel::onSelectedTypeChange,
                 persistScroll = !searching,
                 onCategoryClick = onCategoryClick,
             )
@@ -150,6 +151,8 @@ private fun SearchAllToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit
 @Composable
 private fun TabbedCategories(
     tabs: List<CategoryTab>,
+    selectedType: String?,
+    onSelectedTypeChange: (String) -> Unit,
     persistScroll: Boolean,
     onCategoryClick: (categoryId: String, title: String) -> Unit,
 ) {
@@ -162,14 +165,20 @@ private fun TabbedCategories(
     // dimension appears after sync, "Others" loads in, search filters tabs out), the pager
     // follows the previously selected dimension to its new position, then resumes tracking
     // the settled page. Restore-before-track ordering keeps the tracker from recording the
-    // shifted page a set change momentarily leaves under the old index.
-    var selectedType by rememberSaveable { mutableStateOf<String?>(null) }
+    // shifted page a set change momentarily leaves under the old index. The selection itself
+    // is container-owned (survives bottom-nav tab switches, which clear saveable state).
     LaunchedEffect(tabs) {
         val target = selectedType?.let { type -> tabs.indexOfFirst { it.type == type } } ?: -1
         if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
-        snapshotFlow { pagerState.settledPage }.collect { page ->
-            tabs.getOrNull(page)?.let { selectedType = it.type }
-        }
+        // When the selected dimension has no tab in this set (a search filtered it out), the
+        // pager sits on a fallback page the user never chose — skip that first emission so
+        // clearing the search returns to the real selection; user swipes still track.
+        val keepSelection = target < 0 && selectedType != null
+        snapshotFlow { pagerState.settledPage }
+            .drop(if (keepSelection) 1 else 0)
+            .collect { page ->
+                tabs.getOrNull(page)?.let { onSelectedTypeChange(it.type) }
+            }
     }
 
     ScrollableTabRow(selectedTabIndex = selected, edgePadding = 8.dp) {

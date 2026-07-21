@@ -29,8 +29,10 @@ import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
+import android.util.Log
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,9 +42,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import retrofit2.HttpException
 
 sealed interface SyncResult {
     /**
@@ -57,7 +61,19 @@ sealed interface SyncResult {
         val indexed: Int,
         val categories: Int,
     ) : SyncResult
-    data class Error(val message: String) : SyncResult
+
+    /**
+     * [retryable] separates transient failures (network, 5xx) from configuration ones (revoked
+     * key, missing scope) that can't self-heal — the periodic worker must not retry the latter.
+     */
+    data class Error(val message: String, val retryable: Boolean = true) : SyncResult
+}
+
+/** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
+ *  explicitly transient 408 (timeout) and 429 (throttling). */
+private fun isPermanentFailure(e: Exception): Boolean {
+    val code = (e as? HttpException)?.code() ?: return false
+    return code in 400..499 && code != 408 && code != 429
 }
 
 sealed interface PlaylistResult {
@@ -102,9 +118,20 @@ class LibraryRepository(
      */
     private val localWatchWrites = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    /**
+     * Serializes server playstate writes. Each send re-reads the row's current local state under
+     * this lock, so rapid toggles can't commit out of order on the server — the last send always
+     * carries the newest local state, whatever order the earlier ones landed in.
+     */
+    private val playstateMutex = Mutex()
+
     // Long-running work (bulk fetch, playback reports) runs here so it outlives the screen
-    // that started it.
-    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // that started it. Best-effort background work must never crash the process on an
+    // unexpected DataStore/DB failure — log and move on.
+    private val repoScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, e -> Log.w("LibraryRepository", "background work failed", e) },
+    )
     private val _bulkFetch = MutableStateFlow<BulkFetch>(BulkFetch.Idle)
     val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
     private var bulkJob: Job? = null
@@ -165,7 +192,12 @@ class LibraryRepository(
     /** Full sync: pull Jellyfin items + metadata index, merge, persist, auto-categorize. */
     suspend fun sync(): SyncResult {
         val s = settings.snapshot()
-        if (!s.isConnected) return SyncResult.Error("Not connected. Set server URL, API key and user in Settings.")
+        if (!s.isConnected) {
+            return SyncResult.Error(
+                "Not connected. Set server URL, API key and user in Settings.",
+                retryable = false,
+            )
+        }
 
         val fetchStartedAt = System.currentTimeMillis()
         val items = try {
@@ -173,7 +205,7 @@ class LibraryRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            return SyncResult.Error("Failed to load library: ${e.message}")
+            return SyncResult.Error("Failed to load library: ${e.message}", retryable = !isPermanentFailure(e))
         }
 
         // A failed index fetch must stay distinguishable from an index with no entries:
@@ -353,6 +385,9 @@ class LibraryRepository(
                     false
                 }
                 if (!ok) failed++
+                // cancelFetchMissing resets to Idle without waiting for this job; a cancelled
+                // run must not write a stale Running over that.
+                if (!isActive) return@launch
                 _bulkFetch.value = BulkFetch.Running(i + 1, targets.size, failed)
             }
             _bulkFetch.value = BulkFetch.Done(targets.size, failed)
@@ -386,26 +421,35 @@ class LibraryRepository(
         }
     }
 
+    /**
+     * Toggles [youtubeId]'s watch state locally and mirrors it to Jellyfin. Returns false when
+     * the server write failed — the local state stays, but the next sync may revert it to the
+     * server's value, so callers should tell the user.
+     */
     suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean {
-        val video = writeMutex.withLock {
+        writeMutex.withLock {
             val v = videoDao.get(youtubeId) ?: return false
             videoDao.updateWatchState(youtubeId, played, if (played) v.playbackPositionTicks else 0L)
             localWatchWrites[youtubeId] = System.currentTimeMillis()
-            v
         }
         val s = settings.snapshot()
-        val itemId = video.jellyfinItemId
-        if (s.isConnected && itemId != null) {
-            return try {
-                jellyfin.setPlayed(s.serverUrl, s.apiKey, s.userId, itemId, played)
-                true
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                false
+        return try {
+            playstateMutex.withLock {
+                // Re-read at send time: if another toggle landed while this one waited for the
+                // lock, send the newer state — the server then converges on the latest local
+                // value regardless of how the calls interleaved.
+                val latest = videoDao.get(youtubeId) ?: return false
+                val itemId = latest.jellyfinItemId
+                if (s.isConnected && itemId != null) {
+                    jellyfin.setPlayed(s.serverUrl, s.apiKey, s.userId, itemId, latest.played)
+                }
             }
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
         }
-        return true
     }
 
     /**
@@ -441,16 +485,25 @@ class LibraryRepository(
         val s = settings.snapshot()
         val itemId = video.jellyfinItemId
         if (s.isConnected && itemId != null) {
-            runCatching {
-                jellyfin.updatePlaybackState(
-                    serverUrl = s.serverUrl,
-                    apiKey = s.apiKey,
-                    userId = s.userId,
-                    itemId = itemId,
-                    positionTicks = if (finished) 0L else positionTicks,
-                    played = finished,
-                    lastPlayedDate = Instant.now().toString(),
-                )
+            try {
+                playstateMutex.withLock {
+                    // Re-read at send time (see setPlayed): a toggle that landed while this
+                    // report waited for the lock must not be overwritten with older state.
+                    val latest = videoDao.get(youtubeId) ?: return
+                    jellyfin.updatePlaybackState(
+                        serverUrl = s.serverUrl,
+                        apiKey = s.apiKey,
+                        userId = s.userId,
+                        itemId = itemId,
+                        positionTicks = latest.playbackPositionTicks,
+                        played = latest.played,
+                        lastPlayedDate = Instant.now().toString(),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Best-effort: the local resume position is already saved.
             }
         }
     }

@@ -46,11 +46,13 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.AnchorPosition
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPosition
 import com.gmail.volkovskiyda.jellyshelf.di.AppContainer
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
+import com.gmail.volkovskiyda.jellyshelf.util.isJellyfinImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun rememberContainer(): AppContainer {
@@ -70,8 +72,8 @@ fun rememberThumbnailModel(url: String?): String? {
     val loaded = settings
     return when {
         url == null -> null
-        loaded == null -> url.takeUnless { "/Items/" in it && "/Images/" in it }
-        else -> authorizedImageUrl(url, loaded.apiKey)
+        loaded == null -> url.takeUnless { isJellyfinImageUrl(it) }
+        else -> authorizedImageUrl(url, loaded.serverUrl, loaded.apiKey)
     }
 }
 
@@ -89,6 +91,23 @@ fun rememberPersistedLazyListState(key: String): LazyListState {
     val state = rememberSaveable(key, saver = LazyListState.Saver) {
         val pos = store.peek(key)
         LazyListState(pos.index, pos.offset)
+    }
+    // Cold start: the store may not have seeded from disk when the state above was created —
+    // peek() returns Zero rather than blocking the first frame on the disk read. Restore once
+    // the seed lands, unless the list is still empty-of-content or the user already scrolled.
+    var seedRestored by rememberSaveable(key) { mutableStateOf(store.isSeeded) }
+    LaunchedEffect(key, state) {
+        if (seedRestored) return@LaunchedEffect
+        store.awaitSeeded()
+        val pos = store.peek(key)
+        if (pos != ScrollPosition.Zero) {
+            // scrollToItem on a not-yet-loaded list would clamp to the top; wait for content.
+            snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 }
+            if (state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset == 0) {
+                state.scrollToItem(pos.index, pos.offset)
+            }
+        }
+        seedRestored = true
     }
     LaunchedEffect(key, state) {
         snapshotFlow { ScrollPosition(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset) }

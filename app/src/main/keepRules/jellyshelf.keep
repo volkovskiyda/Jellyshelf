@@ -1,0 +1,8 @@
+# youtubedl-android drives its bundled Python runtime and resolves parts of itself
+# reflectively; its Java surface is tiny next to the runtime it manages, so keep all of it.
+-keep class com.yausername.** { *; }
+-dontwarn com.yausername.**
+
+# Navigation 3 back-stack keys are (de)serialized via kotlinx-serialization when saved state
+# is restored; keep the app's @Serializable classes and their generated serializers.
+-keep @kotlinx.serialization.Serializable class com.gmail.volkovskiyda.jellyshelf.** { *; }

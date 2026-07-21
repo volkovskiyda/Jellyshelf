@@ -190,7 +190,9 @@ fun SettingsScreen(
 private fun ScopeSection(state: SettingsUiState, viewModel: SettingsViewModel) {
     Text(stringResource(R.string.sync_scope), style = MaterialTheme.typography.titleSmall)
     Text(
-        state.selectedScopePath,
+        // A blank persisted path is the root scope; the label is resolved here so it follows
+        // the device language instead of freezing in the language it was saved in.
+        state.selectedScopePath.ifBlank { stringResource(R.string.all_collections) },
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.primary,
     )

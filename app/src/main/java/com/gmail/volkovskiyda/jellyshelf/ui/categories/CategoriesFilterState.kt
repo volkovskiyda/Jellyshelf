@@ -13,6 +13,13 @@ class CategoriesFilterState {
     val searchAll = MutableStateFlow(false)
 
     /**
+     * The dimension (tab) the user last settled on. Container-owned for the same reason as the
+     * query: bottom-nav tab switches clear the back stack and with it all rememberSaveable
+     * state, and returning to Categories should land on the same dimension.
+     */
+    val selectedType = MutableStateFlow<String?>(null)
+
+    /**
      * Last lists emitted for the surviving query, seeding the recreated ViewModel so a
      * revisited tab renders instantly instead of flashing the loading state until Room
      * re-emits. Caching "others" too keeps that tab from vanishing for a frame on revisit.

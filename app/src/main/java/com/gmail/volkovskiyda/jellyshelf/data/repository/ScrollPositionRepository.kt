@@ -1,17 +1,18 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 
 private val Context.scrollDataStore by preferencesDataStore(name = "scroll_positions")
@@ -43,19 +44,25 @@ class ScrollPositionRepository(context: Context) {
     // can't commit in reverse order and leave the older position on disk.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val writeDispatcher = Dispatchers.IO.limitedParallelism(1)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Losing a scroll position (disk full, DataStore corruption) must never crash the app —
+    // these are all fire-and-forget best-effort writes.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, e -> Log.w(TAG, "scroll persistence failed", e) },
+    )
     private val cache = ConcurrentHashMap<String, ScrollPosition>()
     private val anchorCache = ConcurrentHashMap<String, AnchorPosition>()
 
-    // Seeded exactly once (lazy is synchronized). The init block forces the seed on an IO
-    // thread at construction, so by the time the first frame calls peek() the value is usually
-    // already computed and the synchronized read returns instantly; a cold-start race only
-    // blocks the UI for whatever remains of the small DataStore read.
-    private val seed = lazy { runBlocking { seedFromDisk() } }
+    // Seeded once, on an IO thread at construction. peek() never waits for it — blocking a
+    // first-frame composition on a disk read is exactly the cold-start jank this cache exists
+    // to avoid. Callers that want the disk value observe [awaitSeeded] and restore afterwards.
+    private val seedJob = scope.launch { seedFromDisk() }
 
-    init {
-        scope.launch { seed.value }
-    }
+    /** True once the disk seed has been merged into the in-memory cache. */
+    val isSeeded: Boolean get() = seedJob.isCompleted
+
+    /** Suspends until the disk seed has been merged into the in-memory cache. */
+    suspend fun awaitSeeded() = seedJob.join()
 
     private suspend fun seedFromDisk() {
         // Assemble complete positions first, then merge with putIfAbsent: a position saved
@@ -92,11 +99,11 @@ class ScrollPositionRepository(context: Context) {
         anchors.forEach { (k, v) -> anchorCache.putIfAbsent(k, v) }
     }
 
-    /** Last known scroll position for [key], or [ScrollPosition.Zero] if none was saved. */
-    fun peek(key: String): ScrollPosition {
-        seed.value
-        return cache[key] ?: ScrollPosition.Zero
-    }
+    /**
+     * Last known scroll position for [key], or [ScrollPosition.Zero] if none was saved (or the
+     * disk seed hasn't landed yet — see [awaitSeeded]).
+     */
+    fun peek(key: String): ScrollPosition = cache[key] ?: ScrollPosition.Zero
 
     /** Records [position] for [key] in memory immediately and persists it to disk. */
     fun save(key: String, position: ScrollPosition) {
@@ -112,9 +119,9 @@ class ScrollPositionRepository(context: Context) {
         }
     }
 
-    /** Last known anchor position for [key], or `null` if none was saved. */
-    fun peekAnchor(key: String): AnchorPosition? {
-        seed.value
+    /** Last known anchor position for [key], or `null` if none was saved. Waits for the seed. */
+    suspend fun peekAnchor(key: String): AnchorPosition? {
+        seedJob.join()
         return anchorCache[key]
     }
 
@@ -131,6 +138,7 @@ class ScrollPositionRepository(context: Context) {
     }
 
     private companion object {
+        const val TAG = "ScrollPositions"
         const val INDEX_SUFFIX = ".index"
         const val OFFSET_SUFFIX = ".offset"
         const val ANCHOR_SUFFIX = ".anchor"

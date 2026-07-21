@@ -6,41 +6,70 @@ import org.junit.Test
 
 class UrlAuthTest {
 
-    private val jellyfinThumb = "http://server:8096/Items/abc/Images/Primary?maxWidth=480"
+    private val server = "http://server:8096"
+    private val jellyfinThumb = "$server/Items/abc/Images/Primary?maxWidth=480"
 
     @Test
-    fun `appends api key to jellyfin image urls`() {
+    fun `appends api key to jellyfin image urls on the configured server`() {
         assertEquals(
             "$jellyfinThumb&api_key=KEY",
-            authorizedImageUrl(jellyfinThumb, "KEY"),
+            authorizedImageUrl(jellyfinThumb, server, "KEY"),
         )
     }
 
     @Test
     fun `uses question mark when the url has no query yet`() {
         assertEquals(
-            "http://server:8096/Items/abc/Images/Primary?api_key=KEY",
-            authorizedImageUrl("http://server:8096/Items/abc/Images/Primary", "KEY"),
+            "$server/Items/abc/Images/Primary?api_key=KEY",
+            authorizedImageUrl("$server/Items/abc/Images/Primary", server, "KEY"),
+        )
+    }
+
+    @Test
+    fun `tolerates a trailing slash and padding on the configured server url`() {
+        assertEquals(
+            "$jellyfinThumb&api_key=KEY",
+            authorizedImageUrl(jellyfinThumb, " $server/ ", "KEY"),
+        )
+    }
+
+    @Test
+    fun `never appends the key to a jellyfin-shaped url on another host`() {
+        val foreign = "https://evil.example/Items/abc/Images/Primary"
+        assertEquals(foreign, authorizedImageUrl(foreign, server, "KEY"))
+    }
+
+    @Test
+    fun `never appends the key when no server is configured`() {
+        assertEquals(jellyfinThumb, authorizedImageUrl(jellyfinThumb, null, "KEY"))
+        assertEquals(jellyfinThumb, authorizedImageUrl(jellyfinThumb, " ", "KEY"))
+    }
+
+    @Test
+    fun `url-encodes the api key`() {
+        assertEquals(
+            "$jellyfinThumb&api_key=K%26Y%3D1",
+            authorizedImageUrl(jellyfinThumb, server, "K&Y=1"),
         )
     }
 
     @Test
     fun `passes youtube cdn thumbnails through untouched`() {
         val cdn = "https://i.ytimg.com/vi/abc/maxresdefault.jpg"
-        assertEquals(cdn, authorizedImageUrl(cdn, "KEY"))
+        assertEquals(cdn, authorizedImageUrl(cdn, server, "KEY"))
     }
 
     @Test
     fun `does not double-append to a legacy url that already carries a key`() {
         val legacy = "$jellyfinThumb&api_key=OLD"
-        assertEquals(legacy, authorizedImageUrl(legacy, "NEW"))
+        assertEquals(legacy, authorizedImageUrl(legacy, server, "NEW"))
     }
 
     @Test
     fun `null url or missing key pass through`() {
-        assertNull(authorizedImageUrl(null, "KEY"))
-        assertEquals(jellyfinThumb, authorizedImageUrl(jellyfinThumb, null))
-        assertEquals(jellyfinThumb, authorizedImageUrl(jellyfinThumb, ""))
+        assertNull(authorizedImageUrl(null, server, "KEY"))
+        assertEquals(jellyfinThumb, authorizedImageUrl(jellyfinThumb, server, null))
+        assertEquals(jellyfinThumb, authorizedImageUrl(jellyfinThumb, server, ""))
     }
 
     @Test
@@ -54,16 +83,16 @@ class UrlAuthTest {
     @Test
     fun `stripApiKey removes a leading key param`() {
         assertEquals(
-            "http://server:8096/Items/abc/Images/Primary?maxWidth=480",
-            stripApiKey("http://server:8096/Items/abc/Images/Primary?api_key=SECRET&maxWidth=480"),
+            "$server/Items/abc/Images/Primary?maxWidth=480",
+            stripApiKey("$server/Items/abc/Images/Primary?api_key=SECRET&maxWidth=480"),
         )
     }
 
     @Test
     fun `stripApiKey drops the query entirely when the key was the only param`() {
         assertEquals(
-            "http://server:8096/Items/abc/Images/Primary",
-            stripApiKey("http://server:8096/Items/abc/Images/Primary?api_key=SECRET"),
+            "$server/Items/abc/Images/Primary",
+            stripApiKey("$server/Items/abc/Images/Primary?api_key=SECRET"),
         )
     }
 

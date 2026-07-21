@@ -2,10 +2,13 @@ package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -39,7 +42,11 @@ class SettingsRepository(context: Context) {
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
     }
 
-    val settings: Flow<Settings> = ds.data.map { p ->
+    val settings: Flow<Settings> = ds.data
+        // A transient disk read failure must degrade to defaults, not propagate an IOException
+        // into every collector (and out of the sync worker).
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { p ->
         Settings(
             serverUrl = p[Keys.SERVER_URL].orEmpty(),
             apiKey = p[Keys.API_KEY].orEmpty(),

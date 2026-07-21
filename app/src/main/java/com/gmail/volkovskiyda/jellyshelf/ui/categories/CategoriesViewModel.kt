@@ -26,6 +26,9 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
     private val _searchAll = filters.searchAll
     val searchAll: StateFlow<Boolean> = _searchAll.asStateFlow()
 
+    /** The dimension tab the user last settled on; survives bottom-nav tab switches. */
+    val selectedType: StateFlow<String?> = filters.selectedType.asStateFlow()
+
     /**
      * Null while the very first Room emission is pending, so the UI can tell loading from
      * empty. Seeded from the container-held last emission on recreation (tab switch), so a
@@ -49,5 +52,9 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onSearchAllChange(value: Boolean) {
         _searchAll.value = value
+    }
+
+    fun onSelectedTypeChange(value: String) {
+        filters.selectedType.value = value
     }
 }

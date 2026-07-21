@@ -52,7 +52,13 @@ class DetailViewModel(
 
     fun toggleWatched() {
         val current = (video.value as? VideoDetailState.Loaded)?.video ?: return
-        viewModelScope.launch { repo.setPlayed(youtubeId, !current.played) }
+        viewModelScope.launch {
+            // The local toggle always sticks; tell the user when the server write failed,
+            // since the next sync may revert it to the server's value.
+            if (!repo.setPlayed(youtubeId, !current.played)) {
+                _message.value = getApplication<Application>().getString(R.string.watch_state_sync_failed)
+            }
+        }
     }
 
     /** Repository-scoped, so the report survives leaving this screen mid-write. */

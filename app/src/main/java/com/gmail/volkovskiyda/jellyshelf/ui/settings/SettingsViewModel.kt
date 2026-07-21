@@ -18,7 +18,12 @@ import kotlinx.coroutines.launch
 
 /** Sentinel for the "all collections" (root) scope. */
 const val ROOT_SCOPE_ID = ""
-const val ROOT_SCOPE_NAME = "All collections"
+
+/**
+ * Persisted name of the root scope. Blank — the UI substitutes the localized "all collections"
+ * label at render time, so the stored value can't freeze in whatever language it was saved in.
+ */
+const val ROOT_SCOPE_PATH = ""
 private const val CRUMB_SEPARATOR = " › "
 
 /** A folder in the Jellyfin item tree. */
@@ -31,9 +36,9 @@ data class SettingsUiState(
     val users: List<UserDto> = emptyList(),
     val selectedUserId: String = "",
     val selectedUserName: String = "",
-    // Persisted sync scope.
+    // Persisted sync scope. A blank path means the root ("all collections") scope.
     val selectedScopeId: String = ROOT_SCOPE_ID,
-    val selectedScopePath: String = ROOT_SCOPE_NAME,
+    val selectedScopePath: String = ROOT_SCOPE_PATH,
     // Ephemeral folder-browser state.
     val browserOpen: Boolean = false,
     val breadcrumb: List<FolderRef> = emptyList(),
@@ -47,10 +52,11 @@ data class SettingsUiState(
     /** ParentId of the folder currently being browsed ("" == root). */
     val currentParentId: String get() = breadcrumb.lastOrNull()?.id ?: ROOT_SCOPE_ID
 
-    /** Human-readable path of the folder currently being browsed. */
-    val currentPath: String
-        get() = if (breadcrumb.isEmpty()) ROOT_SCOPE_NAME
-        else ROOT_SCOPE_NAME + CRUMB_SEPARATOR + breadcrumb.joinToString(CRUMB_SEPARATOR) { it.name }
+    /**
+     * Path of the folder currently being browsed, from server-provided folder names — no
+     * localized root prefix, so it is safe to persist. Blank at the root.
+     */
+    val currentPath: String get() = breadcrumb.joinToString(CRUMB_SEPARATOR) { it.name }
 }
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -65,34 +71,52 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    /** Set as soon as the user edits any connection field, see [init]. */
+    private var fieldsEdited = false
+
     init {
         viewModelScope.launch {
             val s = settingsRepo.snapshot()
             val cachedUsers = container.settingsCache.usersFor(s.serverUrl)
-            _state.value = _state.value.copy(
-                serverUrl = s.serverUrl,
-                apiKey = s.apiKey,
-                indexUrl = s.indexUrl,
+            val cur = _state.value
+            _state.value = cur.copy(
+                // This snapshot loads asynchronously — don't clobber text the user managed
+                // to type into the fields before it landed.
+                serverUrl = if (fieldsEdited) cur.serverUrl else s.serverUrl,
+                apiKey = if (fieldsEdited) cur.apiKey else s.apiKey,
+                indexUrl = if (fieldsEdited) cur.indexUrl else s.indexUrl,
                 users = cachedUsers.orEmpty(),
                 selectedUserId = s.userId,
                 selectedUserName = s.userName,
                 selectedScopeId = s.libraryId,
-                selectedScopePath = s.libraryName.ifBlank { ROOT_SCOPE_NAME },
+                // Legacy installs persisted the English root prefix; strip it so the UI can
+                // localize the root label.
+                selectedScopePath = s.libraryName
+                    .removePrefix("All collections$CRUMB_SEPARATOR")
+                    .removePrefix("All collections"),
                 lastSyncAt = s.lastSyncAt,
             )
             // Only hit the server when this process hasn't loaded users yet — tab switches
-            // recreate this ViewModel, and re-connecting on every visit is wasted work.
-            if (s.hasCredentials && cachedUsers == null) connect(silent = true)
+            // recreate this ViewModel, and re-connecting on every visit is wasted work. A
+            // user already editing the fields connects explicitly with what they typed.
+            if (s.hasCredentials && cachedUsers == null && !fieldsEdited) connect(silent = true)
         }
     }
 
     fun onServerUrlChange(value: String) {
+        fieldsEdited = true
         // A different server has different users — drop the chips until the next connect so
         // a stale selection can't be persisted against the new URL.
         _state.value = _state.value.copy(serverUrl = value, users = emptyList())
     }
-    fun onApiKeyChange(value: String) { _state.value = _state.value.copy(apiKey = value) }
-    fun onIndexUrlChange(value: String) { _state.value = _state.value.copy(indexUrl = value) }
+    fun onApiKeyChange(value: String) {
+        fieldsEdited = true
+        _state.value = _state.value.copy(apiKey = value)
+    }
+    fun onIndexUrlChange(value: String) {
+        fieldsEdited = true
+        _state.value = _state.value.copy(indexUrl = value)
+    }
 
     /** Prefill the metadata index URL from the entered server URL. */
     fun fillIndexUrlFromServer() {
@@ -104,6 +128,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     /** Save server + key, load users, auto-select the saved/first user. */
     fun connect(silent: Boolean = false) {
         val s = _state.value
+        // The screen disables buttons via `busy`, but that state is a frame stale — guard here
+        // so two taps landing in the same frame can't run concurrent operations.
+        if (s.busy) return
         if (s.serverUrl.isBlank() || s.apiKey.isBlank()) {
             _state.value = s.copy(status = app.getString(R.string.enter_server_and_key), statusIsError = true)
             return
@@ -124,11 +151,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 container.settingsCache.store(s.serverUrl.trim(), users)
                 val current = _state.value
                 val selected = users.firstOrNull { it.id == current.selectedUserId } ?: users.firstOrNull()
+                // Auto-selecting a *different* user (server changed, or the saved user is gone)
+                // means the old folder scope belongs to another item tree — reset it to root,
+                // exactly like a manual selectUser(), or the next sync queries the new server
+                // with a nonexistent parent id.
+                val userChanged = selected != null && selected.id != current.selectedUserId
                 _state.value = current.copy(
                     busy = false,
                     users = users,
                     selectedUserId = selected?.id ?: current.selectedUserId,
                     selectedUserName = selected?.name ?: current.selectedUserName,
+                    selectedScopeId = if (userChanged) ROOT_SCOPE_ID else current.selectedScopeId,
+                    selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else current.selectedScopePath,
                     status = if (users.isEmpty()) app.getString(R.string.connected_no_users)
                     else app.getString(
                         R.string.connected_users,
@@ -136,7 +170,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     ),
                     statusIsError = false,
                 )
-                selected?.let { settingsRepo.setUser(it.id, it.name) }
+                selected?.let {
+                    settingsRepo.setUser(it.id, it.name)
+                    if (userChanged) settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_PATH)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -159,14 +196,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             // A different user has a different tree — reset scope and open the
             // folder browser so its collections are ready to pick from.
             selectedScopeId = ROOT_SCOPE_ID,
-            selectedScopePath = ROOT_SCOPE_NAME,
+            selectedScopePath = ROOT_SCOPE_PATH,
             browserOpen = true,
             breadcrumb = emptyList(),
             childFolders = emptyList(),
         )
         viewModelScope.launch {
             settingsRepo.setUser(user.id, user.name)
-            settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_NAME)
+            settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_PATH)
         }
         loadChildren()
     }
@@ -242,6 +279,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     /** Clear all locally cached videos/categories, keeping connection settings. */
     fun resetLocalData() {
+        if (_state.value.busy) return
         viewModelScope.launch {
             _state.value = _state.value.copy(busy = true, status = app.getString(R.string.clearing_local_data), statusIsError = false)
             libraryRepo.clearLocalData()
@@ -255,6 +293,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun syncNow() {
+        if (_state.value.busy) return
         viewModelScope.launch {
             _state.value = _state.value.copy(busy = true, status = app.getString(R.string.syncing), statusIsError = false)
             settingsRepo.setIndexUrl(_state.value.indexUrl)

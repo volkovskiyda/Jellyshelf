@@ -23,9 +23,11 @@ class SyncWorker(
         // No credentials yet is a configuration state, not a transient failure — retrying with
         // backoff would spin forever, since the worker is scheduled before setup completes.
         if (!app.container.settingsRepository.snapshot().isConnected) return Result.success()
-        return when (app.container.libraryRepository.sync()) {
+        return when (val result = app.container.libraryRepository.sync()) {
             is SyncResult.Success -> Result.success()
-            is SyncResult.Error -> Result.retry()
+            // A revoked key or deleted scope can't self-heal either — retrying such a failure
+            // would burn network/battery forever; the next manual sync surfaces the error.
+            is SyncResult.Error -> if (result.retryable) Result.retry() else Result.failure()
         }
     }
 }

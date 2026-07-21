@@ -26,14 +26,18 @@ interface CategoryDao {
      * All categories, with those matching [query] — by name, or by the description of any video
      * they contain — sorted first and the rest after (a soft search that hides nothing). Within
      * each group, ordered by type then name.
+     *
+     * The description match is an uncorrelated IN subquery on purpose: SQLite materializes it
+     * once per statement, so the (potentially large) descriptions are scanned once per
+     * keystroke instead of once per category row, as a correlated EXISTS would.
      */
     @Query(
         "SELECT c.*, (SELECT COUNT(*) FROM video_category vc WHERE vc.categoryId = c.id) AS videoCount " +
             "FROM categories c " +
             "ORDER BY (CASE WHEN c.name LIKE '%' || :query || '%' ESCAPE '\\' " +
-            "OR EXISTS (SELECT 1 FROM video_category vc " +
+            "OR c.id IN (SELECT vc.categoryId FROM video_category vc " +
             "INNER JOIN videos v ON v.youtubeId = vc.youtubeId " +
-            "WHERE vc.categoryId = c.id AND v.description LIKE '%' || :query || '%' ESCAPE '\\') " +
+            "WHERE v.description LIKE '%' || :query || '%' ESCAPE '\\') " +
             "THEN 0 ELSE 1 END), c.type, c.name"
     )
     fun searchWithCounts(query: String): Flow<List<CategoryWithCount>>

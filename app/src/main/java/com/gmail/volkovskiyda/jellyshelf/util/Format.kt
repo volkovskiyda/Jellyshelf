@@ -20,10 +20,19 @@ fun formatDuration(totalSeconds: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
-/** yt-dlp upload_date is "YYYYMMDD"; render as "YYYY-MM-DD". */
+/**
+ * yt-dlp upload_date is "YYYYMMDD"; render as "YYYY-MM-DD". A bare "YYYY" (the Jellyfin
+ * ProductionYear fallback) renders as the year. Anything else is malformed metadata and
+ * renders as nothing, matching the validation contract of [yearOf]/[yearMonthOf] below.
+ */
 fun formatUploadDate(yyyymmdd: String?): String? {
-    if (yyyymmdd == null || yyyymmdd.length != 8) return yyyymmdd
-    return "${yyyymmdd.substring(0, 4)}-${yyyymmdd.substring(4, 6)}-${yyyymmdd.substring(6, 8)}"
+    val d = yyyymmdd ?: return null
+    if (!d.all { it.isDigit() }) return null
+    return when (d.length) {
+        4 -> d
+        8 -> "${d.substring(0, 4)}-${d.substring(4, 6)}-${d.substring(6, 8)}"
+        else -> null
+    }
 }
 
 /**
