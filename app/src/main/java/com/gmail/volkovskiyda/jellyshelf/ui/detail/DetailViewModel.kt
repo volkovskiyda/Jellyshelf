@@ -8,7 +8,7 @@ import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.data.repository.Settings
-import kotlinx.coroutines.CancellationException
+import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -69,26 +69,24 @@ class DetailViewModel(
     /**
      * Fetch/refresh metadata with the bundled yt-dlp. The repository call runs non-cancellable
      * so rotation or popping the screen can't abort a fetch whose result is about to be
-     * persisted; the finally block guarantees the button can never stay stuck on "Fetching…".
+     * persisted; the fetching flag is cleared afterwards so the button can't stay stuck on
+     * "Fetching…".
      */
     fun fetchMetadata() {
         if (_fetching.value) return
         _fetching.value = true
         viewModelScope.launch {
-            try {
+            runCatchingCancellable {
                 val result = withContext(NonCancellable) { repo.fetchMetadata(youtubeId) }
                 _message.value = when (result) {
                     is FetchResult.Success ->
                         getApplication<Application>().getString(R.string.metadata_updated_for, result.title)
                     is FetchResult.Error -> result.message
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 _message.value = e.message ?: e.javaClass.simpleName
-            } finally {
-                _fetching.value = false
             }
+            _fetching.value = false
         }
     }
 }

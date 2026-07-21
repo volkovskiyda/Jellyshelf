@@ -7,7 +7,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.data.repository.SyncResult
-import kotlinx.coroutines.CancellationException
+import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -141,7 +141,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 status = if (silent) s.status else app.getString(R.string.connecting),
                 statusIsError = false,
             )
-            try {
+            runCatchingCancellable {
                 val users = jellyfin.getUsers(s.serverUrl, s.apiKey)
                 // Persist only after the server accepted the credentials, so a typo can never
                 // overwrite a previously working configuration.
@@ -174,9 +174,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     settingsRepo.setUser(it.id, it.name)
                     if (userChanged) settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_PATH)
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 _state.value = _state.value.copy(
                     busy = false,
                     status = app.getString(
@@ -254,14 +252,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         loadChildrenJob?.cancel()
         loadChildrenJob = viewModelScope.launch {
             _state.value = _state.value.copy(loadingFolders = true)
-            try {
+            runCatchingCancellable {
                 val folders = jellyfin
                     .getChildFolders(s.serverUrl, s.apiKey, s.selectedUserId, s.currentParentId)
                     .map { FolderRef(it.id, it.name ?: it.id, it.path) }
                 _state.value = _state.value.copy(childFolders = folders, loadingFolders = false)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 _state.value = _state.value.copy(
                     childFolders = emptyList(),
                     loadingFolders = false,

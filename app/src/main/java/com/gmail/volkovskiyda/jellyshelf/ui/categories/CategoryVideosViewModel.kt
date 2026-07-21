@@ -8,7 +8,7 @@ import com.gmail.volkovskiyda.jellyshelf.container
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.repository.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.data.repository.PlaylistResult
-import kotlinx.coroutines.CancellationException
+import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,14 +44,14 @@ class CategoryVideosViewModel(
 
     /**
      * Creates the playlist. The repository call runs non-cancellable so neither rotation nor
-     * popping the screen aborts it mid-flight; the finally block guarantees the dialog's
-     * creating flag can never get stuck if something outside the repository's own try throws.
+     * popping the screen aborts it mid-flight; the creating flag is cleared afterwards so the
+     * dialog can never get stuck if something outside the repository's own handling throws.
      */
     fun createPlaylist(name: String) {
         if (_creatingPlaylist.value) return
         _creatingPlaylist.value = true
         viewModelScope.launch {
-            try {
+            runCatchingCancellable {
                 val result = withContext(NonCancellable) {
                     repo.createPlaylistFromCategory(categoryId, name)
                 }
@@ -64,13 +64,10 @@ class CategoryVideosViewModel(
                     )
                     is PlaylistResult.Error -> result.message
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 _message.value = e.message ?: e.javaClass.simpleName
-            } finally {
-                _creatingPlaylist.value = false
             }
+            _creatingPlaylist.value = false
         }
     }
 

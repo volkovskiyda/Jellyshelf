@@ -86,9 +86,7 @@ object Playback {
     }
 
     private fun launch(context: Context, intent: Intent) {
-        try {
-            context.startActivity(intent)
-        } catch (e: Exception) {
+        runCatching { context.startActivity(intent) }.onFailure {
             Toast.makeText(context, context.getString(R.string.no_app_found), Toast.LENGTH_SHORT).show()
         }
     }

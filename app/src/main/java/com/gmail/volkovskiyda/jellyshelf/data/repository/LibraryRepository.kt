@@ -25,13 +25,13 @@ import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
+import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
 import android.util.Log
 import java.time.Instant
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +71,7 @@ sealed interface SyncResult {
 
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
  *  explicitly transient 408 (timeout) and 429 (throttling). */
-private fun isPermanentFailure(e: Exception): Boolean {
+private fun isPermanentFailure(e: Throwable): Boolean {
     val code = (e as? HttpException)?.code() ?: return false
     return code in 400..499 && code != 408 && code != 429
 }
@@ -200,11 +200,9 @@ class LibraryRepository(
         }
 
         val fetchStartedAt = System.currentTimeMillis()
-        val items = try {
+        val items = runCatchingCancellable {
             jellyfin.fetchAllItems(s.serverUrl, s.apiKey, s.userId, s.libraryId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
+        }.getOrElse { e ->
             return SyncResult.Error("Failed to load library: ${e.message}", retryable = !isPermanentFailure(e))
         }
 
@@ -213,13 +211,9 @@ class LibraryRepository(
         // instead of degrading those rows to bare Jellyfin fields.
         var indexAvailable = false
         val index: Map<String, IndexEntry> = if (s.indexUrl.isNotBlank()) {
-            try {
+            runCatchingCancellable {
                 jellyfin.fetchIndex(s.indexUrl).associateBy { it.id }.also { indexAvailable = true }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                emptyMap()
-            }
+            }.getOrDefault(emptyMap())
         } else {
             emptyMap()
         }
@@ -310,11 +304,7 @@ class LibraryRepository(
      */
     suspend fun fetchMetadata(youtubeId: String): FetchResult {
         val existing = videoDao.get(youtubeId) ?: return FetchResult.Error("Video not found locally.")
-        val entry = try {
-            ytDlp.fetch(youtubeId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
+        val entry = runCatchingCancellable { ytDlp.fetch(youtubeId) }.getOrElse { e ->
             return FetchResult.Error(e.message ?: "yt-dlp failed to fetch metadata.")
         }
         applyFetched(youtubeId, entry)
@@ -377,13 +367,9 @@ class LibraryRepository(
             targets.forEachIndexed { i, video ->
                 // A failure applying the result counts as failed too, so an unexpected exception
                 // can't kill the process or strand the Running state.
-                val ok = try {
+                val ok = runCatchingCancellable {
                     applyFetched(video.youtubeId, ytDlp.fetch(video.youtubeId))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    false
-                }
+                }.getOrDefault(false)
                 if (!ok) failed++
                 // cancelFetchMissing resets to Idle without waiting for this job; a cancelled
                 // run must not write a stale Running over that.
@@ -433,7 +419,7 @@ class LibraryRepository(
             localWatchWrites[youtubeId] = System.currentTimeMillis()
         }
         val s = settings.snapshot()
-        return try {
+        return runCatchingCancellable {
             playstateMutex.withLock {
                 // Re-read at send time: if another toggle landed while this one waited for the
                 // lock, send the newer state — the server then converges on the latest local
@@ -445,11 +431,7 @@ class LibraryRepository(
                 }
             }
             true
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            false
-        }
+        }.getOrDefault(false)
     }
 
     /**
@@ -485,7 +467,9 @@ class LibraryRepository(
         val s = settings.snapshot()
         val itemId = video.jellyfinItemId
         if (s.isConnected && itemId != null) {
-            try {
+            // Best-effort: the local resume position is already saved, so a failed server
+            // write is swallowed.
+            runCatchingCancellable {
                 playstateMutex.withLock {
                     // Re-read at send time (see setPlayed): a toggle that landed while this
                     // report waited for the lock must not be overwritten with older state.
@@ -500,10 +484,6 @@ class LibraryRepository(
                         lastPlayedDate = Instant.now().toString(),
                     )
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Best-effort: the local resume position is already saved.
             }
         }
     }
@@ -522,10 +502,10 @@ class LibraryRepository(
         val itemIds = videosForCategory(categoryId).mapNotNull { it.jellyfinItemId }
         if (itemIds.isEmpty()) return PlaylistResult.Error("No playable videos in this category.")
 
-        return try {
+        return runCatchingCancellable {
             jellyfin.createPlaylist(s.serverUrl, s.apiKey, s.userId, playlistName, itemIds)
             PlaylistResult.Success(playlistName, itemIds.size)
-        } catch (e: Exception) {
+        }.getOrElse { e ->
             PlaylistResult.Error("Failed to create playlist: ${e.message}")
         }
     }
