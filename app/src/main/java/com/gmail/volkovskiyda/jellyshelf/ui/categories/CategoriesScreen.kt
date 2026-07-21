@@ -20,7 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -181,7 +181,7 @@ private fun TabbedCategories(
             }
     }
 
-    ScrollableTabRow(selectedTabIndex = selected, edgePadding = 8.dp) {
+    PrimaryScrollableTabRow(selectedTabIndex = selected, edgePadding = 8.dp) {
         tabs.forEachIndexed { index, tab ->
             Tab(
                 selected = selected == index,
