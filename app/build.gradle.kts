@@ -24,6 +24,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Install debug and release side by side, and change the launcher icon
+            // (debug overrides ic_launcher_foreground in src/debug/res with a "d" badge).
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             // R8 shrinking/obfuscation. Library consumer rules (Moshi codegen, Retrofit, Room,
             // kotlinx-serialization) come in automatically; app-specific rules live in
