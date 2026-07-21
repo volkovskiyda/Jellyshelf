@@ -20,7 +20,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
@@ -79,4 +81,18 @@ class AppContainer(context: Context) {
 
     val libraryRepository =
         LibraryRepository(database, jellyfinRepository, settingsRepository, ytDlpMetadataSource)
+
+    init {
+        // Restore the last-viewed Categories dimension so reopening the app lands on it rather
+        // than the first tab. Async, best-effort: don't overwrite a selection the user already
+        // made this session before the read landed, and flip selectionLoaded either way so the
+        // UI stops deferring pager tracking.
+        appScope.launch {
+            val persisted = settingsRepository.selectedCategoryType.first()
+            if (persisted != null && categoriesFilterState.selectedType.value == null) {
+                categoriesFilterState.selectedType.value = persisted
+            }
+            categoriesFilterState.selectionLoaded.value = true
+        }
+    }
 }

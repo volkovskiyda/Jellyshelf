@@ -40,6 +40,7 @@ class SettingsRepository(context: Context) {
         val LIBRARY_NAME = stringPreferencesKey("library_name")
         val INDEX_URL = stringPreferencesKey("index_url")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
+        val SELECTED_CATEGORY_TYPE = stringPreferencesKey("selected_category_type")
     }
 
     val settings: Flow<Settings> = ds.data
@@ -89,5 +90,18 @@ class SettingsRepository(context: Context) {
 
     suspend fun setLastSyncAt(timestamp: Long) {
         ds.edit { it[Keys.LAST_SYNC_AT] = timestamp }
+    }
+
+    /**
+     * The Categories dimension (tab) the user last settled on, or null if never set. A UI
+     * preference kept out of [Settings] since it has nothing to do with the server connection.
+     * Null on a disk read failure degrades to "no restore", matching [settings].
+     */
+    val selectedCategoryType: Flow<String?> = ds.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[Keys.SELECTED_CATEGORY_TYPE] }
+
+    suspend fun setSelectedCategoryType(type: String) {
+        ds.edit { it[Keys.SELECTED_CATEGORY_TYPE] = type }
     }
 }

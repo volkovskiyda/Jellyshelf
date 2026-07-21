@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CategoriesViewModel(application: Application) : AndroidViewModel(application) {
@@ -28,6 +29,9 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
 
     /** The dimension tab the user last settled on; survives bottom-nav tab switches. */
     val selectedType: StateFlow<String?> = filters.selectedType.asStateFlow()
+
+    /** False until the persisted selection has been read from disk on launch (see filter state). */
+    val selectionLoaded: StateFlow<Boolean> = filters.selectionLoaded.asStateFlow()
 
     /**
      * Null while the very first Room emission is pending, so the UI can tell loading from
@@ -55,6 +59,10 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun onSelectedTypeChange(value: String) {
+        if (filters.selectedType.value == value) return
         filters.selectedType.value = value
+        // Persist so the tab is restored on next launch. Fire-and-forget: a failed write just
+        // means the app reopens on the previous saved (or default) dimension.
+        viewModelScope.launch { container.settingsRepository.setSelectedCategoryType(value) }
     }
 }

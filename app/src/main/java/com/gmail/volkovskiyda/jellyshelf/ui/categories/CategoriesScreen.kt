@@ -65,6 +65,7 @@ fun CategoriesScreen(
     val query by viewModel.query.collectAsStateWithLifecycle()
     val searchAll by viewModel.searchAll.collectAsStateWithLifecycle()
     val selectedType by viewModel.selectedType.collectAsStateWithLifecycle()
+    val selectionLoaded by viewModel.selectionLoaded.collectAsStateWithLifecycle()
     val categories = categoriesOrNull.orEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -125,6 +126,7 @@ fun CategoriesScreen(
             TabbedCategories(
                 tabs = tabs,
                 selectedType = selectedType,
+                selectionLoaded = selectionLoaded,
                 onSelectedTypeChange = viewModel::onSelectedTypeChange,
                 persistScroll = !searching,
                 onCategoryClick = onCategoryClick,
@@ -152,6 +154,7 @@ private fun SearchAllToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit
 private fun TabbedCategories(
     tabs: List<CategoryTab>,
     selectedType: String?,
+    selectionLoaded: Boolean,
     onSelectedTypeChange: (String) -> Unit,
     persistScroll: Boolean,
     onCategoryClick: (categoryId: String, title: String) -> Unit,
@@ -166,8 +169,11 @@ private fun TabbedCategories(
     // follows the previously selected dimension to its new position, then resumes tracking
     // the settled page. Restore-before-track ordering keeps the tracker from recording the
     // shifted page a set change momentarily leaves under the old index. The selection itself
-    // is container-owned (survives bottom-nav tab switches, which clear saveable state).
-    LaunchedEffect(tabs) {
+    // is container-owned (survives bottom-nav tab switches, which clear saveable state) and
+    // seeded from disk on launch (survives process restart) — so wait for selectionLoaded to
+    // apply the restored dimension before tracking, rather than committing the initial page 0.
+    LaunchedEffect(tabs, selectionLoaded) {
+        if (!selectionLoaded) return@LaunchedEffect
         val target = selectedType?.let { type -> tabs.indexOfFirst { it.type == type } } ?: -1
         if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
         // When the selected dimension has no tab in this set (a search filtered it out), the
