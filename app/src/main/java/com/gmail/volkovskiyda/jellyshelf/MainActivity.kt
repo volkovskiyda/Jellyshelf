@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -74,6 +75,15 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     LaunchedEffect(Unit) {
         snapshotFlow { backStack.filterIsInstance<AppNavKey>() }
             .collect { viewModel.saveBackStack(it) }
+    }
+
+    // Nav3 has no NavController.currentBackStack flow, but the back stack is a snapshot state
+    // list, so snapshotFlow emits on every mutation — forward navigation, back, and tab switch.
+    LaunchedEffect(Unit) {
+        snapshotFlow { backStack.toList() }
+            .collect { stack ->
+                Log.d("Navigation", "backStack (${stack.size}): ${stack.joinToString(" -> ")}")
+            }
     }
 
     val topLevel = listOf(
