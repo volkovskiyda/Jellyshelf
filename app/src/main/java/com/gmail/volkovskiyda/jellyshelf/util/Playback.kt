@@ -2,9 +2,9 @@ package com.gmail.volkovskiyda.jellyshelf.util
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import android.widget.Toast
+import androidx.core.net.toUri
 import com.gmail.volkovskiyda.jellyshelf.R
 
 object Playback {
@@ -42,7 +42,7 @@ object Playback {
         title: String?,
         resumeMs: Long,
     ): Intent {
-        val uri = Uri.parse(streamUrl(serverUrl, itemId, apiKey))
+        val uri = streamUrl(serverUrl, itemId, apiKey).toUri()
         val view = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "video/*")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -116,7 +116,7 @@ object Playback {
     }
 
     fun openInJellyfin(context: Context, serverUrl: String, itemId: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(detailsDeepLink(serverUrl, itemId)))
+        val intent = Intent(Intent.ACTION_VIEW, detailsDeepLink(serverUrl, itemId).toUri())
         launch(context, intent)
     }
 

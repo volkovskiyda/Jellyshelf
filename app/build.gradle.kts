@@ -19,6 +19,7 @@ android {
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers
         // virtually all modern physical devices and keeps the APK from ballooning across ABIs.
         ndk {
+            //noinspection ChromeOsAbiSupport -- arm64 only by design; x86_64 would bundle a second Python runtime.
             abiFilters += "arm64-v8a"
         }
     }

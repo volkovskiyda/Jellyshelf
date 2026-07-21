@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -63,7 +64,8 @@ fun LibraryScreen(
                     // shown list is the filtered set (duration is a hard filter; search only
                     // reorders), so its size is the numerator.
                     val label = if (durationFilter == null) "$totalCount" else "${videos.size}/$totalCount"
-                    val shownDescription = stringResource(R.string.shown_of_total, videos.size, totalCount)
+                    val shownDescription =
+                        pluralStringResource(R.plurals.shown_of_total, totalCount, videos.size, totalCount)
                     Text(
                         label,
                         style = MaterialTheme.typography.labelLarge,

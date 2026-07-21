@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Jellyshelf</string>
 
     <!-- Navigation -->
@@ -20,7 +20,10 @@
     <string name="search_title_or_channel">Search title or channel</string>
     <string name="filter_by_duration">Filter by duration</string>
     <string name="any_duration">Any duration</string>
-    <string name="shown_of_total">%1$d of %2$d videos shown</string>
+    <plurals name="shown_of_total">
+        <item quantity="one">%1$d of %2$d video shown</item>
+        <item quantity="other">%1$d of %2$d videos shown</item>
+    </plurals>
     <string name="empty_library">No videos yet. Connect to Jellyfin in Settings and run a sync.</string>
     <string name="empty_duration_filter">No videos with a %1$s duration.</string>
 
@@ -53,10 +56,11 @@
     <string name="playlist_created">Created \"%1$s\" with %2$s</string>
     <string name="empty_uncategorized">No uncategorized videos — everything has metadata.</string>
     <string name="empty_category">No videos in this category.</string>
-    <string name="fetch_missing">Fetch metadata for %1$d missing</string>
+    <!-- "missing"/"failed" are elliptical adjectives (missing/failed videos); invariant in English. -->
+    <string name="fetch_missing" tools:ignore="PluralsCandidate">Fetch metadata for %1$d missing</string>
     <string name="fetching_progress">Fetching metadata… %1$d/%2$d</string>
     <string name="fetched_summary">Fetched %1$d/%2$d</string>
-    <string name="failed_count">%1$d failed</string>
+    <string name="failed_count" tools:ignore="PluralsCandidate">%1$d failed</string>
 
     <!-- Detail -->
     <string name="video_fallback_title">Video</string>
@@ -114,6 +118,7 @@
     <string name="clearing_local_data">Clearing local data…</string>
     <string name="local_data_cleared">Local data cleared. Sync now to rebuild.</string>
     <string name="syncing">Syncing…</string>
-    <string name="sync_summary">Synced %1$d/%2$d videos with metadata into %3$d categories</string>
+    <!-- Three independent counts; a single plurals resource can only agree with one quantity. -->
+    <string name="sync_summary" tools:ignore="PluralsCandidate">Synced %1$d/%2$d videos with metadata into %3$d categories</string>
     <string name="watch_state_sync_failed">Saved locally, but updating Jellyfin failed — the next sync may revert it</string>
 </resources>
