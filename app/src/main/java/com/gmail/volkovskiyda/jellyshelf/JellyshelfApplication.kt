@@ -3,6 +3,8 @@ package com.gmail.volkovskiyda.jellyshelf
 import android.app.Application
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
+import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.context.startKoin
@@ -12,12 +14,6 @@ class JellyshelfApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Log only in debug builds. Release plants no tree, so every Timber call is a no-op at
-        // runtime — and R8's -assumenosideeffects rules (src/main/keepRules) strip the calls from
-        // release bytecode entirely.
-        if (BuildConfig.DEBUG) {
-            Timber.plant(Timber.DebugTree())
-        }
         startKoin {
             androidContext(this@JellyshelfApplication)
             // Register the Koin worker factory so workers declared with workerOf(...) get
@@ -25,6 +21,13 @@ class JellyshelfApplication : Application() {
             // manifest so this is the sole initialization path (see AndroidManifest.xml).
             workManagerFactory()
             modules(appModule)
+        }
+        // Plant the debug tree after Koin starts so the flag comes from the injected BuildInfo (the
+        // single source of truth). Release plants no tree, so every Timber call is a no-op at
+        // runtime — and R8's -assumenosideeffects rules (src/main/keepRules) strip the calls from
+        // release bytecode entirely.
+        if (get<BuildInfo>().isDebug) {
+            Timber.plant(Timber.DebugTree())
         }
         SyncScheduler.schedulePeriodic(this)
     }
