@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -140,16 +141,18 @@ class LibraryRepository(
     fun observeVideos(): Flow<List<VideoEntity>> = videoDao.observeAll()
 
     /**
-     * Videos filtered to [bucket] (all durations when null), with those matching [query] listed
-     * first and the rest after it — a soft search, so nothing is hidden. Each group stays sorted
-     * by file name.
+     * Videos filtered to [bucket] (all durations when null) and, for a non-blank [query], narrowed
+     * to relevance matches sorted most-relevant first (see [SearchRanking]). A blank query just
+     * returns the duration-filtered list by file name.
      */
-    fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<VideoEntity>> =
-        videoDao.search(
-            escapeLikePattern(query),
-            bucket?.minSeconds ?: 0L,
-            bucket?.maxSeconds ?: Long.MAX_VALUE,
-        )
+    fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<VideoEntity>> {
+        val source = if (bucket == null) {
+            videoDao.observeAll()
+        } else {
+            videoDao.observeByDurationRange(bucket.minSeconds, bucket.maxSeconds)
+        }
+        return source.map { SearchRanking.rankVideos(query, it) }
+    }
 
     /** Videos in [categoryId], routing the "Others" virtual filters to live queries. */
     fun observeVideosByCategory(categoryId: String): Flow<List<VideoEntity>> = when (categoryId) {
@@ -164,6 +167,7 @@ class LibraryRepository(
     fun observeCategories(): Flow<List<CategoryWithCount>> = categoryDao.observeWithCounts()
     fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
         categoryDao.searchWithCounts(escapeLikePattern(query))
+            .map { SearchRanking.rankCategories(query, it) }
 
     /**
      * The "Others" tab's virtual filters with live counts: Uncategorized (no yt-dlp/index metadata),

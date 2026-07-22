@@ -23,24 +23,25 @@ interface CategoryDao {
     fun observeWithCounts(): Flow<List<CategoryWithCount>>
 
     /**
-     * All categories, with those matching [query] — by name, or by the description of any video
-     * they contain — sorted first and the rest after (a soft search that hides nothing). Within
-     * each group, ordered by type then name.
+     * All categories, each with its member count and a [RankedCategory.descriptionMatch] flag —
+     * true when any member video's description contains [query]. Relevance ranking and the hard
+     * filter (dropping non-matches) are applied in Kotlin on this result (see
+     * [com.gmail.volkovskiyda.jellyshelf.data.repository.SearchRanking]); the base order here is
+     * just type then name for a stable tie-break.
      *
      * The description match is an uncorrelated IN subquery on purpose: SQLite materializes it
      * once per statement, so the (potentially large) descriptions are scanned once per
      * keystroke instead of once per category row, as a correlated EXISTS would.
      */
     @Query(
-        "SELECT c.*, (SELECT COUNT(*) FROM video_category vc WHERE vc.categoryId = c.id) AS videoCount " +
-            "FROM categories c " +
-            "ORDER BY (CASE WHEN c.name LIKE '%' || :query || '%' ESCAPE '\\' " +
-            "OR c.id IN (SELECT vc.categoryId FROM video_category vc " +
+        "SELECT c.*, " +
+            "(SELECT COUNT(*) FROM video_category vc WHERE vc.categoryId = c.id) AS videoCount, " +
+            "(c.id IN (SELECT vc.categoryId FROM video_category vc " +
             "INNER JOIN videos v ON v.youtubeId = vc.youtubeId " +
-            "WHERE v.description LIKE '%' || :query || '%' ESCAPE '\\') " +
-            "THEN 0 ELSE 1 END), c.type, c.name"
+            "WHERE v.description LIKE '%' || :query || '%' ESCAPE '\\')) AS descriptionMatch " +
+            "FROM categories c ORDER BY c.type, c.name"
     )
-    fun searchWithCounts(query: String): Flow<List<CategoryWithCount>>
+    fun searchWithCounts(query: String): Flow<List<RankedCategory>>
 
     @Query("DELETE FROM categories WHERE id = :categoryId")
     suspend fun deleteCategory(categoryId: String)

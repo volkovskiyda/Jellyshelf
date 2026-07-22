@@ -60,19 +60,17 @@ interface VideoDao {
     fun countContinueWatching(): Flow<Int>
 
     /**
-     * Videos whose duration is in [[minSeconds], [maxSeconds]) — a hard filter — with those whose
-     * title or channel match [query] sorted first and the rest after. A blank [query] leaves every
-     * row in the first group, so the result is simply the duration-filtered list by file name.
+     * Videos whose duration is in [[minSeconds], [maxSeconds]) — a hard filter — ordered by file
+     * name. Relevance ranking against the search query is applied in Kotlin on the result (see
+     * [com.gmail.volkovskiyda.jellyshelf.data.repository.SearchRanking]), so the query itself lives
+     * outside SQL.
      */
     @Query(
         "SELECT * FROM videos " +
             "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
-            "ORDER BY (CASE WHEN :query = '' " +
-            "OR title LIKE '%' || :query || '%' ESCAPE '\\' " +
-            "OR channel LIKE '%' || :query || '%' ESCAPE '\\' " +
-            "THEN 0 ELSE 1 END), fileName"
+            "ORDER BY fileName"
     )
-    fun search(query: String, minSeconds: Long, maxSeconds: Long): Flow<List<VideoEntity>>
+    fun observeByDurationRange(minSeconds: Long, maxSeconds: Long): Flow<List<VideoEntity>>
 
     @Query(
         "SELECT v.* FROM videos v " +

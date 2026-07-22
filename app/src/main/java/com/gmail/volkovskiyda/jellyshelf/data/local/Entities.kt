@@ -81,3 +81,15 @@ data class CategoryWithCount(
     @Embedded val category: CategoryEntity,
     val videoCount: Int,
 )
+
+/**
+ * A category row with its member count and whether any member video's description matches the
+ * current search query — the raw material for [com.gmail.volkovskiyda.jellyshelf.data.repository.SearchRanking].
+ * The name is scored in Kotlin (which needs the whole tier ladder), but a member-description hit
+ * can only ever be a "contains", so it is precomputed once in SQL as this boolean.
+ */
+data class RankedCategory(
+    @Embedded val category: CategoryEntity,
+    val videoCount: Int,
+    val descriptionMatch: Boolean,
+)

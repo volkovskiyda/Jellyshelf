@@ -17,7 +17,8 @@
     </plurals>
 
     <!-- Library -->
-    <string name="search_title_or_channel">Search title or channel</string>
+    <string name="search">Search</string>
+    <string name="clear_search">Clear search</string>
     <string name="filter_by_duration">Filter by duration</string>
     <string name="any_duration">Any duration</string>
     <plurals name="shown_of_total">

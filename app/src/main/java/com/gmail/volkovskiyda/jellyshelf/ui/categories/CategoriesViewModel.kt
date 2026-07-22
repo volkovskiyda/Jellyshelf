@@ -10,9 +10,18 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+/**
+ * A categories emission tagged with whether it is the pristine list — no query. The flag rides
+ * along with the list so the UI can't mistake the lingering results of a search it just cleared
+ * (the query blanks a frame before the unfiltered list re-emits) for the pristine list, which
+ * would restore each tab's saved scroll position against the wrong contents.
+ */
+data class CategoryList(val items: List<CategoryWithCount>, val pristine: Boolean)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CategoriesViewModel(application: Application) : AndroidViewModel(application) {
@@ -38,12 +47,18 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
      * empty. Seeded from the container-held last emission on recreation (tab switch), so a
      * revisit shows the previous list immediately instead of a loading flash.
      */
-    val categories: StateFlow<List<CategoryWithCount>?> = _query
+    val categories: StateFlow<CategoryList?> = _query
         .flatMapLatest { q ->
-            if (q.isBlank()) repo.observeCategories() else repo.searchCategories(q)
+            val pristine = q.isBlank()
+            (if (pristine) repo.observeCategories() else repo.searchCategories(q))
+                .map { CategoryList(it, pristine) }
         }
-        .onEach { filters.lastCategories = it }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), filters.lastCategories)
+        .onEach { filters.lastCategories = it.items }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            filters.lastCategories?.let { CategoryList(it, _query.value.isBlank()) },
+        )
 
     /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
     val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()

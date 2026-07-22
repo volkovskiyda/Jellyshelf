@@ -13,11 +13,13 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryScrollableTabRow
@@ -27,8 +29,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +71,10 @@ fun CategoriesScreen(
     val searchAll by viewModel.searchAll.collectAsStateWithLifecycle()
     val selectedType by viewModel.selectedType.collectAsStateWithLifecycle()
     val selectionLoaded by viewModel.selectionLoaded.collectAsStateWithLifecycle()
-    val categories = categoriesOrNull.orEmpty()
+    val categories = categoriesOrNull?.items.orEmpty()
+    // Tagged on the emission, not derived from [query]: the query blanks a frame before the
+    // unfiltered list re-emits, so a tab's scroll must stay transient until the real list is back.
+    val listPristine = categoriesOrNull?.pristine == true
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(title = { Text(stringResource(R.string.tab_categories)) })
@@ -78,6 +86,13 @@ fun CategoriesScreen(
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             singleLine = true,
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.onQueryChange("") }) {
+                        Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear_search))
+                    }
+                }
+            },
             placeholder = { Text(stringResource(R.string.search_categories)) },
         )
 
@@ -106,9 +121,23 @@ fun CategoriesScreen(
             if (categories.isEmpty()) {
                 EmptyState(stringResource(R.string.no_categories_match, query))
             } else {
-                // Cross-dimension search: one flat, matches-first list (see searchWithCounts), each
-                // row tagged with its kind since there are no tabs to convey it.
-                LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize()) {
+                // Cross-dimension search: one flat, most-relevant-first list (see searchWithCounts),
+                // each row tagged with its kind since there are no tabs to convey it. Jump to the
+                // top on every keystroke so the best matches are in view.
+                val listState = rememberLazyListState()
+                // Reset to the top on a new keystroke, not when returning from a category. Fire on
+                // the new list (rows are keyed by id, so the list keeps the anchored row in view on
+                // a content change; scrolling on the query a frame earlier gets undone by that key
+                // preservation when removing a character broadens the results). The saveable query
+                // guard skips the reset on a plain back-navigation, keeping the scrolled position.
+                var lastQuery by rememberSaveable { mutableStateOf(query) }
+                LaunchedEffect(categories) {
+                    if (query != lastQuery) {
+                        lastQuery = query
+                        listState.scrollToItem(0)
+                    }
+                }
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     items(categories, key = { it.category.id }) { item ->
                         CategoryRow(item = item, showType = true, onClick = onCategoryClick)
                         HorizontalDivider()
@@ -128,7 +157,8 @@ fun CategoriesScreen(
                 selectedType = selectedType,
                 selectionLoaded = selectionLoaded,
                 onSelectedTypeChange = viewModel::onSelectedTypeChange,
-                persistScroll = !searching,
+                persistScroll = listPristine,
+                searchKey = query,
                 onCategoryClick = onCategoryClick,
             )
         }
@@ -157,6 +187,7 @@ private fun TabbedCategories(
     selectionLoaded: Boolean,
     onSelectedTypeChange: (String) -> Unit,
     persistScroll: Boolean,
+    searchKey: String,
     onCategoryClick: (categoryId: String, title: String) -> Unit,
 ) {
     if (tabs.isEmpty()) return
@@ -204,10 +235,27 @@ private fun TabbedCategories(
         key = { tabs[it].type },
     ) { page ->
         val tab = tabs[page]
+        // Browsing persists (and restores) each dimension's scroll position. While searching the
+        // per-tab lists are transient result sets: they start at the top and jump back on every
+        // keystroke, so the best matches for the new query are in view.
         val listState = if (persistScroll) {
             rememberPersistedLazyListState("categories.${tab.type}")
         } else {
             rememberLazyListState()
+        }
+        if (!persistScroll) {
+            // Reset to the top on a new query, not when re-entering composition after visiting a
+            // category and pressing back. Fire on the new list (rows are keyed by id, so the list
+            // keeps the anchored row in view on a content change; scrolling on the query a frame
+            // earlier gets undone by that key preservation when removing a character broadens the
+            // results). The saveable guard skips the reset on a plain back-navigation.
+            var lastSearchKey by rememberSaveable { mutableStateOf(searchKey) }
+            LaunchedEffect(tab.items) {
+                if (searchKey != lastSearchKey) {
+                    lastSearchKey = searchKey
+                    listState.scrollToItem(0)
+                }
+            }
         }
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             items(tab.items, key = { it.category.id }) { item ->
