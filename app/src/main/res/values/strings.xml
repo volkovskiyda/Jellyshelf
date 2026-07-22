@@ -31,15 +31,17 @@
     <!-- Categories -->
     <string name="search_categories">Search categories</string>
     <string name="search_all_categories">Search all categories</string>
-    <string name="no_categories_match">No categories match \"%1$s\".</string>
+    <string name="no_categories_match">No categories match “%1$s”.</string>
     <string name="empty_categories">No categories yet. Sync to auto-group videos by channel, year, duration and more.</string>
     <string name="dim_channels">Channels</string>
     <string name="dim_youtube_categories">YouTube categories</string>
     <string name="dim_years">Years</string>
     <string name="dim_months">Months</string>
     <string name="dim_durations">Durations</string>
-    <string name="dim_manual">Manual</string>
-    <string name="dim_others">Others</string>
+    <!-- dim_*/type_* are distinct label families (cf. "Channels" vs "Channel"); Manual/Others
+         merely coincide in English. -->
+    <string name="dim_manual" tools:ignore="DuplicateStrings">Manual</string>
+    <string name="dim_others" tools:ignore="DuplicateStrings">Others</string>
     <string name="type_channel">Channel</string>
     <string name="type_youtube_category">YouTube category</string>
     <string name="type_year">Year</string>
@@ -54,7 +56,7 @@
     <string name="create">Create</string>
     <string name="creating">Creating…</string>
     <string name="playlist_dialog_summary">%1$s, ordered by file name.</string>
-    <string name="playlist_created">Created \"%1$s\" with %2$s</string>
+    <string name="playlist_created">Created “%1$s” with %2$s</string>
     <string name="empty_uncategorized">No uncategorized videos — everything has metadata.</string>
     <string name="empty_category">No videos in this category.</string>
     <!-- "missing"/"failed" are elliptical adjectives (missing/failed videos); invariant in English. -->
