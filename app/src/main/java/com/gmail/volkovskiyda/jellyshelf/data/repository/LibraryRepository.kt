@@ -57,7 +57,7 @@ import timber.log.Timber
 
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
  *  explicitly transient 408 (timeout) and 429 (throttling). */
-private fun isPermanentFailure(e: Throwable): Boolean {
+internal fun isPermanentFailure(e: Throwable): Boolean {
     val code = (e as? HttpException)?.code() ?: return false
     return code in 400..499 && code != 408 && code != 429
 }
@@ -332,6 +332,9 @@ class DefaultLibraryRepository(
      * Fetch metadata for every uncategorized (Jellyfin-only) video, one at a time, publishing
      * progress via [bulkFetch]. No-op if already running.
      */
+    // Both Job.isActive (the member, guarding here) and the imported CoroutineScope.isActive
+    // extension (the cancellation check inside launch) are intended resolutions.
+    @Suppress("MemberExtensionConflict")
     override fun startFetchMissing() {
         if (bulkJob?.isActive == true) return
         bulkJob = repoScope.launch {

@@ -66,7 +66,7 @@ class YtDlpMetadataSource(
  * Map yt-dlp's [VideoInfo] onto [IndexEntry], mirroring the field choices of build-library-index.sh
  * (channel falls back to uploader, ids likewise) so in-app and script metadata are interchangeable.
  */
-private fun VideoInfo.toIndexEntry(youtubeId: String) = IndexEntry(
+internal fun VideoInfo.toIndexEntry(youtubeId: String) = IndexEntry(
     id = id ?: youtubeId,
     title = title,
     channel = uploader,

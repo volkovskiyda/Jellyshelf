@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
-private val Context.scrollDataStore by preferencesDataStore(name = "scroll_positions")
+internal val Context.scrollDataStore by preferencesDataStore(name = "scroll_positions")
 
 /**
  * Remembers per-screen list scroll positions (firstVisibleItemIndex + offset).

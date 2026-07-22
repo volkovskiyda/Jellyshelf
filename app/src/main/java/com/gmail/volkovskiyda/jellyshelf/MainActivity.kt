@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun JellyshelfApp(viewModel: MainViewModel = koinViewModel()) {
+internal fun JellyshelfApp(viewModel: MainViewModel = koinViewModel()) {
     val startStack by viewModel.startStack.collectAsStateWithLifecycle()
 
     // Render nothing until the start stack is resolved, so Library never flashes first.
