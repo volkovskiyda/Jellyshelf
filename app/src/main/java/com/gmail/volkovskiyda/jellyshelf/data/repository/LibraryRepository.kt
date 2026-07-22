@@ -1,28 +1,36 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_DURATION
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YEAR
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YT_CATEGORY
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_OTHERS
+import androidx.room.withTransaction
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
-import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
-import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_JELLYFIN
-import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
-import com.gmail.volkovskiyda.jellyshelf.data.local.VIRTUAL_CATEGORY_CONTINUE
-import com.gmail.volkovskiyda.jellyshelf.data.local.VIRTUAL_CATEGORY_UNCATEGORIZED
-import com.gmail.volkovskiyda.jellyshelf.data.local.VIRTUAL_CATEGORY_UNWATCHED
-import com.gmail.volkovskiyda.jellyshelf.data.local.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoCategoryCrossRef
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
+import com.gmail.volkovskiyda.jellyshelf.data.mapper.toDomain
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
-import androidx.room.withTransaction
-import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
-import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_MONTH
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATEGORY
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_MANUAL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
+import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_CONTINUE
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNWATCHED
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
@@ -50,27 +58,6 @@ import kotlinx.coroutines.sync.withLock
 import retrofit2.HttpException
 import timber.log.Timber
 
-sealed interface SyncResult {
-    /**
-     * @param itemCount total Jellyfin items scanned.
-     * @param matched videos with a parseable YouTube id (the library total).
-     * @param indexed videos that also had a jellyshelf-index.json / yt-dlp metadata match.
-     * @param categories distinct auto-categories produced.
-     */
-    data class Success(
-        val itemCount: Int,
-        val matched: Int,
-        val indexed: Int,
-        val categories: Int,
-    ) : SyncResult
-
-    /**
-     * [retryable] separates transient failures (network, 5xx) from configuration ones (revoked
-     * key, missing scope) that can't self-heal — the periodic worker must not retry the latter.
-     */
-    data class Error(val message: String, val retryable: Boolean = true) : SyncResult
-}
-
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
  *  explicitly transient 408 (timeout) and 429 (throttling). */
 private fun isPermanentFailure(e: Throwable): Boolean {
@@ -78,30 +65,16 @@ private fun isPermanentFailure(e: Throwable): Boolean {
     return code in 400..499 && code != 408 && code != 429
 }
 
-sealed interface PlaylistResult {
-    data class Success(val name: String, val count: Int) : PlaylistResult
-    data class Error(val message: String) : PlaylistResult
-}
+/** Shared logcat tag for the external-player / playstate flow: `adb logcat -s Playback`. Kept in
+ *  the data layer so it doesn't depend on the Android-heavy `util.Playback`. */
+private const val PLAYBACK_TAG = "Playback"
 
-/** Outcome of an in-app yt-dlp metadata fetch for a single video. */
-sealed interface FetchResult {
-    data class Success(val title: String) : FetchResult
-    data class Error(val message: String) : FetchResult
-}
-
-/** Progress of the bulk "fetch all missing" run, observable so it survives navigation. */
-sealed interface BulkFetch {
-    data object Idle : BulkFetch
-    data class Running(val done: Int, val total: Int, val failed: Int) : BulkFetch
-    data class Done(val total: Int, val failed: Int) : BulkFetch
-}
-
-class LibraryRepository(
+class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
-    private val jellyfin: JellyfinRepository,
+    private val jellyfin: JellyfinDataSource,
     private val settings: SettingsRepository,
     private val ytDlp: YtDlpMetadataSource,
-) {
+) : LibraryRepository {
     private val videoDao = db.videoDao()
     private val categoryDao = db.categoryDao()
 
@@ -135,45 +108,50 @@ class LibraryRepository(
             CoroutineExceptionHandler { _, e -> Timber.tag("LibraryRepository").w(e, "background work failed") },
     )
     private val _bulkFetch = MutableStateFlow<BulkFetch>(BulkFetch.Idle)
-    val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
+    override val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
     private var bulkJob: Job? = null
 
-    fun observeVideos(): Flow<List<VideoEntity>> = videoDao.observeAll()
+    override fun observeVideos(): Flow<List<Video>> =
+        videoDao.observeAll().map { it.map(VideoEntity::toDomain) }
 
     /**
      * Videos filtered to [bucket] (all durations when null) and, for a non-blank [query], narrowed
      * to relevance matches sorted most-relevant first (see [SearchRanking]). A blank query just
      * returns the duration-filtered list by file name.
      */
-    fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<VideoEntity>> {
+    override fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>> {
         val source = if (bucket == null) {
             videoDao.observeAll()
         } else {
             videoDao.observeByDurationRange(bucket.minSeconds, bucket.maxSeconds)
         }
-        return source.map { SearchRanking.rankVideos(query, it) }
+        return source.map { SearchRanking.rankVideos(query, it).map(VideoEntity::toDomain) }
     }
 
     /** Videos in [categoryId], routing the "Others" virtual filters to live queries. */
-    fun observeVideosByCategory(categoryId: String): Flow<List<VideoEntity>> = when (categoryId) {
+    override fun observeVideosByCategory(categoryId: String): Flow<List<Video>> = when (categoryId) {
         VIRTUAL_CATEGORY_UNCATEGORIZED -> videoDao.observeBySource(METADATA_SOURCE_JELLYFIN)
         VIRTUAL_CATEGORY_CONTINUE -> videoDao.observeContinueWatching()
         VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatched()
         VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatched()
         else -> videoDao.observeByCategory(categoryId)
-    }
+    }.map { it.map(VideoEntity::toDomain) }
 
-    fun observeVideo(youtubeId: String): Flow<VideoEntity?> = videoDao.observe(youtubeId)
-    fun observeCategories(): Flow<List<CategoryWithCount>> = categoryDao.observeWithCounts()
-    fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
+    override fun observeVideo(youtubeId: String): Flow<Video?> =
+        videoDao.observe(youtubeId).map { it?.toDomain() }
+
+    override fun observeCategories(): Flow<List<CategoryWithCount>> =
+        categoryDao.observeWithCounts().map { rows -> rows.map { it.toDomain() } }
+
+    override fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
         categoryDao.searchWithCounts(escapeLikePattern(query))
-            .map { SearchRanking.rankCategories(query, it) }
+            .map { ranked -> SearchRanking.rankCategories(query, ranked).map { it.toDomain() } }
 
     /**
      * The "Others" tab's virtual filters with live counts: Uncategorized (no yt-dlp/index metadata),
      * Continue watching, Unwatched, Watched. Empty filters are dropped.
      */
-    fun observeOthers(): Flow<List<CategoryWithCount>> = combine(
+    override fun observeOthers(): Flow<List<CategoryWithCount>> = combine(
         videoDao.countBySource(METADATA_SOURCE_JELLYFIN),
         videoDao.countContinueWatching(),
         videoDao.countUnwatched(),
@@ -188,14 +166,14 @@ class LibraryRepository(
     }
 
     private fun virtualRow(id: String, name: String, count: Int) = CategoryWithCount(
-        category = CategoryEntity(id = id, name = name, type = CATEGORY_TYPE_OTHERS, createdAt = 0L),
+        category = Category(id = id, name = name, type = CATEGORY_TYPE_OTHERS, createdAt = 0L),
         videoCount = count,
     )
 
-    fun videoCount(): Flow<Int> = videoDao.count()
+    override fun videoCount(): Flow<Int> = videoDao.count()
 
     /** Full sync: pull Jellyfin items + metadata index, merge, persist, auto-categorize. */
-    suspend fun sync(): SyncResult {
+    override suspend fun sync(): SyncResult {
         val s = settings.snapshot()
         if (!s.isConnected) {
             return SyncResult.Error(
@@ -307,7 +285,7 @@ class LibraryRepository(
      * Fetch metadata for one video in-app with yt-dlp, overwrite its record (source = YTDLP,
      * stamped now) and re-derive its auto-categories. Same fields/converters as an index match.
      */
-    suspend fun fetchMetadata(youtubeId: String): FetchResult {
+    override suspend fun fetchMetadata(youtubeId: String): FetchResult {
         val existing = videoDao.get(youtubeId) ?: return FetchResult.Error("Video not found locally.")
         val entry = runCatchingCancellable { ytDlp.fetch(youtubeId) }.getOrElse { e ->
             return FetchResult.Error(e.message ?: "yt-dlp failed to fetch metadata.")
@@ -359,7 +337,7 @@ class LibraryRepository(
      * Fetch metadata for every uncategorized (Jellyfin-only) video, one at a time, publishing
      * progress via [bulkFetch]. No-op if already running.
      */
-    fun startFetchMissing() {
+    override fun startFetchMissing() {
         if (bulkJob?.isActive == true) return
         bulkJob = repoScope.launch {
             val targets = videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
@@ -385,14 +363,14 @@ class LibraryRepository(
         }
     }
 
-    fun cancelFetchMissing() {
+    override fun cancelFetchMissing() {
         bulkJob?.cancel()
         bulkJob = null
         _bulkFetch.value = BulkFetch.Idle
     }
 
     /** Clear a terminal [BulkFetch.Done] once the UI has shown it. */
-    fun acknowledgeBulkFetch() {
+    override fun acknowledgeBulkFetch() {
         if (_bulkFetch.value is BulkFetch.Done) _bulkFetch.value = BulkFetch.Idle
     }
 
@@ -401,7 +379,7 @@ class LibraryRepository(
      * reset the last-sync marker. Connection settings — server URL, API key, user,
      * folder scope — are left untouched, so a subsequent sync rebuilds from scratch.
      */
-    suspend fun clearLocalData() {
+    override suspend fun clearLocalData() {
         writeMutex.withLock {
             db.withTransaction {
                 categoryDao.clearCrossRefs()
@@ -417,7 +395,7 @@ class LibraryRepository(
      * the server write failed — the local state stays, but the next sync may revert it to the
      * server's value, so callers should tell the user.
      */
-    suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean {
+    override suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean {
         writeMutex.withLock {
             val v = videoDao.get(youtubeId) ?: return false
             videoDao.updateWatchState(youtubeId, played, if (played) v.playbackPositionTicks else 0L)
@@ -453,7 +431,7 @@ class LibraryRepository(
      *
      * Best-effort — network failures are swallowed so local state still updates.
      */
-    fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
+    override fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
         // Fire-and-forget on the repository's own scope: the screen that launched the external
         // player may be gone (back press, rotation) before the local write and the network
         // report finish, and losing the resume position is not acceptable.
@@ -462,16 +440,16 @@ class LibraryRepository(
 
     private suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
         val positionTicks = millisToTicks(positionMs)
-        Timber.tag(Playback.TAG).d("onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")
+        Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")
         var finished = completed
         val video = writeMutex.withLock {
             val v = videoDao.get(youtubeId) ?: run {
-                Timber.tag(Playback.TAG).w("onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report")
+                Timber.tag(PLAYBACK_TAG).w("onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report")
                 return
             }
             finished = completed ||
                 (v.durationSeconds > 0 && ticksToSeconds(positionTicks) >= v.durationSeconds - 5)
-            Timber.tag(Playback.TAG).d("onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> local write played=$finished position=${if (finished) 0L else positionTicks}")
+            Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> local write played=$finished position=${if (finished) 0L else positionTicks}")
             videoDao.updateWatchState(youtubeId, finished, if (finished) 0L else positionTicks)
             localWatchWrites[youtubeId] = System.currentTimeMillis()
             v
@@ -480,7 +458,7 @@ class LibraryRepository(
         val s = settings.snapshot()
         val itemId = video.jellyfinItemId
         if (!s.isConnected || itemId == null) {
-            Timber.tag(Playback.TAG).d("onPlaybackStopped: skipping server report (connected=${s.isConnected} itemId=$itemId)")
+            Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: skipping server report (connected=${s.isConnected} itemId=$itemId)")
             return
         }
         // Best-effort: the local resume position is already saved, so a failed server
@@ -493,11 +471,11 @@ class LibraryRepository(
                 if (latest.played) {
                     // Finished — record the play in Jellyfin's watch history via the endpoint
                     // that actually marks items played (PlayCount++, LastPlayedDate, resume cleared).
-                    Timber.tag(Playback.TAG).d("onPlaybackStopped: marking played on Jellyfin itemId=$itemId")
+                    Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: marking played on Jellyfin itemId=$itemId")
                     jellyfin.setPlayed(s.serverUrl, s.apiKey, s.userId, itemId, played = true)
                 } else {
                     // Stopped partway — persist the resume position for "Continue Watching".
-                    Timber.tag(Playback.TAG).d("onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId positionTicks=${latest.playbackPositionTicks}")
+                    Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId positionTicks=${latest.playbackPositionTicks}")
                     jellyfin.updatePlaybackState(
                         serverUrl = s.serverUrl,
                         apiKey = s.apiKey,
@@ -509,9 +487,9 @@ class LibraryRepository(
                     )
                 }
             }
-            Timber.tag(Playback.TAG).d("onPlaybackStopped: server report succeeded for itemId=$itemId")
+            Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: server report succeeded for itemId=$itemId")
         }.onFailure { e ->
-            Timber.tag(Playback.TAG).w(e, "onPlaybackStopped: server report failed for itemId=$itemId")
+            Timber.tag(PLAYBACK_TAG).w(e, "onPlaybackStopped: server report failed for itemId=$itemId")
         }
     }
 
@@ -519,7 +497,7 @@ class LibraryRepository(
      * Creates a Jellyfin playlist named [name] from every video in [categoryId] that has a
      * Jellyfin item, ordered by file name. Works for stored categories and "Others" filters alike.
      */
-    suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult {
+    override suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult {
         val s = settings.snapshot()
         if (!s.isConnected) return PlaylistResult.Error("Not connected. Configure Jellyfin in Settings.")
 

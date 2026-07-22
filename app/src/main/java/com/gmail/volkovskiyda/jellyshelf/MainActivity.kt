@@ -24,7 +24,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavEntry
@@ -40,6 +39,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 
 private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: ImageVector)
@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun JellyshelfApp(viewModel: MainViewModel = viewModel()) {
+private fun JellyshelfApp(viewModel: MainViewModel = koinViewModel()) {
     val startStack by viewModel.startStack.collectAsStateWithLifecycle()
 
     // Render nothing until the start stack is resolved, so Library never flashes first.

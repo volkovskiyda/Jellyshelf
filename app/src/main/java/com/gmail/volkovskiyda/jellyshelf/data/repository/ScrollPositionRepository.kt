@@ -5,6 +5,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.gmail.volkovskiyda.jellyshelf.domain.model.AnchorPosition
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ScrollPosition
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,27 +20,15 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val Context.scrollDataStore by preferencesDataStore(name = "scroll_positions")
 
-data class ScrollPosition(val index: Int, val offset: Int) {
-    companion object {
-        val Zero = ScrollPosition(0, 0)
-    }
-}
-
 /**
- * Scroll position anchored to a stable per-item key (the video [anchor], i.e. its file name)
- * rather than a raw list index, so it survives items being added, removed or renamed.
- */
-data class AnchorPosition(val anchor: String, val offset: Int)
-
-/**
- * Remembers per-screen list scroll positions ([firstVisibleItemIndex] + offset).
+ * Remembers per-screen list scroll positions (firstVisibleItemIndex + offset).
  *
  * An in-memory cache is the source of truth while the app is running, so restoring on tab
  * switch or list → detail → back is instant (no disk-read flicker). Writes are mirrored to
  * DataStore so positions also survive a process restart; the cache is seeded from disk on
  * first access.
  */
-class ScrollPositionRepository(context: Context) {
+class DefaultScrollPositionRepository(context: Context) : ScrollPositionRepository {
     private val ds = context.applicationContext.scrollDataStore
 
     // Disk writes run on a single-parallelism dispatcher so two rapid saves for the same key
@@ -59,10 +50,10 @@ class ScrollPositionRepository(context: Context) {
     private val seedJob = scope.launch { seedFromDisk() }
 
     /** True once the disk seed has been merged into the in-memory cache. */
-    val isSeeded: Boolean get() = seedJob.isCompleted
+    override val isSeeded: Boolean get() = seedJob.isCompleted
 
     /** Suspends until the disk seed has been merged into the in-memory cache. */
-    suspend fun awaitSeeded() = seedJob.join()
+    override suspend fun awaitSeeded() = seedJob.join()
 
     private suspend fun seedFromDisk() {
         // Assemble complete positions first, then merge with putIfAbsent: a position saved
@@ -103,10 +94,10 @@ class ScrollPositionRepository(context: Context) {
      * Last known scroll position for [key], or [ScrollPosition.Zero] if none was saved (or the
      * disk seed hasn't landed yet — see [awaitSeeded]).
      */
-    fun peek(key: String): ScrollPosition = cache[key] ?: ScrollPosition.Zero
+    override fun peek(key: String): ScrollPosition = cache[key] ?: ScrollPosition.Zero
 
     /** Records [position] for [key] in memory immediately and persists it to disk. */
-    fun save(key: String, position: ScrollPosition) {
+    override fun save(key: String, position: ScrollPosition) {
         if (cache.put(key, position) == position) return
         scope.launch(writeDispatcher) {
             // Read the latest cached value at commit time, so even a delayed write can only
@@ -120,13 +111,13 @@ class ScrollPositionRepository(context: Context) {
     }
 
     /** Last known anchor position for [key], or `null` if none was saved. Waits for the seed. */
-    suspend fun peekAnchor(key: String): AnchorPosition? {
+    override suspend fun peekAnchor(key: String): AnchorPosition? {
         seedJob.join()
         return anchorCache[key]
     }
 
     /** Records the anchor [position] for [key] in memory immediately and persists it to disk. */
-    fun saveAnchor(key: String, position: AnchorPosition) {
+    override fun saveAnchor(key: String, position: AnchorPosition) {
         if (anchorCache.put(key, position) == position) return
         scope.launch(writeDispatcher) {
             val latest = anchorCache[key] ?: return@launch

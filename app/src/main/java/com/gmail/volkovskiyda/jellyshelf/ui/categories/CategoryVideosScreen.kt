@@ -36,31 +36,29 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.data.local.VIRTUAL_CATEGORY_UNCATEGORIZED
-import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
-import com.gmail.volkovskiyda.jellyshelf.data.repository.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoryVideosScreen(
     categoryId: String,
     title: String,
-    onVideoClick: (VideoEntity) -> Unit,
+    onVideoClick: (Video) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val viewModel: CategoryVideosViewModel = viewModel {
-        CategoryVideosViewModel(checkNotNull(this[APPLICATION_KEY]), categoryId)
-    }
+    val viewModel: CategoryVideosViewModel = koinViewModel { parametersOf(categoryId) }
     val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
     val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()

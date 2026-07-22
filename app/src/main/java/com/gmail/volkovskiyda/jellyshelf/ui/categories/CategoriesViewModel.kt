@@ -1,10 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gmail.volkovskiyda.jellyshelf.container
-import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,11 +24,12 @@ import kotlinx.coroutines.launch
 data class CategoryList(val items: List<CategoryWithCount>, val pristine: Boolean)
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class CategoriesViewModel(application: Application) : AndroidViewModel(application) {
-    private val repo = container.libraryRepository
-
-    // Container-owned so query and toggle survive tab switches (which clear this ViewModel).
-    private val filters = container.categoriesFilterState
+class CategoriesViewModel(
+    private val repo: LibraryRepository,
+    // Singleton-owned so query and toggle survive tab switches (which clear this ViewModel).
+    private val filters: CategoriesFilterState,
+    private val settingsRepository: SettingsRepository,
+) : ViewModel() {
     private val _query = filters.query
     val query: StateFlow<String> = _query.asStateFlow()
 
@@ -78,6 +79,6 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
         filters.selectedType.value = value
         // Persist so the tab is restored on next launch. Fire-and-forget: a failed write just
         // means the app reopens on the previous saved (or default) dimension.
-        viewModelScope.launch { container.settingsRepository.setSelectedCategoryType(value) }
+        viewModelScope.launch { settingsRepository.setSelectedCategoryType(value) }
     }
 }

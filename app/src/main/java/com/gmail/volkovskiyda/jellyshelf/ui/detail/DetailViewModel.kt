@@ -1,13 +1,14 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.container
-import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
-import com.gmail.volkovskiyda.jellyshelf.data.repository.FetchResult
-import com.gmail.volkovskiyda.jellyshelf.data.repository.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
@@ -25,21 +26,21 @@ import timber.log.Timber
 sealed interface VideoDetailState {
     data object Loading : VideoDetailState
     data object NotFound : VideoDetailState
-    data class Loaded(val video: VideoEntity) : VideoDetailState
+    data class Loaded(val video: Video) : VideoDetailState
 }
 
 class DetailViewModel(
-    application: Application,
+    private val app: Application,
+    private val repo: LibraryRepository,
+    settingsState: AppSettingsState,
     private val youtubeId: String,
-) : AndroidViewModel(application) {
-
-    private val repo = container.libraryRepository
+) : ViewModel() {
 
     val video: StateFlow<VideoDetailState> = repo.observeVideo(youtubeId)
         .map { it?.let(VideoDetailState::Loaded) ?: VideoDetailState.NotFound }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VideoDetailState.Loading)
 
-    val settings: StateFlow<Settings?> = container.settingsState
+    val settings: StateFlow<Settings?> = settingsState.settings
 
     private val _fetching = MutableStateFlow(false)
     val fetching: StateFlow<Boolean> = _fetching.asStateFlow()
@@ -58,7 +59,7 @@ class DetailViewModel(
             // The local toggle always sticks; tell the user when the server write failed,
             // since the next sync may revert it to the server's value.
             if (!repo.setPlayed(youtubeId, !current.played)) {
-                _message.value = getApplication<Application>().getString(R.string.watch_state_sync_failed)
+                _message.value = app.getString(R.string.watch_state_sync_failed)
             }
         }
     }
@@ -83,7 +84,7 @@ class DetailViewModel(
                 val result = withContext(NonCancellable) { repo.fetchMetadata(youtubeId) }
                 _message.value = when (result) {
                     is FetchResult.Success ->
-                        getApplication<Application>().getString(R.string.metadata_updated_for, result.title)
+                        app.getString(R.string.metadata_updated_for, result.title)
                     is FetchResult.Error -> result.message
                 }
             }.onFailure { e ->

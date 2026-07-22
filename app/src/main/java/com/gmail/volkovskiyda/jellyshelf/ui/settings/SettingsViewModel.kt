@@ -1,12 +1,14 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.container
-import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
-import com.gmail.volkovskiyda.jellyshelf.data.repository.SyncResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.User
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +35,7 @@ data class SettingsUiState(
     val serverUrl: String = "",
     val apiKey: String = "",
     val indexUrl: String = "",
-    val users: List<UserDto> = emptyList(),
+    val users: List<User> = emptyList(),
     val selectedUserId: String = "",
     val selectedUserName: String = "",
     // Persisted sync scope. A blank path means the root ("all collections") scope.
@@ -59,11 +61,13 @@ data class SettingsUiState(
     val currentPath: String get() = breadcrumb.joinToString(CRUMB_SEPARATOR) { it.name }
 }
 
-class SettingsViewModel(application: Application) : AndroidViewModel(application) {
-    private val app: Application get() = getApplication()
-    private val settingsRepo = container.settingsRepository
-    private val libraryRepo = container.libraryRepository
-    private val jellyfin = container.jellyfinRepository
+class SettingsViewModel(
+    private val app: Application,
+    private val settingsRepo: SettingsRepository,
+    private val libraryRepo: LibraryRepository,
+    private val jellyfin: JellyfinRepository,
+    private val settingsCache: SettingsCache,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
@@ -77,7 +81,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch {
             val s = settingsRepo.snapshot()
-            val cachedUsers = container.settingsCache.usersFor(s.serverUrl)
+            val cachedUsers = settingsCache.usersFor(s.serverUrl)
             val cur = _state.value
             _state.value = cur.copy(
                 // This snapshot loads asynchronously — don't clobber text the user managed
@@ -148,7 +152,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 settingsRepo.setConnection(s.serverUrl, s.apiKey)
                 settingsRepo.setIndexUrl(s.indexUrl)
                 // Trimmed to match what setConnection persists, so the next init's lookup hits.
-                container.settingsCache.store(s.serverUrl.trim(), users)
+                settingsCache.store(s.serverUrl.trim(), users)
                 val current = _state.value
                 val selected = users.firstOrNull { it.id == current.selectedUserId } ?: users.firstOrNull()
                 // Auto-selecting a *different* user (server changed, or the saved user is gone)
@@ -187,7 +191,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun selectUser(user: UserDto) {
+    fun selectUser(user: User) {
         _state.value = _state.value.copy(
             selectedUserId = user.id,
             selectedUserName = user.name,
@@ -255,7 +259,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             runCatchingCancellable {
                 val folders = jellyfin
                     .getChildFolders(s.serverUrl, s.apiKey, s.selectedUserId, s.currentParentId)
-                    .map { FolderRef(it.id, it.name ?: it.id, it.path) }
+                    .map { FolderRef(it.id, it.name, it.path) }
                 _state.value = _state.value.copy(childFolders = folders, loadingFolders = false)
             }.onFailure { e ->
                 _state.value = _state.value.copy(

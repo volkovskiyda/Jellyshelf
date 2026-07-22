@@ -1,9 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gmail.volkovskiyda.jellyshelf.container
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,8 +12,9 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val settingsRepo = container.settingsRepository
+class MainViewModel(
+    private val settingsRepo: SettingsRepository,
+) : ViewModel() {
 
     // Tolerate stacks written by an older schema (e.g. a renamed key field) by dropping them
     // rather than crashing the launch; decode failures fall back to a plain Library start.

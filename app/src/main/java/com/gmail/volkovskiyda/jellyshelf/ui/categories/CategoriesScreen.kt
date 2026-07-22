@@ -42,28 +42,28 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_DURATION
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_MONTH
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YEAR
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_YT_CATEGORY
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_MANUAL
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_OTHERS
-import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_MONTH
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATEGORY
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_MANUAL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoriesScreen(
     onCategoryClick: (categoryId: String, title: String) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: CategoriesViewModel = viewModel(),
+    viewModel: CategoriesViewModel = koinViewModel(),
 ) {
     val categoriesOrNull by viewModel.categories.collectAsStateWithLifecycle()
     val others by viewModel.others.collectAsStateWithLifecycle()

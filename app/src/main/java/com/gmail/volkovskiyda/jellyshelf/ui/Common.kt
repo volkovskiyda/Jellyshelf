@@ -33,18 +33,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.gmail.volkovskiyda.jellyshelf.JellyshelfApplication
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
-import com.gmail.volkovskiyda.jellyshelf.data.repository.AnchorPosition
-import com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPosition
-import com.gmail.volkovskiyda.jellyshelf.di.AppContainer
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.AnchorPosition
+import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ScrollPosition
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.isJellyfinImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
@@ -53,12 +52,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-
-@Composable
-fun rememberContainer(): AppContainer {
-    val context = LocalContext.current
-    return (context.applicationContext as JellyshelfApplication).container
-}
+import org.koin.compose.koinInject
 
 /**
  * Resolves a stored thumbnail [url] to a loadable model. Stored URLs deliberately carry no
@@ -68,7 +62,7 @@ fun rememberContainer(): AppContainer {
  */
 @Composable
 fun rememberThumbnailModel(url: String?): String? {
-    val settings by rememberContainer().settingsState.collectAsStateWithLifecycle()
+    val settings by koinInject<AppSettingsState>().settings.collectAsStateWithLifecycle()
     val loaded = settings
     return when {
         url == null -> null
@@ -79,7 +73,7 @@ fun rememberThumbnailModel(url: String?): String? {
 
 /**
  * A [LazyListState] whose scroll position is persisted under [key] via
- * [com.gmail.volkovskiyda.jellyshelf.data.repository.ScrollPositionRepository].
+ * [com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository].
  *
  * Restores the last position on tab switch and across app restart. `rememberSaveable` still
  * covers the fast list → detail → back and configuration-change cases in memory; the store
@@ -87,7 +81,7 @@ fun rememberThumbnailModel(url: String?): String? {
  */
 @Composable
 fun rememberPersistedLazyListState(key: String): LazyListState {
-    val store = rememberContainer().scrollPositionRepository
+    val store = koinInject<ScrollPositionRepository>()
     val state = rememberSaveable(key, saver = LazyListState.Saver) {
         val pos = store.peek(key)
         LazyListState(pos.index, pos.offset)
@@ -136,7 +130,7 @@ fun <T> rememberAnchoredLazyListState(
     items: List<T>,
     anchorOf: (T) -> String,
 ): LazyListState {
-    val store = rememberContainer().scrollPositionRepository
+    val store = koinInject<ScrollPositionRepository>()
     val state = rememberSaveable(key, saver = LazyListState.Saver) { LazyListState(0, 0) }
     val currentItems by rememberUpdatedState(items)
     val currentAnchorOf by rememberUpdatedState(anchorOf)
@@ -198,7 +192,7 @@ private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> Stri
 
 @Composable
 fun VideoRow(
-    video: VideoEntity,
+    video: Video,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {

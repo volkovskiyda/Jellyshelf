@@ -1,6 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
-import com.gmail.volkovskiyda.jellyshelf.data.local.CATEGORY_TYPE_AUTO_CHANNEL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
 import com.gmail.volkovskiyda.jellyshelf.data.local.RankedCategory
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity

@@ -1,11 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gmail.volkovskiyda.jellyshelf.container
-import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
-import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,14 +21,14 @@ import kotlinx.coroutines.flow.stateIn
  * just cleared (the query flips to blank a frame before the unfiltered list re-emits) for the
  * pristine list, which would restore the saved scroll position against the wrong contents.
  */
-data class LibraryVideos(val items: List<VideoEntity>, val pristine: Boolean)
+data class LibraryVideos(val items: List<Video>, val pristine: Boolean)
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class LibraryViewModel(application: Application) : AndroidViewModel(application) {
-    private val repo = container.libraryRepository
-
-    // Container-owned so query and filter survive tab switches (which clear this ViewModel).
-    private val filters = container.libraryFilterState
+class LibraryViewModel(
+    private val repo: LibraryRepository,
+    // Singleton-owned so query and filter survive tab switches (which clear this ViewModel).
+    private val filters: LibraryFilterState,
+) : ViewModel() {
     private val _query = filters.query
     val query: StateFlow<String> = _query.asStateFlow()
 

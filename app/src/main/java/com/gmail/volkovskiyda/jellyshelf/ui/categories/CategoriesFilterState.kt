@@ -1,21 +1,28 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
-import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
- * Categories search state, owned by the app container: switching bottom-nav tabs clears the
+ * Categories search state, a process-lifetime singleton: switching bottom-nav tabs clears the
  * tab's ViewModel store, and the query and search-all toggle must survive that (mirroring
  * [com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState]).
  */
-class CategoriesFilterState {
+class CategoriesFilterState(
+    settingsRepository: SettingsRepository,
+    scope: CoroutineScope,
+) {
     val query = MutableStateFlow("")
     val searchAll = MutableStateFlow(false)
 
     /**
-     * The dimension (tab) the user last settled on. Container-owned for the same reason as the
-     * query: bottom-nav tab switches clear the back stack and with it all rememberSaveable
-     * state, and returning to Categories should land on the same dimension.
+     * The dimension (tab) the user last settled on. A process-lifetime singleton for the same
+     * reason as the query: bottom-nav tab switches clear the back stack and with it all
+     * rememberSaveable state, and returning to Categories should land on the same dimension.
      */
     val selectedType = MutableStateFlow<String?>(null)
 
@@ -36,4 +43,18 @@ class CategoriesFilterState {
 
     @Volatile
     var lastOthers: List<CategoryWithCount>? = null
+
+    init {
+        // Restore the last-viewed Categories dimension so reopening the app lands on it rather
+        // than the first tab. Async, best-effort: don't overwrite a selection the user already
+        // made this session before the read landed, and flip selectionLoaded either way so the
+        // UI stops deferring pager tracking.
+        scope.launch {
+            val persisted = settingsRepository.selectedCategoryType.first()
+            if (persisted != null && selectedType.value == null) {
+                selectedType.value = persisted
+            }
+            selectionLoaded.value = true
+        }
+    }
 }

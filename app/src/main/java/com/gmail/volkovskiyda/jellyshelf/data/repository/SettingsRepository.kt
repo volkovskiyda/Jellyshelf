@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -14,21 +16,7 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
-data class Settings(
-    val serverUrl: String,
-    val apiKey: String,
-    val userId: String,
-    val userName: String,
-    val libraryId: String,
-    val libraryName: String,
-    val indexUrl: String,
-    val lastSyncAt: Long,
-) {
-    val hasCredentials: Boolean get() = serverUrl.isNotBlank() && apiKey.isNotBlank()
-    val isConnected: Boolean get() = hasCredentials && userId.isNotBlank()
-}
-
-class SettingsRepository(context: Context) {
+class DefaultSettingsRepository(context: Context) : SettingsRepository {
     private val ds = context.applicationContext.dataStore
 
     private object Keys {
@@ -44,7 +32,7 @@ class SettingsRepository(context: Context) {
         val BACK_STACK = stringPreferencesKey("back_stack")
     }
 
-    val settings: Flow<Settings> = ds.data
+    override val settings: Flow<Settings> = ds.data
         // A transient disk read failure must degrade to defaults, not propagate an IOException
         // into every collector (and out of the sync worker).
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -61,16 +49,16 @@ class SettingsRepository(context: Context) {
         )
     }
 
-    suspend fun snapshot(): Settings = settings.first()
+    override suspend fun snapshot(): Settings = settings.first()
 
-    suspend fun setConnection(serverUrl: String, apiKey: String) {
+    override suspend fun setConnection(serverUrl: String, apiKey: String) {
         ds.edit {
             it[Keys.SERVER_URL] = serverUrl.trim()
             it[Keys.API_KEY] = apiKey.trim()
         }
     }
 
-    suspend fun setUser(userId: String, userName: String) {
+    override suspend fun setUser(userId: String, userName: String) {
         ds.edit {
             it[Keys.USER_ID] = userId
             it[Keys.USER_NAME] = userName
@@ -78,18 +66,18 @@ class SettingsRepository(context: Context) {
     }
 
     /** Library/collection to scope sync to. Empty id == root == all collections. */
-    suspend fun setLibrary(libraryId: String, libraryName: String) {
+    override suspend fun setLibrary(libraryId: String, libraryName: String) {
         ds.edit {
             it[Keys.LIBRARY_ID] = libraryId
             it[Keys.LIBRARY_NAME] = libraryName
         }
     }
 
-    suspend fun setIndexUrl(url: String) {
+    override suspend fun setIndexUrl(url: String) {
         ds.edit { it[Keys.INDEX_URL] = url.trim() }
     }
 
-    suspend fun setLastSyncAt(timestamp: Long) {
+    override suspend fun setLastSyncAt(timestamp: Long) {
         ds.edit { it[Keys.LAST_SYNC_AT] = timestamp }
     }
 
@@ -98,11 +86,11 @@ class SettingsRepository(context: Context) {
      * preference kept out of [Settings] since it has nothing to do with the server connection.
      * Null on a disk read failure degrades to "no restore", matching [settings].
      */
-    val selectedCategoryType: Flow<String?> = ds.data
+    override val selectedCategoryType: Flow<String?> = ds.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[Keys.SELECTED_CATEGORY_TYPE] }
 
-    suspend fun setSelectedCategoryType(type: String) {
+    override suspend fun setSelectedCategoryType(type: String) {
         ds.edit { it[Keys.SELECTED_CATEGORY_TYPE] = type }
     }
 
@@ -111,11 +99,11 @@ class SettingsRepository(context: Context) {
      * navigation so the app reopens on the exact screen the user left, restored by MainViewModel.
      * Serialization (an AppNavKey list) lives in the ViewModel; the repo stays a plain string store.
      */
-    val backStackJson: Flow<String?> = ds.data
+    override val backStackJson: Flow<String?> = ds.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[Keys.BACK_STACK] }
 
-    suspend fun setBackStackJson(json: String) {
+    override suspend fun setBackStackJson(json: String) {
         ds.edit { it[Keys.BACK_STACK] = json }
     }
 }

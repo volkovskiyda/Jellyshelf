@@ -1,13 +1,13 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.container
-import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
-import com.gmail.volkovskiyda.jellyshelf.data.repository.BulkFetch
-import com.gmail.volkovskiyda.jellyshelf.data.repository.PlaylistResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,14 +19,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class CategoryVideosViewModel(
-    application: Application,
+    private val app: Application,
+    private val repo: LibraryRepository,
     private val categoryId: String,
-) : AndroidViewModel(application) {
-
-    private val repo = container.libraryRepository
+) : ViewModel() {
 
     /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
-    val videos: StateFlow<List<VideoEntity>?> = repo.observeVideosByCategory(categoryId)
+    val videos: StateFlow<List<Video>?> = repo.observeVideosByCategory(categoryId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val bulkFetch: StateFlow<BulkFetch> = repo.bulkFetch
@@ -55,7 +54,7 @@ class CategoryVideosViewModel(
                 val result = withContext(NonCancellable) {
                     repo.createPlaylistFromCategory(categoryId, name)
                 }
-                val resources = getApplication<Application>().resources
+                val resources = app.resources
                 _message.value = when (result) {
                     is PlaylistResult.Success -> resources.getString(
                         R.string.playlist_created,

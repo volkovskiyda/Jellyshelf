@@ -1,11 +1,11 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
-import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
-import com.gmail.volkovskiyda.jellyshelf.util.DurationBucket
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * Library search/filter state, owned by the app container: switching bottom-nav tabs clears the
+ * Library search/filter state, a process-lifetime singleton: switching bottom-nav tabs clears the
  * tab's ViewModel store, and the query and duration filter must survive that (like the scroll
  * position already does).
  */
@@ -18,5 +18,5 @@ class LibraryFilterState {
      * revisited tab renders instantly instead of flashing the loading state until Room re-emits.
      */
     @Volatile
-    var lastVideos: List<VideoEntity>? = null
+    var lastVideos: List<Video>? = null
 }

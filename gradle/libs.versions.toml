@@ -27,6 +27,7 @@ material = "1.14.0"
 workRuntimeKtx = "2.11.2"
 youtubedlAndroid = "0.18.1"
 timber = "5.0.1"
+koinBom = "4.1.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -66,9 +67,18 @@ material = { group = "com.google.android.material", name = "material", version.r
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
 youtubedl-android-library = { group = "io.github.junkfood02.youtubedl-android", name = "library", version.ref = "youtubedlAndroid" }
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
+koin-bom = { group = "io.insert-koin", name = "koin-bom", version.ref = "koinBom" }
+koin-core = { group = "io.insert-koin", name = "koin-core" }
+koin-android = { group = "io.insert-koin", name = "koin-android" }
+koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose" }
+koin-androidx-workmanager = { group = "io.insert-koin", name = "koin-androidx-workmanager" }
+koin-test = { group = "io.insert-koin", name = "koin-test" }
+koin-test-junit4 = { group = "io.insert-koin", name = "koin-test-junit4" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "googleDevtoolsKsp" }
 jetbrains-kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

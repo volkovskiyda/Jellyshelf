@@ -66,6 +66,10 @@ ksp {
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
+    implementation(libs.koin.androidx.workmanager)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.adaptive)
     implementation(libs.androidx.compose.adaptive.layout)
@@ -99,6 +103,9 @@ dependencies {
     implementation(libs.timber)
     implementation(libs.youtubedl.android.library)
     testImplementation(libs.junit)
+    testImplementation(platform(libs.koin.bom))
+    testImplementation(libs.koin.test)
+    testImplementation(libs.koin.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     "ksp"(libs.androidx.room.compiler)
     "ksp"(libs.moshi.kotlin.codegen)

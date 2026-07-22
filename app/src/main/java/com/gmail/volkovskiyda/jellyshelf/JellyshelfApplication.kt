@@ -2,14 +2,14 @@ package com.gmail.volkovskiyda.jellyshelf
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
-import androidx.lifecycle.AndroidViewModel
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
-import com.gmail.volkovskiyda.jellyshelf.di.AppContainer
+import com.gmail.volkovskiyda.jellyshelf.di.appModule
+import org.koin.android.ext.koin.androidContext
+import org.koin.androidx.workmanager.koin.workManagerFactory
+import org.koin.core.context.startKoin
 import timber.log.Timber
 
 class JellyshelfApplication : Application() {
-    lateinit var container: AppContainer
-        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -19,11 +19,14 @@ class JellyshelfApplication : Application() {
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             Timber.plant(Timber.DebugTree())
         }
-        container = AppContainer(this)
+        startKoin {
+            androidContext(this@JellyshelfApplication)
+            // Register the Koin worker factory so workers declared with workerOf(...) get
+            // constructor injection. The default WorkManager initializer is removed in the
+            // manifest so this is the sole initialization path (see AndroidManifest.xml).
+            workManagerFactory()
+            modules(appModule)
+        }
         SyncScheduler.schedulePeriodic(this)
     }
 }
-
-/** Convenience accessor for ViewModels: `container.libraryRepository`, etc. */
-val AndroidViewModel.container: AppContainer
-    get() = (getApplication() as JellyshelfApplication).container

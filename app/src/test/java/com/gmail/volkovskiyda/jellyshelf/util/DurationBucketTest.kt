@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.util
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

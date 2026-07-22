@@ -1,8 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
-import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_INDEX
-import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_JELLYFIN
-import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry

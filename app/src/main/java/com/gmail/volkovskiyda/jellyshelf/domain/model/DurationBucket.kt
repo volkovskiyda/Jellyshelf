@@ -1,4 +1,4 @@
-package com.gmail.volkovskiyda.jellyshelf.util
+package com.gmail.volkovskiyda.jellyshelf.domain.model
 
 /**
  * Coarse duration ranges used both to group videos into duration categories at sync time and to

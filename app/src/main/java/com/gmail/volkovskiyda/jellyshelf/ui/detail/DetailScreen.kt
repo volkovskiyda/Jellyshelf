@@ -36,13 +36,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_INDEX
-import com.gmail.volkovskiyda.jellyshelf.data.local.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberThumbnailModel
@@ -50,6 +48,8 @@ import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,9 +60,7 @@ fun DetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val viewModel: DetailViewModel = viewModel {
-        DetailViewModel(checkNotNull(this[APPLICATION_KEY]), youtubeId)
-    }
+    val viewModel: DetailViewModel = koinViewModel { parametersOf(youtubeId) }
 
     // Launch the external player for a result; MX Player / VLC hand back the final position,
     // which we persist locally and report to Jellyfin as PlaybackStopped.
