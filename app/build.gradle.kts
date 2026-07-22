@@ -62,6 +62,10 @@ android {
     }
     lint {
         checkAllWarnings = true
+        // Also print findings to the console; file reports in build/reports/ stay as-is.
+        // Plain File("stdout") (not project file()) — lint only treats the bare name as console.
+        textReport = true
+        textOutput = File("stdout")
     }
 }
 
