@@ -1,8 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
  */
 class CategoriesFilterState(
     settingsRepository: SettingsRepository,
-    scope: CoroutineScope,
+    dispatchers: DispatcherProvider,
 ) {
     val query = MutableStateFlow("")
     val searchAll = MutableStateFlow(false)
@@ -49,7 +49,7 @@ class CategoriesFilterState(
         // than the first tab. Async, best-effort: don't overwrite a selection the user already
         // made this session before the read landed, and flip selectionLoaded either way so the
         // UI stops deferring pager tracking.
-        scope.launch {
+        dispatchers.applicationScope.launch {
             val persisted = settingsRepository.selectedCategoryType.first()
             if (persisted != null && selectedType.value == null) {
                 selectedType.value = persisted

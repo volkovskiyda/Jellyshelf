@@ -46,6 +46,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // Generates BuildConfig.DEBUG so debug/release-only behaviour (HTTP logging, Timber) keys
+        // off the build type instead of a runtime FLAG_DEBUGGABLE check.
+        buildConfig = true
     }
     packaging {
         resources {

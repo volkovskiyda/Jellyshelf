@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf
 
 import android.app.Application
-import android.content.pm.ApplicationInfo
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import org.koin.android.ext.koin.androidContext
@@ -13,10 +12,10 @@ class JellyshelfApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Log only in debuggable builds. Release plants no tree, so every Timber call is a no-op
-        // at runtime — and R8's -assumenosideeffects rules (src/main/keepRules) strip the calls
-        // from release bytecode entirely.
-        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+        // Log only in debug builds. Release plants no tree, so every Timber call is a no-op at
+        // runtime — and R8's -assumenosideeffects rules (src/main/keepRules) strip the calls from
+        // release bytecode entirely.
+        if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
         startKoin {

@@ -8,10 +8,10 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.ProgressBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import java.io.IOException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -32,6 +32,7 @@ private const val PLAYBACK_TAG = "Playback"
 class JellyfinDataSource(
     private val client: JellyfinClient,
     private val okHttpClient: OkHttpClient,
+    private val dispatchers: DispatcherProvider,
     moshi: Moshi,
 ) {
     private val indexAdapter = moshi.adapter<List<IndexEntry>>(
@@ -187,7 +188,7 @@ class JellyfinDataSource(
      * — callers must be able to tell a failed fetch from an index that is genuinely empty, since
      * the former must never degrade existing index-sourced metadata.
      */
-    suspend fun fetchIndex(indexUrl: String): List<IndexEntry> = withContext(Dispatchers.IO) {
+    suspend fun fetchIndex(indexUrl: String): List<IndexEntry> = withContext(dispatchers.io) {
         val request = Request.Builder().url(indexUrl).build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Index fetch failed: HTTP ${response.code}")

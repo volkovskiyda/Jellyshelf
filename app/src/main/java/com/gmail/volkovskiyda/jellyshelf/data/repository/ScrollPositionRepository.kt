@@ -5,17 +5,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.AnchorPosition
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ScrollPosition
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
 private val Context.scrollDataStore by preferencesDataStore(name = "scroll_positions")
@@ -28,19 +23,18 @@ private val Context.scrollDataStore by preferencesDataStore(name = "scroll_posit
  * DataStore so positions also survive a process restart; the cache is seeded from disk on
  * first access.
  */
-class DefaultScrollPositionRepository(context: Context) : ScrollPositionRepository {
+class DefaultScrollPositionRepository(
+    context: Context,
+    dispatchers: DispatcherProvider,
+) : ScrollPositionRepository {
     private val ds = context.applicationContext.scrollDataStore
 
     // Disk writes run on a single-parallelism dispatcher so two rapid saves for the same key
     // can't commit in reverse order and leave the older position on disk.
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val writeDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val writeDispatcher = dispatchers.ioSequential
     // Losing a scroll position (disk full, DataStore corruption) must never crash the app —
-    // these are all fire-and-forget best-effort writes.
-    private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.IO +
-            CoroutineExceptionHandler { _, e -> Timber.tag(TAG).w(e, "scroll persistence failed") },
-    )
+    // these are all fire-and-forget best-effort writes; ioScope logs and moves on.
+    private val scope = dispatchers.ioScope(TAG, "scroll persistence failed")
     private val cache = ConcurrentHashMap<String, ScrollPosition>()
     private val anchorCache = ConcurrentHashMap<String, AnchorPosition>()
 

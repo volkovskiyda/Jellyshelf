@@ -15,10 +15,15 @@ import org.koin.test.verify.verify
  * test` — and CI — catch a missing binding the way the manual [com.gmail.volkovskiyda.jellyshelf.di.AppModule]
  * DI container never could.
  *
- * [extraTypes] are the dependencies provided from outside the module at runtime: Android's
- * [Context]/[Application] (registered by `androidContext()` in `startKoin`), [WorkerParameters]
- * (supplied by the WorkManager factory), and [String] (the `youtubeId` / `categoryId` runtime
- * parameters passed via `parametersOf` to the detail and category-videos ViewModels).
+ * [extraTypes] are the values supplied from outside the graph at construction, which `verify`'s
+ * reflection would otherwise flag as missing:
+ * - [Context]/[Application] — registered by `androidContext()` in `startKoin`.
+ * - [WorkerParameters] — supplied by the WorkManager factory to `SyncWorker`.
+ * - [String] — the `youtubeId` / `categoryId` runtime params passed via `parametersOf` to the
+ *   detail and category-videos ViewModels.
+ * - [Boolean]/[Int] — the `BuildInfo(isDebug, sdkInt)` constructor constants, wired in the module
+ *   from `BuildConfig.DEBUG` / `Build.VERSION.SDK_INT` (no other definition injects a bare
+ *   Boolean/Int, so whitelisting them here can't mask a real missing binding).
  */
 class AppModuleVerifyTest {
 
@@ -31,6 +36,8 @@ class AppModuleVerifyTest {
                 Application::class,
                 WorkerParameters::class,
                 String::class,
+                Boolean::class,
+                Int::class,
             ),
         )
     }

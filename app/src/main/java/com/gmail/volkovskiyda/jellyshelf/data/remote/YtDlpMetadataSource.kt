@@ -1,10 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.data.remote
 
 import android.content.Context
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import com.yausername.youtubedl_android.mapper.VideoInfo
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -15,9 +15,12 @@ import kotlinx.coroutines.withContext
  * path in the repository and yield an identical experience.
  *
  * The Python runtime is unpacked lazily on first use — a one-time, multi-second cost — guarded so
- * concurrent callers initialise exactly once. All work runs on [Dispatchers.IO].
+ * concurrent callers initialise exactly once. All work runs on the injected IO dispatcher.
  */
-class YtDlpMetadataSource(context: Context) {
+class YtDlpMetadataSource(
+    context: Context,
+    private val dispatchers: DispatcherProvider,
+) {
     private val appContext = context.applicationContext
     private val initMutex = Mutex()
 
@@ -39,7 +42,7 @@ class YtDlpMetadataSource(context: Context) {
      * automatically — exposed for a future "Update yt-dlp" action. Returns whether it succeeded,
      * so that action can report an outcome.
      */
-    suspend fun update(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun update(): Boolean = withContext(dispatchers.io) {
         ensureInit()
         runCatching { YoutubeDL.getInstance().updateYoutubeDL(appContext) }.isSuccess
     }
@@ -48,7 +51,7 @@ class YtDlpMetadataSource(context: Context) {
      * Fetch metadata for [youtubeId] as an [IndexEntry]. Downloads nothing — dumps the info JSON
      * only. Throws (YoutubeDLException / IO) when extraction fails; callers surface that.
      */
-    suspend fun fetch(youtubeId: String): IndexEntry = withContext(Dispatchers.IO) {
+    suspend fun fetch(youtubeId: String): IndexEntry = withContext(dispatchers.io) {
         ensureInit()
         val request = YoutubeDLRequest("https://www.youtube.com/watch?v=$youtubeId").apply {
             addOption("--dump-single-json")

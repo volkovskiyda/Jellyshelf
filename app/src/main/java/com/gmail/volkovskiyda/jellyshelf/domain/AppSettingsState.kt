@@ -2,7 +2,6 @@ package com.gmail.volkovskiyda.jellyshelf.domain
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -13,8 +12,8 @@ import kotlinx.coroutines.flow.stateIn
  */
 class AppSettingsState(
     settingsRepository: SettingsRepository,
-    scope: CoroutineScope,
+    dispatchers: DispatcherProvider,
 ) {
     val settings: StateFlow<Settings?> =
-        settingsRepository.settings.stateIn(scope, SharingStarted.Eagerly, null)
+        settingsRepository.settings.stateIn(dispatchers.applicationScope, SharingStarted.Eagerly, null)
 }

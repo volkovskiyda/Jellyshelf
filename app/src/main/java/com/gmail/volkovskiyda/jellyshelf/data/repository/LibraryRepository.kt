@@ -8,6 +8,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.mapper.toDomain
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
@@ -40,11 +41,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
 import java.time.Instant
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +71,7 @@ class DefaultLibraryRepository(
     private val jellyfin: JellyfinDataSource,
     private val settings: SettingsRepository,
     private val ytDlp: YtDlpMetadataSource,
+    dispatchers: DispatcherProvider,
 ) : LibraryRepository {
     private val videoDao = db.videoDao()
     private val categoryDao = db.categoryDao()
@@ -102,11 +100,8 @@ class DefaultLibraryRepository(
 
     // Long-running work (bulk fetch, playback reports) runs here so it outlives the screen
     // that started it. Best-effort background work must never crash the process on an
-    // unexpected DataStore/DB failure — log and move on.
-    private val repoScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.IO +
-            CoroutineExceptionHandler { _, e -> Timber.tag("LibraryRepository").w(e, "background work failed") },
-    )
+    // unexpected DataStore/DB failure — ioScope logs and moves on.
+    private val repoScope = dispatchers.ioScope("LibraryRepository")
     private val _bulkFetch = MutableStateFlow<BulkFetch>(BulkFetch.Idle)
     override val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
     private var bulkJob: Job? = null
