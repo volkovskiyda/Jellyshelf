@@ -192,7 +192,7 @@ class JellyfinDataSource(
         val request = Request.Builder().url(indexUrl).build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Index fetch failed: HTTP ${response.code}")
-            val body = response.body?.string().orEmpty()
+            val body = response.body.string()
             // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at
             // minimum). A blank 200 — captive portal, file caught mid-rewrite — must count as a
             // failed fetch, or it would downgrade every index-sourced row.

@@ -49,6 +49,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.isJellyfinImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -79,6 +80,7 @@ fun rememberThumbnailModel(url: String?): String? {
  * covers the fast list → detail → back and configuration-change cases in memory; the store
  * seeds the initial value whenever that saved state has been discarded.
  */
+@OptIn(FlowPreview::class)
 @Composable
 fun rememberPersistedLazyListState(key: String): LazyListState {
     val store = koinInject<ScrollPositionRepository>()
@@ -124,6 +126,7 @@ fun rememberPersistedLazyListState(key: String): LazyListState {
  * nearest item that sorts at or just above it. [items] must be sorted ascending by [anchorOf]
  * — the same order the list is displayed in.
  */
+@OptIn(FlowPreview::class)
 @Composable
 fun <T> rememberAnchoredLazyListState(
     key: String,
