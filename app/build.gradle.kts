@@ -60,6 +60,9 @@ android {
             useLegacyPackaging = true
         }
     }
+    lint {
+        checkAllWarnings = true
+    }
 }
 
 ksp {
