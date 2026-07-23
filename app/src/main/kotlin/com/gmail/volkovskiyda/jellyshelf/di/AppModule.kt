@@ -30,16 +30,22 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel
-import com.squareup.moshi.Moshi
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logger
+import io.ktor.client.plugins.logging.Logging
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.dsl.workerOf
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
-import java.util.concurrent.TimeUnit
+import timber.log.Timber
 
 /**
  * The whole app's Koin graph. Consumer definitions use the constructor-reference DSL (`singleOf`,
@@ -51,8 +57,8 @@ import java.util.concurrent.TimeUnit
 val appModule = module {
     single { BuildInfo(isDebug = BuildConfig.DEBUG, sdkInt = Build.VERSION.SDK_INT) }
     single<DispatcherProvider> { DefaultDispatcherProvider() }
-    single { Moshi.Builder().build() }
-    single { provideOkHttpClient(get()) }
+    single { provideJson() }
+    single { provideHttpClient(get(), get()) }
     single { provideDatabase(androidContext()) }
 
     singleOf(::DefaultSettingsRepository) { bind<SettingsRepository>() }
@@ -79,17 +85,42 @@ val appModule = module {
     workerOf(::SyncWorker)
 }
 
-// Log request URLs only in debug builds — release must not write every Jellyfin/index URL to
-// logcat.
-private fun provideOkHttpClient(buildInfo: BuildInfo): OkHttpClient = OkHttpClient.Builder()
-    .apply {
-        if (buildInfo.isDebug) {
-            addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+// Shared lenient Json for both ContentNegotiation and the manual index decode (JellyfinDataSource).
+// The three flags together keep request bodies wire-identical to the old Moshi output:
+//  - ignoreUnknownKeys: Jellyfin returns far more fields than we model; kotlinx throws otherwise.
+//  - explicitNulls=false: omit null-valued properties (e.g. UserItemDataBody.lastPlayedDate), as Moshi did.
+//  - encodeDefaults=true: keep non-null Kotlin defaults on the wire (ProgressBody.isPaused/playMethod,
+//    CreatePlaylistBody.mediaType, UserItemDataBody.played); kotlinx omits defaults without it.
+// internal (not private) so JellyfinApiTest exercises this exact config, not a copy.
+internal fun provideJson(): Json = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    encodeDefaults = true
+}
+
+// The base Ktor client on the OkHttp engine. expectSuccess makes non-2xx throw
+// Client/ServerResponseException (see LibraryRepository.isPermanentFailure). Request URLs are logged
+// only in debug — routed through Timber so release strips them via the -assumenosideeffects rules —
+// and LogLevel.INFO logs method/URL/status without bodies, matching the old OkHttp BASIC interceptor.
+private fun provideHttpClient(buildInfo: BuildInfo, json: Json): HttpClient = HttpClient(OkHttp) {
+    expectSuccess = true
+    install(ContentNegotiation) { json(json) }
+    install(HttpTimeout) {
+        connectTimeoutMillis = 30_000
+        socketTimeoutMillis = 30_000
+        requestTimeoutMillis = 30_000
+    }
+    if (buildInfo.isDebug) {
+        install(Logging) {
+            logger = object : Logger {
+                override fun log(message: String) {
+                    Timber.tag("Ktor").d(message)
+                }
+            }
+            level = LogLevel.INFO
         }
     }
-    .connectTimeout(30, TimeUnit.SECONDS)
-    .readTimeout(30, TimeUnit.SECONDS)
-    .build()
+}
 
 // No destructive fallback: manual categories and in-app yt-dlp metadata are user-authored and not
 // reconstructible, so future schema bumps must ship explicit migrations.

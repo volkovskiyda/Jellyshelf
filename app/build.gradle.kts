@@ -5,6 +5,21 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
 }
 
+// Reads KEY=VALUE lines from a repo-root env file (blanks/comments ignored); a missing file yields
+// an empty map. Feeds the opt-in live-endpoint instrumentation tests via
+// testInstrumentationRunnerArguments below, so the values reach the tests as `am instrument -e`
+// extras at run time and are never compiled into any app or test BuildConfig. Changing .test.env
+// needs no rebuild.
+fun loadEnv(file: java.io.File): Map<String, String> =
+    file.takeIf { it.exists() }?.readLines()
+        ?.mapNotNull { line ->
+            line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
+                ?.split("=", limit = 2)?.takeIf { it.size == 2 }
+                ?.let { (k, v) -> k.trim() to v.trim() }
+        }?.toMap().orEmpty()
+
+val testEnv = loadEnv(rootProject.file(".test.env"))
+
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf"
     compileSdk = 37
@@ -15,6 +30,15 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Live-endpoint test config from the git-ignored .test.env, passed as runtime instrumentation
+        // extras (never baked into BuildConfig). Blank when the file is absent, so the live tests skip.
+        testInstrumentationRunnerArguments += mapOf(
+            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"].orEmpty(),
+            "jellyfinApiKey" to testEnv["JELLYFIN_API_KEY"].orEmpty(),
+            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"].orEmpty(),
+        )
 
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers
         // virtually all modern physical devices and keeps the APK from ballooning across ABIs.
@@ -32,9 +56,8 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            // R8 shrinking/obfuscation. Library consumer rules (Moshi codegen, Retrofit, Room,
-            // kotlinx-serialization) come in automatically; app-specific rules live in
-            // src/main/keepRules/.
+            // R8 shrinking/obfuscation. Library consumer rules (Ktor, Room, kotlinx-serialization)
+            // come in automatically; app-specific rules live in src/main/keepRules/.
             optimization {
                 enable = true
             }
@@ -64,6 +87,11 @@ android {
         checkAllWarnings = true
         // The one check checkAllWarnings leaves off (experimental interprocedural analysis).
         enable += "WrongThreadInterprocedural"
+        // Baseline (not disable) for the one known third-party false positive: ktor-utils
+        // references java.lang.management from IntelliJ-debugger-only code that never runs on
+        // Android (InvalidPackage). Baselining keeps the check live for future dependencies.
+        // Regenerate after dependency bumps with: ./gradlew :app:updateLintBaselineDebug
+        baseline = file("lint-baseline.xml")
         // Also print findings to the console; file reports in build/reports/ stay as-is.
         // Plain File("stdout") (not project file()) — lint only treats the bare name as console.
         textReport = true
@@ -104,21 +132,31 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.coil.compose)
-    implementation(libs.converter.moshi)
+    implementation(platform(libs.ktor.bom))
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.logging)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.logging.interceptor)
     implementation(libs.material)
-    implementation(libs.okhttp)
-    implementation(libs.retrofit)
     implementation(libs.timber)
     implementation(libs.youtubedl.android.library)
     testImplementation(libs.junit)
     testImplementation(platform(libs.koin.bom))
     testImplementation(libs.koin.test)
-    testImplementation(libs.koin.test.junit4)
+    testImplementation(platform(libs.ktor.bom))
+    testImplementation(libs.ktor.client.mock)
+    testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(platform(libs.koin.bom))
+    androidTestImplementation(platform(libs.ktor.bom))
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.ktor.client.mock)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.koin.test)
     debugImplementation(libs.androidx.compose.ui.tooling)
     "ksp"(libs.androidx.room.compiler)
-    "ksp"(libs.moshi.kotlin.codegen)
 }

@@ -6,7 +6,7 @@ syncs watch status with Jellyfin over the REST API. Playback stays in Jellyfin (
 external player) — Jellyshelf is the catalog + sync layer, not a video player.
 
 `com.gmail.volkovskiyda.jellyshelf` · single-module · Compose + Navigation 3 + Adaptive ·
-Room · Retrofit/Moshi · WorkManager · DataStore · lightweight manual DI.
+Room · Ktor (OkHttp engine) / kotlinx.serialization · WorkManager · DataStore · lightweight manual DI.
 
 ## The data pipeline
 
@@ -129,8 +129,8 @@ from Jellyfin on every sync, and writes back when you mark watched/unwatched.
 
 ## Endpoints to verify against your Jellyfin version
 
-The client (`data/remote/JellyfinApi.kt`) targets standard endpoints; confirm these against
-your server build and adjust if needed:
+The client (`data/remote/JellyfinApi.kt`) — hand-written Ktor calls, not a Retrofit interface —
+targets standard endpoints; confirm these against your server build and adjust if needed:
 - `GET /Users`, `GET /Items` — stable.
 - `POST` / `DELETE /Users/{userId}/PlayedItems/{itemId}` — mark (un)watched.
 - `POST /Sessions/Playing/Progress` — position write; some versions prefer a play-session
@@ -144,6 +144,39 @@ your server build and adjust if needed:
 ```
 
 Minimum: `minSdk 30`, `compileSdk 37`. Debug builds allow cleartext HTTP for LAN servers.
+
+## Testing
+
+```bash
+./gradlew :app:testDebugUnitTest          # JVM unit tests incl. MockEngine networking tests
+./gradlew :app:connectedDebugAndroidTest  # instrumentation tests (needs a device/emulator)
+```
+
+- **Unit tests** (`src/test`) run on the JVM with no device. `JellyfinApiTest` drives the Ktor
+  client over a `MockEngine` to lock in the migrated request-body wire format, URL/header
+  construction, unknown-key tolerance, and error mapping.
+- **Instrumentation tests** (`src/androidTest`) run in a real APK: Room DAO round-trips and the
+  on-device kotlinx.serialization path (a lighter stand-in for full R8/keep-rule validation).
+- **Live-endpoint tests** (`LiveEndpointTest`) hit a real Jellyfin and are **opt-in via `.test.env`**:
+  copy `.example.test.env` → `.test.env` and fill in the server URL / API key / index URL. They
+  **skip automatically** (never fail) when `.test.env` is absent/blank or the server is unreachable,
+  so a plain `connectedDebugAndroidTest` on a fresh checkout stays green.
+
+### Environment config
+
+Local config lives in git-ignored `.env`-style files at the repo root, **not** `local.properties`.
+Copy the committed `.example.*` templates and fill them in:
+
+| File | Committed? | Purpose |
+|------|-----------|---------|
+| `.test.env` | git-ignored | Real live-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_API_KEY`, `JELLYFIN_INDEX_URL`. |
+| `.example.test.env` | committed | Template for `.test.env`. |
+| `.env` | git-ignored | General local config (none needed yet). |
+| `.example.env` | committed | Template for `.env`. |
+
+Gradle's `loadEnv(".test.env")` reads the test config and passes it to the instrumentation tests as
+runtime runner arguments (`am instrument -e` extras) — the values are never compiled into any
+`BuildConfig`.
 
 ## License
 

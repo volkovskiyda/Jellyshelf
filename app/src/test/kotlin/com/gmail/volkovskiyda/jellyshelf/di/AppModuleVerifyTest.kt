@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.di
 import android.app.Application
 import android.content.Context
 import androidx.work.WorkerParameters
+import io.ktor.client.engine.HttpClientEngine
 import org.junit.Test
 import org.koin.core.annotation.KoinExperimentalAPI
 import org.koin.test.verify.verify
@@ -24,6 +25,10 @@ import org.koin.test.verify.verify
  * - [Boolean]/[Int] — the `BuildInfo(isDebug, sdkInt)` constructor constants, wired in the module
  *   from `BuildConfig.DEBUG` / `Build.VERSION.SDK_INT` (no other definition injects a bare
  *   Boolean/Int, so whitelisting them here can't mask a real missing binding).
+ * - [HttpClientEngine] — `verify` reflects the `single { provideHttpClient(...) }` lambda's provided
+ *   type (Ktor's [io.ktor.client.HttpClient]) and sees its primary-constructor `engine` param. That
+ *   engine is built inside `provideHttpClient` (`HttpClient(OkHttp) { … }`), not injected from the
+ *   graph, so it is supplied from outside and whitelisted here.
  */
 class AppModuleVerifyTest {
 
@@ -38,6 +43,7 @@ class AppModuleVerifyTest {
                 String::class,
                 Boolean::class,
                 Int::class,
+                HttpClientEngine::class,
             ),
         )
     }

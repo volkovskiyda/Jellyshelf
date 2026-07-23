@@ -1,76 +1,101 @@
 package com.gmail.volkovskiyda.jellyshelf.data.remote
 
-import retrofit2.Response
-import retrofit2.http.Body
-import retrofit2.http.DELETE
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Path
-import retrofit2.http.Query
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 
-interface JellyfinApi {
+/**
+ * Hand-written Ktor client for the Jellyfin REST endpoints. Wraps a per-server-configured
+ * [HttpClient] (base URL + X-Emby-Token + Accept applied via DefaultRequest in [JellyfinClient]).
+ * Relative paths resolve against that base; [parameter] skips null values, so a null `parentId`
+ * omits its query param. The playstate writes return Ktor's [HttpResponse]; with the base client's
+ * `expectSuccess = true`, a non-2xx already threw before the caller sees it.
+ */
+class JellyfinApi(private val client: HttpClient) {
 
-    @GET("Users")
-    suspend fun getUsers(): List<UserDto>
+    suspend fun getUsers(): List<UserDto> =
+        client.get("Users").body()
 
     /** Top-level libraries/collections visible to the user (Movies, Home Videos, …). */
-    @GET("Users/{userId}/Views")
-    suspend fun getViews(@Path("userId") userId: String): ItemsResponse
+    suspend fun getViews(userId: String): ItemsResponse =
+        client.get("Users/$userId/Views").body()
 
     /** Immediate child folders of a given item — one level, for the folder browser. */
-    @GET("Items")
     suspend fun getChildFolders(
-        @Query("userId") userId: String,
-        @Query("ParentId") parentId: String,
-        @Query("IsFolder") isFolder: Boolean = true,
-        @Query("SortBy") sortBy: String = "SortName",
-        @Query("Fields") fields: String = "Path",
-        @Query("StartIndex") startIndex: Int = 0,
-        @Query("Limit") limit: Int = 500,
-    ): ItemsResponse
+        userId: String,
+        parentId: String,
+        isFolder: Boolean = true,
+        sortBy: String = "SortName",
+        fields: String = "Path",
+        startIndex: Int = 0,
+        limit: Int = 500,
+    ): ItemsResponse = client.get("Items") {
+        parameter("userId", userId)
+        parameter("ParentId", parentId)
+        parameter("IsFolder", isFolder)
+        parameter("SortBy", sortBy)
+        parameter("Fields", fields)
+        parameter("StartIndex", startIndex)
+        parameter("Limit", limit)
+    }.body()
 
-    @GET("Items")
     suspend fun getItems(
-        @Query("userId") userId: String,
-        @Query("ParentId") parentId: String? = null,
-        @Query("Recursive") recursive: Boolean = true,
-        @Query("IncludeItemTypes") includeItemTypes: String = "Video,Movie,Episode,MusicVideo",
-        @Query("Fields") fields: String = "Path,ProviderIds,Overview,Genres,Tags,ProductionYear",
+        userId: String,
+        parentId: String? = null,
+        recursive: Boolean = true,
+        includeItemTypes: String = "Video,Movie,Episode,MusicVideo",
+        fields: String = "Path,ProviderIds,Overview,Genres,Tags,ProductionYear",
         // Stable ordering matters: paging without a sort can skip items when the library
         // changes mid-sync, and a skipped item now gets deleted locally by the sync.
-        @Query("SortBy") sortBy: String = "SortName",
-        @Query("SortOrder") sortOrder: String = "Ascending",
-        @Query("StartIndex") startIndex: Int = 0,
-        @Query("Limit") limit: Int = 200,
-    ): ItemsResponse
+        sortBy: String = "SortName",
+        sortOrder: String = "Ascending",
+        startIndex: Int = 0,
+        limit: Int = 200,
+    ): ItemsResponse = client.get("Items") {
+        parameter("userId", userId)
+        parameter("ParentId", parentId) // null -> param omitted
+        parameter("Recursive", recursive)
+        parameter("IncludeItemTypes", includeItemTypes)
+        parameter("Fields", fields)
+        parameter("SortBy", sortBy)
+        parameter("SortOrder", sortOrder)
+        parameter("StartIndex", startIndex)
+        parameter("Limit", limit)
+    }.body()
 
-    @POST("Users/{userId}/PlayedItems/{itemId}")
-    suspend fun markPlayed(
-        @Path("userId") userId: String,
-        @Path("itemId") itemId: String,
-    ): Response<Unit>
+    suspend fun markPlayed(userId: String, itemId: String): HttpResponse =
+        client.post("Users/$userId/PlayedItems/$itemId")
 
-    @DELETE("Users/{userId}/PlayedItems/{itemId}")
-    suspend fun markUnplayed(
-        @Path("userId") userId: String,
-        @Path("itemId") itemId: String,
-    ): Response<Unit>
+    suspend fun markUnplayed(userId: String, itemId: String): HttpResponse =
+        client.delete("Users/$userId/PlayedItems/$itemId")
 
-    @POST("Sessions/Playing/Progress")
-    suspend fun reportProgress(@Body body: ProgressBody): Response<Unit>
+    suspend fun reportProgress(body: ProgressBody): HttpResponse =
+        client.post("Sessions/Playing/Progress") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
     /** Writes user-scoped playstate (resume position / played flag) directly to the item. */
-    @POST("Users/{userId}/Items/{itemId}/UserData")
-    suspend fun updateUserData(
-        @Path("userId") userId: String,
-        @Path("itemId") itemId: String,
-        @Body body: UserItemDataBody,
-    ): Response<Unit>
+    suspend fun updateUserData(userId: String, itemId: String, body: UserItemDataBody): HttpResponse =
+        client.post("Users/$userId/Items/$itemId/UserData") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
     /**
      * Creates a playlist. The playlist keeps the order of the body's ids, so pass them
      * pre-sorted. Returns the new playlist's id.
      */
-    @POST("Playlists")
-    suspend fun createPlaylist(@Body body: CreatePlaylistBody): PlaylistCreationResult
+    suspend fun createPlaylist(body: CreatePlaylistBody): PlaylistCreationResult =
+        client.post("Playlists") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 }

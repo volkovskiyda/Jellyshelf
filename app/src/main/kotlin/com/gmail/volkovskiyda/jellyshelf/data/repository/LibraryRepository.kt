@@ -50,15 +50,17 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import retrofit2.HttpException
 import timber.log.Timber
 
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
- *  explicitly transient 408 (timeout) and 429 (throttling). */
+ *  explicitly transient 408 (timeout) and 429 (throttling). Under Ktor's `expectSuccess = true`,
+ *  a non-2xx surfaces as [ResponseException] (Client/ServerResponseException); timeouts throw
+ *  HttpRequestTimeoutException instead, so they fall through to transient. */
 internal fun isPermanentFailure(e: Throwable): Boolean {
-    val code = (e as? HttpException)?.code() ?: return false
+    val code = (e as? ResponseException)?.response?.status?.value ?: return false
     return code in 400..499 && code != 408 && code != 429
 }
 
@@ -412,7 +414,10 @@ class DefaultLibraryRepository(
                 }
             }
             true
-        }.getOrDefault(false)
+        }.getOrElse { e ->
+            Timber.tag(PLAYBACK_TAG).w(e, "setPlayed: server write failed for youtubeId=$youtubeId")
+            false
+        }
     }
 
     /**

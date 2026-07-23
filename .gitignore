@@ -8,3 +8,7 @@ build
 .externalNativeBuild
 .cxx
 /internal
+
+# Env config — real files ignored; committed templates use the .example.* prefix
+.env
+.test.env

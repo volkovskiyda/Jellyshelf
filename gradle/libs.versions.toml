@@ -15,13 +15,11 @@ adaptiveLayout = "1.3.0-rc01"
 adaptiveNavigation3 = "1.3.0-rc01"
 roomRuntime = "2.8.4"
 coilCompose = "2.7.0"
-retrofit = "3.0.0"
-converterMoshi = "3.0.0"
+ktor = "3.5.1"
 kotlinxCoroutinesAndroid = "1.11.0"
 kotlinxCoroutinesCore = "1.11.0"
-loggingInterceptor = "5.4.0"
-okhttp = "5.4.0"
-moshiKotlinCodegen = "1.15.2"
+androidxTestExtJunit = "1.3.0"
+androidxTestRunner = "1.7.0"
 datastorePreferences = "1.2.1"
 material = "1.14.0"
 workRuntimeKtx = "2.11.2"
@@ -55,13 +53,18 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "roomRuntime" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "roomRuntime" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coilCompose" }
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-converter-moshi = { group = "com.squareup.retrofit2", name = "converter-moshi", version.ref = "converterMoshi" }
+ktor-bom = { group = "io.ktor", name = "ktor-bom", version.ref = "ktor" }
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core" }
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp" }
+ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation" }
+ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json" }
+ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging" }
+ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutinesAndroid" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutinesCore" }
-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "loggingInterceptor" }
-okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
-moshi-kotlin-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-codegen", version.ref = "moshiKotlinCodegen" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesCore" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastorePreferences" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
@@ -73,7 +76,6 @@ koin-android = { group = "io.insert-koin", name = "koin-android" }
 koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose" }
 koin-androidx-workmanager = { group = "io.insert-koin", name = "koin-androidx-workmanager" }
 koin-test = { group = "io.insert-koin", name = "koin-test" }
-koin-test-junit4 = { group = "io.insert-koin", name = "koin-test-junit4" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

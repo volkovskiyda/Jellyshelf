@@ -5,16 +5,16 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.CreatePlaylistBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinApi
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
-import com.gmail.volkovskiyda.jellyshelf.data.remote.ProgressBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
+import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import java.io.IOException
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import timber.log.Timber
 
 /** Paging safety cap — far above any real library, purely an infinite-loop backstop. */
@@ -31,17 +31,13 @@ private const val PLAYBACK_TAG = "Playback"
  */
 class JellyfinDataSource(
     private val client: JellyfinClient,
-    private val okHttpClient: OkHttpClient,
+    private val httpClient: HttpClient,
     private val dispatchers: DispatcherProvider,
-    moshi: Moshi,
+    private val json: Json,
 ) {
-    private val indexAdapter = moshi.adapter<List<IndexEntry>>(
-        Types.newParameterizedType(List::class.java, IndexEntry::class.java)
-    )
-
-    // Cache the built API by "url|key" so we don't rebuild Retrofit each call. A single volatile
-    // pair keeps the key and its API published atomically, so a concurrent settings change can
-    // never pair one server's key with another server's client.
+    // Cache the built API by "url|key" so we don't reconfigure the client each call. A single
+    // volatile pair keeps the key and its API published atomically, so a concurrent settings change
+    // can never pair one server's key with another server's client.
     private data class CachedApi(val key: String, val api: JellyfinApi)
 
     @Volatile
@@ -132,16 +128,9 @@ class JellyfinDataSource(
     suspend fun setPlayed(serverUrl: String, apiKey: String, userId: String, itemId: String, played: Boolean) {
         val api = api(serverUrl, apiKey)
         val response = if (played) api.markPlayed(userId, itemId) else api.markUnplayed(userId, itemId)
-        Timber.tag(PLAYBACK_TAG).d("setPlayed(played=$played) itemId=$itemId -> HTTP ${response.code()}")
-        // Response<Unit> does not throw on 4xx/5xx — surface it so callers' best-effort/toggle
-        // failure handling actually sees a failed mark-played rather than treating it as success.
-        if (!response.isSuccessful) {
-            throw IOException("setPlayed failed for $itemId: HTTP ${response.code()}")
-        }
-    }
-
-    suspend fun reportProgress(serverUrl: String, apiKey: String, itemId: String, positionTicks: Long) {
-        api(serverUrl, apiKey).reportProgress(ProgressBody(itemId = itemId, positionTicks = positionTicks))
+        Timber.tag(PLAYBACK_TAG).d("setPlayed(played=$played) itemId=$itemId -> HTTP ${response.status.value}")
+        // A non-2xx already threw (expectSuccess = true) inside the API call, so callers' best-effort
+        // /toggle failure handling still sees a failed mark-played; reaching here means success.
     }
 
     /**
@@ -166,10 +155,8 @@ class JellyfinDataSource(
                 lastPlayedDate = lastPlayedDate,
             ),
         )
-        Timber.tag(PLAYBACK_TAG).d("updatePlaybackState itemId=$itemId positionTicks=$positionTicks played=$played -> HTTP ${response.code()}")
-        if (!response.isSuccessful) {
-            throw IOException("updateUserData failed for $itemId: HTTP ${response.code()}")
-        }
+        Timber.tag(PLAYBACK_TAG).d("updatePlaybackState itemId=$itemId positionTicks=$positionTicks played=$played -> HTTP ${response.status.value}")
+        // A non-2xx already threw (expectSuccess = true) inside updateUserData; reaching here is success.
     }
 
     /** Creates a Jellyfin playlist from ordered [itemIds]; returns the new playlist id. */
@@ -189,15 +176,15 @@ class JellyfinDataSource(
      * the former must never degrade existing index-sourced metadata.
      */
     suspend fun fetchIndex(indexUrl: String): List<IndexEntry> = withContext(dispatchers.io) {
-        val request = Request.Builder().url(indexUrl).build()
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Index fetch failed: HTTP ${response.code}")
-            val body = response.body.string()
-            // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at
-            // minimum). A blank 200 — captive portal, file caught mid-rewrite — must count as a
-            // failed fetch, or it would downgrade every index-sourced row.
-            if (body.isBlank()) throw IOException("Index fetch returned an empty body")
-            indexAdapter.fromJson(body).orEmpty()
-        }
+        // indexUrl is an arbitrary absolute URL (not a Jellyfin endpoint), so it uses the base
+        // httpClient directly. With expectSuccess = true a non-2xx throws a ResponseException here
+        // — still a throw, which is all this method's contract promises. bodyAsText() (not
+        // body<List<IndexEntry>>()) is used so the blank-body guard runs before decoding.
+        val body = httpClient.get(indexUrl).bodyAsText()
+        // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at minimum).
+        // A blank 200 — captive portal, file caught mid-rewrite — must count as a failed fetch, or
+        // it would downgrade every index-sourced row.
+        if (body.isBlank()) throw IOException("Index fetch returned an empty body")
+        json.decodeFromString(ListSerializer(IndexEntry.serializer()), body)
     }
 }

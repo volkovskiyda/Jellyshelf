@@ -3,8 +3,9 @@
 -keep class com.yausername.** { *; }
 -dontwarn com.yausername.**
 
-# Navigation 3 back-stack keys are (de)serialized via kotlinx-serialization when saved state
-# is restored; keep the app's @Serializable classes and their generated serializers.
+# Keeps the app's @Serializable classes and their generated serializers. Covers two users of
+# kotlinx-serialization: the Navigation 3 back-stack keys (restored from saved state) and the
+# remote DTOs in data.remote (the Ktor ContentNegotiation request/response bodies).
 -keep @kotlinx.serialization.Serializable class com.gmail.volkovskiyda.jellyshelf.** { *; }
 
 # Strip ALL Timber logging from release builds. Release plants no Tree (see

@@ -1,68 +1,68 @@
 package com.gmail.volkovskiyda.jellyshelf.data.remote
 
-import com.squareup.moshi.Json
-import com.squareup.moshi.JsonClass
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class UserDto(
-    @Json(name = "Id") val id: String,
-    @Json(name = "Name") val name: String,
+    @SerialName("Id") val id: String,
+    @SerialName("Name") val name: String,
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class ItemsResponse(
-    @Json(name = "Items") val items: List<BaseItemDto> = emptyList(),
-    @Json(name = "TotalRecordCount") val totalRecordCount: Int = 0,
+    @SerialName("Items") val items: List<BaseItemDto> = emptyList(),
+    @SerialName("TotalRecordCount") val totalRecordCount: Int = 0,
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class BaseItemDto(
-    @Json(name = "Id") val id: String,
-    @Json(name = "Name") val name: String?,
-    @Json(name = "Path") val path: String? = null,
-    @Json(name = "IsFolder") val isFolder: Boolean? = null,
-    @Json(name = "RunTimeTicks") val runTimeTicks: Long? = null,
-    @Json(name = "ProductionYear") val productionYear: Int? = null,
-    @Json(name = "Overview") val overview: String? = null,
-    @Json(name = "Genres") val genres: List<String>? = null,
-    @Json(name = "Tags") val tags: List<String>? = null,
-    @Json(name = "ProviderIds") val providerIds: Map<String, String>? = null,
-    @Json(name = "UserData") val userData: UserDataDto? = null,
+    @SerialName("Id") val id: String,
+    @SerialName("Name") val name: String?,
+    @SerialName("Path") val path: String? = null,
+    @SerialName("IsFolder") val isFolder: Boolean? = null,
+    @SerialName("RunTimeTicks") val runTimeTicks: Long? = null,
+    @SerialName("ProductionYear") val productionYear: Int? = null,
+    @SerialName("Overview") val overview: String? = null,
+    @SerialName("Genres") val genres: List<String>? = null,
+    @SerialName("Tags") val tags: List<String>? = null,
+    @SerialName("ProviderIds") val providerIds: Map<String, String>? = null,
+    @SerialName("UserData") val userData: UserDataDto? = null,
 )
 
-@JsonClass(generateAdapter = true)
+@Serializable
 data class UserDataDto(
-    @Json(name = "Played") val played: Boolean = false,
-    @Json(name = "PlaybackPositionTicks") val playbackPositionTicks: Long = 0,
-    @Json(name = "PlayCount") val playCount: Int = 0,
-    @Json(name = "LastPlayedDate") val lastPlayedDate: String? = null,
+    @SerialName("Played") val played: Boolean = false,
+    @SerialName("PlaybackPositionTicks") val playbackPositionTicks: Long = 0,
+    @SerialName("PlayCount") val playCount: Int = 0,
+    @SerialName("LastPlayedDate") val lastPlayedDate: String? = null,
 )
 
 /** Response from POST /Playlists — Jellyfin's PlaylistCreationResult. */
-@JsonClass(generateAdapter = true)
+@Serializable
 data class PlaylistCreationResult(
-    @Json(name = "Id") val id: String,
+    @SerialName("Id") val id: String,
 )
 
 /**
  * Body for POST /Playlists — a minimal CreatePlaylistDto. Item ids travel in the JSON body
  * (not the query string), so large categories can't overflow URL length limits.
  */
-@JsonClass(generateAdapter = true)
+@Serializable
 data class CreatePlaylistBody(
-    @Json(name = "Name") val name: String,
-    @Json(name = "Ids") val ids: List<String>,
-    @Json(name = "UserId") val userId: String,
-    @Json(name = "MediaType") val mediaType: String = "Video",
+    @SerialName("Name") val name: String,
+    @SerialName("Ids") val ids: List<String>,
+    @SerialName("UserId") val userId: String,
+    @SerialName("MediaType") val mediaType: String = "Video",
 )
 
 /** Body for POST /Sessions/Playing/Progress — a minimal PlaybackProgressInfo. */
-@JsonClass(generateAdapter = true)
+@Serializable
 data class ProgressBody(
-    @Json(name = "ItemId") val itemId: String,
-    @Json(name = "PositionTicks") val positionTicks: Long,
-    @Json(name = "IsPaused") val isPaused: Boolean = true,
-    @Json(name = "PlayMethod") val playMethod: String = "DirectPlay",
+    @SerialName("ItemId") val itemId: String,
+    @SerialName("PositionTicks") val positionTicks: Long,
+    @SerialName("IsPaused") val isPaused: Boolean = true,
+    @SerialName("PlayMethod") val playMethod: String = "DirectPlay",
 )
 
 /**
@@ -71,9 +71,9 @@ data class ProgressBody(
  * Watching"), unlike /Sessions/Playing/Stopped which only commits playstate for a live,
  * progress-tracked session — impossible to sustain once playback is handed to an external player.
  */
-@JsonClass(generateAdapter = true)
+@Serializable
 data class UserItemDataBody(
-    @Json(name = "PlaybackPositionTicks") val playbackPositionTicks: Long,
-    @Json(name = "Played") val played: Boolean = false,
-    @Json(name = "LastPlayedDate") val lastPlayedDate: String? = null,
+    @SerialName("PlaybackPositionTicks") val playbackPositionTicks: Long,
+    @SerialName("Played") val played: Boolean = false,
+    @SerialName("LastPlayedDate") val lastPlayedDate: String? = null,
 )
