@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -39,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,7 +59,11 @@ internal data class SettingsActions(
     val onServerUrlChange: (String) -> Unit = {},
     val onApiKeyChange: (String) -> Unit = {},
     val onIndexUrlChange: (String) -> Unit = {},
+    val onUsernameChange: (String) -> Unit = {},
+    val onPasswordChange: (String) -> Unit = {},
     val fillIndexUrlFromServer: () -> Unit = {},
+    val signIn: () -> Unit = {},
+    val signOut: () -> Unit = {},
     val connect: () -> Unit = {},
     val selectUser: (User) -> Unit = {},
     val openBrowser: () -> Unit = {},
@@ -86,7 +94,11 @@ fun SettingsScreen(
             onServerUrlChange = viewModel::onServerUrlChange,
             onApiKeyChange = viewModel::onApiKeyChange,
             onIndexUrlChange = viewModel::onIndexUrlChange,
+            onUsernameChange = viewModel::onUsernameChange,
+            onPasswordChange = viewModel::onPasswordChange,
             fillIndexUrlFromServer = viewModel::fillIndexUrlFromServer,
+            signIn = viewModel::signIn,
+            signOut = viewModel::signOut,
             connect = { viewModel.connect() },
             selectUser = viewModel::selectUser,
             openBrowser = viewModel::openBrowser,
@@ -129,6 +141,39 @@ internal fun SettingsContent(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // The default auth path: a user-scoped token, so nothing the app holds or hands to an
+            // external player is a full-server credential.
+            OutlinedTextField(
+                value = state.username,
+                onValueChange = actions.onUsernameChange,
+                label = { Text(stringResource(R.string.username)) },
+                singleLine = true,
+                enabled = !state.signedIn,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (!state.signedIn) {
+                OutlinedTextField(
+                    value = state.password,
+                    onValueChange = actions.onPasswordChange,
+                    label = { Text(stringResource(R.string.password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { actions.signIn() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Button(
+                onClick = if (state.signedIn) actions.signOut else actions.signIn,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(if (state.signedIn) R.string.sign_out else R.string.sign_in))
+            }
+
             OutlinedTextField(
                 value = state.apiKey,
                 onValueChange = actions.onApiKeyChange,

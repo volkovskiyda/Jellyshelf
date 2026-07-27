@@ -44,6 +44,11 @@ data class SettingsUiState(
     val serverUrl: String = "",
     val apiKey: String = "",
     val indexUrl: String = "",
+    // Sign-in fields. The password lives here only until the token comes back — see [signIn].
+    val username: String = "",
+    val password: String = "",
+    /** True once a user token is held: the default, user-scoped auth path. */
+    val signedIn: Boolean = false,
     val users: List<User> = emptyList(),
     val selectedUserId: String = "",
     val selectedUserName: String = "",
@@ -125,6 +130,8 @@ class SettingsViewModel(
                 serverUrl = serverUrl,
                 apiKey = if (edited) cur.apiKey else s.apiKey,
                 indexUrl = if (edited) cur.indexUrl else s.indexUrl,
+                username = if (edited) cur.username else s.userName,
+                signedIn = s.isSignedIn,
                 users = cachedUsers.orEmpty(),
                 // Still the persisted user and scope: they are what sync uses until the next
                 // Connect, so the screen would lie by blanking them over an unsaved edit.
@@ -141,7 +148,10 @@ class SettingsViewModel(
             // Only hit the server when this process hasn't loaded users yet — tab switches
             // recreate this ViewModel, and re-connecting on every visit is wasted work. A
             // user already editing the fields connects explicitly with what they typed.
-            if (s.hasCredentials && cachedUsers == null && !edited) connect(silent = true)
+            // Signed-in installs skip it entirely: the token already identifies the user, so
+            // there is no server-wide user list to fetch or pick from.
+            val needsUserList = s.hasCredentials && !s.isSignedIn
+            if (needsUserList && cachedUsers == null && !edited) connect(silent = true)
         }
         observeSync()
     }
@@ -235,6 +245,91 @@ class SettingsViewModel(
         _state.value = _state.value.copy(indexUrl = value)
     }
 
+    fun onUsernameChange(value: String) {
+        fieldsEdited = true
+        _state.value = _state.value.copy(username = value)
+    }
+
+    fun onPasswordChange(value: String) {
+        fieldsEdited = true
+        _state.value = _state.value.copy(password = value)
+    }
+
+    /**
+     * The primary connect flow: exchange username + password for a user-scoped token.
+     *
+     * The password is cleared from state the moment the call returns — success or failure — so it
+     * never outlives the request that used it, and it is never written to DataStore at all.
+     */
+    fun signIn() {
+        val s = _state.value
+        // `busy` is a frame stale in the UI; guard here so two taps can't run concurrent sign-ins.
+        if (s.busy) return
+        if (s.serverUrl.isBlank() || s.username.isBlank() || s.password.isBlank()) {
+            _state.value = s.copy(
+                status = app.getString(R.string.enter_server_user_password),
+                statusIsError = true,
+            )
+            return
+        }
+        viewModelScope.launch {
+            _state.value = s.copy(
+                busy = true,
+                status = app.getString(R.string.signing_in),
+                statusIsError = false,
+            )
+            runCatchingCancellable {
+                val session = jellyfin.signIn(s.serverUrl, s.username, s.password)
+                // Persist only after the server accepted the credentials, so a typo can never
+                // overwrite a working configuration.
+                settingsRepo.setConnection(s.serverUrl, s.apiKey)
+                settingsRepo.setIndexUrl(s.indexUrl)
+                settingsRepo.setSession(session.accessToken, session.user.id, session.user.name)
+                // A different user means a different item tree, so the old folder scope points at
+                // a parent id that may not exist for them — same reset as switching users by hand.
+                val userChanged = session.user.id != _state.value.selectedUserId
+                if (userChanged) settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_PATH)
+                _state.value = _state.value.copy(
+                    busy = false,
+                    password = "",
+                    signedIn = true,
+                    username = session.user.name,
+                    selectedUserId = session.user.id,
+                    selectedUserName = session.user.name,
+                    selectedScopeId = if (userChanged) ROOT_SCOPE_ID else _state.value.selectedScopeId,
+                    selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else _state.value.selectedScopePath,
+                    // The user picker is an API-key-mode affordance; a token identifies its user.
+                    users = emptyList(),
+                    status = app.getString(R.string.signed_in_as, session.user.name),
+                    statusIsError = false,
+                )
+            }.onFailure { e ->
+                _state.value = _state.value.copy(
+                    busy = false,
+                    password = "",
+                    status = app.getString(R.string.sign_in_failed, reason(e)),
+                    statusIsError = true,
+                )
+            }
+        }
+    }
+
+    /** Drops the token (and the user it identified); the server URL and API key stay put. */
+    fun signOut() {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            settingsRepo.clearSession()
+            _state.value = _state.value.copy(
+                signedIn = false,
+                password = "",
+                selectedUserId = "",
+                selectedUserName = "",
+                status = app.getString(R.string.signed_out),
+                statusIsError = false,
+            )
+        }
+    }
+
     /** Prefill the metadata index URL from the entered server URL. */
     fun fillIndexUrlFromServer() {
         val base = _state.value.serverUrl.trim().trimEnd('/')
@@ -242,7 +337,11 @@ class SettingsViewModel(
         _state.value = _state.value.copy(indexUrl = "$base/jellyshelf-index.json")
     }
 
-    /** Save server + key, load users, auto-select the saved/first user. */
+    /**
+     * The **API-key** connect path: save server + key, load the server-wide user list, auto-select
+     * the saved/first user. Only reachable from the advanced section — a signed-in user has no use
+     * for it, since their token already names them.
+     */
     fun connect(silent: Boolean = false) {
         val s = _state.value
         // The screen disables buttons via `busy`, but that state is a frame stale — guard here
@@ -374,7 +473,7 @@ class SettingsViewModel(
                 // the browser before its own persist has necessarily landed.
                 val saved = settingsRepo.snapshot()
                 val folders = jellyfin
-                    .getChildFolders(saved.serverUrl, saved.apiKey, s.selectedUserId, s.currentParentId)
+                    .getChildFolders(saved.serverUrl, saved.credential, s.selectedUserId, s.currentParentId)
                     .map { FolderRef(it.id, it.name, it.path) }
                 _state.value = _state.value.copy(childFolders = folders, loadingFolders = false)
             }.onFailure { e ->

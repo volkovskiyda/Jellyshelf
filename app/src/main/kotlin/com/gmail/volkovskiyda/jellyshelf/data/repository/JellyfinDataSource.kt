@@ -1,18 +1,19 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
+import com.gmail.volkovskiyda.jellyshelf.data.remote.AuthenticateByNameBody
+import com.gmail.volkovskiyda.jellyshelf.data.remote.AuthenticationResult
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.CreatePlaylistBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinApi
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
-import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
+import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.utils.io.jvm.javaio.toInputStream
-import java.io.IOException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
@@ -20,6 +21,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
 import timber.log.Timber
+import java.io.IOException
 
 /** Paging safety cap — far above any real library, purely an infinite-loop backstop. */
 private const val MAX_PAGED_ITEMS = 1_000_000
@@ -47,18 +49,34 @@ class JellyfinDataSource(
     @Volatile
     private var cached: CachedApi? = null
 
-    private fun api(serverUrl: String, apiKey: String): JellyfinApi {
-        val key = "$serverUrl|$apiKey"
+    private fun api(serverUrl: String, credential: String): JellyfinApi {
+        val key = "$serverUrl|$credential"
         cached?.let { if (it.key == key) return it.api }
-        return client.create(serverUrl, apiKey).also { cached = CachedApi(key, it) }
+        return client.create(serverUrl, credential).also { cached = CachedApi(key, it) }
     }
 
-    suspend fun getUsers(serverUrl: String, apiKey: String): List<UserDto> =
-        api(serverUrl, apiKey).getUsers()
+    /**
+     * Exchanges a password for a user-scoped token. The only call that takes credentials rather
+     * than a [Settings.credential][com.gmail.volkovskiyda.jellyshelf.domain.model.Settings]: there
+     * is nothing to authenticate with yet, so it passes a blank one and identifies the app through
+     * the `MediaBrowser` header instead.
+     */
+    suspend fun authenticate(
+        serverUrl: String,
+        username: String,
+        password: String,
+        authorization: String,
+    ): AuthenticationResult = api(serverUrl, credential = "").authenticateByName(
+        AuthenticateByNameBody(username = username, password = password),
+        authorization = authorization,
+    )
+
+    suspend fun getUsers(serverUrl: String, credential: String): List<UserDto> =
+        api(serverUrl, credential).getUsers()
 
     /** Top-level libraries/collections for the user. */
-    suspend fun getViews(serverUrl: String, apiKey: String, userId: String): List<BaseItemDto> =
-        api(serverUrl, apiKey).getViews(userId).items
+    suspend fun getViews(serverUrl: String, credential: String, userId: String): List<BaseItemDto> =
+        api(serverUrl, credential).getViews(userId).items
 
     /**
      * Immediate child folders of [parentId]. A blank [parentId] returns the user's
@@ -66,11 +84,11 @@ class JellyfinDataSource(
      */
     suspend fun getChildFolders(
         serverUrl: String,
-        apiKey: String,
+        credential: String,
         userId: String,
         parentId: String?,
     ): List<BaseItemDto> {
-        val api = api(serverUrl, apiKey)
+        val api = api(serverUrl, credential)
         val pid = parentId?.takeIf { it.isNotBlank() }
         val items = if (pid == null) {
             api.getViews(userId).items
@@ -102,11 +120,11 @@ class JellyfinDataSource(
     /** Pages through the library. A blank [parentId] means the whole (root) library. */
     suspend fun fetchAllItems(
         serverUrl: String,
-        apiKey: String,
+        credential: String,
         userId: String,
         parentId: String? = null,
     ): List<BaseItemDto> {
-        val api = api(serverUrl, apiKey)
+        val api = api(serverUrl, credential)
         val scopedParent = parentId?.takeIf { it.isNotBlank() }
         val all = mutableListOf<BaseItemDto>()
         var startIndex = 0
@@ -129,8 +147,8 @@ class JellyfinDataSource(
         return all
     }
 
-    suspend fun setPlayed(serverUrl: String, apiKey: String, userId: String, itemId: String, played: Boolean) {
-        val api = api(serverUrl, apiKey)
+    suspend fun setPlayed(serverUrl: String, credential: String, userId: String, itemId: String, played: Boolean) {
+        val api = api(serverUrl, credential)
         val response = if (played) api.markPlayed(userId, itemId) else api.markUnplayed(userId, itemId)
         Timber.tag(PLAYBACK_TAG).d("setPlayed(played=$played) itemId=$itemId -> HTTP ${response.status.value}")
         // A non-2xx already threw (expectSuccess = true) inside the API call, so callers' best-effort
@@ -143,14 +161,14 @@ class JellyfinDataSource(
      */
     suspend fun updatePlaybackState(
         serverUrl: String,
-        apiKey: String,
+        credential: String,
         userId: String,
         itemId: String,
         positionTicks: Long,
         played: Boolean = false,
         lastPlayedDate: String? = null,
     ) {
-        val response = api(serverUrl, apiKey).updateUserData(
+        val response = api(serverUrl, credential).updateUserData(
             userId = userId,
             itemId = itemId,
             body = UserItemDataBody(
@@ -166,11 +184,11 @@ class JellyfinDataSource(
     /** Creates a Jellyfin playlist from ordered [itemIds]; returns the new playlist id. */
     suspend fun createPlaylist(
         serverUrl: String,
-        apiKey: String,
+        credential: String,
         userId: String,
         name: String,
         itemIds: List<String>,
-    ): String = api(serverUrl, apiKey)
+    ): String = api(serverUrl, credential)
         .createPlaylist(CreatePlaylistBody(name = name, ids = itemIds, userId = userId))
         .id
 

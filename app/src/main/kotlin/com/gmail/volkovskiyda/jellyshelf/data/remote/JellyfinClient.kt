@@ -11,14 +11,14 @@ import io.ktor.http.ContentType
  * The API key is injected as the X-Emby-Token header on every request.
  */
 class JellyfinClient(private val baseClient: HttpClient) {
-    fun create(serverUrl: String, apiKey: String): JellyfinApi {
+    fun create(serverUrl: String, credential: String): JellyfinApi {
         // .config { } returns a client that shares the base engine (connection pool, timeouts,
         // ContentNegotiation, Logging), so per-server clients are cheap — the Ktor analogue of
         // okhttp.newBuilder(). JellyfinDataSource still caches the result by "url|key".
         val client = baseClient.config {
             defaultRequest {
                 url(normalizeBaseUrl(serverUrl))
-                header("X-Emby-Token", apiKey)
+                header("X-Emby-Token", credential)
                 accept(ContentType.Application.Json)
             }
         }

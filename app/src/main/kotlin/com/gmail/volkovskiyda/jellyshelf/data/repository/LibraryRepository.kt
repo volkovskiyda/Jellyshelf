@@ -275,7 +275,7 @@ class DefaultLibraryRepository(
 
         val fetchStartedAt = System.currentTimeMillis()
         val items = runCatchingCancellable {
-            jellyfin.fetchAllItems(s.serverUrl, s.apiKey, s.userId, s.libraryId)
+            jellyfin.fetchAllItems(s.serverUrl, s.credential, s.userId, s.libraryId)
         }.getOrElse { e ->
             val message = when {
                 isCleartextBlocked(e) -> CLEARTEXT_BLOCKED_MESSAGE
@@ -662,7 +662,7 @@ class DefaultLibraryRepository(
                 val latest = videoDao.get(youtubeId) ?: return false
                 val itemId = latest.jellyfinItemId
                 if (s.isConnected && itemId != null) {
-                    jellyfin.setPlayed(s.serverUrl, s.apiKey, s.userId, itemId, latest.played)
+                    jellyfin.setPlayed(s.serverUrl, s.credential, s.userId, itemId, latest.played)
                 }
             }
             true
@@ -727,13 +727,13 @@ class DefaultLibraryRepository(
                     // Finished — record the play in Jellyfin's watch history via the endpoint
                     // that actually marks items played (PlayCount++, LastPlayedDate, resume cleared).
                     Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: marking played on Jellyfin itemId=$itemId")
-                    jellyfin.setPlayed(s.serverUrl, s.apiKey, s.userId, itemId, played = true)
+                    jellyfin.setPlayed(s.serverUrl, s.credential, s.userId, itemId, played = true)
                 } else {
                     // Stopped partway — persist the resume position for "Continue Watching".
                     Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId positionTicks=${latest.playbackPositionTicks}")
                     jellyfin.updatePlaybackState(
                         serverUrl = s.serverUrl,
-                        apiKey = s.apiKey,
+                        credential = s.credential,
                         userId = s.userId,
                         itemId = itemId,
                         positionTicks = latest.playbackPositionTicks,
@@ -763,7 +763,7 @@ class DefaultLibraryRepository(
         if (itemIds.isEmpty()) return PlaylistResult.Error("No playable videos in this category.")
 
         return runCatchingCancellable {
-            jellyfin.createPlaylist(s.serverUrl, s.apiKey, s.userId, playlistName, itemIds)
+            jellyfin.createPlaylist(s.serverUrl, s.credential, s.userId, playlistName, itemIds)
             PlaylistResult.Success(playlistName, itemIds.size)
         }.getOrElse { e ->
             PlaylistResult.Error("Failed to create playlist: ${e.message}")

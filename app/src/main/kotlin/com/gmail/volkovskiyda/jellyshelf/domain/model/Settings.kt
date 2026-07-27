@@ -3,7 +3,16 @@ package com.gmail.volkovskiyda.jellyshelf.domain.model
 /** App/connection settings snapshot. Backed by DataStore in the data layer. */
 data class Settings(
     val serverUrl: String,
+    /**
+     * Server-wide (admin-scoped) API key — the **advanced fallback**, used only when no user is
+     * signed in. Kept for setups that can't use a password login; [accessToken] is the default.
+     */
     val apiKey: String,
+    /**
+     * User-scoped access token from `AuthenticateByName`, or blank when signed out. The password
+     * that produced it is never stored.
+     */
+    val accessToken: String,
     val userId: String,
     val userName: String,
     val libraryId: String,
@@ -17,6 +26,18 @@ data class Settings(
      */
     val lastSyncLibraryId: String,
 ) {
-    val hasCredentials: Boolean get() = serverUrl.isNotBlank() && apiKey.isNotBlank()
+    /**
+     * The single value every authenticated request sends as `X-Emby-Token`: the user token when
+     * signed in, otherwise the advanced API key. Jellyfin accepts either in that header, which is
+     * what lets one credential flow through the whole data layer regardless of how it was obtained.
+     *
+     * Resolution lives here, in one place, so no call site has to decide which one it holds.
+     */
+    val credential: String get() = accessToken.ifBlank { apiKey }
+
+    /** True when the credential is a user token — the default path — rather than the API key. */
+    val isSignedIn: Boolean get() = accessToken.isNotBlank()
+
+    val hasCredentials: Boolean get() = serverUrl.isNotBlank() && credential.isNotBlank()
     val isConnected: Boolean get() = hasCredentials && userId.isNotBlank()
 }

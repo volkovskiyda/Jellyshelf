@@ -70,6 +70,7 @@ class SyncInstrumentedTest {
     private val connected = Settings(
         serverUrl = serverUrl,
         apiKey = "KEY",
+        accessToken = "",
         userId = "user-1",
         userName = "User",
         libraryId = "",

@@ -61,6 +61,7 @@ class DetailContentTest {
     private val settings = Settings(
         serverUrl = "https://jellyfin.example.org",
         apiKey = "key",
+        accessToken = "",
         userId = "user",
         userName = "User",
         libraryId = "",

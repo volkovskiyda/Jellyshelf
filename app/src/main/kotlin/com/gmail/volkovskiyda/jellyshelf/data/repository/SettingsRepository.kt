@@ -8,11 +8,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
-import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.IOException
+import java.util.UUID
 
 internal val Context.dataStore by preferencesDataStore(name = "settings")
 
@@ -22,6 +23,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
         val API_KEY = stringPreferencesKey("api_key")
+        val ACCESS_TOKEN = stringPreferencesKey("access_token")
+        val DEVICE_ID = stringPreferencesKey("device_id")
         val USER_ID = stringPreferencesKey("user_id")
         val USER_NAME = stringPreferencesKey("user_name")
         val LIBRARY_ID = stringPreferencesKey("library_id")
@@ -41,6 +44,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         Settings(
             serverUrl = p[Keys.SERVER_URL].orEmpty(),
             apiKey = p[Keys.API_KEY].orEmpty(),
+            accessToken = p[Keys.ACCESS_TOKEN].orEmpty(),
             userId = p[Keys.USER_ID].orEmpty(),
             userName = p[Keys.USER_NAME].orEmpty(),
             libraryId = p[Keys.LIBRARY_ID].orEmpty(),
@@ -66,6 +70,37 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             it[Keys.USER_NAME] = userName
         }
     }
+
+    override suspend fun setSession(accessToken: String, userId: String, userName: String) {
+        ds.edit {
+            it[Keys.ACCESS_TOKEN] = accessToken
+            it[Keys.USER_ID] = userId
+            it[Keys.USER_NAME] = userName
+        }
+    }
+
+    override suspend fun clearSession() {
+        ds.edit {
+            it.remove(Keys.ACCESS_TOKEN)
+            // The user came from the token, so it goes with it. The server URL and the advanced
+            // API key stay: re-signing in shouldn't mean retyping the connection.
+            it.remove(Keys.USER_ID)
+            it.remove(Keys.USER_NAME)
+        }
+    }
+
+    override suspend fun deviceId(): String {
+        snapshotDeviceId()?.let { return it }
+        // Generated under edit() so two concurrent first-callers agree: DataStore serializes
+        // transforms, and the second one sees the first one's value instead of overwriting it.
+        return ds.edit { it[Keys.DEVICE_ID] = it[Keys.DEVICE_ID] ?: UUID.randomUUID().toString() }
+            .let { it[Keys.DEVICE_ID].orEmpty() }
+    }
+
+    private suspend fun snapshotDeviceId(): String? = ds.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .first()[Keys.DEVICE_ID]
+        ?.takeIf { it.isNotBlank() }
 
     /** Library/collection to scope sync to. Empty id == root == all collections. */
     override suspend fun setLibrary(libraryId: String, libraryName: String) {

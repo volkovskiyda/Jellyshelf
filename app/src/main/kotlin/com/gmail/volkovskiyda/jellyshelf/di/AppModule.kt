@@ -19,6 +19,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
@@ -64,6 +65,13 @@ import java.util.concurrent.TimeUnit
  */
 val appModule = module {
     single { BuildInfo(isDebug = BuildConfig.DEBUG, sdkInt = Build.VERSION.SDK_INT) }
+    single {
+        DeviceInfo(
+            clientName = CLIENT_NAME,
+            deviceName = Build.MODEL,
+            version = BuildConfig.VERSION_NAME,
+        )
+    }
     single<DispatcherProvider> { DefaultDispatcherProvider() }
     single { provideJson() }
     single { provideHttpClient(get(), get()) }
@@ -97,6 +105,9 @@ val appModule = module {
 
     workerOf(::SyncWorker)
 }
+
+/** How the app names itself to Jellyfin — the "Client" column in its dashboard and session list. */
+private const val CLIENT_NAME = "Jellyshelf"
 
 // Shared lenient Json for both ContentNegotiation and the manual index decode (JellyfinDataSource).
 // The three flags together keep request bodies wire-identical to the old Moshi output:

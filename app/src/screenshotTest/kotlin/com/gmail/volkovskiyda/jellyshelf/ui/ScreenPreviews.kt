@@ -132,6 +132,7 @@ private fun LibraryPopulatedDark() {
 private val previewSettings = Settings(
     serverUrl = "https://jellyfin.example.org",
     apiKey = "00000000000000000000000000000000",
+    accessToken = "",
     userId = "user-id",
     userName = "Sample User",
     libraryId = "",

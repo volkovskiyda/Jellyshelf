@@ -5,10 +5,14 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
+/** The device id [FakeSettingsRepository] always reports. */
+const val FAKE_DEVICE_ID = "test-device-id"
+
 /** Blank settings: no credentials, never synced — what a fresh install reads. */
 val emptySettings = Settings(
     serverUrl = "",
     apiKey = "",
+    accessToken = "",
     userId = "",
     userName = "",
     libraryId = "",
@@ -38,6 +42,21 @@ class FakeSettingsRepository(
     override suspend fun setUser(userId: String, userName: String) {
         _settings.value = _settings.value.copy(userId = userId, userName = userName)
     }
+
+    override suspend fun setSession(accessToken: String, userId: String, userName: String) {
+        _settings.value = _settings.value.copy(
+            accessToken = accessToken,
+            userId = userId,
+            userName = userName,
+        )
+    }
+
+    override suspend fun clearSession() {
+        _settings.value = _settings.value.copy(accessToken = "", userId = "", userName = "")
+    }
+
+    /** Fixed rather than random: a test asserting on the auth header needs a predictable id. */
+    override suspend fun deviceId(): String = FAKE_DEVICE_ID
 
     override suspend fun setLibrary(libraryId: String, libraryName: String) {
         _settings.value = _settings.value.copy(libraryId = libraryId, libraryName = libraryName)

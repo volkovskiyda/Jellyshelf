@@ -9,6 +9,23 @@ data class UserDto(
     @SerialName("Name") val name: String,
 )
 
+/**
+ * Body for POST /Users/AuthenticateByName. `Pw` is the plaintext password over (ideally) HTTPS —
+ * Jellyfin's own scheme. It is never persisted: only the returned token is.
+ */
+@Serializable
+data class AuthenticateByNameBody(
+    @SerialName("Username") val username: String,
+    @SerialName("Pw") val password: String,
+)
+
+/** Response from POST /Users/AuthenticateByName — the user-scoped token plus who it belongs to. */
+@Serializable
+data class AuthenticationResult(
+    @SerialName("AccessToken") val accessToken: String,
+    @SerialName("User") val user: UserDto,
+)
+
 @Serializable
 data class ItemsResponse(
     @SerialName("Items") val items: List<BaseItemDto> = emptyList(),

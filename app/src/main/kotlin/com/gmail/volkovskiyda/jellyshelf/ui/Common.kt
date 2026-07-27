@@ -73,7 +73,7 @@ import org.koin.compose.koinInject
 internal fun resolveThumbnailModel(url: String?, settings: Settings?): String? = when {
     url == null -> null
     settings == null -> url.takeUnless { isJellyfinImageUrl(it) }
-    else -> authorizedImageUrl(url, settings.serverUrl, settings.apiKey)
+    else -> authorizedImageUrl(url, settings.serverUrl, settings.credential)
 }
 
 /**
