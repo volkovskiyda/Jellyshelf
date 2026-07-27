@@ -38,15 +38,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
-import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberThumbnailModel
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -122,8 +122,8 @@ internal fun CategoryVideosContent(
     modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
-    // Per-row thumbnail resolution, which reads the api key out of Koin — see VideoRow.
-    thumbnailModel: @Composable (Video) -> String? = { rememberThumbnailModel(it.thumbnailUrl) },
+    // Resolved once for the whole screen, not per row — see [rememberVideoThumbnailResolver].
+    thumbnailModel: (Video) -> String? = rememberVideoThumbnailResolver(),
 ) {
     val videos = videosOrNull.orEmpty()
 

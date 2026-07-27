@@ -25,8 +25,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -43,15 +43,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
-import com.gmail.volkovskiyda.jellyshelf.domain.model.AnchorPosition
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.AnchorPosition
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ScrollPosition
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
-import com.gmail.volkovskiyda.jellyshelf.util.isJellyfinImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
+import com.gmail.volkovskiyda.jellyshelf.util.isJellyfinImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -60,20 +61,40 @@ import kotlinx.coroutines.flow.first
 import org.koin.compose.koinInject
 
 /**
- * Resolves a stored thumbnail [url] to a loadable model. Stored URLs deliberately carry no
- * credentials, so Jellyfin-hosted images get the current api key appended at display time —
- * and while settings are still loading on cold start, Jellyfin URLs resolve to null instead
- * of firing a doomed unauthenticated request that would 401 and reload.
+ * Resolves a stored thumbnail [url] to a loadable model against a [settings] snapshot. Stored URLs
+ * deliberately carry no credentials, so Jellyfin-hosted images get the current api key appended at
+ * display time — and while settings are still loading on cold start ([settings] null), Jellyfin
+ * URLs resolve to null instead of firing a doomed unauthenticated request that would 401 and
+ * reload.
+ *
+ * Pure, so the rule is testable without a composition; [rememberVideoThumbnailResolver] supplies
+ * the live snapshot.
+ */
+internal fun resolveThumbnailModel(url: String?, settings: Settings?): String? = when {
+    url == null -> null
+    settings == null -> url.takeUnless { isJellyfinImageUrl(it) }
+    else -> authorizedImageUrl(url, settings.serverUrl, settings.apiKey)
+}
+
+/**
+ * A thumbnail resolver for a whole screen: **one** Koin lookup and **one** settings subscription,
+ * however many rows use the returned lambda.
+ *
+ * This used to be a per-url `@Composable`, which meant every visible row injected
+ * [AppSettingsState] and started its own lifecycle-aware collection — subscription churn on every
+ * scroll frame at a library of thousands. The returned lambda is plain (not `@Composable`), so a
+ * row can call it without re-entering composition machinery, and it is re-created only when the
+ * settings snapshot actually changes.
+ *
+ * Host-side rendering (previews, screenshot tests) has no Koin container and passes its own
+ * lambda instead — the same seam as [com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme]'s
+ * injected buildInfo.
  */
 @Composable
-fun rememberThumbnailModel(url: String?): String? {
+fun rememberVideoThumbnailResolver(): (Video) -> String? {
     val settings by koinInject<AppSettingsState>().settings.collectAsStateWithLifecycle()
     val loaded = settings
-    return when {
-        url == null -> null
-        loaded == null -> url.takeUnless { isJellyfinImageUrl(it) }
-        else -> authorizedImageUrl(url, loaded.serverUrl, loaded.apiKey)
-    }
+    return remember(loaded) { { video: Video -> resolveThumbnailModel(video.thumbnailUrl, loaded) } }
 }
 
 /**
@@ -210,12 +231,11 @@ private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> Stri
 fun VideoRow(
     video: Video,
     onClick: () -> Unit,
+    // Required, deliberately: a default that resolved the model here would put a Koin lookup and a
+    // settings subscription in every visible row. Callers hoist that to one per screen with
+    // [rememberVideoThumbnailResolver]; host-side rendering passes null.
+    thumbnailModel: String?,
     modifier: Modifier = Modifier,
-    // Resolved from the live settings by default. Exposed as a parameter because
-    // [rememberThumbnailModel] reaches into Koin for the current api key, which host-side
-    // rendering (previews, screenshot tests) has no container for — same seam as
-    // [com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme]'s injected buildInfo.
-    thumbnailModel: String? = rememberThumbnailModel(video.thumbnailUrl),
 ) {
     Row(
         modifier = modifier

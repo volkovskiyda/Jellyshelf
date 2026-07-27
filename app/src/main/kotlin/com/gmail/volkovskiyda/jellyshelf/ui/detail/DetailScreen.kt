@@ -48,7 +48,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberThumbnailModel
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
@@ -101,8 +101,11 @@ fun DetailScreen(
 
     val current = (videoState as? VideoDetailState.Loaded)?.video
     // Resolved here rather than inside the content: it reads the live api key out of Koin, which
-    // host-side rendering has no container for (same seam as VideoRow's thumbnailModel).
-    val thumbnailModel = rememberThumbnailModel(current?.thumbnailUrl)
+    // host-side rendering has no container for (same seam as VideoRow's thumbnailModel). The
+    // resolver is remembered unconditionally so a video arriving/leaving can't restart its
+    // settings subscription.
+    val resolveThumbnail = rememberVideoThumbnailResolver()
+    val thumbnailModel = current?.let(resolveThumbnail)
 
     DetailContent(
         videoState = videoState,
