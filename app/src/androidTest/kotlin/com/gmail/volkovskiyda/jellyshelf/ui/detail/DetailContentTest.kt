@@ -14,15 +14,20 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import com.gmail.volkovskiyda.jellyshelf.util.formatTimestamp
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Behavior tests for the detail screen's stateless content. Robolectric runs them on the JVM, so
- * they need no emulator; `createAndroidComposeRule<ComponentActivity>` is what gives the test
- * access to string resources, so assertions match on the real user-visible text.
+ * Behavior tests for the detail screen's stateless content. Instrumented, because
+ * `ui-test-junit4` needs a real Android runtime to dispatch input and there is no Robolectric in
+ * this codebase (a deliberate decision — see the plan's item 17). The
+ * `connectedDebugAndroidTest` task skips itself when no device is attached.
+ *
+ * `createAndroidComposeRule<ComponentActivity>` is what gives the test access to string
+ * resources, so assertions match on the real user-visible text.
  */
 @RunWith(AndroidJUnit4::class)
 class DetailContentTest {
@@ -114,6 +119,24 @@ class DetailContentTest {
             .performClick()
 
         assertEquals(1, removals)
+    }
+
+    @Test
+    fun `a synced video shows when it was last synced`() {
+        val syncedAt = 1_784_974_530_000L
+        setContent(video.copy(lastSyncedAt = syncedAt))
+
+        // Formatted in the device's zone, so the expectation is derived rather than hardcoded —
+        // what's under test is that the line renders at all and carries the stamp.
+        val expected = string(R.string.last_synced).format(formatTimestamp(syncedAt))
+        composeRule.onNodeWithText(expected).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a never-synced video shows no sync line`() {
+        setContent(video.copy(lastSyncedAt = 0L))
+
+        composeRule.onNodeWithText("Synced", substring = true).assertDoesNotExist()
     }
 
     /** Playback stays available: one missed sync is "probably gone", not "certainly gone". */

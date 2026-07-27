@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.util
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.time.ZoneId
 
 class FormatTest {
 
@@ -63,6 +64,25 @@ class FormatTest {
         assertNull(yearMonthOf("202313"))
         assertNull(yearMonthOf("2023"))
         assertNull(yearMonthOf(null))
+    }
+
+    /** Pinned to a fixed zone: the default one would make the expectation machine-dependent. */
+    private val utc = ZoneId.of("UTC")
+
+    @Test
+    fun `formatTimestamp renders epoch millis in the given zone`() {
+        assertEquals("2026-07-25 10:15", formatTimestamp(1_784_974_530_000L, utc))
+        // Same instant, +02:00 in July — the zone is applied, not ignored.
+        assertEquals(
+            "2026-07-25 12:15",
+            formatTimestamp(1_784_974_530_000L, ZoneId.of("Europe/Berlin")),
+        )
+    }
+
+    @Test
+    fun `formatTimestamp treats zero and negatives as nothing to show`() {
+        assertNull(formatTimestamp(0L, utc))
+        assertNull(formatTimestamp(-1L, utc))
     }
 
     @Test

@@ -1,5 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.util
 
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 /** Ticks are 100-nanosecond units (Jellyfin/.NET). 10,000,000 ticks == 1 second. */
 const val TICKS_PER_SECOND = 10_000_000L
 
@@ -55,6 +60,23 @@ fun yearMonthOf(uploadDate: String?): String? {
     val month = yearMonth.substring(4, 6).toInt()
     if (month !in 1..12) return null
     return "${yearMonth.substring(0, 4)}-${yearMonth.substring(4, 6)}"
+}
+
+private val TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+/**
+ * Renders an epoch-millis timestamp in [zone] as "yyyy-MM-dd HH:mm", matching the date shape
+ * [formatUploadDate] produces, or null when there is nothing to show.
+ *
+ * 0 is the never-synced/never-set sentinel used throughout the schema, and negatives can only be
+ * corrupt storage — both render as null so callers omit the line rather than printing 1970.
+ *
+ * Absolute rather than relative ("3 hours ago"): the value's whole job is to let the user judge
+ * staleness, and an absolute stamp doesn't silently go stale itself while the screen is open.
+ */
+fun formatTimestamp(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String? {
+    if (epochMillis <= 0L) return null
+    return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), zone).format(TIMESTAMP_FORMAT)
 }
 
 /** Fraction 0f..1f of a video watched, for a progress bar. */

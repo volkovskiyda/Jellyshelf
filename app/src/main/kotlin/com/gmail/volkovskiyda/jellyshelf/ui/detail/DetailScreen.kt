@@ -32,6 +32,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -51,6 +52,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
+import com.gmail.volkovskiyda.jellyshelf.util.formatTimestamp
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import org.koin.androidx.compose.koinViewModel
@@ -206,7 +208,21 @@ internal fun DetailContent(
                 Text(meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            MetadataSourceBadge(current.metadataSource)
+            // Provenance on one line: where the metadata came from, and when this row last saw a
+            // sync. Omitted entirely for a never-synced video rather than printing an epoch date.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MetadataSourceBadge(current.metadataSource)
+                formatTimestamp(current.lastSyncedAt)?.let { syncedAt ->
+                    Text(
+                        stringResource(R.string.last_synced, syncedAt),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             if (current.missingFromServer) MissingFromServerNotice()
 

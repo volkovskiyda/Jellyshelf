@@ -83,6 +83,7 @@
     <string name="source_ytdlp">In-app · yt-dlp</string>
     <string name="source_index">Script · index</string>
     <string name="source_jellyfin">Jellyfin only</string>
+    <string name="last_synced">Synced %1$s</string>
     <string name="no_app_found">No app found to handle this</string>
 
     <!-- Settings -->
