@@ -70,7 +70,7 @@ android {
     }
     // Enables the screenshotTest source set (paired with the same flag in gradle.properties).
     experimentalProperties["android.experimental.enableScreenshotTest"] = true
-    // Shared host-side test fakes. Only the `test` source set can be extended this way: the
+    // Shared test fakes. Only the `test` source set can be extended this way: the
     // screenshot plugin (alpha) registers no AndroidSourceSet of its own — neither
     // "screenshotTest" nor "screenshotTestDebug" exists in this container — so its copy of the
     // fake lives in src/screenshotTest/kotlin instead. Collapse the two when the plugin exposes
@@ -114,6 +114,35 @@ ksp {
     // Check generated Room schemas into app/schemas so version bumps can ship real migrations.
     arg("room.schemaLocation", "$projectDir/schemas")
 }
+
+// Instrumented tests (Compose behavior tests, Room DAO, Ktor serialization) need a real device or
+// emulator. Rather than failing a build that has none — CI without an emulator job, a laptop with
+// nothing plugged in — the connected* tasks skip themselves and say so. Attach a device and the
+// same command runs them for real.
+val adbPath: Provider<String> = providers.environmentVariable("ANDROID_HOME")
+    .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
+    .map { "$it/platform-tools/adb" }
+    .orElse("adb")
+
+tasks.matching { it.name.startsWith("connected") && it.name.endsWith("AndroidTest") }
+    .configureEach {
+        // Resolved at configuration time (a declared build input); the probe itself runs in the
+        // onlyIf predicate, i.e. at execution time, so no build ever shells out to adb needlessly.
+        val adb = adbPath.get()
+        onlyIf {
+            val attached = runCatching {
+                ProcessBuilder(adb, "devices").redirectErrorStream(true).start()
+                    .inputStream.bufferedReader().readLines()
+                    .drop(1) // "List of devices attached"
+                    // Ignore "offline" and "unauthorized" — neither can run a test.
+                    .any { it.split(Regex("\\s+")).getOrNull(1) == "device" }
+            }.getOrDefault(false)
+            if (!attached) {
+                logger.lifecycle("No device or emulator attached — skipping $name.")
+            }
+            attached
+        }
+    }
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
@@ -161,6 +190,12 @@ dependencies {
     testImplementation(platform(libs.ktor.bom))
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Compose behavior tests are instrumented: they need a real Android runtime, and the
+    // project deliberately carries no Robolectric. ui-test-manifest supplies the
+    // ComponentActivity they launch into.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     androidTestImplementation(platform(libs.koin.bom))
     androidTestImplementation(platform(libs.ktor.bom))
     androidTestImplementation(libs.androidx.test.ext.junit)
