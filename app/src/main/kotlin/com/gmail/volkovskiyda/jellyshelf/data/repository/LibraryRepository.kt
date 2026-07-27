@@ -258,7 +258,14 @@ class DefaultLibraryRepository(
         val index: Map<String, IndexEntry> = if (s.indexUrl.isNotBlank()) {
             runCatchingCancellable {
                 jellyfin.fetchIndex(s.indexUrl).associateBy { it.id }.also { indexAvailable = true }
-            }.getOrDefault(emptyMap())
+            }.getOrElse { e ->
+                // Swallowing this silently made an index URL that 404s indistinguishable from
+                // months of healthy syncs: metadata quietly freezes and new videos stay
+                // uncategorized. The sync still completes — see [indexAvailable] above — but it
+                // says so, in the log and on the settings status line.
+                Timber.w(e, "Metadata index fetch failed; syncing with Jellyfin data only")
+                emptyMap()
+            }
         } else {
             emptyMap()
         }
@@ -350,6 +357,7 @@ class DefaultLibraryRepository(
                 matched = videos.size,
                 indexed = videos.count { it.metadataSource != METADATA_SOURCE_JELLYFIN },
                 categories = autoCategories.size,
+                indexDegraded = s.indexUrl.isNotBlank() && !indexAvailable,
             )
         }
     }

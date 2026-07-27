@@ -10,11 +10,15 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.utils.io.jvm.javaio.toInputStream
 import java.io.IOException
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
 import timber.log.Timber
 
 /** Paging safety cap — far above any real library, purely an infinite-loop backstop. */
@@ -175,16 +179,24 @@ class JellyfinDataSource(
      * — callers must be able to tell a failed fetch from an index that is genuinely empty, since
      * the former must never degrade existing index-sourced metadata.
      */
+    @OptIn(ExperimentalSerializationApi::class)
     suspend fun fetchIndex(indexUrl: String): List<IndexEntry> = withContext(dispatchers.io) {
         // indexUrl is an arbitrary absolute URL (not a Jellyfin endpoint), so it uses the base
         // httpClient directly. With expectSuccess = true a non-2xx throws a ResponseException here
-        // — still a throw, which is all this method's contract promises. bodyAsText() (not
-        // body<List<IndexEntry>>()) is used so the blank-body guard runs before decoding.
-        val body = httpClient.get(indexUrl).bodyAsText()
-        // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at minimum).
-        // A blank 200 — captive portal, file caught mid-rewrite — must count as a failed fetch, or
-        // it would downgrade every index-sourced row.
-        if (body.isBlank()) throw IOException("Index fetch returned an empty body")
-        json.decodeFromString(ListSerializer(IndexEntry.serializer()), body)
+        // — still a throw, which is all this method's contract promises.
+        val stream = httpClient.get(indexUrl).bodyAsChannel().toInputStream()
+        // Decoded straight off the response stream rather than via bodyAsText(): a 10k-video
+        // index runs to tens of megabytes of JSON, and buffering the whole document into a String
+        // before parsing it would hold a second full copy for no gain.
+        stream.use {
+            try {
+                json.decodeFromStream(ListSerializer(IndexEntry.serializer()), it)
+            } catch (e: SerializationException) {
+                // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at
+                // minimum), so a blank or non-JSON 200 — captive portal, file caught mid-rewrite —
+                // must count as a failed fetch, or it would downgrade every index-sourced row.
+                throw IOException("Index fetch returned no usable JSON array", e)
+            }
+        }
     }
 }

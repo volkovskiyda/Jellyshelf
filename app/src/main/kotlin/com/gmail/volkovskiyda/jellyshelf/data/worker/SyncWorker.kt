@@ -36,6 +36,7 @@ class SyncWorker(
                     KEY_MATCHED to result.matched,
                     KEY_INDEXED to result.indexed,
                     KEY_CATEGORIES to result.categories,
+                    KEY_INDEX_DEGRADED to result.indexDegraded,
                 ),
             )
             // A revoked key or deleted scope can't self-heal either — retrying such a failure
@@ -53,6 +54,7 @@ class SyncWorker(
         const val KEY_MATCHED = "matched"
         const val KEY_INDEXED = "indexed"
         const val KEY_CATEGORIES = "categories"
+        const val KEY_INDEX_DEGRADED = "indexDegraded"
         const val KEY_ERROR = "error"
     }
 }

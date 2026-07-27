@@ -152,12 +152,22 @@ class SettingsViewModel(
                         val out = info.outputData
                         // The worker exits early without output when credentials are missing;
                         // showing a 0/0 summary then would be a lie, so say nothing.
-                        val message = if (out.keyValueMap.isEmpty()) null else app.getString(
-                            R.string.sync_summary,
-                            out.getInt(SyncWorker.KEY_INDEXED, 0),
-                            out.getInt(SyncWorker.KEY_MATCHED, 0),
-                            out.getInt(SyncWorker.KEY_CATEGORIES, 0),
-                        )
+                        val message = if (out.keyValueMap.isEmpty()) null else {
+                            val summary = app.getString(
+                                R.string.sync_summary,
+                                out.getInt(SyncWorker.KEY_INDEXED, 0),
+                                out.getInt(SyncWorker.KEY_MATCHED, 0),
+                                out.getInt(SyncWorker.KEY_CATEGORIES, 0),
+                            )
+                            // The sync succeeded, but without the metadata index its counts are
+                            // the reason "nothing new gets categorized" — say so rather than
+                            // reporting an unqualified success.
+                            if (out.getBoolean(SyncWorker.KEY_INDEX_DEGRADED, false)) {
+                                app.getString(R.string.sync_index_unavailable, summary)
+                            } else {
+                                summary
+                            }
+                        }
                         _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
                         SyncUi(running = false, message = message, isError = false)
                     }

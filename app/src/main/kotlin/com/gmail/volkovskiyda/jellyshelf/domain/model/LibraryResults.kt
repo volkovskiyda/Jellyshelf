@@ -7,12 +7,17 @@ sealed interface SyncResult {
      * @param matched videos with a parseable YouTube id (the library total).
      * @param indexed videos that also had a jellyshelf-index.json / yt-dlp metadata match.
      * @param categories distinct auto-categories produced.
+     * @param indexDegraded an index URL is configured but this sync could not fetch it. The sync
+     *   itself succeeded — existing metadata was kept rather than downgraded — but new videos
+     *   stay uncategorized until the index is reachable again, which otherwise looks identical
+     *   to months of healthy syncs.
      */
     data class Success(
         val itemCount: Int,
         val matched: Int,
         val indexed: Int,
         val categories: Int,
+        val indexDegraded: Boolean = false,
     ) : SyncResult
 
     /**
