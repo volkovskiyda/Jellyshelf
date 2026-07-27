@@ -58,6 +58,7 @@ import org.koin.androidx.compose.koinViewModel
  * and render the screen without a ViewModel.
  */
 internal data class SettingsActions(
+    val onThemeModeClick: () -> Unit = {},
     val onServerUrlChange: (String) -> Unit = {},
     val onApiKeyChange: (String) -> Unit = {},
     val onIndexUrlChange: (String) -> Unit = {},
@@ -94,6 +95,7 @@ fun SettingsScreen(
         state = state,
         videoCount = videoCount,
         actions = SettingsActions(
+            onThemeModeClick = viewModel::onThemeModeClick,
             onServerUrlChange = viewModel::onServerUrlChange,
             onApiKeyChange = viewModel::onApiKeyChange,
             onIndexUrlChange = viewModel::onIndexUrlChange,
@@ -140,6 +142,25 @@ internal fun SettingsContent(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Text(stringResource(R.string.appearance), style = MaterialTheme.typography.titleMedium)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.theme))
+                    Text(
+                        stringResource(state.themeState.mode.labelRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                ThemeModeSwitch(mode = state.themeState.mode, onClick = actions.onThemeModeClick)
+            }
+
+            HorizontalDivider()
+
             Text(stringResource(R.string.jellyfin_connection), style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = state.serverUrl,

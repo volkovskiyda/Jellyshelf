@@ -89,6 +89,12 @@
     <string name="no_app_found">No app found to handle this</string>
 
     <!-- Settings -->
+    <string name="appearance">Appearance</string>
+    <string name="theme">Theme</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_auto">Auto — follows system</string>
+    <string name="theme_dark">Dark</string>
+    <string name="change_theme">Change theme</string>
     <string name="jellyfin_connection">Jellyfin connection</string>
     <string name="server_url">Server URL</string>
     <string name="server_url_hint">https://192.168.1.10:8096</string>

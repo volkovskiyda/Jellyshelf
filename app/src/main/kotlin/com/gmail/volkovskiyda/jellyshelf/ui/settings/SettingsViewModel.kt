@@ -7,6 +7,7 @@ import androidx.work.WorkInfo
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
@@ -47,6 +48,8 @@ data class SettingsUiState(
     val serverUrl: String = "",
     val apiKey: String = "",
     val indexUrl: String = "",
+    /** The theme override and which way the next tap of the switch moves. */
+    val themeState: ThemeState = ThemeState(),
     // Sign-in fields. The password lives here only until the token comes back — see [signIn].
     val username: String = "",
     val password: String = "",
@@ -159,6 +162,11 @@ class SettingsViewModel(
             val needsUserList = s.hasCredentials && !s.isSignedIn
             if (needsUserList && cachedUsers == null && !edited) connect(silent = true)
         }
+        // Collected rather than snapshotted: the theme is also the one setting a tab switch can
+        // find already changed, since this ViewModel is recreated on every visit.
+        settingsRepo.themeState
+            .onEach { _state.value = _state.value.copy(themeState = it) }
+            .launchIn(viewModelScope)
         observeSync()
     }
 
@@ -276,6 +284,17 @@ class SettingsViewModel(
     fun onTokenInQueryChange(enabled: Boolean) {
         _state.value = _state.value.copy(tokenInQuery = enabled)
         viewModelScope.launch { settingsRepo.setTokenInQuery(enabled) }
+    }
+
+    /**
+     * One step of the theme switch's ping-pong: light → auto → dark → auto → light. Persisted
+     * immediately — like [onTokenInQueryChange], it is a standalone preference rather than part of
+     * the connect/sign-in form.
+     */
+    fun onThemeModeClick() {
+        val next = _state.value.themeState.next()
+        _state.value = _state.value.copy(themeState = next)
+        viewModelScope.launch { settingsRepo.setThemeState(next) }
     }
 
     fun onUsernameChange(value: String) {
