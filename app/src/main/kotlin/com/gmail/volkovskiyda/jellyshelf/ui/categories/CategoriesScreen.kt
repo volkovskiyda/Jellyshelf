@@ -195,6 +195,14 @@ private fun TabbedCategories(
     val scope = rememberCoroutineScope()
     val selected = pagerState.currentPage.coerceAtMost(tabs.lastIndex)
 
+    // Keyed on the dimensions themselves, not on the tabs list: every Room emission (a bulk
+    // metadata fetch produces a stream of them) rebuilds `tabs` into a fresh list holding the
+    // same dimensions, and restarting on that identity used to yank a mid-swipe user back —
+    // the swipe had moved currentPage, but settledPage hadn't yet updated selectedType, so the
+    // restarted effect "restored" the page the user was leaving. Equal type lists compare equal,
+    // so the effect now restarts only when the tab set genuinely changes.
+    val tabTypes = tabs.map { it.type }
+
     // Selection is anchored to the dimension, not the raw index: when the tab set changes (a
     // dimension appears after sync, "Others" loads in, search filters tabs out), the pager
     // follows the previously selected dimension to its new position, then resumes tracking
@@ -203,10 +211,14 @@ private fun TabbedCategories(
     // is container-owned (survives bottom-nav tab switches, which clear saveable state) and
     // seeded from disk on launch (survives process restart) — so wait for selectionLoaded to
     // apply the restored dimension before tracking, rather than committing the initial page 0.
-    LaunchedEffect(tabs, selectionLoaded) {
+    LaunchedEffect(tabTypes, selectionLoaded) {
         if (!selectionLoaded) return@LaunchedEffect
-        val target = selectedType?.let { type -> tabs.indexOfFirst { it.type == type } } ?: -1
-        if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
+        val target = selectedType?.let { type -> tabTypes.indexOf(type) } ?: -1
+        // A set change landing while the user is dragging is the one case where the restore and
+        // the gesture disagree — the gesture wins, and the tracker records wherever it settles.
+        if (target >= 0 && target != pagerState.currentPage && !pagerState.isScrollInProgress) {
+            pagerState.scrollToPage(target)
+        }
         // When the selected dimension has no tab in this set (a search filtered it out), the
         // pager sits on a fallback page the user never chose — skip that first emission so
         // clearing the search returns to the real selection; user swipes still track.
@@ -214,7 +226,7 @@ private fun TabbedCategories(
         snapshotFlow { pagerState.settledPage }
             .drop(if (keepSelection) 1 else 0)
             .collect { page ->
-                tabs.getOrNull(page)?.let { onSelectedTypeChange(it.type) }
+                tabTypes.getOrNull(page)?.let { onSelectedTypeChange(it) }
             }
     }
 
