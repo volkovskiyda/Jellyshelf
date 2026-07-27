@@ -27,6 +27,8 @@
     </plurals>
     <string name="empty_library">No videos yet. Connect to Jellyfin in Settings and run a sync.</string>
     <string name="empty_duration_filter">No videos with a %1$s duration.</string>
+    <string name="no_videos_match">No videos match “%1$s”.</string>
+    <string name="no_videos_match_duration">No videos with a %1$s duration match “%2$s”.</string>
 
     <!-- Categories -->
     <string name="search_categories">Search categories</string>

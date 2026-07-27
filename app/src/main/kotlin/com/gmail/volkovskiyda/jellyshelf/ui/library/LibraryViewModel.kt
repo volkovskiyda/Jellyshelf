@@ -17,12 +17,20 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * A videos emission tagged with whether it is the pristine list — no query, no duration filter.
- * The flag rides along with the list so the UI can't mistake the lingering results of a search it
- * just cleared (the query flips to blank a frame before the unfiltered list re-emits) for the
- * pristine list, which would restore the saved scroll position against the wrong contents.
+ * A videos emission tagged with the query and duration filter that produced it. The terms ride
+ * along with the list so the UI can't describe it in terms of narrowing that hasn't been applied
+ * yet: the query flips (blank a frame before the unfiltered list re-emits, non-blank a whole
+ * debounce before the matches arrive), so reading the live query would restore the saved scroll
+ * position against the wrong contents and caption an empty result with the wrong reason.
  */
-data class LibraryVideos(val items: List<Video>, val pristine: Boolean)
+data class LibraryVideos(
+    val items: List<Video>,
+    val query: String,
+    val durationFilter: DurationBucket?,
+) {
+    /** The unnarrowed list — no query, no duration filter. */
+    val pristine: Boolean get() = query.isBlank() && durationFilter == null
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModel(
@@ -52,14 +60,14 @@ class LibraryViewModel(
             .flatMapLatest { (q, filter) ->
                 val pristine = q.isBlank() && filter == null
                 (if (pristine) repo.observeVideos() else repo.searchVideos(q, filter))
-                    .map { LibraryVideos(it, pristine) }
+                    .map { LibraryVideos(it, q, filter) }
             }
             .onEach { filters.lastVideos = it.items }
             .stateIn(
                 viewModelScope,
                 WhileUiSubscribed,
                 filters.lastVideos?.let {
-                    LibraryVideos(it, _query.value.isBlank() && _durationFilter.value == null)
+                    LibraryVideos(it, _query.value, _durationFilter.value)
                 },
             )
 
