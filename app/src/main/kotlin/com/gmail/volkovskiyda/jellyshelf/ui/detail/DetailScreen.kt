@@ -43,6 +43,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberThumbnailModel
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
@@ -144,13 +145,16 @@ fun DetailScreen(
 
             MetadataSourceBadge(current.metadataSource)
 
-            // Playback actions
+            // Playback actions. Both leave the app, and the second tap of a double-tap would
+            // land before the launched activity is on top — one shared throttle, so a stray
+            // repeat can't start two players (or a player and a browser).
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val itemId = current.jellyfinItemId
                 val s = settings
+                val launchThrottle = rememberClickThrottle()
                 Button(
                     onClick = {
-                        if (s != null && itemId != null) {
+                        if (s != null && itemId != null) launchThrottle {
                             playerLauncher.launch(
                                 Playback.externalPlayerIntent(
                                     context = context,
@@ -170,7 +174,9 @@ fun DetailScreen(
                 }
                 OutlinedButton(
                     onClick = {
-                        if (s != null && itemId != null) Playback.openInJellyfin(context, s.serverUrl, itemId)
+                        if (s != null && itemId != null) launchThrottle {
+                            Playback.openInJellyfin(context, s.serverUrl, itemId)
+                        }
                     },
                     enabled = s != null && itemId != null,
                 ) {

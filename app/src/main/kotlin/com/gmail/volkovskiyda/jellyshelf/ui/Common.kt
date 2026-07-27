@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -275,6 +278,34 @@ fun VideoRow(
         }
     }
 }
+
+/**
+ * Drops clicks that land within [windowMs] of the previously accepted one, so a fast double-tap
+ * acts once. Wrap the handler at the call site: `onClick = { throttle { navigate() } }`.
+ *
+ * Hoist one instance per screen rather than one per row: a double-tap that lands on two
+ * *different* rows (or on a row and then the back arrow) would otherwise slip through and push
+ * two entries, which is the case per-widget state can't see.
+ */
+@Stable
+class ClickThrottle(private val windowMs: Long) {
+    private var lastAcceptedUptimeMs: Long? = null
+
+    operator fun invoke(onClick: () -> Unit) {
+        val now = SystemClock.uptimeMillis()
+        val last = lastAcceptedUptimeMs
+        if (last != null && now - last < windowMs) return
+        lastAcceptedUptimeMs = now
+        onClick()
+    }
+}
+
+/** Long enough to cover an accidental double-tap, short enough not to eat a deliberate one. */
+private const val CLICK_THROTTLE_MS = 500L
+
+@Composable
+fun rememberClickThrottle(windowMs: Long = CLICK_THROTTLE_MS): ClickThrottle =
+    remember(windowMs) { ClickThrottle(windowMs) }
 
 @Composable
 fun EmptyState(message: String, modifier: Modifier = Modifier) {

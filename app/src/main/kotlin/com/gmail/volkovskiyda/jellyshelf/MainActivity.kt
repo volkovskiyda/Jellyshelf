@@ -35,6 +35,7 @@ import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
@@ -109,6 +110,18 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
     }
 
+    fun push(key: AppNavKey) {
+        // Belt-and-braces behind the throttle: two identical adjacent keys mean a duplicate
+        // NavEntry contentKey, which collides in the saveable-state and ViewModel stores.
+        if (backStack.lastOrNull() == key) return
+        backStack.add(key)
+    }
+
+    // One throttle for every user-driven navigation on this screen: a double-tap landing on two
+    // different rows, or on a row and then the back arrow, must not navigate twice either. The
+    // system back gesture below stays unthrottled — pressing it twice quickly is deliberate.
+    val navThrottle = rememberClickThrottle()
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
@@ -140,12 +153,14 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         ) { key ->
             when (key) {
                 is AppNavKey.Library -> NavEntry(key) {
-                    LibraryScreen(onVideoClick = { backStack.add(AppNavKey.Detail(it.youtubeId)) })
+                    LibraryScreen(
+                        onVideoClick = { navThrottle { push(AppNavKey.Detail(it.youtubeId)) } },
+                    )
                 }
 
                 is AppNavKey.Categories -> NavEntry(key) {
                     CategoriesScreen(onCategoryClick = { id, title ->
-                        backStack.add(AppNavKey.CategoryVideos(id, title))
+                        navThrottle { push(AppNavKey.CategoryVideos(id, title)) }
                     })
                 }
 
@@ -157,15 +172,15 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     CategoryVideosScreen(
                         categoryId = key.categoryId,
                         title = key.title,
-                        onVideoClick = { backStack.add(AppNavKey.Detail(it.youtubeId)) },
-                        onBack = ::pop,
+                        onVideoClick = { navThrottle { push(AppNavKey.Detail(it.youtubeId)) } },
+                        onBack = { navThrottle { pop() } },
                     )
                 }
 
                 is AppNavKey.Detail -> NavEntry(key) {
                     DetailScreen(
                         youtubeId = key.youtubeId,
-                        onBack = ::pop,
+                        onBack = { navThrottle { pop() } },
                     )
                 }
 
