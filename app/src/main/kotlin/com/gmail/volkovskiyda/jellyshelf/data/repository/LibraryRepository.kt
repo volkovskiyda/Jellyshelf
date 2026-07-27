@@ -306,7 +306,7 @@ class DefaultLibraryRepository(
         val now = System.currentTimeMillis()
         val serverBase = s.serverUrl.trim().removeSuffix("/")
 
-        return writeMutex.withLock {
+        val synced = writeMutex.withLock {
             // Existing rows, to honour newest-wins: a manual in-app yt-dlp fetch is kept over an
             // index entry unless the index entry is genuinely newer. Read inside the lock so no
             // other writer can slip between this snapshot and the upsert below.
@@ -385,21 +385,21 @@ class DefaultLibraryRepository(
             }
 
             settings.setLastSync(now, s.libraryId)
-
-            // Everything above is committed and the sync has succeeded; the auto-fill below is a
-            // bonus pass whose failures are reported, never fatal.
-            val (autoFilled, autoFillFailed) = autoFillMissingMetadata()
-
             SyncResult.Success(
                 itemCount = items.size,
                 matched = videos.size,
                 indexed = videos.count { it.metadataSource != METADATA_SOURCE_JELLYFIN },
                 categories = autoCategories.size,
                 indexDegraded = s.indexUrl.isNotBlank() && !indexAvailable,
-                autoFilled = autoFilled,
-                autoFillFailed = autoFillFailed,
             )
         }
+
+        // Strictly *outside* the lock: the sync above is committed and has already succeeded, and
+        // every write the auto-fill makes takes [writeMutex] per video for itself. Running it
+        // inside would deadlock on the non-reentrant mutex — a whole sync's worth of fetches
+        // silently doing nothing until the pass's own budget expired.
+        val (autoFilled, autoFillFailed) = autoFillMissingMetadata()
+        return synced.copy(autoFilled = autoFilled, autoFillFailed = autoFillFailed)
     }
 
     /**

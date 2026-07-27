@@ -15,6 +15,13 @@ object Playback {
     /** Treat a stop within this many ms of the end as "finished" (players rarely report the exact end). */
     private const val COMPLETION_TOLERANCE_MS = 5_000L
 
+    // Result extras, by the names the players actually use.
+    private const val EXTRA_END_BY = "end_by"
+    private const val EXTRA_POSITION = "position"
+    private const val EXTRA_VLC_POSITION = "extra_position"
+    private const val EXTRA_VLC_DURATION = "extra_duration"
+    private const val END_BY_COMPLETION = "playback_completion"
+
     private fun base(serverUrl: String) = serverUrl.trim().removeSuffix("/")
 
     /** Direct static stream URL — opens instantly in any external video player. */
@@ -50,8 +57,8 @@ object Playback {
             // MX Player: return position/end_by/duration to us when playback ends.
             putExtra("return_result", true)
             if (resumeMs > 0) {
-                putExtra("position", resumeMs.toInt())   // MX Player resume (int ms)
-                putExtra("extra_position", resumeMs)      // VLC resume (long ms)
+                putExtra(EXTRA_POSITION, resumeMs.toInt())     // MX Player resume (int ms)
+                putExtra(EXTRA_VLC_POSITION, resumeMs)         // VLC resume (long ms)
             }
         }
         // api_key is a secret — log the stream URL without it.
@@ -77,42 +84,68 @@ object Playback {
             }
             Timber.tag(TAG).d("parseResult: result extras -> {$dump}")
         } ?: Timber.tag(TAG).d("parseResult: result has no extras")
-        // MX Player: reports `end_by` and, when the user stopped mid-video, `position`. On a
-        // natural finish it sends `end_by=playback_completion` but omits `position` entirely — so
-        // key off `end_by`, not `position`, or completions would be missed.
-        if (data.hasExtra("end_by") || data.hasExtra("position")) {
-            val endBy = data.getStringExtra("end_by")
-            val pos = data.getIntExtra("position", -1)
-            val duration = data.getIntExtra("duration", -1)
-            Timber.tag(TAG).d("parseResult: MX Player result position=$pos end_by=$endBy duration=$duration")
-            if (endBy == "playback_completion") {
-                // Finished — position is irrelevant (marked played, resume cleared) and usually absent.
-                val result = Result(if (pos >= 0) pos.toLong() else 0L, completed = true)
-                Timber.tag(TAG).d("parseResult: parsed $result")
-                return result
-            }
-            if (pos >= 0) {
-                val result = Result(pos.toLong(), completed = false)
-                Timber.tag(TAG).d("parseResult: parsed $result")
-                return result
-            }
-            Timber.tag(TAG).w("parseResult: MX Player returned no usable position (end_by=$endBy); ignoring")
+
+        // Read each extra as "absent" (null) or its raw value, so the decision below can be a
+        // plain function — the Bundle is the only part of this that needs Android.
+        val endBy = data.getStringExtra(EXTRA_END_BY)
+        val positionMs = if (data.hasExtra(EXTRA_POSITION)) data.getIntExtra(EXTRA_POSITION, -1) else null
+        val vlcPositionMs =
+            if (data.hasExtra(EXTRA_VLC_POSITION)) data.getLongExtra(EXTRA_VLC_POSITION, -1L) else null
+        val vlcDurationMs =
+            if (data.hasExtra(EXTRA_VLC_DURATION)) data.getLongExtra(EXTRA_VLC_DURATION, 0L) else null
+        Timber.tag(TAG).d(
+            "parseResult: end_by=$endBy position=$positionMs " +
+                "extra_position=$vlcPositionMs extra_duration=$vlcDurationMs",
+        )
+
+        val result = parsePlayerResult(endBy, positionMs, vlcPositionMs, vlcDurationMs)
+        if (result == null) {
+            Timber.tag(TAG).w(
+                "parseResult: no recognizable position extra; player did not report a resume " +
+                    "point. extras=${data.extras?.keySet()}",
+            )
+        } else {
+            Timber.tag(TAG).d("parseResult: parsed $result")
         }
-        // VLC — no explicit completion flag, so infer it from proximity to the end.
-        if (data.hasExtra("extra_position")) {
-            val pos = data.getLongExtra("extra_position", -1L)
-            val duration = data.getLongExtra("extra_duration", 0L)
-            Timber.tag(TAG).d("parseResult: VLC result extra_position=$pos extra_duration=$duration")
-            if (pos >= 0) {
-                val completed = duration > 0 && pos >= duration - COMPLETION_TOLERANCE_MS
-                val result = Result(pos, completed)
-                Timber.tag(TAG).d("parseResult: parsed $result")
-                return result
-            }
-            Timber.tag(TAG).w("parseResult: VLC returned an invalid position ($pos); ignoring")
+        return result
+    }
+
+    /**
+     * The decision behind [parseResult], over already-extracted extras — a null argument means the
+     * player did not send that extra at all. Pure, so all five branches are testable on the JVM
+     * (there is no Robolectric here, and a `Bundle` needs a device).
+     *
+     * MX Player reports [EXTRA_END_BY] and, when the user stopped mid-video, [EXTRA_POSITION]. On a
+     * natural finish it sends `end_by=playback_completion` but omits the position entirely — hence
+     * keying off `end_by`, not the position, or completions would be missed.
+     *
+     * VLC sends no completion flag at all, so completion is inferred from proximity to the end.
+     * A player that reported neither falls through to null: nothing to record.
+     */
+    internal fun parsePlayerResult(
+        endBy: String?,
+        positionMs: Int?,
+        vlcPositionMs: Long?,
+        vlcDurationMs: Long?,
+    ): Result? {
+        val mxPlayer = when {
+            endBy == null && positionMs == null -> null
+            // Finished — position is irrelevant (marked played, resume cleared) and usually absent.
+            endBy == END_BY_COMPLETION ->
+                Result(positionMs?.coerceAtLeast(0)?.toLong() ?: 0L, completed = true)
+            positionMs != null && positionMs >= 0 -> Result(positionMs.toLong(), completed = false)
+            else -> null
         }
-        Timber.tag(TAG).w("parseResult: no recognizable position extra; player did not report a resume point. extras=${data.extras?.keySet()}")
-        return null
+        val vlc = if (vlcPositionMs != null && vlcPositionMs >= 0) {
+            val duration = vlcDurationMs ?: 0L
+            Result(
+                vlcPositionMs,
+                completed = duration > 0 && vlcPositionMs >= duration - COMPLETION_TOLERANCE_MS,
+            )
+        } else {
+            null
+        }
+        return mxPlayer ?: vlc
     }
 
     fun openInJellyfin(context: Context, serverUrl: String, itemId: String) {

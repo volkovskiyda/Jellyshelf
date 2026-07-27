@@ -79,6 +79,9 @@ android {
     // its source set.
     sourceSets {
         getByName("test") { kotlin.srcDir("src/testShared/kotlin") }
+        // Instrumented tests share them too — the sync suite needs the same in-memory
+        // SettingsRepository the host-side tests use.
+        getByName("androidTest") { kotlin.srcDir("src/testShared/kotlin") }
     }
     buildFeatures {
         compose = true
@@ -453,6 +456,7 @@ dependencies {
     androidTestImplementation(libs.ktor.client.mock)
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.koin.test)
+    androidTestImplementation(libs.androidx.work.testing)
     debugImplementation(libs.androidx.compose.ui.tooling)
     // Renders @PreviewTest previews host-side (LayoutLib) into reference images.
     screenshotTestImplementation(libs.androidx.compose.ui.tooling)

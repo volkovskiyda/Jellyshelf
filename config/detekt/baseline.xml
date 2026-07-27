@@ -15,7 +15,6 @@
     <ID>ArgumentListWrapping:LibraryRepository.kt$DefaultLibraryRepository$("onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")</ID>
     <ID>ArgumentListWrapping:LibraryRepository.kt$DefaultLibraryRepository$(PLAYBACK_TAG)</ID>
     <ID>ArgumentListWrapping:Playback.kt$Playback$("launch external player: itemId=$itemId title=$title resumeMs=$resumeMs url=${stripApiKey(streamUrl(serverUrl, itemId, apiKey))}")</ID>
-    <ID>ArgumentListWrapping:Playback.kt$Playback$("parseResult: no recognizable position extra; player did not report a resume point. extras=${data.extras?.keySet()}")</ID>
     <ID>ArgumentListWrapping:Playback.kt$Playback$(TAG)</ID>
     <ID>ArgumentListWrapping:Playback.kt$Playback$(serverUrl, itemId, apiKey)</ID>
     <ID>ArgumentListWrapping:Playback.kt$Playback$(streamUrl(serverUrl, itemId, apiKey))</ID>
@@ -86,7 +85,6 @@
     <ID>MaxLineLength:LibraryRepository.kt$DefaultLibraryRepository$Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")</ID>
     <ID>MaxLineLength:LibraryRepository.kt$DefaultLibraryRepository$Timber.tag(PLAYBACK_TAG).w("onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report")</ID>
     <ID>MaxLineLength:Playback.kt$Playback$Timber.tag(TAG).d("launch external player: itemId=$itemId title=$title resumeMs=$resumeMs url=${stripApiKey(streamUrl(serverUrl, itemId, apiKey))}")</ID>
-    <ID>MaxLineLength:Playback.kt$Playback$Timber.tag(TAG).w("parseResult: no recognizable position extra; player did not report a resume point. extras=${data.extras?.keySet()}")</ID>
     <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$_state.value = _state.value.copy(busy = true, status = app.getString(R.string.clearing_local_data), statusIsError = false)</ID>
     <ID>MaximumLineLength:DetailScreen.kt$ </ID>
     <ID>MaximumLineLength:DetailViewModel.kt$DetailViewModel$ </ID>
@@ -117,7 +115,6 @@
     <ID>ReturnCount:LibraryRepository.kt$DefaultLibraryRepository$override suspend fun sync(): SyncResult</ID>
     <ID>ReturnCount:LibraryRepository.kt$DefaultLibraryRepository$private suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean)</ID>
     <ID>ReturnCount:MainViewModel.kt$MainViewModel$private suspend fun restoreStack(): List&lt;AppNavKey&gt;?</ID>
-    <ID>ReturnCount:Playback.kt$Playback$fun parseResult(data: Intent?): Result?</ID>
     <ID>ReturnCount:UrlAuth.kt$fun authorizedImageUrl(url: String?, serverUrl: String?, apiKey: String?): String?</ID>
     <ID>ReturnCount:YoutubeId.kt$YoutubeId$fun fromPath(path: String?): String?</ID>
     <ID>SpacingBetweenDeclarationsWithComments:ScrollPositionRepository.kt$DefaultScrollPositionRepository$// Losing a scroll position (disk full, DataStore corruption) must never crash the app —</ID>

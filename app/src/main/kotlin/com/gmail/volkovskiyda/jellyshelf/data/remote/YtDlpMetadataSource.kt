@@ -22,7 +22,7 @@ import kotlinx.coroutines.withTimeout
  * The Python runtime is unpacked lazily on first use — a one-time, multi-second cost — guarded so
  * concurrent callers initialise exactly once. All work runs on the injected IO dispatcher.
  */
-class YtDlpMetadataSource(
+open class YtDlpMetadataSource(
     context: Context,
     private val dispatchers: DispatcherProvider,
 ) {
@@ -56,8 +56,11 @@ class YtDlpMetadataSource(
      * Fetch metadata for [youtubeId] as an [IndexEntry]. Downloads nothing — dumps the info JSON
      * only. Throws (YoutubeDLException / IO) when extraction fails or times out; callers surface
      * that. Cancelling the caller kills the extraction rather than leaking a live child process.
+     *
+     * `open` purely as a test seam: this is the one dependency of `DefaultLibraryRepository` that
+     * shells out to a real Python runtime, and the sync suite's auto-fill cases must not launch it.
      */
-    suspend fun fetch(youtubeId: String): IndexEntry {
+    open suspend fun fetch(youtubeId: String): IndexEntry {
         withContext(dispatchers.io) { ensureInit() }
         val request = YoutubeDLRequest("https://www.youtube.com/watch?v=$youtubeId").apply {
             addOption("--dump-single-json")
