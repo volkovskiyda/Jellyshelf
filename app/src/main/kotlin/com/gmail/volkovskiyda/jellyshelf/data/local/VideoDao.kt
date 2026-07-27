@@ -101,9 +101,29 @@ interface VideoDao {
     /**
      * Removes rows the last sync didn't touch — i.e. videos deleted or renamed on the server.
      * Every row a sync keeps is stamped with that sync's [syncedAt], so anything else is stale.
+     *
+     * Immediate, no grace period: only for deletions the user asked for (a narrowed library
+     * scope). Server-side disappearances go through [markMissedSince]/[deleteAfterMissedSyncs].
      */
     @Query("DELETE FROM videos WHERE lastSyncedAt != :syncedAt")
     suspend fun deleteNotSyncedAt(syncedAt: Long)
+
+    /**
+     * Counts one missed sync against every row [syncedAt]'s sync didn't see, instead of deleting
+     * it outright. A Jellyfin library mid-rescan, or a page that shifted under the sync's paging,
+     * makes rows disappear from one listing and come back in the next; deleting on the first miss
+     * would drop their manual category memberships and fetched yt-dlp metadata for good.
+     */
+    @Query("UPDATE videos SET missedSyncs = missedSyncs + 1 WHERE lastSyncedAt != :syncedAt")
+    suspend fun markMissedSince(syncedAt: Long)
+
+    /**
+     * Removes the rows still missing from [syncedAt]'s sync after [maxMissedSyncs] consecutive
+     * misses — by then the video really is gone from the server. Run right after
+     * [markMissedSince], whose increment this counts.
+     */
+    @Query("DELETE FROM videos WHERE lastSyncedAt != :syncedAt AND missedSyncs >= :maxMissedSyncs")
+    suspend fun deleteAfterMissedSyncs(syncedAt: Long, maxMissedSyncs: Int)
 
     @Query("DELETE FROM videos")
     suspend fun clear()

@@ -31,6 +31,12 @@ data class VideoEntity(
      * clock at fetch; for the index it is the entry's yt-dlp `epoch`. Drives newest-wins on sync.
      */
     val metadataUpdatedAt: Long = 0L,
+    /**
+     * How many consecutive syncs have failed to see this video on the server. Reset to 0 whenever
+     * a sync does see it; the row is only deleted once the counter reaches the grace limit, so a
+     * server that is mid-rescan can't take user-authored data with it.
+     */
+    val missedSyncs: Int = 0,
 )
 
 @Entity(tableName = "categories")

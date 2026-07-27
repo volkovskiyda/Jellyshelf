@@ -28,6 +28,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val LIBRARY_NAME = stringPreferencesKey("library_name")
         val INDEX_URL = stringPreferencesKey("index_url")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
+        val LAST_SYNC_LIBRARY_ID = stringPreferencesKey("last_sync_library_id")
         val SELECTED_CATEGORY_TYPE = stringPreferencesKey("selected_category_type")
         val BACK_STACK = stringPreferencesKey("back_stack")
     }
@@ -46,6 +47,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             libraryName = p[Keys.LIBRARY_NAME].orEmpty(),
             indexUrl = p[Keys.INDEX_URL].orEmpty(),
             lastSyncAt = p[Keys.LAST_SYNC_AT] ?: 0L,
+            lastSyncLibraryId = p[Keys.LAST_SYNC_LIBRARY_ID].orEmpty(),
         )
     }
 
@@ -77,8 +79,11 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         ds.edit { it[Keys.INDEX_URL] = url.trim() }
     }
 
-    override suspend fun setLastSyncAt(timestamp: Long) {
-        ds.edit { it[Keys.LAST_SYNC_AT] = timestamp }
+    override suspend fun setLastSync(timestamp: Long, libraryId: String) {
+        ds.edit {
+            it[Keys.LAST_SYNC_AT] = timestamp
+            it[Keys.LAST_SYNC_LIBRARY_ID] = libraryId
+        }
     }
 
     /**

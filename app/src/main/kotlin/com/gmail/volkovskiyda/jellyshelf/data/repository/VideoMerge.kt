@@ -60,6 +60,8 @@ internal fun mergeVideo(
             playbackPositionTicks = positionTicks,
             playCount = playCount,
             lastSyncedAt = now,
+            // Seen on the server again — any grace-period misses it accumulated are void.
+            missedSyncs = 0,
         )
     }
 

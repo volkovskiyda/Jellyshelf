@@ -14,7 +14,9 @@ interface SettingsRepository {
     /** Library/collection to scope sync to. Empty id == root == all collections. */
     suspend fun setLibrary(libraryId: String, libraryName: String)
     suspend fun setIndexUrl(url: String)
-    suspend fun setLastSyncAt(timestamp: Long)
+
+    /** Records that a sync finished at [timestamp] against library scope [libraryId]. */
+    suspend fun setLastSync(timestamp: Long, libraryId: String)
 
     /** The Categories dimension (tab) the user last settled on, or null if never set. */
     val selectedCategoryType: Flow<String?>

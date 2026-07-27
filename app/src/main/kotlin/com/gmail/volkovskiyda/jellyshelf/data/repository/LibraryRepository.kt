@@ -70,6 +70,47 @@ internal fun isPermanentFailure(e: Throwable): Boolean {
  *  the data layer so it doesn't depend on the Android-heavy `util.Playback`. */
 private const val PLAYBACK_TAG = "Playback"
 
+/**
+ * How many consecutive syncs may miss a video before it is deleted locally. At the sync worker's
+ * 3h cadence that is roughly 9h of continuous absence — long enough to ride out a Jellyfin library
+ * rescan or a paging hiccup, short enough that genuinely deleted videos don't linger for days.
+ */
+private const val MAX_MISSED_SYNCS = 3
+
+/**
+ * A listing returning less than this fraction of the videos already stored is not trusted to
+ * describe the library, so that sync prunes nothing at all — not even a missed-sync increment.
+ */
+private const val MIN_TRUSTED_LISTING_RATIO = 0.5
+
+/** What a sync does with the stored videos its server listing didn't contain. */
+internal enum class Prune {
+    /** Delete them now — the user re-scoped the library, so their absence is deliberate. */
+    IMMEDIATE,
+
+    /** Count a miss; delete only after [MAX_MISSED_SYNCS] of them. The normal path. */
+    GRACE,
+
+    /** Leave them completely alone — the listing is too short to be believed. */
+    NOTHING,
+}
+
+/**
+ * Picks the prune policy for a sync that saw [seenCount] of the [storedCount] videos already in
+ * the database.
+ *
+ * A listing far shorter than the library usually means the server is mid-rescan (or paging
+ * returned a partial view), not that most videos were deleted, so those syncs prune nothing —
+ * not even a missed-sync increment, which would otherwise let three flaky syncs in a row delete
+ * the whole library. A scope change is the one case where a shorter listing is expected and the
+ * deletions are what the user asked for.
+ */
+internal fun prunePolicy(scopeChanged: Boolean, storedCount: Int, seenCount: Int): Prune = when {
+    scopeChanged -> Prune.IMMEDIATE
+    seenCount >= storedCount * MIN_TRUSTED_LISTING_RATIO -> Prune.GRACE
+    else -> Prune.NOTHING
+}
+
 class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
     private val jellyfin: JellyfinDataSource,
@@ -224,13 +265,36 @@ class DefaultLibraryRepository(
                 )
             }.distinctBy { it.youtubeId }
 
+            val prune = prunePolicy(
+                scopeChanged = s.libraryId != s.lastSyncLibraryId,
+                storedCount = existingById.size,
+                seenCount = videos.size,
+            )
+            if (prune == Prune.NOTHING) {
+                Timber.w(
+                    "Sync saw only ${videos.size} of ${existingById.size} stored videos — " +
+                        "the server is likely mid-rescan; keeping every stored video this round."
+                )
+            }
+            // Rows this listing missed that the prune policy will keep: they stay fully intact,
+            // auto-categories included, so a video riding out its grace period doesn't drop out
+            // of its channel/year/duration categories only to reappear in them a few hours later.
+            val seenIds = videos.mapTo(HashSet(videos.size)) { it.youtubeId }
+            val retained = when (prune) {
+                Prune.IMMEDIATE -> emptyList()
+                Prune.NOTHING -> existingById.values.filter { it.youtubeId !in seenIds }
+                Prune.GRACE -> existingById.values.filter {
+                    it.youtubeId !in seenIds && it.missedSyncs + 1 < MAX_MISSED_SYNCS
+                }
+            }
+
             // Auto-categorize each video along several dimensions: channel, upload year, upload
             // month, duration band and YouTube category. Categories are deduped by id; every
             // membership becomes a cross-ref. Videos with no metadata simply produce no
             // auto-categories (they surface under the "Others" tab's Uncategorized filter instead).
             val autoCategories = LinkedHashMap<String, CategoryEntity>()
             val crossRefs = mutableListOf<VideoCategoryCrossRef>()
-            for (video in videos) {
+            for (video in videos + retained) {
                 for (a in autoAssignmentsOf(video)) {
                     autoCategories.getOrPut(a.id) { CategoryEntity(a.id, a.name, a.type, now) }
                     crossRefs += VideoCategoryCrossRef(video.youtubeId, a.id)
@@ -239,11 +303,18 @@ class DefaultLibraryRepository(
 
             db.withTransaction {
                 videoDao.upsert(videos)
-                // Videos gone from the server (deleted/renamed) leave the library, and auto
-                // memberships are rebuilt from scratch so stale assignments (changed channel,
-                // date or duration) don't accumulate across syncs. Manual memberships survive
-                // except where their video disappeared.
-                videoDao.deleteNotSyncedAt(now)
+                // Videos gone from the server leave the library, and auto memberships are rebuilt
+                // from scratch so stale assignments (changed channel, date or duration) don't
+                // accumulate across syncs. Manual memberships survive except where their video
+                // was actually deleted.
+                when (prune) {
+                    Prune.IMMEDIATE -> videoDao.deleteNotSyncedAt(now)
+                    Prune.GRACE -> {
+                        videoDao.markMissedSince(now)
+                        videoDao.deleteAfterMissedSyncs(now, MAX_MISSED_SYNCS)
+                    }
+                    Prune.NOTHING -> Unit
+                }
                 categoryDao.clearAutoCrossRefs(keepType = CATEGORY_TYPE_MANUAL)
                 categoryDao.upsertAll(autoCategories.values.toList())
                 if (crossRefs.isNotEmpty()) categoryDao.upsertCrossRefs(crossRefs)
@@ -251,7 +322,7 @@ class DefaultLibraryRepository(
                 categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
             }
 
-            settings.setLastSyncAt(now)
+            settings.setLastSync(now, s.libraryId)
             SyncResult.Success(
                 itemCount = items.size,
                 matched = videos.size,
@@ -392,7 +463,7 @@ class DefaultLibraryRepository(
                     categoryDao.clearCategories()
                     videoDao.clear()
                 }
-                settings.setLastSyncAt(0L)
+                settings.setLastSync(0L, "")
             }
         }
     }

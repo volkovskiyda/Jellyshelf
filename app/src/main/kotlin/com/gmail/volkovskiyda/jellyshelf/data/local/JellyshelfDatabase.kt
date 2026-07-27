@@ -11,9 +11,10 @@ import androidx.room.TypeConverters
         VideoCategoryCrossRef::class,
     ],
     version = 1,
-    // Schemas are checked in under app/schemas so every future version bump ships a real migration
-    // in the same commit — manual categories and in-app yt-dlp metadata are user-authored and must
-    // survive updates.
+    // The app is unreleased, so pre-release schema changes just rewrite version 1 and dev devices
+    // clear app data once. Schemas are checked in under app/schemas so that from the first release
+    // on, every version bump can ship a real migration in the same commit — manual categories and
+    // in-app yt-dlp metadata are user-authored and must survive updates.
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
