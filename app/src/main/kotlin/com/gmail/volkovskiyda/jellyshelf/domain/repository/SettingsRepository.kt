@@ -1,6 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.domain.repository
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import kotlinx.coroutines.flow.Flow
 
 /** Persistent app/connection settings. Backed by DataStore in the data layer. */
@@ -42,6 +44,13 @@ interface SettingsRepository {
     /** The Categories dimension (tab) the user last settled on, or null if never set. */
     val selectedCategoryType: Flow<String?>
     suspend fun setSelectedCategoryType(type: String)
+
+    /**
+     * The theme override and the direction the next tap of the switch moves in. Defaults to
+     * [ThemeMode.AUTO] — follow the system — so an install that never touches it is unaffected.
+     */
+    val themeState: Flow<ThemeState>
+    suspend fun setThemeState(state: ThemeState)
 
     /** The serialized navigation back stack, or null if none has been saved yet. */
     val backStackJson: Flow<String?>

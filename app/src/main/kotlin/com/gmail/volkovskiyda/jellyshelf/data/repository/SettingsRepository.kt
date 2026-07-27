@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -36,6 +38,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val SELECTED_CATEGORY_TYPE = stringPreferencesKey("selected_category_type")
         val BACK_STACK = stringPreferencesKey("back_stack")
         val TOKEN_IN_QUERY = booleanPreferencesKey("token_in_query")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
+        val THEME_TOWARD_DARK = booleanPreferencesKey("theme_toward_dark")
     }
 
     override val settings: Flow<Settings> = ds.data
@@ -139,6 +143,26 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setSelectedCategoryType(type: String) {
         ds.edit { it[Keys.SELECTED_CATEGORY_TYPE] = type }
+    }
+
+    /**
+     * The theme override, defaulting to auto — which is also what an unreadable preferences file
+     * degrades to, so a disk failure leaves the app following the system rather than blank.
+     */
+    override val themeState: Flow<ThemeState> = ds.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map {
+            ThemeState(
+                mode = ThemeMode.fromStorage(it[Keys.THEME_MODE]),
+                towardDark = it[Keys.THEME_TOWARD_DARK] ?: true,
+            )
+        }
+
+    override suspend fun setThemeState(state: ThemeState) {
+        ds.edit {
+            it[Keys.THEME_MODE] = state.mode.storageValue
+            it[Keys.THEME_TOWARD_DARK] = state.towardDark
+        }
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,10 +28,12 @@ class FakeSettingsRepository(
     initial: Settings = emptySettings,
     backStackJson: String? = null,
     selectedCategoryType: String? = null,
+    themeState: ThemeState = ThemeState(),
 ) : SettingsRepository {
     private val _settings = MutableStateFlow(initial)
     private val _backStackJson = MutableStateFlow(backStackJson)
     private val _selectedCategoryType = MutableStateFlow(selectedCategoryType)
+    private val _themeState = MutableStateFlow(themeState)
 
     override val settings: Flow<Settings> = _settings
     override suspend fun snapshot(): Settings = _settings.value
@@ -77,6 +80,11 @@ class FakeSettingsRepository(
     override val selectedCategoryType: Flow<String?> = _selectedCategoryType
     override suspend fun setSelectedCategoryType(type: String) {
         _selectedCategoryType.value = type
+    }
+
+    override val themeState: Flow<ThemeState> = _themeState
+    override suspend fun setThemeState(state: ThemeState) {
+        _themeState.value = state
     }
 
     override val backStackJson: Flow<String?> = _backStackJson
