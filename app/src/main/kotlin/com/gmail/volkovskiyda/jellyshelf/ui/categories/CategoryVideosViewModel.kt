@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
-import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
@@ -28,7 +28,10 @@ class CategoryVideosViewModel(
     val videos: StateFlow<List<Video>?> = repo.observeVideosByCategory(categoryId)
         .stateIn(viewModelScope, WhileUiSubscribed, null)
 
-    val bulkFetch: StateFlow<BulkFetch> = repo.bulkFetch
+    // Both bulk runs live on the repository, so their progress survives leaving this screen —
+    // and outlives this ViewModel, which is scoped to one category at a time.
+    val bulkFetch: StateFlow<BulkProgress> = repo.bulkFetch
+    val bulkRemove: StateFlow<BulkProgress> = repo.bulkRemove
 
     private val _creatingPlaylist = MutableStateFlow(false)
     val creatingPlaylist: StateFlow<Boolean> = _creatingPlaylist.asStateFlow()
@@ -73,4 +76,8 @@ class CategoryVideosViewModel(
     fun startFetchMissing() = repo.startFetchMissing()
     fun cancelFetchMissing() = repo.cancelFetchMissing()
     fun acknowledgeBulkFetch() = repo.acknowledgeBulkFetch()
+
+    fun startRemoveWatched() = repo.startRemoveWatched()
+    fun cancelRemoveWatched() = repo.cancelRemoveWatched()
+    fun acknowledgeBulkRemove() = repo.acknowledgeBulkRemove()
 }

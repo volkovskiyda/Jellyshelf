@@ -1,6 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.domain.repository
 
-import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
@@ -25,13 +25,17 @@ interface LibraryRepository {
     fun observeOthers(): Flow<List<CategoryWithCount>>
     fun videoCount(): Flow<Int>
 
-    val bulkFetch: StateFlow<BulkFetch>
+    val bulkFetch: StateFlow<BulkProgress>
+    val bulkRemove: StateFlow<BulkProgress>
 
     suspend fun sync(): SyncResult
     suspend fun fetchMetadata(youtubeId: String): FetchResult
     fun startFetchMissing()
     fun cancelFetchMissing()
     fun acknowledgeBulkFetch()
+    fun startRemoveWatched()
+    fun cancelRemoveWatched()
+    fun acknowledgeBulkRemove()
     suspend fun clearLocalData()
     suspend fun removeVideo(youtubeId: String)
     suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean

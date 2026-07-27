@@ -9,7 +9,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.mapper.toDomain
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
-import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_MONTH
@@ -24,6 +24,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_CONTINUE
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
@@ -45,6 +46,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
 import io.ktor.client.plugins.ResponseException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
@@ -142,6 +144,69 @@ internal fun prunePolicy(scopeChanged: Boolean, storedCount: Int, seenCount: Int
     else -> Prune.NOTHING
 }
 
+/**
+ * Drives one cancellable bulk run and publishes its [BulkProgress]. Both bulk actions (fetch all
+ * missing metadata, remove all watched) get their own instance, so starting or cancelling one
+ * leaves the other alone.
+ */
+private class BulkRunner(private val scope: CoroutineScope) {
+    private val _progress = MutableStateFlow<BulkProgress>(BulkProgress.Idle)
+    val progress: StateFlow<BulkProgress> = _progress.asStateFlow()
+
+    /**
+     * Guards every read-modify-write of [job], [generation] and the [_progress] state. Start and
+     * cancel both check-then-act on the current job, and are called straight from the UI rather
+     * than from a coroutine, so a plain lock (not a Mutex) is what fits.
+     */
+    private val lock = Any()
+    private var job: Job? = null
+
+    /**
+     * Bumped by every start and cancel. A run only publishes progress for its own generation, so
+     * a `Running` write that was already in flight when the user pressed Cancel can't land after
+     * the reset to `Idle` and strand the UI on a job that no longer exists.
+     */
+    private var generation = 0L
+
+    val isActive: Boolean get() = synchronized(lock) { job?.isActive == true }
+
+    /**
+     * Runs [block] on the shared scope, handing it a publish function that writes progress only
+     * while this run is still the live one. No-op if a run is already active.
+     */
+    fun start(block: suspend (publish: (BulkProgress) -> Unit) -> Unit) {
+        val runGeneration = synchronized(lock) {
+            if (job?.isActive == true) return
+            ++generation
+        }
+        val publish: (BulkProgress) -> Unit = { state ->
+            synchronized(lock) { if (runGeneration == generation) _progress.value = state }
+        }
+        val started = scope.launch { block(publish) }
+        synchronized(lock) {
+            // A cancel that landed while this job was being started bumped the generation past
+            // ours: this run is already obsolete, so stop it instead of publishing it as current.
+            if (runGeneration == generation) job = started else started.cancel()
+        }
+    }
+
+    fun cancel() {
+        val running = synchronized(lock) {
+            generation++
+            _progress.value = BulkProgress.Idle
+            job.also { job = null }
+        }
+        // Cancelling outside the lock: the running block's own cleanup publishes nothing (its
+        // generation is stale now) and must not have to wait on a lock the UI thread holds.
+        running?.cancel()
+    }
+
+    /** Clear a terminal [BulkProgress.Done] once the UI has shown it. */
+    fun acknowledge() = synchronized(lock) {
+        if (_progress.value is BulkProgress.Done) _progress.value = BulkProgress.Idle
+    }
+}
+
 class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
     private val jellyfin: JellyfinDataSource,
@@ -174,27 +239,16 @@ class DefaultLibraryRepository(
      */
     private val playstateMutex = Mutex()
 
-    // Long-running work (bulk fetch, playback reports) runs here so it outlives the screen
+    // Long-running work (the bulk runs, playback reports) happens here so it outlives the screen
     // that started it. Best-effort background work must never crash the process on an
     // unexpected DataStore/DB failure — ioScope logs and moves on.
     private val repoScope = dispatchers.ioScope("LibraryRepository")
-    private val _bulkFetch = MutableStateFlow<BulkFetch>(BulkFetch.Idle)
-    override val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
 
-    /**
-     * Guards every read-modify-write of [bulkJob], [bulkGeneration] and the [_bulkFetch] state.
-     * Start and cancel both check-then-act on the current job, and are called straight from the
-     * UI rather than from a coroutine, so a plain lock (not a Mutex) is what fits.
-     */
-    private val bulkLock = Any()
-    private var bulkJob: Job? = null
+    private val fetchRunner = BulkRunner(repoScope)
+    override val bulkFetch: StateFlow<BulkProgress> = fetchRunner.progress
 
-    /**
-     * Bumped by every start and cancel. A run only publishes progress for its own generation, so
-     * a `Running` write that was already in flight when the user pressed Cancel can't land after
-     * the reset to `Idle` and strand the UI on a job that no longer exists.
-     */
-    private var bulkGeneration = 0L
+    private val removeRunner = BulkRunner(repoScope)
+    override val bulkRemove: StateFlow<BulkProgress> = removeRunner.progress
 
     // Every list flow below ends in `flowOn(dispatchers.default)`: ViewModels collect these through
     // `stateIn(viewModelScope)`, i.e. on Main.immediate, so without it the entity→domain mapping —
@@ -424,8 +478,8 @@ class DefaultLibraryRepository(
     private suspend fun autoFillMissingMetadata(): Pair<Int, Int> {
         // A manual bulk fetch is already walking exactly this set — leave it alone rather than
         // racing it for the same rows, and don't even query for them.
-        val bulkRunning = synchronized(bulkLock) { bulkJob?.isActive == true }
-        val targets = if (bulkRunning) emptyList() else videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
+        val targets =
+            if (fetchRunner.isActive) emptyList() else videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
         if (targets.isEmpty() || targets.size >= AUTO_FILL_MAX_MISSING) return 0 to 0
 
         var filled = 0
@@ -554,27 +608,14 @@ class DefaultLibraryRepository(
      * Fetch metadata for every uncategorized (Jellyfin-only) video, one at a time, publishing
      * progress via [bulkFetch]. No-op if already running.
      */
-    override fun startFetchMissing() {
-        val generation = synchronized(bulkLock) {
-            if (bulkJob?.isActive == true) return
-            ++bulkGeneration
-        }
-        val job = repoScope.launch { runFetchMissing(generation) }
-        synchronized(bulkLock) {
-            // A cancel that landed while this job was being started bumped the generation past
-            // ours: this run is already obsolete, so stop it instead of publishing it as current.
-            if (generation == bulkGeneration) bulkJob = job else job.cancel()
-        }
-    }
-
-    private suspend fun runFetchMissing(generation: Long) {
+    override fun startFetchMissing() = fetchRunner.start { publish ->
         val targets = videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
         if (targets.isEmpty()) {
-            publishBulkFetch(generation, BulkFetch.Done(0, 0))
-            return
+            publish(BulkProgress.Done(0, 0))
+            return@start
         }
         var failed = 0
-        publishBulkFetch(generation, BulkFetch.Running(0, targets.size, 0))
+        publish(BulkProgress.Running(0, targets.size, 0))
         targets.forEachIndexed { i, video ->
             // A failure applying the result counts as failed too, so an unexpected exception
             // can't kill the process or strand the Running state. A per-video timeout inside
@@ -583,31 +624,91 @@ class DefaultLibraryRepository(
                 fetchAndApply(video.youtubeId) is FetchResult.Success
             }.getOrDefault(false)
             if (!ok) failed++
-            publishBulkFetch(generation, BulkFetch.Running(i + 1, targets.size, failed))
+            publish(BulkProgress.Running(i + 1, targets.size, failed))
         }
-        publishBulkFetch(generation, BulkFetch.Done(targets.size, failed))
+        publish(BulkProgress.Done(targets.size, failed))
     }
 
-    /** Publishes [state] only while [generation] is still the live run — see [bulkGeneration]. */
-    private fun publishBulkFetch(generation: Long, state: BulkFetch) = synchronized(bulkLock) {
-        if (generation == bulkGeneration) _bulkFetch.value = state
-    }
+    override fun cancelFetchMissing() = fetchRunner.cancel()
 
-    override fun cancelFetchMissing() {
-        val job = synchronized(bulkLock) {
-            bulkGeneration++
-            _bulkFetch.value = BulkFetch.Idle
-            bulkJob.also { bulkJob = null }
+    override fun acknowledgeBulkFetch() = fetchRunner.acknowledge()
+
+    /**
+     * Deletes every watched video from the Jellyfin server — media file included — one at a time,
+     * publishing progress via [bulkRemove]. No-op if already running.
+     *
+     * A video the server refuses to delete (no rights, already gone, network down) is counted as
+     * failed and the run moves on, so one bad item never strands the rest; the summary reports how
+     * many were left behind. Retrying is just a matter of pressing the button again — a successful
+     * delete has already left the watched set.
+     */
+    override fun startRemoveWatched() = removeRunner.start { publish ->
+        val s = settings.snapshot()
+        val targets = videoDao.getWatched()
+        when {
+            targets.isEmpty() -> {
+                publish(BulkProgress.Done(0, 0))
+                return@start
+            }
+            // Nothing can be deleted without a server to delete it on. Reported as all-failed
+            // rather than as a clean run, which would read as "the videos are gone" when they
+            // are all still there.
+            !s.isConnected -> {
+                publish(BulkProgress.Done(targets.size, targets.size))
+                return@start
+            }
         }
-        // Cancelling outside the lock: the running fetch's own cleanup publishes nothing (its
-        // generation is stale now) and must not have to wait on a lock the UI thread holds.
-        job?.cancel()
+
+        var failed = 0
+        publish(BulkProgress.Running(0, targets.size, 0))
+        try {
+            targets.forEachIndexed { i, video ->
+                val removed = runCatchingCancellable { removeFromServer(s, video) }
+                    .getOrElse { e ->
+                        Timber.w(e, "Remove watched: server delete failed for ${video.youtubeId}")
+                        false
+                    }
+                if (!removed) failed++
+                publish(BulkProgress.Running(i + 1, targets.size, failed))
+            }
+        } finally {
+            // Pruned once for the whole run, not per video: both queries are full-table passes.
+            // In a `finally` because a cancelled run has still deleted rows, and the orphan
+            // cross-refs they leave would inflate every category's count on the Categories screen.
+            withContext(NonCancellable) {
+                writeMutex.withLock {
+                    db.withTransaction {
+                        categoryDao.pruneOrphanCrossRefs()
+                        categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
+                    }
+                }
+            }
+        }
+        publish(BulkProgress.Done(targets.size, failed))
     }
 
-    /** Clear a terminal [BulkFetch.Done] once the UI has shown it. */
-    override fun acknowledgeBulkFetch() = synchronized(bulkLock) {
-        if (_bulkFetch.value is BulkFetch.Done) _bulkFetch.value = BulkFetch.Idle
+    /**
+     * Deletes [video] on the server, then drops its local row. Server first, and only on success:
+     * deleting locally on its own would achieve nothing, since the next sync would find the video
+     * still on the server and put the row straight back.
+     *
+     * Returns false for a video that was never matched to a Jellyfin item — there is nothing to
+     * delete, and dropping it locally would hide a video that still exists.
+     */
+    private suspend fun removeFromServer(s: Settings, video: VideoEntity): Boolean {
+        val itemId = video.jellyfinItemId ?: return false
+        jellyfin.deleteItem(s.serverUrl, s.credential, itemId)
+        // NonCancellable: a cancel landing between the server delete and the local one would leave
+        // a row for a video that no longer exists, which only the next sync would clear.
+        withContext(NonCancellable) {
+            writeMutex.withLock { videoDao.delete(video.youtubeId) }
+        }
+        return true
     }
+
+    override fun cancelRemoveWatched() = removeRunner.cancel()
+
+    override fun acknowledgeBulkRemove() = removeRunner.acknowledge()
 
     /**
      * Wipe all locally cached library data (videos, categories, their links) and

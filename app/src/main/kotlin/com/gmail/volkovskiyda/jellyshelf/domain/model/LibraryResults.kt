@@ -45,9 +45,15 @@ sealed interface FetchResult {
     data class Error(val message: String) : FetchResult
 }
 
-/** Progress of the bulk "fetch all missing" run, observable so it survives navigation. */
-sealed interface BulkFetch {
-    data object Idle : BulkFetch
-    data class Running(val done: Int, val total: Int, val failed: Int) : BulkFetch
-    data class Done(val total: Int, val failed: Int) : BulkFetch
+/**
+ * Progress of a bulk run over the library — "fetch all missing metadata" and "remove all watched"
+ * both report through it. Observable so it survives navigating away from the screen and back.
+ *
+ * [Running.failed] and [Done.failed] count videos the run could not process; it keeps going past
+ * them, so a single unreachable video never strands the rest.
+ */
+sealed interface BulkProgress {
+    data object Idle : BulkProgress
+    data class Running(val done: Int, val total: Int, val failed: Int) : BulkProgress
+    data class Done(val total: Int, val failed: Int) : BulkProgress
 }

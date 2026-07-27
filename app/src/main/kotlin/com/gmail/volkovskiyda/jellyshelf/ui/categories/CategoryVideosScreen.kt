@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,12 +15,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,8 +41,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
@@ -67,11 +71,13 @@ fun CategoryVideosScreen(
     val viewModel: CategoryVideosViewModel = koinViewModel { parametersOf(categoryId) }
     val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
+    val bulkRemove by viewModel.bulkRemove.collectAsStateWithLifecycle()
     val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
 
     // Dialog visibility lives here, not in the content: a finished playlist creation reports via
     // [message], and that same signal is what closes the dialog.
     var showDialog by rememberSaveable { mutableStateOf(false) }
+    var showRemoveDialog by rememberSaveable { mutableStateOf(false) }
     val message by viewModel.message.collectAsStateWithLifecycle()
     LaunchedEffect(message) {
         message?.let {
@@ -85,17 +91,28 @@ fun CategoryVideosScreen(
         title = title,
         videosOrNull = videosOrNull,
         bulkFetch = bulkFetch,
+        bulkRemove = bulkRemove,
         creating = creating,
         isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
+        isWatched = categoryId == VIRTUAL_CATEGORY_WATCHED,
         scrollKey = "category.$categoryId",
         showDialog = showDialog,
         onShowDialog = { showDialog = true },
         onDismissDialog = { if (!creating) showDialog = false },
+        showRemoveDialog = showRemoveDialog,
+        onShowRemoveDialog = { showRemoveDialog = true },
+        onDismissRemoveDialog = { showRemoveDialog = false },
         onVideoClick = onVideoClick,
         onBack = onBack,
         onStartFetchMissing = viewModel::startFetchMissing,
         onCancelFetchMissing = viewModel::cancelFetchMissing,
         onAcknowledgeBulkFetch = viewModel::acknowledgeBulkFetch,
+        onConfirmRemoveWatched = {
+            showRemoveDialog = false
+            viewModel.startRemoveWatched()
+        },
+        onCancelRemoveWatched = viewModel::cancelRemoveWatched,
+        onAcknowledgeBulkRemove = viewModel::acknowledgeBulkRemove,
         onCreatePlaylist = viewModel::createPlaylist,
         modifier = modifier,
     )
@@ -106,18 +123,26 @@ fun CategoryVideosScreen(
 internal fun CategoryVideosContent(
     title: String,
     videosOrNull: List<Video>?,
-    bulkFetch: BulkFetch,
+    bulkFetch: BulkProgress,
+    bulkRemove: BulkProgress,
     creating: Boolean,
     isUncategorized: Boolean,
+    isWatched: Boolean,
     scrollKey: String,
     showDialog: Boolean,
     onShowDialog: () -> Unit,
     onDismissDialog: () -> Unit,
+    showRemoveDialog: Boolean,
+    onShowRemoveDialog: () -> Unit,
+    onDismissRemoveDialog: () -> Unit,
     onVideoClick: (Video) -> Unit,
     onBack: () -> Unit,
     onStartFetchMissing: () -> Unit,
     onCancelFetchMissing: () -> Unit,
     onAcknowledgeBulkFetch: () -> Unit,
+    onConfirmRemoveWatched: () -> Unit,
+    onCancelRemoveWatched: () -> Unit,
+    onAcknowledgeBulkRemove: () -> Unit,
     onCreatePlaylist: (String) -> Unit,
     modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
@@ -156,13 +181,32 @@ internal fun CategoryVideosContent(
         )
 
         // The in-app yt-dlp bulk fetch lives only on the Uncategorized filter.
-        if (isUncategorized && (bulkFetch !is BulkFetch.Idle || videos.isNotEmpty())) {
-            FetchMissingHeader(
+        if (isUncategorized && (bulkFetch !is BulkProgress.Idle || videos.isNotEmpty())) {
+            BulkActionHeader(
                 state = bulkFetch,
-                missingCount = videos.size,
+                idleLabel = stringResource(R.string.fetch_missing, videos.size),
+                runningLabel = R.string.fetching_progress,
+                doneLabel = R.string.fetched_summary,
+                enabled = videos.isNotEmpty(),
                 onStart = onStartFetchMissing,
                 onCancel = onCancelFetchMissing,
                 onDismiss = onAcknowledgeBulkFetch,
+            )
+        }
+
+        // Bulk removal lives only on the Watched filter. It deletes on the server, so the button
+        // opens a confirmation rather than starting the run.
+        if (isWatched && (bulkRemove !is BulkProgress.Idle || videos.isNotEmpty())) {
+            BulkActionHeader(
+                state = bulkRemove,
+                idleLabel = pluralStringResource(R.plurals.remove_watched, videos.size, videos.size),
+                runningLabel = R.string.removing_progress,
+                doneLabel = R.string.removed_summary,
+                enabled = videos.isNotEmpty(),
+                onStart = onShowRemoveDialog,
+                onCancel = onCancelRemoveWatched,
+                onDismiss = onAcknowledgeBulkRemove,
+                destructive = true,
             )
         }
 
@@ -200,19 +244,36 @@ internal fun CategoryVideosContent(
             onCreate = onCreatePlaylist,
         )
     }
+
+    if (showRemoveDialog) {
+        RemoveWatchedDialog(
+            videoCount = videos.size,
+            onDismiss = onDismissRemoveDialog,
+            onConfirm = onConfirmRemoveWatched,
+        )
+    }
 }
 
 /**
- * Header for the Uncategorized filter: kicks off (and reports on) the in-app yt-dlp fetch of
- * metadata for every video that only has Jellyfin data. Progress survives leaving the screen.
+ * Header for a bulk run over the current filter: a button that starts it, live progress with a
+ * Cancel while it runs, and a summary with a Dismiss once it finishes. The state comes from the
+ * repository, so progress survives leaving the screen and coming back.
+ *
+ * [runningLabel] and [doneLabel] each take done and total, in that order; [idleLabel] is resolved
+ * by the caller because its count is pluralized differently per action. [destructive] renders the
+ * start button in the error colour — the caller is expected to confirm before acting on it.
  */
 @Composable
-private fun FetchMissingHeader(
-    state: BulkFetch,
-    missingCount: Int,
+private fun BulkActionHeader(
+    state: BulkProgress,
+    idleLabel: String,
+    @StringRes runningLabel: Int,
+    @StringRes doneLabel: Int,
+    enabled: Boolean,
     onStart: () -> Unit,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
+    destructive: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -221,7 +282,7 @@ private fun FetchMissingHeader(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         when (state) {
-            is BulkFetch.Running -> {
+            is BulkProgress.Running -> {
                 val fraction = if (state.total > 0) state.done.toFloat() / state.total else 0f
                 LinearProgressIndicator(
                     progress = { fraction },
@@ -234,7 +295,7 @@ private fun FetchMissingHeader(
                 ) {
                     Text(
                         buildString {
-                            append(stringResource(R.string.fetching_progress, state.done, state.total))
+                            append(stringResource(runningLabel, state.done, state.total))
                             if (state.failed > 0) {
                                 append(" • ")
                                 append(stringResource(R.string.failed_count, state.failed))
@@ -246,7 +307,7 @@ private fun FetchMissingHeader(
                 }
             }
 
-            is BulkFetch.Done -> {
+            is BulkProgress.Done -> {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -255,11 +316,7 @@ private fun FetchMissingHeader(
                     Text(
                         buildString {
                             append(
-                                stringResource(
-                                    R.string.fetched_summary,
-                                    state.total - state.failed,
-                                    state.total,
-                                )
+                                stringResource(doneLabel, state.total - state.failed, state.total)
                             )
                             if (state.failed > 0) {
                                 append(" • ")
@@ -272,18 +329,59 @@ private fun FetchMissingHeader(
                 }
             }
 
-            BulkFetch.Idle -> {
-                Button(
-                    onClick = onStart,
-                    enabled = missingCount > 0,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.fetch_missing, missingCount))
+            BulkProgress.Idle -> {
+                if (destructive) {
+                    OutlinedButton(
+                        onClick = onStart,
+                        enabled = enabled,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        ),
+                    ) { Text(idleLabel) }
+                } else {
+                    Button(
+                        onClick = onStart,
+                        enabled = enabled,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(idleLabel) }
                 }
             }
         }
     }
     HorizontalDivider()
+}
+
+/**
+ * Confirms the bulk removal. Spelled out rather than a plain "are you sure": this deletes the
+ * media on the server, which no re-sync can bring back.
+ */
+@Composable
+private fun RemoveWatchedDialog(
+    videoCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.remove_watched_dialog_title)) },
+        text = {
+            Text(
+                stringResource(
+                    R.string.remove_watched_dialog_text,
+                    pluralStringResource(R.plurals.video_count, videoCount, videoCount),
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.remove), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }
 
 @Composable

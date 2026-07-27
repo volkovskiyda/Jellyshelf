@@ -66,6 +66,15 @@
     <string name="fetching_progress">Fetching metadata… %1$d/%2$d</string>
     <string name="fetched_summary">Fetched %1$d/%2$d</string>
     <string name="failed_count" tools:ignore="PluralsCandidate">%1$d failed</string>
+    <plurals name="remove_watched">
+        <item quantity="one">Remove %d watched video</item>
+        <item quantity="other">Remove %d watched videos</item>
+    </plurals>
+    <string name="removing_progress">Removing… %1$d/%2$d</string>
+    <string name="removed_summary">Removed %1$d/%2$d</string>
+    <string name="remove">Remove</string>
+    <string name="remove_watched_dialog_title">Remove watched videos?</string>
+    <string name="remove_watched_dialog_text">This deletes %1$s from the Jellyfin server, media files included. It cannot be undone.</string>
 
     <!-- Detail -->
     <string name="video_fallback_title">Video</string>

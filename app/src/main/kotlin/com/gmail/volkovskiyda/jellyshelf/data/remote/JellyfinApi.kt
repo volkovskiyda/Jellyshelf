@@ -95,6 +95,14 @@ class JellyfinApi(private val client: HttpClient) {
     suspend fun markUnplayed(userId: String, itemId: String): HttpResponse =
         client.delete("Users/$userId/PlayedItems/$itemId")
 
+    /**
+     * Deletes an item from the library, its media file included — Jellyfin has no trash to
+     * recover it from. The server answers 401/403 unless the user has deletion rights, which
+     * `expectSuccess = true` turns into a throw.
+     */
+    suspend fun deleteItem(itemId: String): HttpResponse =
+        client.delete("Items/$itemId")
+
     suspend fun reportProgress(body: ProgressBody): HttpResponse =
         client.post("Sessions/Playing/Progress") {
             contentType(ContentType.Application.Json)

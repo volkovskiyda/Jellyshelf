@@ -156,6 +156,16 @@ class JellyfinDataSource(
     }
 
     /**
+     * Deletes [itemId] from the server library, its media file included. Throws on a non-2xx —
+     * callers must be able to tell a refused delete (no rights, item already gone) from a done
+     * one, since only a confirmed server delete makes dropping the local row safe.
+     */
+    suspend fun deleteItem(serverUrl: String, credential: String, itemId: String) {
+        api(serverUrl, credential).deleteItem(itemId)
+        // A non-2xx already threw (expectSuccess = true); reaching here means the item is gone.
+    }
+
+    /**
      * Writes the resume position (and optionally the played flag / last-played time) directly to
      * the user's playstate for [itemId]. This is what lands the item in "Continue Watching".
      */
