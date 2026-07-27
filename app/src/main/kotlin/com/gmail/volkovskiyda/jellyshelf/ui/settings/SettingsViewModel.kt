@@ -16,6 +16,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
 import com.gmail.volkovskiyda.jellyshelf.util.SESSION_EXPIRED_MESSAGE
 import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
 import com.gmail.volkovskiyda.jellyshelf.util.isUnauthorized
+import com.gmail.volkovskiyda.jellyshelf.util.normalizeServerUrl
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -297,7 +298,14 @@ class SettingsViewModel(
         val s = _state.value
         // `busy` is a frame stale in the UI; guard here so two taps can't run concurrent sign-ins.
         if (s.busy) return
-        if (s.serverUrl.isBlank() || s.username.isBlank() || s.password.isBlank()) {
+        // What the user typed, cleaned up to what they meant: a bare host gets its https://, the
+        // username loses the trailing space a keyboard suggestion appends, and the password loses
+        // only line breaks — a paste artifact; no field this feeds can legitimately contain one,
+        // but a password may genuinely contain spaces, so those stay.
+        val serverUrl = normalizeServerUrl(s.serverUrl)
+        val username = s.username.trim()
+        val password = s.password.filterNot { it == '\n' || it == '\r' }
+        if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
             _state.value = s.copy(
                 status = app.getString(R.string.enter_server_user_password),
                 statusIsError = true,
@@ -307,14 +315,16 @@ class SettingsViewModel(
         viewModelScope.launch {
             _state.value = s.copy(
                 busy = true,
+                // The field shows the URL that is actually being tried.
+                serverUrl = serverUrl,
                 status = app.getString(R.string.signing_in),
                 statusIsError = false,
             )
             runCatchingCancellable {
-                val session = jellyfin.signIn(s.serverUrl, s.username, s.password)
+                val session = jellyfin.signIn(serverUrl, username, password)
                 // Persist only after the server accepted the credentials, so a typo can never
                 // overwrite a working configuration.
-                settingsRepo.setConnection(s.serverUrl, s.apiKey)
+                settingsRepo.setConnection(serverUrl, s.apiKey)
                 settingsRepo.setIndexUrl(s.indexUrl)
                 settingsRepo.setSession(session.accessToken, session.user.id, session.user.name)
                 // A different user means a different item tree, so the old folder scope points at
@@ -336,10 +346,18 @@ class SettingsViewModel(
                     statusIsError = false,
                 )
             }.onFailure { e ->
+                // 401 here is the server rejecting the username/password pair — verified against
+                // Jellyfin 10.11: a malformed request 400s instead. Say so, rather than showing
+                // the raw Ktor exception text, which reads like an app failure.
+                val cause = if (isUnauthorized(e)) {
+                    app.getString(R.string.invalid_username_or_password)
+                } else {
+                    reason(e)
+                }
                 _state.value = _state.value.copy(
                     busy = false,
                     password = "",
-                    status = app.getString(R.string.sign_in_failed, reason(e)),
+                    status = app.getString(R.string.sign_in_failed, cause),
                     statusIsError = true,
                 )
             }
@@ -364,7 +382,7 @@ class SettingsViewModel(
 
     /** Prefill the metadata index URL from the entered server URL. */
     fun fillIndexUrlFromServer() {
-        val base = _state.value.serverUrl.trim().trimEnd('/')
+        val base = normalizeServerUrl(_state.value.serverUrl).trimEnd('/')
         if (base.isBlank()) return
         _state.value = _state.value.copy(indexUrl = "$base/jellyshelf-index.json")
     }
@@ -379,24 +397,28 @@ class SettingsViewModel(
         // The screen disables buttons via `busy`, but that state is a frame stale — guard here
         // so two taps landing in the same frame can't run concurrent operations.
         if (s.busy) return
-        if (s.serverUrl.isBlank() || s.apiKey.isBlank()) {
+        // Same courtesy as signIn: a bare host gets its https:// before anything is tried.
+        val serverUrl = normalizeServerUrl(s.serverUrl)
+        if (serverUrl.isBlank() || s.apiKey.isBlank()) {
             _state.value = s.copy(status = app.getString(R.string.enter_server_and_key), statusIsError = true)
             return
         }
         viewModelScope.launch {
             _state.value = s.copy(
                 busy = true,
+                // The field shows the URL that is actually being tried.
+                serverUrl = serverUrl,
                 status = if (silent) s.status else app.getString(R.string.connecting),
                 statusIsError = false,
             )
             runCatchingCancellable {
-                val users = jellyfin.getUsers(s.serverUrl, s.apiKey)
+                val users = jellyfin.getUsers(serverUrl, s.apiKey)
                 // Persist only after the server accepted the credentials, so a typo can never
                 // overwrite a previously working configuration.
-                settingsRepo.setConnection(s.serverUrl, s.apiKey)
+                settingsRepo.setConnection(serverUrl, s.apiKey)
                 settingsRepo.setIndexUrl(s.indexUrl)
-                // Trimmed to match what setConnection persists, so the next init's lookup hits.
-                settingsCache.store(s.serverUrl.trim(), users)
+                // Keyed by what setConnection persists, so the next init's lookup hits.
+                settingsCache.store(serverUrl, users)
                 val current = _state.value
                 val selected = users.firstOrNull { it.id == current.selectedUserId } ?: users.firstOrNull()
                 // Auto-selecting a *different* user (server changed, or the saved user is gone)

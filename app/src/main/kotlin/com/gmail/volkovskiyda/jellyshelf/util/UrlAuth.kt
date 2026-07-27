@@ -9,6 +9,22 @@ import java.net.URLEncoder
 fun isJellyfinImageUrl(url: String): Boolean = "/Items/" in url && "/Images/" in url
 
 /**
+ * Turns whatever the user typed into the server-URL field into a usable absolute URL: trimmed,
+ * and prefixed with `https://` when no scheme was given — people type `jf.example.app`, and
+ * without a scheme Ktor treats the value as a relative path and quietly resolves requests
+ * against `http://localhost/`.
+ *
+ * `https` deliberately: it is the only scheme release builds allow, and the debug-LAN user who
+ * genuinely wants plain HTTP can still type `http://` out. An explicit scheme — any string
+ * containing `://` — always passes through untouched.
+ */
+fun normalizeServerUrl(input: String): String {
+    val trimmed = input.trim()
+    if (trimmed.isBlank() || "://" in trimmed) return trimmed
+    return "https://$trimmed"
+}
+
+/**
  * Appends [apiKey] to a Jellyfin-hosted image [url] at display time; other URLs pass through.
  * The key is attached only to URLs on the configured [serverUrl]: index thumbnails are remote
  * input, so a URL merely *shaped* like a Jellyfin image path must never receive the server's

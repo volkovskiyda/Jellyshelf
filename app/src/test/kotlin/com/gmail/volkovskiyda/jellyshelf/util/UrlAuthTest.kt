@@ -120,6 +120,26 @@ class UrlAuthTest {
     }
 
     @Test
+    fun `normalizeServerUrl prefixes a bare host with https`() {
+        assertEquals("https://jf.example.app", normalizeServerUrl("jf.example.app"))
+        assertEquals("https://jf.example.app:8096", normalizeServerUrl("jf.example.app:8096"))
+        assertEquals("https://192.168.1.10:8096", normalizeServerUrl(" 192.168.1.10:8096 "))
+    }
+
+    @Test
+    fun `normalizeServerUrl leaves an explicit scheme alone`() {
+        assertEquals("https://jf.example.app", normalizeServerUrl("https://jf.example.app"))
+        // http:// stays http:// — the debug-LAN case is typed deliberately.
+        assertEquals("http://192.168.1.10:8096", normalizeServerUrl("http://192.168.1.10:8096"))
+    }
+
+    @Test
+    fun `normalizeServerUrl passes blank input through for the caller's own validation`() {
+        assertEquals("", normalizeServerUrl(""))
+        assertEquals("", normalizeServerUrl("   "))
+    }
+
+    @Test
     fun `escapeLikePattern escapes wildcards and backslashes`() {
         assertEquals("100\\% legit", escapeLikePattern("100% legit"))
         assertEquals("a\\_b", escapeLikePattern("a_b"))

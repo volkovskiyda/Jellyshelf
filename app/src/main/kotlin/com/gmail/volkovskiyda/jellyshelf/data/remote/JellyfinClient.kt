@@ -18,7 +18,10 @@ class JellyfinClient(private val baseClient: HttpClient) {
         val client = baseClient.config {
             defaultRequest {
                 url(normalizeBaseUrl(serverUrl))
-                header("X-Emby-Token", credential)
+                // The authenticate call runs before any credential exists — it identifies itself
+                // via the Authorization header instead. Don't send an empty token header for it:
+                // Jellyfin ignores one, but proxies in front of it aren't guaranteed to.
+                if (credential.isNotBlank()) header("X-Emby-Token", credential)
                 accept(ContentType.Application.Json)
             }
         }
