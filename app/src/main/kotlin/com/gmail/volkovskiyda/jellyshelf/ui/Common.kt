@@ -105,14 +105,19 @@ fun rememberPersistedLazyListState(key: String): LazyListState {
         }
         seedRestored = true
     }
+    // Both savers wait for [seedRestored]: until the restore above has run, the state still
+    // reads (0, 0), and persisting that would overwrite the very position we are about to
+    // restore — a cold start plus a fast tab bounce, or a first content emission slower than
+    // the debounce, would otherwise wipe the saved position.
     LaunchedEffect(key, state) {
         snapshotFlow { ScrollPosition(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset) }
             .debounce(250)
             .distinctUntilChanged()
-            .collect { store.save(key, it) }
+            .collect { if (seedRestored) store.save(key, it) }
     }
     DisposableEffect(key, state) {
         onDispose {
+            if (!seedRestored) return@onDispose
             store.save(key, ScrollPosition(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset))
         }
     }
@@ -145,7 +150,7 @@ fun <T> rememberAnchoredLazyListState(
     LaunchedEffect(key, items) {
         if (restored || items.isEmpty()) return@LaunchedEffect
         val saved = store.peekAnchor(key)
-        if (saved != null && saved.anchor.isNotEmpty()) {
+        if (saved != null) {
             val index = items.floorIndexOfAnchor(saved.anchor, anchorOf)
             if (index >= 0) {
                 val exact = anchorOf(items[index]) == saved.anchor

@@ -107,7 +107,10 @@ class DefaultScrollPositionRepository(
     /** Last known anchor position for [key], or `null` if none was saved. Waits for the seed. */
     override suspend fun peekAnchor(key: String): AnchorPosition? {
         seedJob.join()
-        return anchorCache[key]
+        // A blank anchor is not a position: disk holding only the offset half of the pair (an
+        // interrupted write, or a key removed by hand) seeds AnchorPosition("", n), which no
+        // item can ever match. Report it as "nothing saved".
+        return anchorCache[key]?.takeIf { it.anchor.isNotBlank() }
     }
 
     /** Records the anchor [position] for [key] in memory immediately and persists it to disk. */
