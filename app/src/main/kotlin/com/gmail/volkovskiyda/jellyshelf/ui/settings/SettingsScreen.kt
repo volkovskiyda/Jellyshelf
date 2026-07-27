@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -120,6 +121,10 @@ internal fun SettingsContent(
     videoCount: Int,
     actions: SettingsActions,
     modifier: Modifier = Modifier,
+    // Whether the Advanced (API-key) section starts open. A parameter purely so previews and
+    // screenshot tests can render it — collapsing it by default would otherwise hide that whole
+    // fallback path from the goldens.
+    advancedExpanded: Boolean = false,
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -175,14 +180,6 @@ internal fun SettingsContent(
             }
 
             OutlinedTextField(
-                value = state.apiKey,
-                onValueChange = actions.onApiKeyChange,
-                label = { Text(stringResource(R.string.api_key)) },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
                 value = state.indexUrl,
                 onValueChange = actions.onIndexUrlChange,
                 label = { Text(stringResource(R.string.index_url_label)) },
@@ -199,24 +196,11 @@ internal fun SettingsContent(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Button(
-                onClick = actions.connect,
-                enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.connect_load_users)) }
-
-            if (state.users.isNotEmpty()) {
-                Text(stringResource(R.string.user), style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.users.forEach { user ->
-                        FilterChip(
-                            selected = user.id == state.selectedUserId,
-                            onClick = { actions.selectUser(user) },
-                            label = { Text(user.name) },
-                        )
-                    }
-                }
-            }
+            AdvancedAuthSection(
+                state = state,
+                actions = actions,
+                initiallyExpanded = advancedExpanded,
+            )
 
             if (state.selectedUserId.isNotBlank()) {
                 ScopeSection(state = state, actions = actions)
@@ -283,6 +267,73 @@ internal fun SettingsContent(
                 TextButton(onClick = { showResetDialog = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+}
+
+/**
+ * The API-key fallback, collapsed behind "Advanced".
+ *
+ * A Jellyfin API key is server-wide and admin-scoped, so it is deliberately no longer the path of
+ * least resistance — signing in is. It stays available for setups that can't use a password login
+ * (and is what the app falls back to when no user is signed in), but a user has to go looking.
+ *
+ * The user picker lives here too, not in the main section: API keys are server-wide, so the app
+ * has to ask *which* user's watch state to read and write. A token already answers that, which is
+ * why the whole section is hidden once signed in.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AdvancedAuthSection(
+    state: SettingsUiState,
+    actions: SettingsActions,
+    initiallyExpanded: Boolean = false,
+) {
+    var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
+
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(
+            stringResource(
+                if (expanded) R.string.hide_advanced else R.string.show_advanced,
+            ),
+        )
+    }
+    if (!expanded) return
+
+    Text(
+        stringResource(R.string.api_key_explained),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    OutlinedTextField(
+        value = state.apiKey,
+        onValueChange = actions.onApiKeyChange,
+        label = { Text(stringResource(R.string.api_key)) },
+        singleLine = true,
+        // Inert while a user token is held — [Settings.credential] prefers the token.
+        enabled = !state.signedIn,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    if (state.signedIn) return
+
+    OutlinedButton(
+        onClick = actions.connect,
+        enabled = !state.busy,
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(stringResource(R.string.connect_load_users)) }
+
+    if (state.users.isNotEmpty()) {
+        Text(stringResource(R.string.user), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            state.users.forEach { user ->
+                FilterChip(
+                    selected = user.id == state.selectedUserId,
+                    onClick = { actions.selectUser(user) },
+                    label = { Text(user.name) },
+                )
+            }
+        }
     }
 }
 

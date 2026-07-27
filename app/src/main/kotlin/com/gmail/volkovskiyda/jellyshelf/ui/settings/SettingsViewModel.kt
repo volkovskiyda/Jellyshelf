@@ -13,7 +13,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
+import com.gmail.volkovskiyda.jellyshelf.util.SESSION_EXPIRED_MESSAGE
 import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
+import com.gmail.volkovskiyda.jellyshelf.util.isUnauthorized
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -196,12 +198,18 @@ class SettingsViewModel(
                         _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
                         SyncUi(running = false, message = message, isError = false)
                     }
-                    WorkInfo.State.FAILED -> SyncUi(
-                        running = false,
-                        message = info.outputData.getString(SyncWorker.KEY_ERROR)
-                            ?: app.getString(R.string.unknown_error),
-                        isError = true,
-                    )
+                    WorkInfo.State.FAILED -> {
+                        // A sync that hit a rejected token already cleared the session in the data
+                        // layer; re-read it so the screen switches back to the sign-in form
+                        // instead of still claiming to be signed in.
+                        _state.value = _state.value.copy(signedIn = settingsRepo.snapshot().isSignedIn)
+                        SyncUi(
+                            running = false,
+                            message = info.outputData.getString(SyncWorker.KEY_ERROR)
+                                ?: app.getString(R.string.unknown_error),
+                            isError = true,
+                        )
+                    }
                     // Cancelled by "Reset local data", which posts its own status — leave it be.
                     WorkInfo.State.CANCELLED -> null
                 }
@@ -227,7 +235,19 @@ class SettingsViewModel(
      */
     private fun reason(e: Throwable): String = when {
         isCleartextBlocked(e) -> CLEARTEXT_BLOCKED_MESSAGE
+        isUnauthorized(e) && _state.value.signedIn -> SESSION_EXPIRED_MESSAGE
         else -> e.message ?: app.getString(R.string.unknown_error)
+    }
+
+    /**
+     * Drops the session when the server rejected the token, so the screen asks for a sign-in
+     * rather than leaving a dead credential in place. Never falls back to the advanced API key:
+     * silently restoring full-server access is exactly what user login exists to avoid.
+     */
+    private suspend fun clearSessionIfRejected(e: Throwable) {
+        if (!isUnauthorized(e) || !_state.value.signedIn) return
+        settingsRepo.clearSession()
+        _state.value = _state.value.copy(signedIn = false, selectedUserId = "", selectedUserName = "")
     }
 
     fun onServerUrlChange(value: String) {
@@ -477,10 +497,14 @@ class SettingsViewModel(
                     .map { FolderRef(it.id, it.name, it.path) }
                 _state.value = _state.value.copy(childFolders = folders, loadingFolders = false)
             }.onFailure { e ->
+                // Message first: [reason] reads the still-signed-in state that [clearSessionIfRejected]
+                // is about to drop.
+                val message = app.getString(R.string.folders_load_failed, reason(e))
+                clearSessionIfRejected(e)
                 _state.value = _state.value.copy(
                     childFolders = emptyList(),
                     loadingFolders = false,
-                    status = app.getString(R.string.folders_load_failed, reason(e)),
+                    status = message,
                     statusIsError = true,
                 )
             }

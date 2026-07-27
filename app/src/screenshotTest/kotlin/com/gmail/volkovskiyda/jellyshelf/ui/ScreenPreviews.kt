@@ -335,6 +335,57 @@ private fun SettingsConnected() {
     }
 }
 
+/**
+ * The API-key fallback, expanded. Its own preview because the section is collapsed by default, and
+ * a path that only appears behind a tap would otherwise have no golden at all.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun SettingsAdvancedExpanded() {
+    PreviewTheme {
+        SettingsContent(
+            state = SettingsUiState(
+                serverUrl = previewSettings.serverUrl,
+                apiKey = previewSettings.apiKey,
+                indexUrl = previewSettings.indexUrl,
+                users = listOf(
+                    com.gmail.volkovskiyda.jellyshelf.domain.model.User("user-id", "Sample User"),
+                    com.gmail.volkovskiyda.jellyshelf.domain.model.User("other-id", "Other User"),
+                ),
+                selectedUserId = "user-id",
+                selectedUserName = "Sample User",
+            ),
+            videoCount = 879,
+            actions = SettingsActions(),
+            advancedExpanded = true,
+        )
+    }
+}
+
+/** Signed in with a user token: no password field, no API-key affordances, Sign out instead. */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun SettingsSignedIn() {
+    PreviewTheme {
+        SettingsContent(
+            state = SettingsUiState(
+                serverUrl = previewSettings.serverUrl,
+                indexUrl = previewSettings.indexUrl,
+                username = "Sample User",
+                signedIn = true,
+                selectedUserId = "user-id",
+                selectedUserName = "Sample User",
+                lastSyncAt = 1_785_143_919_405L,
+            ),
+            videoCount = 879,
+            actions = SettingsActions(),
+            advancedExpanded = true,
+        )
+    }
+}
+
 /** Sync succeeded but the metadata index was unreachable — the degraded status line from item 09. */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)

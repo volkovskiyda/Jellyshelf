@@ -112,12 +112,24 @@ one certificate/host. Index URL: `https://media.example.com/jellyshelf-index.jso
 
 1. **Server URL** — e.g. `https://192.168.1.10:8096`. Release builds accept `https://` only; a
    plain-HTTP LAN server needs a debug build.
-2. **API key** — Jellyfin → Dashboard → API Keys → new key. Sent as the `X-Emby-Token`
-   header on every request.
-3. **Connect & load users** — API keys are server-wide, so pick which user's watch state
-   to read/write.
-4. **Metadata index URL** (optional) — where you serve `jellyshelf-index.json`.
-5. **Sync now** — first sync; a WorkManager job then re-syncs every 6 hours.
+2. **Username + password → Sign in** — exchanges them for a *user-scoped* access token
+   (`POST /Users/AuthenticateByName`). Only the token is stored; the password is discarded as
+   soon as the token comes back. The token identifies the user, so there is nothing to pick.
+3. **Metadata index URL** (optional) — where you serve `jellyshelf-index.json`.
+4. **Sync now** — first sync; a WorkManager job then re-syncs every 3 hours.
+
+If the server later rejects the token (password change, session revoked), the app says
+"session expired — sign in again" and stops syncing rather than falling back to anything else.
+
+### Advanced: API key instead of sign-in
+
+Under **Advanced** there is still an **API key** field (Jellyfin → Dashboard → API Keys), for
+setups where a password login isn't an option. It is a deliberate second choice: a Jellyfin API
+key is **server-wide and admin-scoped**, so any leak — player history, casting, server access
+logs — exposes the whole server rather than one user. In this mode you also have to
+**Connect & load users** and pick whose watch state to read and write, because the key alone
+doesn't say. Whichever credential is in play travels as the `X-Emby-Token` header; the user
+token wins whenever one is present.
 
 ## Watching a video
 

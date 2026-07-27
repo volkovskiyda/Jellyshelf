@@ -33,9 +33,11 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
+import com.gmail.volkovskiyda.jellyshelf.util.SESSION_EXPIRED_MESSAGE
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
 import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
+import com.gmail.volkovskiyda.jellyshelf.util.isUnauthorized
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
@@ -277,8 +279,14 @@ class DefaultLibraryRepository(
         val items = runCatchingCancellable {
             jellyfin.fetchAllItems(s.serverUrl, s.credential, s.userId, s.libraryId)
         }.getOrElse { e ->
+            // A rejected user token can't self-heal, and must not quietly fall back to the
+            // advanced API key — that would silently restore the full-server access the user
+            // moved away from. Drop the session so the UI asks for a fresh sign-in instead.
+            val sessionExpired = isUnauthorized(e) && s.isSignedIn
+            if (sessionExpired) settings.clearSession()
             val message = when {
                 isCleartextBlocked(e) -> CLEARTEXT_BLOCKED_MESSAGE
+                sessionExpired -> SESSION_EXPIRED_MESSAGE
                 else -> "Failed to load library: ${e.message}"
             }
             return SyncResult.Error(message, retryable = !isPermanentFailure(e))
