@@ -22,9 +22,11 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -49,6 +51,9 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.LocalThemeRevealController
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeReveal
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeRevealController
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.themeBackgroundArgb
 import org.koin.android.ext.android.inject
@@ -79,25 +84,34 @@ class MainActivity : ComponentActivity() {
             val themeState by viewModel.themeState.collectAsStateWithLifecycle()
             // The cached mode until the real one lands: it is what the window is already painted
             // in, so agreeing with it keeps the hand-over invisible.
-            val darkTheme = (themeState?.mode ?: themeModeCache.peek()).isDark()
-            // Re-applied because the cache can be a launch stale, and because a mode change while
-            // running must restyle the bars — see [applyEdgeToEdge]. The window background is
-            // repainted alongside them: onCreate's paint owns the first frame, this owns staying
-            // current, which matters now that a system flip no longer recreates the activity and
-            // would otherwise leave a stale colour showing through IME-resize gaps and overscroll.
-            DisposableEffect(darkTheme) {
-                window.setBackgroundDrawable(
-                    themeBackgroundArgb(this@MainActivity, darkTheme, buildInfo).toDrawable(),
-                )
-                applyEdgeToEdge(darkTheme)
-                onDispose {}
-            }
+            val darkTarget = (themeState?.mode ?: themeModeCache.peek()).isDark()
             // Keeps the cache read by [cachedDarkTheme] honest for the next cold start.
             LaunchedEffect(themeState) {
                 themeState?.let { themeModeCache.store(it.mode) }
             }
-            JellyshelfTheme(darkTheme = darkTheme) {
-                JellyshelfApp(viewModel)
+
+            // The switch reaches this through [LocalThemeRevealController] rather than through
+            // SettingsActions: where a tap landed is presentation detail the settings screen has no
+            // reason to carry.
+            val revealController = remember { ThemeRevealController() }
+            CompositionLocalProvider(LocalThemeRevealController provides revealController) {
+                ThemeReveal(controller = revealController, darkTheme = darkTarget) { appliedDark ->
+                    // Keyed on what is actually rendered rather than on the target: the bars and the
+                    // window background have to flip in the same frame the snapshot overlay appears,
+                    // not a frame earlier. (Bar *icons* are window state, not captured pixels, so
+                    // they change at the start of a reveal rather than following its edge.)
+                    DisposableEffect(appliedDark) {
+                        window.setBackgroundDrawable(
+                            themeBackgroundArgb(this@MainActivity, appliedDark, buildInfo)
+                                .toDrawable(),
+                        )
+                        applyEdgeToEdge(appliedDark)
+                        onDispose {}
+                    }
+                    JellyshelfTheme(darkTheme = appliedDark) {
+                        JellyshelfApp(viewModel)
+                    }
+                }
             }
         }
     }
