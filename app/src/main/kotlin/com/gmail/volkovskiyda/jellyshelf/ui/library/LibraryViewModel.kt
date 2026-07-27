@@ -62,14 +62,10 @@ class LibraryViewModel(
                 (if (pristine) repo.observeVideos() else repo.searchVideos(q, filter))
                     .map { LibraryVideos(it, q, filter) }
             }
-            .onEach { filters.lastVideos = it.items }
-            .stateIn(
-                viewModelScope,
-                WhileUiSubscribed,
-                filters.lastVideos?.let {
-                    LibraryVideos(it, _query.value, _durationFilter.value)
-                },
-            )
+            // Cached whole, so the seed below keeps the query and filter that actually produced
+            // this list rather than whatever they read as at recreation time.
+            .onEach { filters.lastVideos = it }
+            .stateIn(viewModelScope, WhileUiSubscribed, filters.lastVideos)
 
     fun onQueryChange(value: String) {
         _query.value = value

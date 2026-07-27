@@ -37,9 +37,15 @@ class CategoriesFilterState(
      * Last lists emitted for the surviving query, seeding the recreated ViewModel so a
      * revisited tab renders instantly instead of flashing the loading state until Room
      * re-emits. Caching "others" too keeps that tab from vanishing for a frame on revisit.
+     *
+     * The categories emission is cached whole rather than as bare items: it already carries the
+     * pristine flag, and recomputing that from [query] at seed time would read the query as of
+     * *recreation*. A ViewModel cleared between a query change and the debounced emission for it
+     * would then seed the old list with the new query's pristine-ness, and each tab's scroll
+     * restore — which trusts that flag — would fire against contents it never belonged to.
      */
     @Volatile
-    var lastCategories: List<CategoryWithCount>? = null
+    var lastCategories: CategoryList? = null
 
     @Volatile
     var lastOthers: List<CategoryWithCount>? = null

@@ -55,12 +55,10 @@ class CategoriesViewModel(
             (if (pristine) repo.observeCategories() else repo.searchCategories(q))
                 .map { CategoryList(it, pristine) }
         }
-        .onEach { filters.lastCategories = it.items }
-        .stateIn(
-            viewModelScope,
-            WhileUiSubscribed,
-            filters.lastCategories?.let { CategoryList(it, _query.value.isBlank()) },
-        )
+        // Cached whole, so the seed below keeps the pristine-ness that actually produced this list
+        // rather than recomputing it from the query as it reads at recreation time.
+        .onEach { filters.lastCategories = it }
+        .stateIn(viewModelScope, WhileUiSubscribed, filters.lastCategories)
 
     /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
     val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()
