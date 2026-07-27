@@ -144,6 +144,144 @@ tasks.matching { it.name.startsWith("connected") && it.name.endsWith("AndroidTes
         }
     }
 
+/**
+ * Single HTML page summarising every test layer, written to `app/build/test-summary/index.html`.
+ * Only reads XML that is already on disk — it never runs a test itself, so it is safe to attach
+ * to any pipeline; `scripts/run-tests.sh` calls it once the layers it ran have passed.
+ *
+ * Everything lives inside doLast: the configuration cache cannot serialize references to
+ * build-script-level functions or classes, so the parser is a local lambda rather than a helper.
+ */
+tasks.register("testSummary") {
+    group = "verification"
+    description = "Aggregate unit, screenshot and instrumented test results into one HTML report."
+    // Paths resolved at configuration time; all file access happens in doLast.
+    val buildDir = layout.buildDirectory.get().asFile
+    val outFile = buildDir.resolve("test-summary/index.html")
+    val layers = listOf(
+        Triple("Unit tests", "test-results/testDebugUnitTest", "reports/tests/testDebugUnitTest/index.html"),
+        // The screenshot plugin writes per-class HTML (with reference/actual/diff images on a
+        // failure) rather than an index.html, so the layer links to that directory's entry page.
+        Triple(
+            "Screenshot goldens",
+            "test-results/validateDebugScreenshotTest",
+            "reports/screenshotTest/preview/debug/com.gmail.volkovskiyda.jellyshelf.ui.html",
+        ),
+        Triple(
+            "Behavior tests (device)",
+            "outputs/androidTest-results/connected",
+            "reports/androidTests/connected/debug/index.html",
+        ),
+    ).map { (label, results, report) -> Triple(label, buildDir.resolve(results), buildDir.resolve(report)) }
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val summaryDir = outFile.parentFile
+
+        // Sums the testsuite header attributes across a layer's JUnit XML; null when the layer
+        // never ran, so the report can say "not run" rather than "0 passed" — a layer skipped for
+        // want of a device is not the same as a layer with nothing in it.
+        //
+        // Attribute-level string parsing rather than a real XML parse: these files are
+        // machine-written and only the header is needed. Both shapes appear — Gradle writes one
+        // <testsuite> per class, the instrumentation runner wraps them in a <testsuites> whose
+        // totals would double-count, so only the first such element per file is read.
+        val parse = { dir: File ->
+            val files = dir.walkTopDown().filter { it.isFile && it.extension == "xml" }.toList()
+            if (files.isEmpty()) {
+                null
+            } else {
+                var tests = 0
+                var failures = 0
+                var skipped = 0
+                files.forEach { file ->
+                    val header = file.readLines().firstOrNull { it.contains("<testsuite") }
+                    if (header != null) {
+                        val attr = { name: String ->
+                            Regex("""$name="(\d+)"""").find(header)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                        }
+                        tests += attr("tests")
+                        failures += attr("failures") + attr("errors")
+                        skipped += attr("skipped")
+                    }
+                }
+                Triple(tests, failures, skipped)
+            }
+        }
+
+        val parsed = layers.map { (label, resultsDir, report) ->
+            val href = report.takeIf { it.exists() }
+                ?.relativeToOrNull(summaryDir)?.path?.replace(File.separatorChar, '/')
+            Triple(label, parse(resultsDir), href)
+        }
+        val ran = parsed.mapNotNull { it.second }
+        if (ran.isEmpty()) {
+            logger.lifecycle("testSummary: no results found — run scripts/run-tests.sh first.")
+            return@doLast
+        }
+        val totalTests = ran.sumOf { it.first }
+        val totalFailures = ran.sumOf { it.second }
+        val totalSkipped = ran.sumOf { it.third }
+        val rows = parsed.joinToString("\n") { (label, stats, href) ->
+            if (stats == null) {
+                """      <tr class="notrun"><td>$label</td><td colspan="4">not run</td></tr>"""
+            } else {
+                val (tests, failures, skipped) = stats
+                val name = href?.let { """<a href="$it">$label</a>""" } ?: label
+                val cls = if (failures > 0) "fail" else "pass"
+                """      <tr class="$cls"><td>$name</td><td>$tests</td>""" +
+                    """<td>${tests - failures - skipped}</td><td>$failures</td><td>$skipped</td></tr>"""
+            }
+        }
+        val verdict = if (totalFailures > 0) "$totalFailures failed" else "all passed"
+        summaryDir.mkdirs()
+        outFile.writeText(
+            """
+            <!doctype html>
+            <html lang="en"><head><meta charset="utf-8">
+            <title>Jellyshelf test summary</title>
+            <style>
+              body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem; color: #222; }
+              h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+              .meta { color: #666; font-size: .85rem; margin-bottom: 1.5rem; }
+              table { border-collapse: collapse; min-width: 34rem; }
+              th, td { padding: .5rem .9rem; border-bottom: 1px solid #e3e3e3; text-align: right; }
+              th:first-child, td:first-child { text-align: left; }
+              thead th { border-bottom: 2px solid #ccc; font-size: .8rem; text-transform: uppercase; color: #555; }
+              tr.fail td:first-child::before { content: "\2717 "; color: #c0392b; }
+              tr.pass td:first-child::before { content: "\2713 "; color: #17803d; }
+              tr.notrun td { color: #999; font-style: italic; }
+              tfoot td { font-weight: 600; border-top: 2px solid #ccc; border-bottom: none; }
+              a { color: #1a4f9c; }
+              @media (prefers-color-scheme: dark) {
+                body { background: #16181c; color: #e6e6e6; }
+                th, td { border-color: #303540; } thead th { color: #9aa4b2; border-color: #454b57; }
+                tfoot td { border-color: #454b57; } a { color: #7aa7ff; } .meta { color: #9aa4b2; }
+              }
+            </style></head><body>
+            <h1>Jellyshelf test summary — $verdict</h1>
+            <div class="meta">$totalTests tests across ${ran.size} of ${layers.size} layers.
+            A layer reads "not run" when it was skipped (for instance no device attached).</div>
+            <table>
+              <thead><tr><th>Layer</th><th>Tests</th><th>Passed</th><th>Failed</th><th>Skipped</th></tr></thead>
+              <tbody>
+$rows
+              </tbody>
+              <tfoot><tr><td>Total</td><td>$totalTests</td>
+              <td>${totalTests - totalFailures - totalSkipped}</td>
+              <td>$totalFailures</td><td>$totalSkipped</td></tr></tfoot>
+            </table>
+            </body></html>
+            """.trimIndent(),
+        )
+        logger.lifecycle("Test summary ready:\n${outFile.absolutePath}")
+        parsed.forEach { (label, stats) ->
+            val line = stats?.let { "${it.first} tests, ${it.second} failed, ${it.third} skipped" } ?: "not run"
+            logger.lifecycle("  %-24s %s".format(label, line))
+        }
+    }
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(platform(libs.koin.bom))

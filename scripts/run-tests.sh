@@ -3,11 +3,15 @@ set -uo pipefail
 
 # run-tests.sh
 #
-# Runs every test layer in the project and prints one summary at the end:
+# Runs every check in the project and prints one summary at the end:
 #
-#   1. Unit tests        (:app:testDebugUnitTest)          host-side, always runs
-#   2. Screenshot goldens(:app:validateDebugScreenshotTest) host-side, always runs
-#   3. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
+#   1. Static analysis   (detekt, :app:lintDebug)           host-side, always runs
+#   2. Unit tests        (:app:testDebugUnitTest)           host-side, always runs
+#   3. Screenshot goldens(:app:validateDebugScreenshotTest) host-side, always runs
+#   4. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
+#
+# When every layer that ran has passed, :app:testSummary aggregates their JUnit XML into one
+# HTML page at app/build/test-summary/index.html.
 #
 # The instrumented layer is skipped — not failed — when nothing is attached, so this is safe to
 # run on a machine with no device and in CI without an emulator job. Gradle carries the same
@@ -17,6 +21,7 @@ set -uo pipefail
 # Usage:
 #   scripts/run-tests.sh              run everything available
 #   scripts/run-tests.sh --host-only  skip the instrumented layer even if a device is attached
+#   scripts/run-tests.sh --no-checks  skip static analysis, run only the test layers
 #   scripts/run-tests.sh --help
 #
 # Note: `set -e` is deliberately off. Every layer runs even when an earlier one fails, so one
@@ -25,11 +30,13 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 HOST_ONLY=0
+RUN_CHECKS=1
 for arg in "$@"; do
   case "$arg" in
     --host-only) HOST_ONLY=1 ;;
+    --no-checks) RUN_CHECKS=0 ;;
     -h|--help)
-      sed -n '3,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '3,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "ERROR: unknown option: $arg (try --help)" >&2; exit 2 ;;
@@ -79,7 +86,7 @@ else
 fi
 echo
 
-UNIT_RESULT="" ; SCREENSHOT_RESULT="" ; INSTRUMENTED_RESULT=""
+CHECKS_RESULT="" ; UNIT_RESULT="" ; SCREENSHOT_RESULT="" ; INSTRUMENTED_RESULT=""
 FAILED=0
 
 run_layer() {
@@ -95,6 +102,17 @@ run_layer() {
   FAILED=1
   return 1
 }
+
+if [[ "$RUN_CHECKS" -eq 1 ]]; then
+  # detekt covers Kotlin style/complexity, lint the Android-specific checks. lintDebug only —
+  # the release variant would report the same findings twice.
+  run_layer "static analysis" detekt :app:lintDebug \
+    && CHECKS_RESULT="passed" || CHECKS_RESULT="FAILED"
+else
+  CHECKS_RESULT="skipped (--no-checks)"
+  echo "-- static analysis: skipped (--no-checks) --"
+  echo
+fi
 
 run_layer "unit tests" :app:testDebugUnitTest \
   && UNIT_RESULT="passed" || UNIT_RESULT="FAILED"
@@ -115,7 +133,14 @@ else
     && INSTRUMENTED_RESULT="passed" || INSTRUMENTED_RESULT="FAILED"
 fi
 
+# The aggregate report reads whatever XML is on disk, so it is only meaningful once the layers
+# that were going to run have actually run and passed.
+if [[ "$FAILED" -eq 0 ]]; then
+  ./gradlew :app:testSummary --console=plain -q || true
+fi
+
 echo "== Summary =="
+printf '  %-20s %s\n' "static analysis"    "$CHECKS_RESULT"
 printf '  %-20s %s\n' "unit tests"         "$UNIT_RESULT"
 printf '  %-20s %s\n' "screenshot goldens" "$SCREENSHOT_RESULT"
 printf '  %-20s %s\n' "behavior tests"     "$INSTRUMENTED_RESULT"
@@ -131,3 +156,4 @@ fi
 
 echo
 echo "All available layers passed."
+echo "Combined report: app/build/test-summary/index.html"

@@ -1,0 +1,40 @@
+# Project overrides only — `buildUponDefaultConfig = true` supplies everything else, so a detekt
+# upgrade brings its new rules along instead of freezing a copy of the full default config here.
+
+build:
+  # Findings recorded in config/detekt/baseline.xml don't count; anything new fails the build.
+  maxIssues: 0
+
+complexity:
+  LongParameterList:
+    # Stateless Compose content composables legitimately take a long parameter list — that *is*
+    # the hoisted state and its callbacks (SettingsContent, DetailContent, LibraryContent).
+    ignoreAnnotated: ['Composable']
+  TooManyFunctions:
+    # One file per screen holds the screen, its content and its private sub-composables.
+    ignoreAnnotatedFunctions: ['Composable']
+
+naming:
+  FunctionNaming:
+    # @Composable functions are PascalCase by convention.
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    # Compose sample/fixture properties in the preview source set read better as camelCase.
+    constantPattern: '[A-Z][_A-Z0-9]*|[a-z][A-Za-z0-9]*'
+
+style:
+  MagicNumber:
+    # dp/sp sizes, tick maths and colour components are clearer inline than as named constants.
+    ignoreAnnotated: ['Composable', 'Preview']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+  MaxLineLength:
+    # Matches the width the codebase is already written and commented to.
+    maxLineLength: 120
+  UnusedPrivateMember:
+    # Previews are invoked reflectively by LayoutLib, never called from Kotlin.
+    ignoreAnnotated: ['Preview', 'PreviewTest']
+
+formatting:
+  MaximumLineLength:
+    maxLineLength: 120

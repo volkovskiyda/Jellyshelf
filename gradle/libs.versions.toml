@@ -26,6 +26,9 @@ workRuntimeKtx = "2.11.2"
 youtubedlAndroid = "0.18.1"
 timber = "5.0.1"
 koinBom = "4.2.2"
+# Static analysis. 1.23.8 is the current stable line; it embeds its own Kotlin parser, so it lags
+# the project's Kotlin version without blocking it.
+detekt = "1.23.8"
 # Compose Preview Screenshot Testing. Alpha and versioned independently of AGP; needs AGP 9.0+.
 composeScreenshot = "0.0.1-alpha16"
 
@@ -79,6 +82,7 @@ koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compos
 koin-androidx-workmanager = { group = "io.insert-koin", name = "koin-androidx-workmanager" }
 koin-test = { group = "io.insert-koin", name = "koin-test" }
 screenshot-validation-api = { group = "com.android.tools.screenshot", name = "screenshot-validation-api", version.ref = "composeScreenshot" }
+detekt-formatting = { group = "io.gitlab.arturbosch.detekt", name = "detekt-formatting", version.ref = "detekt" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 
@@ -90,3 +94,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "googleDevtoolsKsp" }
 jetbrains-kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "composeScreenshot" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
