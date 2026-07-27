@@ -4,14 +4,12 @@ import android.content.Context
 import android.os.Build
 import androidx.room.Room
 import androidx.work.WorkManager
+import coil.ImageLoader
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
-import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
-import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultJellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultLibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultScrollPositionRepository
@@ -19,6 +17,9 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultSettingsReposito
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
+import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
@@ -32,6 +33,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel
+import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -41,6 +43,9 @@ import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
+import okhttp3.Response
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.dsl.workerOf
 import org.koin.core.module.dsl.bind
@@ -48,6 +53,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import timber.log.Timber
+import java.util.concurrent.TimeUnit
 
 /**
  * The whole app's Koin graph. Consumer definitions use the constructor-reference DSL (`singleOf`,
@@ -61,6 +67,7 @@ val appModule = module {
     single<DispatcherProvider> { DefaultDispatcherProvider() }
     single { provideJson() }
     single { provideHttpClient(get(), get()) }
+    single { provideImageLoader(androidContext(), get()) }
     single { provideDatabase(androidContext()) }
     // Resolvable only after startKoin's workManagerFactory() has initialized WorkManager — Koin
     // singles are lazy, so the first injection happens well after that.
@@ -104,6 +111,14 @@ internal fun provideJson(): Json = Json {
     encodeDefaults = true
 }
 
+/**
+ * The network budget shared by the API client and image loading — generous, for a slow LAN over
+ * which a Jellyfin server can take its time. One value, so the two halves of the app's traffic
+ * can't drift into behaving differently on the same connection.
+ */
+private const val NETWORK_TIMEOUT_SECONDS = 30L
+private const val NETWORK_TIMEOUT_MILLIS = NETWORK_TIMEOUT_SECONDS * 1000
+
 // The base Ktor client on the OkHttp engine. expectSuccess makes non-2xx throw
 // Client/ServerResponseException (see LibraryRepository.isPermanentFailure). Request URLs are logged
 // only in debug — routed through Timber so release strips them via the -assumenosideeffects rules —
@@ -112,9 +127,9 @@ private fun provideHttpClient(buildInfo: BuildInfo, json: Json): HttpClient = Ht
     expectSuccess = true
     install(ContentNegotiation) { json(json) }
     install(HttpTimeout) {
-        connectTimeoutMillis = 30_000
-        socketTimeoutMillis = 30_000
-        requestTimeoutMillis = 30_000
+        connectTimeoutMillis = NETWORK_TIMEOUT_MILLIS
+        socketTimeoutMillis = NETWORK_TIMEOUT_MILLIS
+        requestTimeoutMillis = NETWORK_TIMEOUT_MILLIS
     }
     if (buildInfo.isDebug) {
         install(Logging) {
@@ -125,6 +140,40 @@ private fun provideHttpClient(buildInfo: BuildInfo, json: Json): HttpClient = Ht
             }
             level = LogLevel.INFO
         }
+    }
+}
+
+// Coil's ImageLoader, installed app-wide by JellyshelfApplication so every AsyncImage picks it up
+// without per-call plumbing. Its client is tuned like the API client above — the same 30 s budget,
+// and debug logging, so image traffic stops being the one half of the app's network that never
+// appears in logcat.
+//
+// Deliberately its own OkHttpClient rather than the Ktor engine's: OkHttp allows 5 concurrent
+// requests per host, and a screen full of thumbnails would queue ahead of the very API calls that
+// populate it.
+private fun provideImageLoader(context: Context, buildInfo: BuildInfo): ImageLoader =
+    ImageLoader.Builder(context)
+        .okHttpClient {
+            OkHttpClient.Builder()
+                .connectTimeout(NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .apply { if (buildInfo.isDebug) addInterceptor(ImageLogInterceptor()) }
+                .build()
+        }
+        .build()
+
+/**
+ * Logs image requests through Timber, like the Ktor client, **with the api key stripped**.
+ * Thumbnail URLs carry the server credential as a query parameter (see `authorizedImageUrl`), and
+ * logcat is readable by other apps on a dev device — so the one thing a BASIC-style logger would
+ * print is the one thing that must not be printed.
+ */
+private class ImageLogInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val response = chain.proceed(request)
+        Timber.tag("Coil").d("${response.code} ${stripApiKey(request.url.toString())}")
+        return response
     }
 }
 

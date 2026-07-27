@@ -1,6 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import org.koin.android.ext.android.get
@@ -9,7 +11,7 @@ import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.context.startKoin
 import timber.log.Timber
 
-class JellyshelfApplication : Application() {
+class JellyshelfApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
@@ -32,4 +34,12 @@ class JellyshelfApplication : Application() {
         // launches, and re-scheduling on every start would undo "Reset local data", which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).
     }
+
+    /**
+     * Coil's singleton hook: every `AsyncImage` resolves its loader through here, so the tuned
+     * client in [com.gmail.volkovskiyda.jellyshelf.di.appModule] applies without threading an
+     * `ImageLoader` through the composables. Called lazily on the first image request, long after
+     * [startKoin], so resolving from the graph here is safe.
+     */
+    override fun newImageLoader(): ImageLoader = get()
 }

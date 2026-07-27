@@ -431,6 +431,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.material)
+    implementation(libs.okhttp)
     implementation(libs.timber)
     implementation(libs.youtubedl.android.library)
     testImplementation(libs.junit)
