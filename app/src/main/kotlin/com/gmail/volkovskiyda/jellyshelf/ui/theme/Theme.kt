@@ -10,7 +10,20 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import org.koin.compose.koinInject
+
+/**
+ * The effective dark flag for a [ThemeMode]: forced by the user, or the system's own setting when
+ * [ThemeMode.AUTO]. Kept next to the theme rather than inside it so [JellyshelfTheme] keeps taking
+ * a plain boolean — previews and screenshot tests pass one directly and know nothing about modes.
+ */
+@Composable
+fun ThemeMode.isDark(): Boolean = when (this) {
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+    ThemeMode.AUTO -> isSystemInDarkTheme()
+}
 
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,

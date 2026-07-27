@@ -2,12 +2,15 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -24,6 +27,14 @@ class MainViewModel(
     /** The back stack to seed the nav with on launch; null until it's resolved from settings. */
     private val _startStack = MutableStateFlow<List<AppNavKey>?>(null)
     val startStack: StateFlow<List<AppNavKey>?> = _startStack.asStateFlow()
+
+    /**
+     * The persisted theme override; null until the first DataStore read lands. Started eagerly
+     * rather than on subscription: the activity reads it to decide the very first frame's theme
+     * and the system-bar styling, both of which happen before any UI subscribes.
+     */
+    val themeState: StateFlow<ThemeState?> =
+        settingsRepo.themeState.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     init {
         viewModelScope.launch {

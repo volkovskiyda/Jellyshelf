@@ -1,7 +1,9 @@
 package com.gmail.volkovskiyda.jellyshelf
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -18,40 +20,64 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
+import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
-import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 
 private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: ImageVector)
 
+// The scrims androidx applies to a three-button navigation bar, redeclared because
+// SystemBarStyle.auto's defaults are internal. Only used when gesture navigation is off.
+private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Covers the frames before composition; the effect below takes over once the persisted
+        // theme mode is known, which is the only thing that can disagree with the system setting.
         enableEdgeToEdge()
         setContent {
-            JellyshelfTheme {
-                JellyshelfApp()
+            val viewModel: MainViewModel = koinViewModel()
+            val themeState by viewModel.themeState.collectAsStateWithLifecycle()
+            // Auto while the setting is still loading — the same thing the window is already
+            // showing, and JellyshelfApp renders no content until its own read lands.
+            val darkTheme = (themeState?.mode ?: ThemeMode.AUTO).isDark()
+            // enableEdgeToEdge decides bar-icon contrast from the *system* dark mode, so a user
+            // who forces the app the other way would get white icons on white without this.
+            DisposableEffect(darkTheme) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { darkTheme },
+                    navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { darkTheme },
+                )
+                onDispose {}
+            }
+            JellyshelfTheme(darkTheme = darkTheme) {
+                JellyshelfApp(viewModel)
             }
         }
     }
