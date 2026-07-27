@@ -62,6 +62,10 @@ class FakeSettingsRepository(
         _settings.value = _settings.value.copy(libraryId = libraryId, libraryName = libraryName)
     }
 
+    override suspend fun setTokenInQuery(enabled: Boolean) {
+        _settings.value = _settings.value.copy(tokenInQuery = enabled)
+    }
+
     override suspend fun setIndexUrl(url: String) {
         _settings.value = _settings.value.copy(indexUrl = url)
     }

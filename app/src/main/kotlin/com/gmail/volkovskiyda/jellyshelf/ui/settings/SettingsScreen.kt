@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -62,6 +63,7 @@ internal data class SettingsActions(
     val onIndexUrlChange: (String) -> Unit = {},
     val onUsernameChange: (String) -> Unit = {},
     val onPasswordChange: (String) -> Unit = {},
+    val onTokenInQueryChange: (Boolean) -> Unit = {},
     val fillIndexUrlFromServer: () -> Unit = {},
     val signIn: () -> Unit = {},
     val signOut: () -> Unit = {},
@@ -97,6 +99,7 @@ fun SettingsScreen(
             onIndexUrlChange = viewModel::onIndexUrlChange,
             onUsernameChange = viewModel::onUsernameChange,
             onPasswordChange = viewModel::onPasswordChange,
+            onTokenInQueryChange = viewModel::onTokenInQueryChange,
             fillIndexUrlFromServer = viewModel::fillIndexUrlFromServer,
             signIn = viewModel::signIn,
             signOut = viewModel::signOut,
@@ -314,6 +317,24 @@ private fun AdvancedAuthSection(
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
     )
+
+    // Playback handoff. Independent of which credential is in use, so it stays visible when
+    // signed in — the API-key affordances below do not.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.token_in_query))
+            Text(
+                stringResource(R.string.token_in_query_explained),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = state.tokenInQuery, onCheckedChange = actions.onTokenInQueryChange)
+    }
 
     if (state.signedIn) return
 

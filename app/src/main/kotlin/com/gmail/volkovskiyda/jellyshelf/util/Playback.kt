@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.core.net.toUri
 import com.gmail.volkovskiyda.jellyshelf.R
 import timber.log.Timber
+import java.net.URLEncoder
 
 object Playback {
 
@@ -22,11 +23,30 @@ object Playback {
     private const val EXTRA_VLC_DURATION = "extra_duration"
     private const val END_BY_COMPLETION = "playback_completion"
 
+    /** The header Jellyfin accepts a credential in — the same one every API call uses. */
+    private const val TOKEN_HEADER = "X-Emby-Token"
+
+    /**
+     * MX Player's request-headers extra: a String array of alternating name, value. VLC and other
+     * players ignore an extra they don't know, so attaching it is never harmful.
+     */
+    private const val EXTRA_HEADERS = "headers"
+
     private fun base(serverUrl: String) = serverUrl.trim().removeSuffix("/")
 
-    /** Direct static stream URL — opens instantly in any external video player. */
-    fun streamUrl(serverUrl: String, itemId: String, apiKey: String): String =
-        "${base(serverUrl)}/Videos/$itemId/stream?static=true&api_key=$apiKey"
+    /**
+     * Direct static stream URL. [credential] is appended as `api_key` only when it is non-null —
+     * pass null to keep it out of the URL entirely and hand it over as a header instead.
+     *
+     * URL-encoded, matching [authorizedImageUrl]: a token is server-generated and in practice
+     * URL-safe, but the two credential paths disagreeing about encoding is the kind of difference
+     * that only shows up once some server issues a token containing a `+`.
+     */
+    fun streamUrl(serverUrl: String, itemId: String, credential: String?): String {
+        val url = "${base(serverUrl)}/Videos/$itemId/stream?static=true"
+        if (credential.isNullOrBlank()) return url
+        return "$url&api_key=${URLEncoder.encode(credential, "UTF-8")}"
+    }
 
     /** Jellyfin web details deep link — opens the item page in the Jellyfin app / browser. */
     fun detailsDeepLink(serverUrl: String, itemId: String): String =
@@ -40,29 +60,45 @@ object Playback {
      * (MX Player `return_result`) and, when [resumeMs] > 0, resumes there (MX Player `position`,
      * VLC `extra_position`). Launch it with an ActivityResultLauncher and pass the returned data
      * to [parseResult]. Only MX Player and VLC return a position; other players simply won't.
+     *
+     * **Where the credential goes.** By default it travels in an intent extra ([EXTRA_HEADERS])
+     * and *not* in the URL: an `ACTION_VIEW` URL is handed to whichever app the user picks, and
+     * from there it lands in that player's recent-files list, its logs, and any cast target — a
+     * durable copy of a credential in places this app can't see. A header is used for the request
+     * and not retained.
+     *
+     * The catch is that a chooser cannot know which player will be picked, so this can't be
+     * decided per player: [tokenInQuery] is the user's escape hatch (Settings → Advanced) for a
+     * player that ignores the headers extra and would otherwise fail with 401. VLC's support for
+     * custom headers has varied by version, which is exactly what that toggle covers.
      */
     fun externalPlayerIntent(
         context: Context,
         serverUrl: String,
         itemId: String,
-        apiKey: String,
+        credential: String,
         title: String?,
         resumeMs: Long,
+        tokenInQuery: Boolean = false,
     ): Intent {
-        val uri = streamUrl(serverUrl, itemId, apiKey).toUri()
+        val url = streamUrl(serverUrl, itemId, credential.takeIf { tokenInQuery })
         val view = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "video/*")
+            setDataAndType(url.toUri(), "video/*")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (!title.isNullOrBlank()) putExtra("title", title)
             // MX Player: return position/end_by/duration to us when playback ends.
             putExtra("return_result", true)
+            if (!tokenInQuery) putExtra(EXTRA_HEADERS, arrayOf(TOKEN_HEADER, credential))
             if (resumeMs > 0) {
                 putExtra(EXTRA_POSITION, resumeMs.toInt())     // MX Player resume (int ms)
                 putExtra(EXTRA_VLC_POSITION, resumeMs)         // VLC resume (long ms)
             }
         }
-        // api_key is a secret — log the stream URL without it.
-        Timber.tag(TAG).d("launch external player: itemId=$itemId title=$title resumeMs=$resumeMs url=${stripApiKey(streamUrl(serverUrl, itemId, apiKey))}")
+        // The credential is a secret whichever way it travelled — never log it.
+        Timber.tag(TAG).d(
+            "launch external player: itemId=$itemId title=$title resumeMs=$resumeMs " +
+                "tokenInQuery=$tokenInQuery url=${stripCredentials(url)}",
+        )
         return Intent.createChooser(view, context.getString(R.string.play_with))
     }
 

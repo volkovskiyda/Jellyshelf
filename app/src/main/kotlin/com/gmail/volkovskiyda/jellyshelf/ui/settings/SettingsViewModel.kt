@@ -51,6 +51,8 @@ data class SettingsUiState(
     val password: String = "",
     /** True once a user token is held: the default, user-scoped auth path. */
     val signedIn: Boolean = false,
+    /** Advanced playback handoff: credential in the URL query rather than an intent header. */
+    val tokenInQuery: Boolean = false,
     val users: List<User> = emptyList(),
     val selectedUserId: String = "",
     val selectedUserName: String = "",
@@ -134,6 +136,7 @@ class SettingsViewModel(
                 indexUrl = if (edited) cur.indexUrl else s.indexUrl,
                 username = if (edited) cur.username else s.userName,
                 signedIn = s.isSignedIn,
+                tokenInQuery = s.tokenInQuery,
                 users = cachedUsers.orEmpty(),
                 // Still the persisted user and scope: they are what sync uses until the next
                 // Connect, so the screen would lie by blanking them over an unsaved edit.
@@ -263,6 +266,15 @@ class SettingsViewModel(
     fun onIndexUrlChange(value: String) {
         fieldsEdited = true
         _state.value = _state.value.copy(indexUrl = value)
+    }
+
+    /**
+     * Advanced: force the credential into the stream URL for players that ignore the headers
+     * extra. Persisted immediately — it isn't part of the connect/sign-in form.
+     */
+    fun onTokenInQueryChange(enabled: Boolean) {
+        _state.value = _state.value.copy(tokenInQuery = enabled)
+        viewModelScope.launch { settingsRepo.setTokenInQuery(enabled) }
     }
 
     fun onUsernameChange(value: String) {

@@ -135,9 +135,19 @@ token wins whenever one is present.
 
 From a video's detail screen:
 - **Play** — fires an `ACTION_VIEW` intent at the Jellyfin static stream
-  (`/Videos/{id}/stream?static=true&api_key=…`) → opens in VLC / MX / any player.
+  (`/Videos/{id}/stream?static=true`) → opens in VLC / MX / any player.
 - **Open in Jellyfin** — deep-links to the Jellyfin web details page
   (`/web/index.html#/details?id={id}`).
+
+The credential is **not** in that URL by default. It is passed as an `X-Emby-Token` request
+header via the intent's `headers` extra, because an `ACTION_VIEW` URL is handed to whichever app
+the user picks and then persists in that player's recent-files list, its logs, and any cast
+target. A header is used for the request and not retained.
+
+A chooser can't know in advance which player will be picked, so this can't be decided per player.
+If yours ignores the headers extra (VLC's support has varied by version) playback fails with a
+401 — turn on **Settings → Advanced → Token in playback URL** to put it back in the query
+instead.
 
 Watch state syncs both ways: the app reads `Played` / `PlaybackPositionTicks` / `PlayCount`
 from Jellyfin on every sync, and writes back when you mark watched/unwatched.

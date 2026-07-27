@@ -40,7 +40,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
 import com.gmail.volkovskiyda.jellyshelf.util.isUnauthorized
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
-import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
+import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
@@ -527,7 +527,7 @@ class DefaultLibraryRepository(
                 tags = entry.tags ?: existing.tags,
                 youtubeCategories = entry.categories ?: existing.youtubeCategories,
                 // Strip a legacy embedded api key so it can't persist past this write.
-                thumbnailUrl = entry.thumbnail ?: stripApiKey(existing.thumbnailUrl),
+                thumbnailUrl = entry.thumbnail ?: stripCredentials(existing.thumbnailUrl),
                 metadataSource = METADATA_SOURCE_YTDLP,
                 metadataUpdatedAt = now,
                 lastSyncedAt = now,

@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -34,6 +35,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val LAST_SYNC_LIBRARY_ID = stringPreferencesKey("last_sync_library_id")
         val SELECTED_CATEGORY_TYPE = stringPreferencesKey("selected_category_type")
         val BACK_STACK = stringPreferencesKey("back_stack")
+        val TOKEN_IN_QUERY = booleanPreferencesKey("token_in_query")
     }
 
     override val settings: Flow<Settings> = ds.data
@@ -52,6 +54,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             indexUrl = p[Keys.INDEX_URL].orEmpty(),
             lastSyncAt = p[Keys.LAST_SYNC_AT] ?: 0L,
             lastSyncLibraryId = p[Keys.LAST_SYNC_LIBRARY_ID].orEmpty(),
+            tokenInQuery = p[Keys.TOKEN_IN_QUERY] ?: false,
         )
     }
 
@@ -108,6 +111,10 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             it[Keys.LIBRARY_ID] = libraryId
             it[Keys.LIBRARY_NAME] = libraryName
         }
+    }
+
+    override suspend fun setTokenInQuery(enabled: Boolean) {
+        ds.edit { it[Keys.TOKEN_IN_QUERY] = enabled }
     }
 
     override suspend fun setIndexUrl(url: String) {

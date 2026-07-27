@@ -1,13 +1,13 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
-import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
-import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
-import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.util.fileNameFromPath
-import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
+import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 
 /**
@@ -55,7 +55,7 @@ internal fun mergeVideo(
             jellyfinItemId = item.id,
             fileName = fileName,
             // Legacy rows persisted the api key inside the URL; scrub it on the way through.
-            thumbnailUrl = stripApiKey(existing.thumbnailUrl),
+            thumbnailUrl = stripCredentials(existing.thumbnailUrl),
             played = played,
             playbackPositionTicks = positionTicks,
             playCount = playCount,

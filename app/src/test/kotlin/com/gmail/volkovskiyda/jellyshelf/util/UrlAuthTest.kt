@@ -73,33 +73,50 @@ class UrlAuthTest {
     }
 
     @Test
-    fun `stripApiKey removes an embedded key and keeps other params`() {
+    fun `stripCredentials removes an embedded key and keeps other params`() {
         assertEquals(
             jellyfinThumb,
-            stripApiKey("$jellyfinThumb&api_key=SECRET"),
+            stripCredentials("$jellyfinThumb&api_key=SECRET"),
         )
     }
 
     @Test
-    fun `stripApiKey removes a leading key param`() {
+    fun `stripCredentials removes a leading key param`() {
         assertEquals(
             "$server/Items/abc/Images/Primary?maxWidth=480",
-            stripApiKey("$server/Items/abc/Images/Primary?api_key=SECRET&maxWidth=480"),
+            stripCredentials("$server/Items/abc/Images/Primary?api_key=SECRET&maxWidth=480"),
         )
     }
 
     @Test
-    fun `stripApiKey drops the query entirely when the key was the only param`() {
+    fun `stripCredentials drops the query entirely when the key was the only param`() {
         assertEquals(
             "$server/Items/abc/Images/Primary",
-            stripApiKey("$server/Items/abc/Images/Primary?api_key=SECRET"),
+            stripCredentials("$server/Items/abc/Images/Primary?api_key=SECRET"),
         )
     }
 
     @Test
-    fun `stripApiKey leaves keyless urls untouched`() {
-        assertEquals(jellyfinThumb, stripApiKey(jellyfinThumb))
-        assertNull(stripApiKey(null))
+    fun `stripCredentials leaves keyless urls untouched`() {
+        assertEquals(jellyfinThumb, stripCredentials(jellyfinThumb))
+        assertNull(stripCredentials(null))
+    }
+
+    /** A URL from another Jellyfin client can spell the credential param differently. */
+    @Test
+    fun `stripCredentials removes every spelling of the credential param`() {
+        assertEquals(jellyfinThumb, stripCredentials("$jellyfinThumb&ApiKey=SECRET"))
+        assertEquals(jellyfinThumb, stripCredentials("$jellyfinThumb&API_KEY=SECRET"))
+        assertEquals(jellyfinThumb, stripCredentials("$jellyfinThumb&X-Emby-Token=SECRET"))
+    }
+
+    /** The value is what must not survive; a param merely *containing* the word is not one. */
+    @Test
+    fun `stripCredentials keeps params that only look like a credential`() {
+        assertEquals(
+            "$jellyfinThumb&api_key_hint=none",
+            stripCredentials("$jellyfinThumb&api_key_hint=none"),
+        )
     }
 
     @Test

@@ -25,6 +25,13 @@ data class Settings(
      * and sync deletes them at once instead of waiting out the missed-sync grace period.
      */
     val lastSyncLibraryId: String,
+    /**
+     * Advanced: put the credential in the stream URL's query instead of an intent-extra header
+     * when handing playback to an external player. Off by default — see
+     * `Playback.externalPlayerIntent` for why the header is preferred, and why a chooser can't
+     * pick per player.
+     */
+    val tokenInQuery: Boolean = false,
 ) {
     /**
      * The single value every authenticated request sends as `X-Emby-Token`: the user token when

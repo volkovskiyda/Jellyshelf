@@ -122,9 +122,10 @@ fun DetailScreen(
                     context = context,
                     serverUrl = s.serverUrl,
                     itemId = requireNotNull(video.jellyfinItemId),
-                    apiKey = s.apiKey,
+                    credential = s.credential,
                     title = video.title,
                     resumeMs = ticksToMillis(video.playbackPositionTicks),
+                    tokenInQuery = s.tokenInQuery,
                 )
             )
         },

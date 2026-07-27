@@ -33,6 +33,9 @@ interface SettingsRepository {
     suspend fun setLibrary(libraryId: String, libraryName: String)
     suspend fun setIndexUrl(url: String)
 
+    /** Advanced playback handoff: credential in the URL query rather than an intent header. */
+    suspend fun setTokenInQuery(enabled: Boolean)
+
     /** Records that a sync finished at [timestamp] against library scope [libraryId]. */
     suspend fun setLastSync(timestamp: Long, libraryId: String)
 

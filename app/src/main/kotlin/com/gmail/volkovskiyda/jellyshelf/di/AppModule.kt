@@ -34,7 +34,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel
-import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
+import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -183,7 +183,7 @@ private class ImageLogInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val response = chain.proceed(request)
-        Timber.tag("Coil").d("${response.code} ${stripApiKey(request.url.toString())}")
+        Timber.tag("Coil").d("${response.code} ${stripCredentials(request.url.toString())}")
         return response
     }
 }
