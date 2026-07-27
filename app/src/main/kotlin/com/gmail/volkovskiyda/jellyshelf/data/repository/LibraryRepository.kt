@@ -32,15 +32,17 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
+import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.gmail.volkovskiyda.jellyshelf.util.stripApiKey
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
-import java.time.Instant
+import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
@@ -51,19 +53,24 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.time.Instant
 
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
  *  explicitly transient 408 (timeout) and 429 (throttling). Under Ktor's `expectSuccess = true`,
  *  a non-2xx surfaces as [ResponseException] (Client/ServerResponseException); timeouts throw
- *  HttpRequestTimeoutException instead, so they fall through to transient. */
+ *  HttpRequestTimeoutException instead, so they fall through to transient.
+ *
+ *  A cleartext block is permanent too, and doesn't arrive as a [ResponseException] at all: the
+ *  platform rejects the request before it reaches the server. Retrying an `http://` URL on a
+ *  release build burns battery every period and can never succeed. */
 internal fun isPermanentFailure(e: Throwable): Boolean {
-    val code = (e as? ResponseException)?.response?.status?.value ?: return false
-    return code in 400..499 && code != 408 && code != 429
+    if (isCleartextBlocked(e)) return true
+    val code = (e as? ResponseException)?.response?.status?.value
+    return code != null && code in 400..499 && code != 408 && code != 429
 }
 
 /** Shared logcat tag for the external-player / playstate flow: `adb logcat -s Playback`. Kept in
@@ -248,7 +255,11 @@ class DefaultLibraryRepository(
         val items = runCatchingCancellable {
             jellyfin.fetchAllItems(s.serverUrl, s.apiKey, s.userId, s.libraryId)
         }.getOrElse { e ->
-            return SyncResult.Error("Failed to load library: ${e.message}", retryable = !isPermanentFailure(e))
+            val message = when {
+                isCleartextBlocked(e) -> CLEARTEXT_BLOCKED_MESSAGE
+                else -> "Failed to load library: ${e.message}"
+            }
+            return SyncResult.Error(message, retryable = !isPermanentFailure(e))
         }
 
         // A failed index fetch must stay distinguishable from an index with no entries:

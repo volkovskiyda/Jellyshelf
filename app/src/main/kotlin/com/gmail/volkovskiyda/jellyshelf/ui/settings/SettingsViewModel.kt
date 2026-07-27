@@ -12,6 +12,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
+import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -192,6 +194,16 @@ class SettingsViewModel(
             .launchIn(viewModelScope)
     }
 
+    /**
+     * The half of a failure message that names the cause. A cleartext block gets an explanation
+     * instead of its raw exception text — "CLEARTEXT communication to 192.168.1.10 not permitted
+     * by network security policy" tells a user nothing about the `https://` they actually need.
+     */
+    private fun reason(e: Throwable): String = when {
+        isCleartextBlocked(e) -> CLEARTEXT_BLOCKED_MESSAGE
+        else -> e.message ?: app.getString(R.string.unknown_error)
+    }
+
     fun onServerUrlChange(value: String) {
         fieldsEdited = true
         // A different server has different users — drop the chips until the next connect so
@@ -266,10 +278,7 @@ class SettingsViewModel(
             }.onFailure { e ->
                 _state.value = _state.value.copy(
                     busy = false,
-                    status = app.getString(
-                        R.string.connection_failed,
-                        e.message ?: app.getString(R.string.unknown_error),
-                    ),
+                    status = app.getString(R.string.connection_failed, reason(e)),
                     statusIsError = true,
                 )
             }
@@ -356,10 +365,7 @@ class SettingsViewModel(
                 _state.value = _state.value.copy(
                     childFolders = emptyList(),
                     loadingFolders = false,
-                    status = app.getString(
-                        R.string.folders_load_failed,
-                        e.message ?: app.getString(R.string.unknown_error),
-                    ),
+                    status = app.getString(R.string.folders_load_failed, reason(e)),
                     statusIsError = true,
                 )
             }

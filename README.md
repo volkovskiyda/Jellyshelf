@@ -103,12 +103,15 @@ This assumes a Traefik instance with a `websecure` (443) entrypoint and an ACME
 Traefik, add this as another labelled service on the shared proxy network and both share
 one certificate/host. Index URL: `https://media.example.com/jellyshelf-index.json`.
 
-> Serving over HTTPS is recommended when the index leaves your LAN. Plain `http://` LAN URLs
-> also work — debug builds allow cleartext traffic (see [Build](#build)).
+> Serving over HTTPS is recommended when the index leaves your LAN, and **required** by release
+> builds — only debug builds allow cleartext traffic (see [Build](#build)). A plain `http://` URL
+> on a release build fails before it reaches the network; the app says so instead of surfacing
+> the platform's raw "CLEARTEXT communication … not permitted" error.
 
 ## Setup in the app (Settings tab)
 
-1. **Server URL** — e.g. `http://192.168.1.10:8096`.
+1. **Server URL** — e.g. `https://192.168.1.10:8096`. Release builds accept `https://` only; a
+   plain-HTTP LAN server needs a debug build.
 2. **API key** — Jellyfin → Dashboard → API Keys → new key. Sent as the `X-Emby-Token`
    header on every request.
 3. **Connect & load users** — API keys are server-wide, so pick which user's watch state

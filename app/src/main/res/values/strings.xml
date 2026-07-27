@@ -88,10 +88,10 @@
     <!-- Settings -->
     <string name="jellyfin_connection">Jellyfin connection</string>
     <string name="server_url">Server URL</string>
-    <string name="server_url_hint">http://192.168.1.10:8096</string>
+    <string name="server_url_hint">https://192.168.1.10:8096</string>
     <string name="api_key">API key</string>
     <string name="index_url_label">Metadata index URL (optional)</string>
-    <string name="index_url_hint">http://host/jellyshelf-index.json</string>
+    <string name="index_url_hint">https://host/jellyshelf-index.json</string>
     <string name="fill">Fill</string>
     <string name="connect_load_users">Connect &amp; load users</string>
     <string name="user">User</string>
