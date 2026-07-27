@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
+    alias(libs.plugins.compose.screenshot)
 }
 
 // Reads KEY=VALUE lines from a repo-root env file (blanks/comments ignored); a missing file yields
@@ -67,6 +68,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    // Enables the screenshotTest source set (paired with the same flag in gradle.properties).
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
     buildFeatures {
         compose = true
         // Generates BuildConfig.DEBUG so debug/release-only behaviour (HTTP logging, Timber) keys
@@ -158,5 +161,8 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.koin.test)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    // Renders @PreviewTest previews host-side (LayoutLib) into reference images.
+    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
+    screenshotTestImplementation(libs.screenshot.validation.api)
     "ksp"(libs.androidx.room.compiler)
 }

@@ -207,6 +207,11 @@ fun VideoRow(
     video: Video,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // Resolved from the live settings by default. Exposed as a parameter because
+    // [rememberThumbnailModel] reaches into Koin for the current api key, which host-side
+    // rendering (previews, screenshot tests) has no container for — same seam as
+    // [com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme]'s injected buildInfo.
+    thumbnailModel: String? = rememberThumbnailModel(video.thumbnailUrl),
 ) {
     Row(
         modifier = modifier
@@ -224,7 +229,7 @@ fun VideoRow(
             contentAlignment = Alignment.BottomCenter,
         ) {
             AsyncImage(
-                model = rememberThumbnailModel(video.thumbnailUrl),
+                model = thumbnailModel,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
