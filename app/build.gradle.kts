@@ -1,3 +1,5 @@
+import java.time.LocalDateTime
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -145,18 +147,24 @@ tasks.matching { it.name.startsWith("connected") && it.name.endsWith("AndroidTes
     }
 
 /**
- * Single HTML page summarising every test layer, written to `app/build/test-summary/index.html`.
- * Only reads XML that is already on disk — it never runs a test itself, so it is safe to attach
- * to any pipeline; `scripts/run-tests.sh` calls it once the layers it ran have passed.
+ * Single HTML page summarising every test layer and both static-analysis tools, written to
+ * `app/build/test-summary/index.html`. Only reads XML that is already on disk — it never runs a
+ * test or a check itself, so it is safe to attach to any pipeline; `scripts/run-tests.sh` calls it
+ * once the layers it ran have finished.
  *
  * Everything lives inside doLast: the configuration cache cannot serialize references to
- * build-script-level functions or classes, so the parser is a local lambda rather than a helper.
+ * build-script-level functions or classes, so the parsers are local lambdas rather than helpers.
  */
 tasks.register("testSummary") {
     group = "verification"
-    description = "Aggregate unit, screenshot and instrumented test results into one HTML report."
+    description =
+        "Aggregate test results (unit, screenshot, instrumented) and static analysis " +
+            "(detekt, lint) into one HTML report."
     // Paths resolved at configuration time; all file access happens in doLast.
     val buildDir = layout.buildDirectory.get().asFile
+    // detekt is applied to the root project (it scans app/src from there), so its reports land in
+    // the root build directory, not this module's.
+    val rootBuildDir = rootProject.layout.buildDirectory.get().asFile
     val outFile = buildDir.resolve("test-summary/index.html")
     val layers = listOf(
         Triple("Unit tests", "test-results/testDebugUnitTest", "reports/tests/testDebugUnitTest/index.html"),
@@ -173,6 +181,22 @@ tasks.register("testSummary") {
             "reports/androidTests/connected/debug/index.html",
         ),
     ).map { (label, results, report) -> Triple(label, buildDir.resolve(results), buildDir.resolve(report)) }
+    // Static analysis: findings rather than tests, so these get their own table. Both tools write
+    // an XML report next to the HTML one a human opens.
+    val checks = listOf(
+        Triple(
+            "detekt",
+            rootBuildDir.resolve("reports/detekt/detekt.xml"),
+            rootBuildDir.resolve("reports/detekt/detekt.html"),
+        ),
+        // lintDebug only, matching scripts/run-tests.sh — the release variant reports the same
+        // findings a second time.
+        Triple(
+            "Android lint (debug)",
+            buildDir.resolve("reports/lint-results-debug.xml"),
+            buildDir.resolve("reports/lint-results-debug.html"),
+        ),
+    )
     outputs.upToDateWhen { false }
 
     doLast {
@@ -209,13 +233,48 @@ tasks.register("testSummary") {
             }
         }
 
-        val parsed = layers.map { (label, resultsDir, report) ->
-            val href = report.takeIf { it.exists() }
+        // Counts findings by severity in a detekt (checkstyle `<error>`) or lint (`<issue>`) report;
+        // null when the file is absent, i.e. the tool never ran. A real XML parse here rather than
+        // the line scan above: lint embeds multi-line rule explanations in its attributes, which
+        // regexes read wrong. Unreadable XML counts as "not run" instead of failing the summary.
+        val parseFindings = { file: File ->
+            file.takeIf { it.isFile }?.let { xml ->
+                runCatching {
+                    val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+                        .newDocumentBuilder().parse(xml)
+                    val severities = listOf("error", "issue").flatMap { tag ->
+                        val nodes = doc.getElementsByTagName(tag)
+                        (0 until nodes.length).map { i ->
+                            (nodes.item(i) as org.w3c.dom.Element).getAttribute("severity").lowercase()
+                        }
+                    }
+                    // detekt emits error/warning/info, lint fatal/error/warning/information/hint;
+                    // everything below a warning is folded into "other" (lint's baseline note lands
+                    // there, for one).
+                    Triple(
+                        severities.count { it == "error" || it == "fatal" },
+                        severities.count { it == "warning" },
+                        severities.count { it != "error" && it != "fatal" && it != "warning" },
+                    )
+                }.getOrNull()
+            }
+        }
+
+        // Both tables link to the tool's own report when it is on disk, as a path relative to this
+        // page so the whole build directory stays movable.
+        val href = { report: File ->
+            report.takeIf { it.exists() }
                 ?.relativeToOrNull(summaryDir)?.path?.replace(File.separatorChar, '/')
-            Triple(label, parse(resultsDir), href)
+        }
+        val parsed = layers.map { (label, resultsDir, report) ->
+            Triple(label, parse(resultsDir), href(report))
+        }
+        val checked = checks.map { (label, resultsFile, report) ->
+            Triple(label, parseFindings(resultsFile), href(report))
         }
         val ran = parsed.mapNotNull { it.second }
-        if (ran.isEmpty()) {
+        val analysed = checked.mapNotNull { it.second }
+        if (ran.isEmpty() && analysed.isEmpty()) {
             logger.lifecycle("testSummary: no results found — run scripts/run-tests.sh first.")
             return@doLast
         }
@@ -233,7 +292,36 @@ tasks.register("testSummary") {
                     """<td>${tests - failures - skipped}</td><td>$failures</td><td>$skipped</td></tr>"""
             }
         }
-        val verdict = if (totalFailures > 0) "$totalFailures failed" else "all passed"
+        val analysisErrors = analysed.sumOf { it.first }
+        val analysisFindings = analysed.sumOf { it.first + it.second + it.third }
+        val analysisRows = checked.joinToString("\n") { (label, stats, link) ->
+            if (stats == null) {
+                """      <tr class="notrun"><td>$label</td><td colspan="4">not run</td></tr>"""
+            } else {
+                val (errors, warnings, other) = stats
+                val name = link?.let { """<a href="$it">$label</a>""" } ?: label
+                // Warnings get their own state: detekt fails the build on any finding while lint
+                // only fails on errors, so "issues but no errors" is neither a pass nor a failure.
+                val cls = when {
+                    errors > 0 -> "fail"
+                    errors + warnings + other > 0 -> "warn"
+                    else -> "pass"
+                }
+                """      <tr class="$cls"><td>$name</td><td>${errors + warnings + other}</td>""" +
+                    """<td>$errors</td><td>$warnings</td><td>$other</td></tr>"""
+            }
+        }
+        val analysisVerdict = "$analysisErrors analysis error" + if (analysisErrors == 1) "" else "s"
+        val verdict = when {
+            totalFailures > 0 && analysisErrors > 0 -> "$totalFailures failed, $analysisVerdict"
+            totalFailures > 0 -> "$totalFailures failed"
+            analysisErrors > 0 -> "tests passed, $analysisVerdict"
+            else -> "all passed"
+        }
+        // Stamped because this report is written on failures too: a run that stopped at static
+        // analysis leaves the previous run's XML in place, and without a time there is no way to
+        // tell a fresh layer from a stale one.
+        val generatedAt = LocalDateTime.now().withNano(0).toString().replace("T", " ")
         summaryDir.mkdirs()
         outFile.writeText(
             """
@@ -243,6 +331,7 @@ tasks.register("testSummary") {
             <style>
               body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem; color: #222; }
               h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+              h2 { font-size: 1rem; margin: 2rem 0 .5rem; }
               .meta { color: #666; font-size: .85rem; margin-bottom: 1.5rem; }
               table { border-collapse: collapse; min-width: 34rem; }
               th, td { padding: .5rem .9rem; border-bottom: 1px solid #e3e3e3; text-align: right; }
@@ -250,6 +339,7 @@ tasks.register("testSummary") {
               thead th { border-bottom: 2px solid #ccc; font-size: .8rem; text-transform: uppercase; color: #555; }
               tr.fail td:first-child::before { content: "\2717 "; color: #c0392b; }
               tr.pass td:first-child::before { content: "\2713 "; color: #17803d; }
+              tr.warn td:first-child::before { content: "\26A0 "; color: #b7791f; }
               tr.notrun td { color: #999; font-style: italic; }
               tfoot td { font-weight: 600; border-top: 2px solid #ccc; border-bottom: none; }
               a { color: #1a4f9c; }
@@ -260,8 +350,12 @@ tasks.register("testSummary") {
               }
             </style></head><body>
             <h1>Jellyshelf test summary — $verdict</h1>
-            <div class="meta">$totalTests tests across ${ran.size} of ${layers.size} layers.
-            A layer reads "not run" when it was skipped (for instance no device attached).</div>
+            <div class="meta">$totalTests tests across ${ran.size} of ${layers.size} layers &middot;
+            $analysisFindings static-analysis findings from ${analysed.size} of ${checks.size} tools
+            &middot; generated $generatedAt.<br>
+            A row reads "not run" when it was skipped (for instance no device attached); one that
+            did not re-run in the latest pass still shows its previous results.</div>
+            <h2>Tests</h2>
             <table>
               <thead><tr><th>Layer</th><th>Tests</th><th>Passed</th><th>Failed</th><th>Skipped</th></tr></thead>
               <tbody>
@@ -271,12 +365,29 @@ $rows
               <td>${totalTests - totalFailures - totalSkipped}</td>
               <td>$totalFailures</td><td>$totalSkipped</td></tr></tfoot>
             </table>
+            <h2>Static analysis</h2>
+            <table>
+              <thead><tr><th>Tool</th><th>Findings</th><th>Errors</th><th>Warnings</th><th>Other</th></tr></thead>
+              <tbody>
+$analysisRows
+              </tbody>
+              <tfoot><tr><td>Total</td><td>$analysisFindings</td><td>$analysisErrors</td>
+              <td>${analysed.sumOf { it.second }}</td><td>${analysed.sumOf { it.third }}</td></tr></tfoot>
+            </table>
             </body></html>
             """.trimIndent(),
         )
-        logger.lifecycle("Test summary ready:\n${outFile.absolutePath}")
+        // file:// URL rather than a bare path: terminals linkify it, matching how Gradle
+        // prints its own report locations.
+        logger.lifecycle("Test summary: file://${outFile.absolutePath}")
         parsed.forEach { (label, stats) ->
             val line = stats?.let { "${it.first} tests, ${it.second} failed, ${it.third} skipped" } ?: "not run"
+            logger.lifecycle("  %-24s %s".format(label, line))
+        }
+        checked.forEach { (label, stats) ->
+            val line = stats?.let {
+                "${it.first + it.second + it.third} findings, ${it.first} errors, ${it.second} warnings"
+            } ?: "not run"
             logger.lifecycle("  %-24s %s".format(label, line))
         }
     }

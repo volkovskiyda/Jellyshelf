@@ -10,8 +10,9 @@ set -uo pipefail
 #   3. Screenshot goldens(:app:validateDebugScreenshotTest) host-side, always runs
 #   4. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
 #
-# When every layer that ran has passed, :app:testSummary aggregates their JUnit XML into one
-# HTML page at app/build/test-summary/index.html.
+# :app:testSummary then aggregates the JUnit XML of every test layer and the detekt/lint XML
+# reports into one HTML page at app/build/test-summary/index.html — on failures too, since that is
+# when a per-layer breakdown is most useful.
 #
 # The instrumented layer is skipped — not failed — when nothing is attached, so this is safe to
 # run on a machine with no device and in CI without an emulator job. Gradle carries the same
@@ -88,6 +89,9 @@ echo
 
 CHECKS_RESULT="" ; UNIT_RESULT="" ; SCREENSHOT_RESULT="" ; INSTRUMENTED_RESULT=""
 FAILED=0
+# Printed as an absolute file:// URL at the end — terminals linkify that, a relative path
+# they do not, and the point of the report is that it opens in one click.
+SUMMARY_REPORT="$PWD/app/build/test-summary/index.html"
 
 run_layer() {
   local label="$1" ; shift
@@ -133,11 +137,18 @@ else
     && INSTRUMENTED_RESULT="passed" || INSTRUMENTED_RESULT="FAILED"
 fi
 
-# The aggregate report reads whatever XML is on disk, so it is only meaningful once the layers
-# that were going to run have actually run and passed.
-if [[ "$FAILED" -eq 0 ]]; then
-  ./gradlew :app:testSummary --console=plain -q || true
-fi
+# Always aggregated, pass or fail. The report reads whatever XML is on disk and stamps itself
+# with a generation time, so a layer that did not re-run this time is visible as such.
+./gradlew :app:testSummary --console=plain -q || true
+
+print_report_link() {
+  if [[ -f "$SUMMARY_REPORT" ]]; then
+    echo "Combined report: file://$SUMMARY_REPORT"
+  else
+    # The summary task is best-effort (|| true above); say so rather than print a dead link.
+    echo "Combined report: not generated — run ./gradlew :app:testSummary" >&2
+  fi
+}
 
 echo "== Summary =="
 printf '  %-20s %s\n' "static analysis"    "$CHECKS_RESULT"
@@ -147,8 +158,9 @@ printf '  %-20s %s\n' "behavior tests"     "$INSTRUMENTED_RESULT"
 
 if [[ "$FAILED" -ne 0 ]]; then
   echo
-  echo "Reports: app/build/reports/tests/ (unit), app/build/reports/screenshotTest/ (goldens),"
-  echo "         app/build/reports/androidTests/ (behavior)."
+  print_report_link
+  echo "Per-layer detail: app/build/reports/tests/ (unit),"
+  echo "  app/build/reports/screenshotTest/ (goldens), app/build/reports/androidTests/ (behavior)."
   echo "Goldens that changed on purpose are re-baked with:"
   echo "  ./gradlew :app:updateDebugScreenshotTest"
   exit 1
@@ -156,4 +168,4 @@ fi
 
 echo
 echo "All available layers passed."
-echo "Combined report: app/build/test-summary/index.html"
+print_report_link
