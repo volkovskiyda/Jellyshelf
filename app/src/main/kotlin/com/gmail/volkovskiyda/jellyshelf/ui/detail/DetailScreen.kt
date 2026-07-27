@@ -16,8 +16,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -87,6 +89,11 @@ fun DetailScreen(
         }
     }
 
+    // Leave as soon as this screen's own Remove has landed, instead of showing the user the
+    // "video not found" state their tap just created.
+    val removed by viewModel.removed.collectAsStateWithLifecycle()
+    LaunchedEffect(removed) { if (removed) onBack() }
+
     val current = (videoState as? VideoDetailState.Loaded)?.video
 
     Scaffold(
@@ -144,6 +151,8 @@ fun DetailScreen(
             }
 
             MetadataSourceBadge(current.metadataSource)
+
+            if (current.missingFromServer) MissingFromServerNotice()
 
             // Playback actions. Both leave the app, and the second tap of a double-tap would
             // land before the launched activity is on top — one shared throttle, so a stray
@@ -216,10 +225,48 @@ fun DetailScreen(
                 )
             }
 
+            // Only offered once the server has stopped listing the video: for anything still in
+            // the library, sync owns the local rows and a manual delete would just be undone.
+            if (current.missingFromServer) {
+                OutlinedButton(
+                    onClick = { viewModel.removeFromLibrary() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text(stringResource(R.string.remove_from_library)) }
+            }
+
             current.description?.takeIf { it.isNotBlank() }?.let { desc ->
                 Text(stringResource(R.string.description), style = MaterialTheme.typography.titleMedium)
                 Text(desc, style = MaterialTheme.typography.bodyMedium)
             }
+        }
+    }
+}
+
+/**
+ * Shown when the server's listing has stopped including this video. Deliberately worded as
+ * "missing", not "deleted": a Jellyfin rescan can drop a video from one listing and return it in
+ * the next, which is exactly why sync waits several syncs before removing it locally.
+ */
+@Composable
+private fun MissingFromServerNotice() {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.Filled.CloudOff, contentDescription = null)
+            Text(
+                stringResource(R.string.missing_from_server_explained),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }

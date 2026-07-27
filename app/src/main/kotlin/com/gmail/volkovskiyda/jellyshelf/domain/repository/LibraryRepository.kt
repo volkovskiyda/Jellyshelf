@@ -33,6 +33,7 @@ interface LibraryRepository {
     fun cancelFetchMissing()
     fun acknowledgeBulkFetch()
     suspend fun clearLocalData()
+    suspend fun removeVideo(youtubeId: String)
     suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean
     fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean)
     suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult

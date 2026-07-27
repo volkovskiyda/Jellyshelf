@@ -128,4 +128,7 @@
     <!-- Wraps sync_summary when the configured metadata index could not be fetched. -->
     <string name="sync_index_unavailable">%1$s • metadata index unavailable</string>
     <string name="watch_state_sync_failed">Saved locally, but updating Jellyfin failed — the next sync may revert it</string>
+    <string name="missing_from_server">Missing from server</string>
+    <string name="missing_from_server_explained">The server no longer lists this video. It is removed from the library automatically after a few more syncs, in case it comes back.</string>
+    <string name="remove_from_library">Remove from library</string>
 </resources>

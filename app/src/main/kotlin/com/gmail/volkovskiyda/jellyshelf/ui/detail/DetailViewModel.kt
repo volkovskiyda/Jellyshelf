@@ -49,6 +49,15 @@ class DetailViewModel(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    /**
+     * Set once this video has been dropped from the local library, so the screen can leave rather
+     * than sit on the "video not found" state its own deletion produced. Not derived from [video]
+     * going NotFound — that also happens when a sync deletes the row underneath an open screen,
+     * which shouldn't yank the user out of it.
+     */
+    private val _removed = MutableStateFlow(false)
+    val removed: StateFlow<Boolean> = _removed.asStateFlow()
+
     fun consumeMessage() {
         _message.value = null
     }
@@ -61,6 +70,19 @@ class DetailViewModel(
             if (!repo.setPlayed(youtubeId, !current.played)) {
                 _message.value = app.getString(R.string.watch_state_sync_failed)
             }
+        }
+    }
+
+    /**
+     * Drop this video from the local library — offered for videos the server no longer lists, so
+     * the user doesn't have to wait out the sync grace period. Local only: nothing is deleted on
+     * Jellyfin, and a video that is actually still there returns on the next sync.
+     */
+    fun removeFromLibrary() {
+        if (_removed.value) return
+        viewModelScope.launch {
+            repo.removeVideo(youtubeId)
+            _removed.value = true
         }
     }
 

@@ -514,6 +514,26 @@ class DefaultLibraryRepository(
     }
 
     /**
+     * Drops one video from the local library, with its category memberships. For a video the sync
+     * reports as gone from the server (see [Video.missingFromServer]) whose grace period the user
+     * doesn't want to wait out — nothing is deleted on the server, and a video that turns out to
+     * still be there comes back on the next sync.
+     */
+    override suspend fun removeVideo(youtubeId: String) {
+        // NonCancellable, like clearLocalData: this is invoked from a screen that pops itself
+        // the moment the row disappears, and a half-applied delete would leave orphan cross-refs.
+        withContext(NonCancellable) {
+            writeMutex.withLock {
+                db.withTransaction {
+                    videoDao.delete(youtubeId)
+                    categoryDao.pruneOrphanCrossRefs()
+                    categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
+                }
+            }
+        }
+    }
+
+    /**
      * Toggles [youtubeId]'s watch state locally and mirrors it to Jellyfin. Returns false when
      * the server write failed — the local state stays, but the next sync may revert it to the
      * server's value, so callers should tell the user.

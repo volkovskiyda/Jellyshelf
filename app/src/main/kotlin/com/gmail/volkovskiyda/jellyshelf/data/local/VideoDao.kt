@@ -125,6 +125,10 @@ interface VideoDao {
     @Query("DELETE FROM videos WHERE lastSyncedAt != :syncedAt AND missedSyncs >= :maxMissedSyncs")
     suspend fun deleteAfterMissedSyncs(syncedAt: Long, maxMissedSyncs: Int)
 
+    /** Drops a single video the user chose not to wait out the grace period for. */
+    @Query("DELETE FROM videos WHERE youtubeId = :youtubeId")
+    suspend fun delete(youtubeId: String)
+
     @Query("DELETE FROM videos")
     suspend fun clear()
 }

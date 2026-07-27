@@ -38,4 +38,15 @@ data class Video(
     val metadataSource: String,
     /** When that metadata was produced by its source, epoch millis. */
     val metadataUpdatedAt: Long,
-)
+    /** Consecutive syncs whose server listing didn't contain this video. Reset to 0 when seen. */
+    val missedSyncs: Int,
+) {
+    /**
+     * The last sync (or more) didn't find this video on the server. It is kept for a few syncs
+     * before being deleted — a Jellyfin rescan or a paging hiccup can drop a video from one
+     * listing and bring it back on the next — so this is "probably gone", not "certainly gone",
+     * and is surfaced rather than acted on: playback stays enabled, and removal stays the
+     * user's call.
+     */
+    val missingFromServer: Boolean get() = missedSyncs > 0
+}
