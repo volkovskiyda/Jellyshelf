@@ -172,11 +172,16 @@ class SettingsViewModel(
                             // The sync succeeded, but without the metadata index its counts are
                             // the reason "nothing new gets categorized" — say so rather than
                             // reporting an unqualified success.
-                            if (out.getBoolean(SyncWorker.KEY_INDEX_DEGRADED, false)) {
+                            val qualified = if (out.getBoolean(SyncWorker.KEY_INDEX_DEGRADED, false)) {
                                 app.getString(R.string.sync_index_unavailable, summary)
                             } else {
                                 summary
                             }
+                            appendAutoFill(
+                                qualified,
+                                filled = out.getInt(SyncWorker.KEY_AUTO_FILLED, 0),
+                                failed = out.getInt(SyncWorker.KEY_AUTO_FILL_FAILED, 0),
+                            )
                         }
                         _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
                         SyncUi(running = false, message = message, isError = false)
@@ -192,6 +197,17 @@ class SettingsViewModel(
                 }
             }
             .launchIn(viewModelScope)
+    }
+
+    /**
+     * Appends what the sync's yt-dlp auto-fill pass managed, when it ran at all. Silent on a
+     * 0/0 pass — the common case is a library with no gaps, and reporting "filled 0" on every
+     * sync would train the user to stop reading the line.
+     */
+    private fun appendAutoFill(summary: String, filled: Int, failed: Int): String = when {
+        filled == 0 && failed == 0 -> summary
+        failed == 0 -> app.getString(R.string.sync_auto_filled, summary, filled)
+        else -> app.getString(R.string.sync_auto_filled_partial, summary, filled, failed)
     }
 
     /**

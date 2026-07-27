@@ -34,6 +34,8 @@ fun VideoEntity.toDomain(): Video = Video(
     metadataSource = metadataSource,
     metadataUpdatedAt = metadataUpdatedAt,
     missedSyncs = missedSyncs,
+    lastFetchError = lastFetchError,
+    lastFetchErrorAt = lastFetchErrorAt,
 )
 
 fun CategoryEntity.toDomain(): Category = Category(

@@ -37,6 +37,15 @@ data class VideoEntity(
      * server that is mid-rescan can't take user-authored data with it.
      */
     val missedSyncs: Int = 0,
+    /**
+     * Why the last in-app yt-dlp fetch for this video failed, or null if the last one succeeded
+     * (or none has run). Kept so a video that never gets metadata can say why instead of just
+     * sitting in Uncategorized forever — the sync auto-fill retries it every sync, and without
+     * this the repeated failure is invisible.
+     */
+    val lastFetchError: String? = null,
+    /** When [lastFetchError] was recorded, epoch millis; 0 when there is no error. */
+    val lastFetchErrorAt: Long = 0L,
 )
 
 @Entity(tableName = "categories")

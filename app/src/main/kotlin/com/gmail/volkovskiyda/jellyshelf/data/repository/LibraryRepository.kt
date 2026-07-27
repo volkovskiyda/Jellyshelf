@@ -56,8 +56,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.time.Instant
+import kotlin.time.Duration.Companion.minutes
 
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
  *  explicitly transient 408 (timeout) and 429 (throttling). Under Ktor's `expectSuccess = true`,
@@ -89,6 +91,26 @@ private const val MAX_MISSED_SYNCS = 3
  * describe the library, so that sync prunes nothing at all — not even a missed-sync increment.
  */
 private const val MIN_TRUSTED_LISTING_RATIO = 0.5
+
+/**
+ * Sync auto-fills metadata gaps with yt-dlp only while *fewer* than this many videos lack it. A
+ * bigger gap is a bulk job the user starts deliberately from the Uncategorized filter, where it
+ * reports progress and can be cancelled.
+ */
+private const val AUTO_FILL_MAX_MISSING = 10
+
+/**
+ * Total budget for a sync's auto-fill pass. The sync runs inside a WorkManager worker with a
+ * ~10 minute execution window, and up to nine extractions at yt-dlp's own 60 s ceiling could
+ * otherwise consume nearly all of it.
+ */
+private val AUTO_FILL_BUDGET = 5.minutes
+
+/** Fallback text for a yt-dlp failure that arrived without a message. */
+private const val FETCH_FAILED_ERROR = "yt-dlp failed to fetch metadata."
+
+/** The row went away between the fetch and the write — not a fetch failure. */
+private const val VIDEO_NOT_FOUND_ERROR = "Video not found locally."
 
 /** What a sync does with the stored videos its server listing didn't contain. */
 internal enum class Prune {
@@ -363,14 +385,56 @@ class DefaultLibraryRepository(
             }
 
             settings.setLastSync(now, s.libraryId)
+
+            // Everything above is committed and the sync has succeeded; the auto-fill below is a
+            // bonus pass whose failures are reported, never fatal.
+            val (autoFilled, autoFillFailed) = autoFillMissingMetadata()
+
             SyncResult.Success(
                 itemCount = items.size,
                 matched = videos.size,
                 indexed = videos.count { it.metadataSource != METADATA_SOURCE_JELLYFIN },
                 categories = autoCategories.size,
                 indexDegraded = s.indexUrl.isNotBlank() && !indexAvailable,
+                autoFilled = autoFilled,
+                autoFillFailed = autoFillFailed,
             )
         }
+    }
+
+    /**
+     * Fills small metadata gaps with the built-in yt-dlp as part of a sync, so a library that is
+     * almost fully described doesn't need the user to notice and press "fetch missing".
+     *
+     * Only runs for a *small* gap ([AUTO_FILL_MAX_MISSING]): a fresh library with hundreds of
+     * unmatched videos is a bulk job the user should start deliberately and watch, not something a
+     * background worker should spend ten minutes and a battery on.
+     *
+     * Returns (filled, failed). Never throws: a sync that already committed must not be reported
+     * as failed because YouTube refused an extraction.
+     */
+    private suspend fun autoFillMissingMetadata(): Pair<Int, Int> {
+        // A manual bulk fetch is already walking exactly this set — leave it alone rather than
+        // racing it for the same rows, and don't even query for them.
+        val bulkRunning = synchronized(bulkLock) { bulkJob?.isActive == true }
+        val targets = if (bulkRunning) emptyList() else videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
+        if (targets.isEmpty() || targets.size >= AUTO_FILL_MAX_MISSING) return 0 to 0
+
+        var filled = 0
+        var failed = 0
+        // One budget for the whole pass rather than a shorter per-fetch timeout: this runs inside
+        // a WorkManager worker with a ~10 minute execution window, and bounding the pass bounds it
+        // directly, whatever any single extraction does. Whatever completed is already persisted —
+        // each fetch commits on its own — and the next sync retries the rest.
+        withTimeoutOrNull(AUTO_FILL_BUDGET) {
+            for (video in targets) {
+                when (fetchAndApply(video.youtubeId)) {
+                    is FetchResult.Success -> filled++
+                    is FetchResult.Error -> failed++
+                }
+            }
+        } ?: Timber.w("Sync auto-fill hit its $AUTO_FILL_BUDGET budget after $filled/${targets.size}")
+        return filled to failed
     }
 
     private data class AutoAssignment(val id: String, val name: String, val type: String)
@@ -397,13 +461,44 @@ class DefaultLibraryRepository(
      * stamped now) and re-derive its auto-categories. Same fields/converters as an index match.
      */
     override suspend fun fetchMetadata(youtubeId: String): FetchResult {
-        val existing = videoDao.get(youtubeId) ?: return FetchResult.Error("Video not found locally.")
-        val entry = runCatchingCancellable { ytDlp.fetch(youtubeId) }.getOrElse { e ->
-            return FetchResult.Error(e.message ?: "yt-dlp failed to fetch metadata.")
-        }
-        applyFetched(youtubeId, entry)
-        return FetchResult.Success(entry.title ?: existing.title)
+        val existing = videoDao.get(youtubeId) ?: return FetchResult.Error(VIDEO_NOT_FOUND_ERROR)
+        return fetchAndApply(youtubeId, fallbackTitle = existing.title)
     }
+
+    /**
+     * One yt-dlp fetch and its write, shared by every path that fetches metadata: the single-video
+     * action, the manual bulk run and the sync auto-fill.
+     *
+     * A failure is recorded on the row ([recordFetchFailure]) as well as returned, so a video that
+     * keeps failing can explain itself on the detail screen instead of sitting in Uncategorized
+     * with no reason given.
+     */
+    private suspend fun fetchAndApply(youtubeId: String, fallbackTitle: String? = null): FetchResult {
+        val entry = runCatchingCancellable { ytDlp.fetch(youtubeId) }.getOrElse { e ->
+            val message = e.message ?: FETCH_FAILED_ERROR
+            recordFetchFailure(youtubeId, message)
+            return FetchResult.Error(message)
+        }
+        // Applying can still fail if the video was deleted underneath us; that isn't a fetch
+        // failure, so it leaves no error on a row that no longer exists.
+        return if (applyFetched(youtubeId, entry)) {
+            FetchResult.Success(entry.title ?: fallbackTitle.orEmpty())
+        } else {
+            FetchResult.Error(VIDEO_NOT_FOUND_ERROR)
+        }
+    }
+
+    /** Stamp [message] on [youtubeId]'s row as its latest yt-dlp failure. No-op if it's gone. */
+    private suspend fun recordFetchFailure(youtubeId: String, message: String) =
+        writeMutex.withLock {
+            val existing = videoDao.get(youtubeId) ?: return@withLock
+            videoDao.upsert(
+                existing.copy(
+                    lastFetchError = message,
+                    lastFetchErrorAt = System.currentTimeMillis(),
+                ),
+            )
+        }
 
     /**
      * Overwrite [youtubeId]'s row with yt-dlp [entry] metadata and refresh its auto-categories.
@@ -428,6 +523,9 @@ class DefaultLibraryRepository(
                 metadataSource = METADATA_SOURCE_YTDLP,
                 metadataUpdatedAt = now,
                 lastSyncedAt = now,
+                // This fetch worked — whatever the last one failed with is history.
+                lastFetchError = null,
+                lastFetchErrorAt = 0L,
             )
 
             // Re-derive this video's auto memberships: drop the old ones, add the new, prune orphans.
@@ -474,7 +572,7 @@ class DefaultLibraryRepository(
             // can't kill the process or strand the Running state. A per-video timeout inside
             // YtDlpMetadataSource keeps one hung extraction from stalling the whole run.
             val ok = runCatchingCancellable {
-                applyFetched(video.youtubeId, ytDlp.fetch(video.youtubeId))
+                fetchAndApply(video.youtubeId) is FetchResult.Success
             }.getOrDefault(false)
             if (!ok) failed++
             publishBulkFetch(generation, BulkFetch.Running(i + 1, targets.size, failed))

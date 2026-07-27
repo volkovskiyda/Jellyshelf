@@ -11,6 +11,10 @@ sealed interface SyncResult {
      *   itself succeeded — existing metadata was kept rather than downgraded — but new videos
      *   stay uncategorized until the index is reachable again, which otherwise looks identical
      *   to months of healthy syncs.
+     * @param autoFilled videos whose metadata this sync fetched with the built-in yt-dlp, after
+     *   the merge left only a handful without any. Zero when the pass didn't run.
+     * @param autoFillFailed videos that auto-fill pass tried and could not fetch. Reported rather
+     *   than failing the sync: the sync itself already succeeded.
      */
     data class Success(
         val itemCount: Int,
@@ -18,6 +22,8 @@ sealed interface SyncResult {
         val indexed: Int,
         val categories: Int,
         val indexDegraded: Boolean = false,
+        val autoFilled: Int = 0,
+        val autoFillFailed: Int = 0,
     ) : SyncResult
 
     /**

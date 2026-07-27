@@ -65,6 +65,13 @@ internal fun mergeVideo(
         )
     }
 
+    val metadataSource = if (meta != null) METADATA_SOURCE_INDEX else METADATA_SOURCE_JELLYFIN
+    // A recorded yt-dlp failure only means anything while the video is still missing metadata, so
+    // carry it across syncs (this branch rebuilds the row from scratch and would otherwise erase
+    // it every sync, hiding exactly the persistent failures it exists to report) — but drop it the
+    // moment the index supplies what the fetch was after.
+    val keepFetchError = metadataSource == METADATA_SOURCE_JELLYFIN
+
     return VideoEntity(
         youtubeId = youtubeId,
         jellyfinItemId = item.id,
@@ -86,7 +93,9 @@ internal fun mergeVideo(
         playbackPositionTicks = positionTicks,
         playCount = playCount,
         lastSyncedAt = now,
-        metadataSource = if (meta != null) METADATA_SOURCE_INDEX else METADATA_SOURCE_JELLYFIN,
+        metadataSource = metadataSource,
         metadataUpdatedAt = if (meta != null) (indexUpdatedAt ?: now) else 0L,
+        lastFetchError = existing?.lastFetchError.takeIf { keepFetchError },
+        lastFetchErrorAt = if (keepFetchError) existing?.lastFetchErrorAt ?: 0L else 0L,
     )
 }

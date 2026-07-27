@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "133f3dee234816776f411c302e48b652",
+    "identityHash": "d3b2b9be14f59609e438895d6360b931",
     "entities": [
       {
         "tableName": "videos",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`youtubeId` TEXT NOT NULL, `jellyfinItemId` TEXT, `fileName` TEXT NOT NULL, `title` TEXT NOT NULL, `channel` TEXT, `channelId` TEXT, `durationSeconds` INTEGER NOT NULL, `uploadDate` TEXT, `description` TEXT, `tags` TEXT NOT NULL, `youtubeCategories` TEXT NOT NULL, `thumbnailUrl` TEXT, `played` INTEGER NOT NULL, `playbackPositionTicks` INTEGER NOT NULL, `playCount` INTEGER NOT NULL, `lastSyncedAt` INTEGER NOT NULL, `metadataSource` TEXT NOT NULL, `metadataUpdatedAt` INTEGER NOT NULL, `missedSyncs` INTEGER NOT NULL, PRIMARY KEY(`youtubeId`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`youtubeId` TEXT NOT NULL, `jellyfinItemId` TEXT, `fileName` TEXT NOT NULL, `title` TEXT NOT NULL, `channel` TEXT, `channelId` TEXT, `durationSeconds` INTEGER NOT NULL, `uploadDate` TEXT, `description` TEXT, `tags` TEXT NOT NULL, `youtubeCategories` TEXT NOT NULL, `thumbnailUrl` TEXT, `played` INTEGER NOT NULL, `playbackPositionTicks` INTEGER NOT NULL, `playCount` INTEGER NOT NULL, `lastSyncedAt` INTEGER NOT NULL, `metadataSource` TEXT NOT NULL, `metadataUpdatedAt` INTEGER NOT NULL, `missedSyncs` INTEGER NOT NULL, `lastFetchError` TEXT, `lastFetchErrorAt` INTEGER NOT NULL, PRIMARY KEY(`youtubeId`))",
         "fields": [
           {
             "fieldPath": "youtubeId",
@@ -115,6 +115,17 @@
             "columnName": "missedSyncs",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "lastFetchError",
+            "columnName": "lastFetchError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastFetchErrorAt",
+            "columnName": "lastFetchErrorAt",
+            "affinity": "INTEGER",
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -199,7 +210,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '133f3dee234816776f411c302e48b652')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd3b2b9be14f59609e438895d6360b931')"
     ]
   }
 }

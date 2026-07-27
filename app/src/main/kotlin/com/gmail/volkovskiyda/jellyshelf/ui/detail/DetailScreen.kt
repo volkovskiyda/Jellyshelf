@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
@@ -222,6 +223,21 @@ internal fun DetailContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+
+            // Why this video still has no metadata. Only while it actually lacks any: an index
+            // match since the failed fetch makes the stored error moot, not news.
+            val fetchError = current.lastFetchError
+            if (fetchError != null && current.metadataSource == METADATA_SOURCE_JELLYFIN) {
+                Text(
+                    stringResource(
+                        R.string.last_fetch_failed,
+                        formatTimestamp(current.lastFetchErrorAt).orEmpty(),
+                        fetchError,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             if (current.missingFromServer) MissingFromServerNotice()

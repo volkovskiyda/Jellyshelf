@@ -1,14 +1,15 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
-import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
-import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
-import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDataDto
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -230,5 +231,51 @@ class VideoMergeTest {
             now = now,
         )
         assertEquals("$serverBase/Items/jf-item-1/Images/Primary?maxWidth=480", merged.thumbnailUrl)
+    }
+
+    /**
+     * The Jellyfin-only branch rebuilds the row from scratch, so without explicit carrying it
+     * would erase the fetch error on every sync — hiding exactly the persistent failures the
+     * field exists to report, since the auto-fill pass retries those videos every sync.
+     */
+    @Test
+    fun `a recorded fetch error survives a sync that still finds no metadata`() {
+        val failed = existing(METADATA_SOURCE_JELLYFIN).copy(
+            lastFetchError = "yt-dlp timed out",
+            lastFetchErrorAt = 900_000L,
+        )
+        val merged = mergeVideo(
+            existing = failed,
+            youtubeId = youtubeId,
+            item = item(),
+            meta = null,
+            indexAvailable = true,
+            serverBase = serverBase,
+            now = now,
+        )
+        assertEquals(METADATA_SOURCE_JELLYFIN, merged.metadataSource)
+        assertEquals("yt-dlp timed out", merged.lastFetchError)
+        assertEquals(900_000L, merged.lastFetchErrorAt)
+    }
+
+    /** Once the index supplies the metadata, the old failure is history rather than news. */
+    @Test
+    fun `an index match clears a recorded fetch error`() {
+        val failed = existing(METADATA_SOURCE_JELLYFIN).copy(
+            lastFetchError = "yt-dlp timed out",
+            lastFetchErrorAt = 900_000L,
+        )
+        val merged = mergeVideo(
+            existing = failed,
+            youtubeId = youtubeId,
+            item = item(),
+            meta = meta(),
+            indexAvailable = true,
+            serverBase = serverBase,
+            now = now,
+        )
+        assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
+        assertNull(merged.lastFetchError)
+        assertEquals(0L, merged.lastFetchErrorAt)
     }
 }

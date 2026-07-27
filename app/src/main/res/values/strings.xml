@@ -84,6 +84,8 @@
     <string name="source_index">Script · index</string>
     <string name="source_jellyfin">Jellyfin only</string>
     <string name="last_synced">Synced %1$s</string>
+    <!-- Shown on a video still lacking metadata whose last yt-dlp fetch failed: when, then why. -->
+    <string name="last_fetch_failed">Last metadata fetch failed %1$s: %2$s</string>
     <string name="no_app_found">No app found to handle this</string>
 
     <!-- Settings -->
@@ -128,6 +130,9 @@
     <string name="sync_summary" tools:ignore="PluralsCandidate">Synced %1$d/%2$d videos with metadata into %3$d categories</string>
     <!-- Wraps sync_summary when the configured metadata index could not be fetched. -->
     <string name="sync_index_unavailable">%1$s • metadata index unavailable</string>
+    <!-- Wraps the sync summary when the sync's yt-dlp auto-fill pass filled small metadata gaps. -->
+    <string name="sync_auto_filled" tools:ignore="PluralsCandidate">%1$s • fetched %2$d missing with yt-dlp</string>
+    <string name="sync_auto_filled_partial" tools:ignore="PluralsCandidate">%1$s • fetched %2$d missing with yt-dlp, %3$d failed</string>
     <string name="watch_state_sync_failed">Saved locally, but updating Jellyfin failed — the next sync may revert it</string>
     <string name="missing_from_server">Missing from server</string>
     <string name="missing_from_server_explained">The server no longer lists this video. It is removed from the library automatically after a few more syncs, in case it comes back.</string>

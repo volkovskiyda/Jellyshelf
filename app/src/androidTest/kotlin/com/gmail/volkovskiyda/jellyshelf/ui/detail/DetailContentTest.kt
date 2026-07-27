@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
@@ -137,6 +138,33 @@ class DetailContentTest {
         setContent(video.copy(lastSyncedAt = 0L))
 
         composeRule.onNodeWithText("Synced", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a video with no metadata reports why its last fetch failed`() {
+        setContent(
+            video.copy(
+                metadataSource = METADATA_SOURCE_JELLYFIN,
+                lastFetchError = "yt-dlp timed out",
+                lastFetchErrorAt = 1_784_974_530_000L,
+            ),
+        )
+
+        composeRule.onNodeWithText("yt-dlp timed out", substring = true).assertIsDisplayed()
+    }
+
+    /** An index match since the failed fetch makes the stored error moot, not news. */
+    @Test
+    fun `a video that since gained metadata hides the stale fetch error`() {
+        setContent(
+            video.copy(
+                metadataSource = METADATA_SOURCE_INDEX,
+                lastFetchError = "yt-dlp timed out",
+                lastFetchErrorAt = 1_784_974_530_000L,
+            ),
+        )
+
+        composeRule.onNodeWithText("yt-dlp timed out", substring = true).assertDoesNotExist()
     }
 
     /** Playback stays available: one missed sync is "probably gone", not "certainly gone". */

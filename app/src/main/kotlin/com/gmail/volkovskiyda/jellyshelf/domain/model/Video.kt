@@ -40,6 +40,10 @@ data class Video(
     val metadataUpdatedAt: Long,
     /** Consecutive syncs whose server listing didn't contain this video. Reset to 0 when seen. */
     val missedSyncs: Int,
+    /** Why the last in-app yt-dlp metadata fetch failed, or null if the last one succeeded. */
+    val lastFetchError: String? = null,
+    /** When [lastFetchError] was recorded, epoch millis; 0 when there is no error. */
+    val lastFetchErrorAt: Long = 0L,
 ) {
     /**
      * The last sync (or more) didn't find this video on the server. It is kept for a few syncs
