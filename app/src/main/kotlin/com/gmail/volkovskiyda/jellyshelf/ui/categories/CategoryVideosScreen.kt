@@ -41,14 +41,20 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberThumbnailModel
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * One category's videos: binds [CategoryVideosViewModel] to the stateless
+ * [CategoryVideosContent] below, which previews and tests can render on its own.
+ */
 @Composable
 fun CategoryVideosScreen(
     categoryId: String,
@@ -62,11 +68,10 @@ fun CategoryVideosScreen(
     val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
     val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
-    val videos = videosOrNull.orEmpty()
 
-    val isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED
+    // Dialog visibility lives here, not in the content: a finished playlist creation reports via
+    // [message], and that same signal is what closes the dialog.
     var showDialog by rememberSaveable { mutableStateOf(false) }
-
     val message by viewModel.message.collectAsStateWithLifecycle()
     LaunchedEffect(message) {
         message?.let {
@@ -75,6 +80,52 @@ fun CategoryVideosScreen(
             viewModel.consumeMessage()
         }
     }
+
+    CategoryVideosContent(
+        title = title,
+        videosOrNull = videosOrNull,
+        bulkFetch = bulkFetch,
+        creating = creating,
+        isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
+        scrollKey = "category.$categoryId",
+        showDialog = showDialog,
+        onShowDialog = { showDialog = true },
+        onDismissDialog = { if (!creating) showDialog = false },
+        onVideoClick = onVideoClick,
+        onBack = onBack,
+        onStartFetchMissing = viewModel::startFetchMissing,
+        onCancelFetchMissing = viewModel::cancelFetchMissing,
+        onAcknowledgeBulkFetch = viewModel::acknowledgeBulkFetch,
+        onCreatePlaylist = viewModel::createPlaylist,
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CategoryVideosContent(
+    title: String,
+    videosOrNull: List<Video>?,
+    bulkFetch: BulkFetch,
+    creating: Boolean,
+    isUncategorized: Boolean,
+    scrollKey: String,
+    showDialog: Boolean,
+    onShowDialog: () -> Unit,
+    onDismissDialog: () -> Unit,
+    onVideoClick: (Video) -> Unit,
+    onBack: () -> Unit,
+    onStartFetchMissing: () -> Unit,
+    onCancelFetchMissing: () -> Unit,
+    onAcknowledgeBulkFetch: () -> Unit,
+    onCreatePlaylist: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    // Injected by default; host-side rendering passes an in-memory stand-in.
+    scrollStore: ScrollPositionRepository = koinInject(),
+    // Per-row thumbnail resolution, which reads the api key out of Koin — see VideoRow.
+    thumbnailModel: @Composable (Video) -> String? = { rememberThumbnailModel(it.thumbnailUrl) },
+) {
+    val videos = videosOrNull.orEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -94,7 +145,7 @@ fun CategoryVideosScreen(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    IconButton(onClick = { showDialog = true }) {
+                    IconButton(onClick = onShowDialog) {
                         Icon(
                             Icons.AutoMirrored.Filled.PlaylistAdd,
                             contentDescription = stringResource(R.string.create_playlist),
@@ -109,9 +160,9 @@ fun CategoryVideosScreen(
             FetchMissingHeader(
                 state = bulkFetch,
                 missingCount = videos.size,
-                onStart = viewModel::startFetchMissing,
-                onCancel = viewModel::cancelFetchMissing,
-                onDismiss = viewModel::acknowledgeBulkFetch,
+                onStart = onStartFetchMissing,
+                onCancel = onCancelFetchMissing,
+                onDismiss = onAcknowledgeBulkFetch,
             )
         }
 
@@ -126,11 +177,15 @@ fun CategoryVideosScreen(
             )
         } else {
             LazyColumn(
-                state = rememberAnchoredLazyListState("category.$categoryId", videos) { it.fileName },
+                state = rememberAnchoredLazyListState(scrollKey, videos, scrollStore) { it.fileName },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(videos, key = { it.youtubeId }) { video ->
-                    VideoRow(video = video, onClick = { onVideoClick(video) })
+                    VideoRow(
+                        video = video,
+                        onClick = { onVideoClick(video) },
+                        thumbnailModel = thumbnailModel(video),
+                    )
                 }
             }
         }
@@ -141,8 +196,8 @@ fun CategoryVideosScreen(
             defaultName = title,
             videoCount = videos.size,
             creating = creating,
-            onDismiss = { if (!creating) showDialog = false },
-            onCreate = viewModel::createPlaylist,
+            onDismiss = onDismissDialog,
+            onCreate = onCreatePlaylist,
         )
     }
 }

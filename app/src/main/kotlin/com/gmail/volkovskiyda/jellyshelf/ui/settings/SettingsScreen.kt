@@ -43,9 +43,34 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import org.koin.androidx.compose.koinViewModel
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/**
+ * Every action the settings UI can trigger, bundled into one parameter so [SettingsContent] keeps
+ * a readable signature. The no-op defaults are what let a preview construct `SettingsActions()`
+ * and render the screen without a ViewModel.
+ */
+internal data class SettingsActions(
+    val onServerUrlChange: (String) -> Unit = {},
+    val onApiKeyChange: (String) -> Unit = {},
+    val onIndexUrlChange: (String) -> Unit = {},
+    val fillIndexUrlFromServer: () -> Unit = {},
+    val connect: () -> Unit = {},
+    val selectUser: (User) -> Unit = {},
+    val openBrowser: () -> Unit = {},
+    val closeBrowser: () -> Unit = {},
+    val enterFolder: (FolderRef) -> Unit = {},
+    val navigateTo: (Int) -> Unit = {},
+    val useCurrentFolder: () -> Unit = {},
+    val syncNow: () -> Unit = {},
+    val resetLocalData: () -> Unit = {},
+)
+
+/**
+ * Settings tab: binds [SettingsViewModel] to the stateless [SettingsContent] below, which
+ * previews and tests can render without a ViewModel or a Koin container.
+ */
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
@@ -53,6 +78,37 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val videoCount by viewModel.videoCount.collectAsStateWithLifecycle()
+
+    SettingsContent(
+        state = state,
+        videoCount = videoCount,
+        actions = SettingsActions(
+            onServerUrlChange = viewModel::onServerUrlChange,
+            onApiKeyChange = viewModel::onApiKeyChange,
+            onIndexUrlChange = viewModel::onIndexUrlChange,
+            fillIndexUrlFromServer = viewModel::fillIndexUrlFromServer,
+            connect = { viewModel.connect() },
+            selectUser = viewModel::selectUser,
+            openBrowser = viewModel::openBrowser,
+            closeBrowser = viewModel::closeBrowser,
+            enterFolder = viewModel::enterFolder,
+            navigateTo = viewModel::navigateTo,
+            useCurrentFolder = viewModel::useCurrentFolder,
+            syncNow = viewModel::syncNow,
+            resetLocalData = viewModel::resetLocalData,
+        ),
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+internal fun SettingsContent(
+    state: SettingsUiState,
+    videoCount: Int,
+    actions: SettingsActions,
+    modifier: Modifier = Modifier,
+) {
     var showResetDialog by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -67,7 +123,7 @@ fun SettingsScreen(
             Text(stringResource(R.string.jellyfin_connection), style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = state.serverUrl,
-                onValueChange = viewModel::onServerUrlChange,
+                onValueChange = actions.onServerUrlChange,
                 label = { Text(stringResource(R.string.server_url)) },
                 placeholder = { Text(stringResource(R.string.server_url_hint)) },
                 singleLine = true,
@@ -75,7 +131,7 @@ fun SettingsScreen(
             )
             OutlinedTextField(
                 value = state.apiKey,
-                onValueChange = viewModel::onApiKeyChange,
+                onValueChange = actions.onApiKeyChange,
                 label = { Text(stringResource(R.string.api_key)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
@@ -83,14 +139,14 @@ fun SettingsScreen(
             )
             OutlinedTextField(
                 value = state.indexUrl,
-                onValueChange = viewModel::onIndexUrlChange,
+                onValueChange = actions.onIndexUrlChange,
                 label = { Text(stringResource(R.string.index_url_label)) },
                 placeholder = { Text(stringResource(R.string.index_url_hint)) },
                 singleLine = true,
                 trailingIcon = if (state.indexUrl.isBlank()) {
                     {
                         TextButton(
-                            onClick = viewModel::fillIndexUrlFromServer,
+                            onClick = actions.fillIndexUrlFromServer,
                             enabled = state.serverUrl.isNotBlank(),
                         ) { Text(stringResource(R.string.fill)) }
                     }
@@ -99,7 +155,7 @@ fun SettingsScreen(
             )
 
             Button(
-                onClick = { viewModel.connect() },
+                onClick = actions.connect,
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.connect_load_users)) }
@@ -110,7 +166,7 @@ fun SettingsScreen(
                     state.users.forEach { user ->
                         FilterChip(
                             selected = user.id == state.selectedUserId,
-                            onClick = { viewModel.selectUser(user) },
+                            onClick = { actions.selectUser(user) },
                             label = { Text(user.name) },
                         )
                     }
@@ -118,13 +174,13 @@ fun SettingsScreen(
             }
 
             if (state.selectedUserId.isNotBlank()) {
-                ScopeSection(state = state, viewModel = viewModel)
+                ScopeSection(state = state, actions = actions)
             }
 
             HorizontalDivider()
 
             OutlinedButton(
-                onClick = viewModel::syncNow,
+                onClick = actions.syncNow,
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.sync_now)) }
@@ -172,7 +228,7 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         showResetDialog = false
-                        viewModel.resetLocalData()
+                        actions.resetLocalData()
                     },
                 ) {
                     Text(stringResource(R.string.reset), color = MaterialTheme.colorScheme.error)
@@ -187,7 +243,7 @@ fun SettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun ScopeSection(state: SettingsUiState, viewModel: SettingsViewModel) {
+private fun ScopeSection(state: SettingsUiState, actions: SettingsActions) {
     Text(stringResource(R.string.sync_scope), style = MaterialTheme.typography.titleSmall)
     Text(
         // A blank persisted path is the root scope; the label is resolved here so it follows
@@ -198,7 +254,7 @@ private fun ScopeSection(state: SettingsUiState, viewModel: SettingsViewModel) {
     )
 
     if (!state.browserOpen) {
-        TextButton(onClick = viewModel::openBrowser) { Text(stringResource(R.string.change_folder)) }
+        TextButton(onClick = actions.openBrowser) { Text(stringResource(R.string.change_folder)) }
         return
     }
 
@@ -207,22 +263,22 @@ private fun ScopeSection(state: SettingsUiState, viewModel: SettingsViewModel) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        AssistChip(onClick = { viewModel.navigateTo(-1) }, label = { Text(stringResource(R.string.all_collections)) })
+        AssistChip(onClick = { actions.navigateTo(-1) }, label = { Text(stringResource(R.string.all_collections)) })
         state.breadcrumb.forEachIndexed { index, folder ->
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
                 modifier = Modifier.align(Alignment.CenterVertically),
             )
-            AssistChip(onClick = { viewModel.navigateTo(index) }, label = { Text(folder.name) })
+            AssistChip(onClick = { actions.navigateTo(index) }, label = { Text(folder.name) })
         }
     }
 
     // Action row kept ABOVE the folder list so it stays reachable when a folder
     // has many children (the whole screen scrolls; the list can be very long).
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = viewModel::useCurrentFolder) { Text(stringResource(R.string.use_this_folder)) }
-        TextButton(onClick = viewModel::closeBrowser) { Text(stringResource(R.string.cancel)) }
+        Button(onClick = actions.useCurrentFolder) { Text(stringResource(R.string.use_this_folder)) }
+        TextButton(onClick = actions.closeBrowser) { Text(stringResource(R.string.cancel)) }
     }
 
     when {
@@ -237,7 +293,7 @@ private fun ScopeSection(state: SettingsUiState, viewModel: SettingsViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { viewModel.enterFolder(folder) }
+                    .clickable { actions.enterFolder(folder) }
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

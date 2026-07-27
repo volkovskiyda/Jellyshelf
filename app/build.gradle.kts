@@ -70,6 +70,14 @@ android {
     }
     // Enables the screenshotTest source set (paired with the same flag in gradle.properties).
     experimentalProperties["android.experimental.enableScreenshotTest"] = true
+    // Shared host-side test fakes. Only the `test` source set can be extended this way: the
+    // screenshot plugin (alpha) registers no AndroidSourceSet of its own — neither
+    // "screenshotTest" nor "screenshotTestDebug" exists in this container — so its copy of the
+    // fake lives in src/screenshotTest/kotlin instead. Collapse the two when the plugin exposes
+    // its source set.
+    sourceSets {
+        getByName("test") { kotlin.srcDir("src/testShared/kotlin") }
+    }
     buildFeatures {
         compose = true
         // Generates BuildConfig.DEBUG so debug/release-only behaviour (HTTP logging, Timber) keys

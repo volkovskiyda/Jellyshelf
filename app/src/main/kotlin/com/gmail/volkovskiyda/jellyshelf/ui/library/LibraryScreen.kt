@@ -38,14 +38,21 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberThumbnailModel
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Library tab: binds [LibraryViewModel] to the stateless [LibraryContent] below. Everything this
+ * layer does is collect state and forward callbacks, so [LibraryContent] can be rendered by
+ * previews, screenshot tests and behavior tests without a ViewModel or a Koin container.
+ */
 @Composable
 fun LibraryScreen(
     onVideoClick: (Video) -> Unit,
@@ -56,6 +63,35 @@ fun LibraryScreen(
     val query by viewModel.query.collectAsStateWithLifecycle()
     val durationFilter by viewModel.durationFilter.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
+
+    LibraryContent(
+        videosOrNull = videosOrNull,
+        query = query,
+        durationFilter = durationFilter,
+        totalCount = totalCount,
+        onQueryChange = viewModel::onQueryChange,
+        onDurationFilterChange = viewModel::onDurationFilterChange,
+        onVideoClick = onVideoClick,
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LibraryContent(
+    videosOrNull: LibraryVideos?,
+    query: String,
+    durationFilter: DurationBucket?,
+    totalCount: Int,
+    onQueryChange: (String) -> Unit,
+    onDurationFilterChange: (DurationBucket?) -> Unit,
+    onVideoClick: (Video) -> Unit,
+    modifier: Modifier = Modifier,
+    // Injected by default; host-side rendering passes an in-memory stand-in.
+    scrollStore: ScrollPositionRepository = koinInject(),
+    // Per-row thumbnail resolution, which reads the api key out of Koin — see VideoRow.
+    thumbnailModel: @Composable (Video) -> String? = { rememberThumbnailModel(it.thumbnailUrl) },
+) {
     val videos = videosOrNull?.items.orEmpty()
     // Everything describing the shown list reads the terms tagged on the emission, not the live
     // [query]/[durationFilter]: the query blanks a frame before the unfiltered list re-emits (and
@@ -86,13 +122,13 @@ fun LibraryScreen(
                 }
                 DurationFilterAction(
                     selected = durationFilter,
-                    onSelect = viewModel::onDurationFilterChange,
+                    onSelect = onDurationFilterChange,
                 )
             },
         )
         OutlinedTextField(
             value = query,
-            onValueChange = viewModel::onQueryChange,
+            onValueChange = onQueryChange,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -100,7 +136,7 @@ fun LibraryScreen(
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { viewModel.onQueryChange("") }) {
+                    IconButton(onClick = { onQueryChange("") }) {
                         Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear_search))
                     }
                 }
@@ -133,7 +169,7 @@ fun LibraryScreen(
             // right contents. Search/filter results are transient, reordered sets that start from
             // the top and jump back on every keystroke or filter change to surface the best matches.
             val listState = if (pristine) {
-                rememberAnchoredLazyListState("library", videos) { it.fileName }
+                rememberAnchoredLazyListState("library", videos, scrollStore) { it.fileName }
             } else {
                 rememberLazyListState()
             }
@@ -161,7 +197,11 @@ fun LibraryScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(videos, key = { it.youtubeId }) { video ->
-                    VideoRow(video = video, onClick = { onVideoClick(video) })
+                    VideoRow(
+                        video = video,
+                        onClick = { onVideoClick(video) },
+                        thumbnailModel = thumbnailModel(video),
+                    )
                 }
             }
         }

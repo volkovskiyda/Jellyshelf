@@ -43,6 +43,8 @@ import coil.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
@@ -55,7 +57,10 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import timber.log.Timber
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Detail screen: binds [DetailViewModel] and the external-player handoff to the stateless
+ * [DetailContent] below, which previews and tests can render on its own.
+ */
 @Composable
 fun DetailScreen(
     youtubeId: String,
@@ -95,6 +100,54 @@ fun DetailScreen(
     LaunchedEffect(removed) { if (removed) onBack() }
 
     val current = (videoState as? VideoDetailState.Loaded)?.video
+    // Resolved here rather than inside the content: it reads the live api key out of Koin, which
+    // host-side rendering has no container for (same seam as VideoRow's thumbnailModel).
+    val thumbnailModel = rememberThumbnailModel(current?.thumbnailUrl)
+
+    DetailContent(
+        videoState = videoState,
+        settings = settings,
+        fetching = fetching,
+        thumbnailModel = thumbnailModel,
+        onBack = onBack,
+        onPlay = { video, s ->
+            playerLauncher.launch(
+                Playback.externalPlayerIntent(
+                    context = context,
+                    serverUrl = s.serverUrl,
+                    itemId = requireNotNull(video.jellyfinItemId),
+                    apiKey = s.apiKey,
+                    title = video.title,
+                    resumeMs = ticksToMillis(video.playbackPositionTicks),
+                )
+            )
+        },
+        onOpenInJellyfin = { video, s ->
+            Playback.openInJellyfin(context, s.serverUrl, requireNotNull(video.jellyfinItemId))
+        },
+        onToggleWatched = viewModel::toggleWatched,
+        onFetchMetadata = viewModel::fetchMetadata,
+        onRemove = viewModel::removeFromLibrary,
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DetailContent(
+    videoState: VideoDetailState,
+    settings: Settings?,
+    fetching: Boolean,
+    thumbnailModel: String?,
+    onBack: () -> Unit,
+    onPlay: (Video, Settings) -> Unit,
+    onOpenInJellyfin: (Video, Settings) -> Unit,
+    onToggleWatched: () -> Unit,
+    onFetchMetadata: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val current = (videoState as? VideoDetailState.Loaded)?.video
 
     Scaffold(
         modifier = modifier,
@@ -131,7 +184,7 @@ fun DetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AsyncImage(
-                model = rememberThumbnailModel(current.thumbnailUrl),
+                model = thumbnailModel,
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -162,20 +215,7 @@ fun DetailScreen(
                 val s = settings
                 val launchThrottle = rememberClickThrottle()
                 Button(
-                    onClick = {
-                        if (s != null && itemId != null) launchThrottle {
-                            playerLauncher.launch(
-                                Playback.externalPlayerIntent(
-                                    context = context,
-                                    serverUrl = s.serverUrl,
-                                    itemId = itemId,
-                                    apiKey = s.apiKey,
-                                    title = current.title,
-                                    resumeMs = ticksToMillis(current.playbackPositionTicks),
-                                )
-                            )
-                        }
-                    },
+                    onClick = { if (s != null && itemId != null) launchThrottle { onPlay(current, s) } },
                     enabled = s != null && itemId != null,
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
@@ -183,9 +223,7 @@ fun DetailScreen(
                 }
                 OutlinedButton(
                     onClick = {
-                        if (s != null && itemId != null) launchThrottle {
-                            Playback.openInJellyfin(context, s.serverUrl, itemId)
-                        }
+                        if (s != null && itemId != null) launchThrottle { onOpenInJellyfin(current, s) }
                     },
                     enabled = s != null && itemId != null,
                 ) {
@@ -195,7 +233,7 @@ fun DetailScreen(
 
             // Watched toggle
             OutlinedButton(
-                onClick = { viewModel.toggleWatched() },
+                onClick = onToggleWatched,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
@@ -210,7 +248,7 @@ fun DetailScreen(
             val hasMetadata = current.metadataSource == METADATA_SOURCE_INDEX ||
                 current.metadataSource == METADATA_SOURCE_YTDLP
             OutlinedButton(
-                onClick = { viewModel.fetchMetadata() },
+                onClick = onFetchMetadata,
                 enabled = !fetching,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -229,7 +267,7 @@ fun DetailScreen(
             // the library, sync owns the local rows and a manual delete would just be undone.
             if (current.missingFromServer) {
                 OutlinedButton(
-                    onClick = { viewModel.removeFromLibrary() },
+                    onClick = onRemove,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.error,

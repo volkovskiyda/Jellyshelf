@@ -51,14 +51,19 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATE
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_MANUAL
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Categories tab: binds [CategoriesViewModel] to the stateless [CategoriesContent] below, which
+ * previews and tests can render without a ViewModel or a Koin container.
+ */
 @Composable
 fun CategoriesScreen(
     onCategoryClick: (categoryId: String, title: String) -> Unit,
@@ -71,6 +76,39 @@ fun CategoriesScreen(
     val searchAll by viewModel.searchAll.collectAsStateWithLifecycle()
     val selectedType by viewModel.selectedType.collectAsStateWithLifecycle()
     val selectionLoaded by viewModel.selectionLoaded.collectAsStateWithLifecycle()
+
+    CategoriesContent(
+        categoriesOrNull = categoriesOrNull,
+        others = others,
+        query = query,
+        searchAll = searchAll,
+        selectedType = selectedType,
+        selectionLoaded = selectionLoaded,
+        onQueryChange = viewModel::onQueryChange,
+        onSearchAllChange = viewModel::onSearchAllChange,
+        onSelectedTypeChange = viewModel::onSelectedTypeChange,
+        onCategoryClick = onCategoryClick,
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CategoriesContent(
+    categoriesOrNull: CategoryList?,
+    others: List<CategoryWithCount>,
+    query: String,
+    searchAll: Boolean,
+    selectedType: String?,
+    selectionLoaded: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSearchAllChange: (Boolean) -> Unit,
+    onSelectedTypeChange: (String) -> Unit,
+    onCategoryClick: (categoryId: String, title: String) -> Unit,
+    modifier: Modifier = Modifier,
+    // Injected by default; host-side rendering passes an in-memory stand-in.
+    scrollStore: ScrollPositionRepository = koinInject(),
+) {
     val categories = categoriesOrNull?.items.orEmpty()
     // Tagged on the emission, not derived from [query]: the query blanks a frame before the
     // unfiltered list re-emits, so a tab's scroll must stay transient until the real list is back.
@@ -80,7 +118,7 @@ fun CategoriesScreen(
         TopAppBar(title = { Text(stringResource(R.string.tab_categories)) })
         OutlinedTextField(
             value = query,
-            onValueChange = viewModel::onQueryChange,
+            onValueChange = onQueryChange,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -88,7 +126,7 @@ fun CategoriesScreen(
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { viewModel.onQueryChange("") }) {
+                    IconButton(onClick = { onQueryChange("") }) {
                         Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear_search))
                     }
                 }
@@ -98,7 +136,7 @@ fun CategoriesScreen(
 
         val searching = query.isNotBlank()
         if (searching) {
-            SearchAllToggle(checked = searchAll, onCheckedChange = viewModel::onSearchAllChange)
+            SearchAllToggle(checked = searchAll, onCheckedChange = onSearchAllChange)
         }
 
         // The "Others" tab (virtual watch/uncategorized filters) is browse-only; it is left out of
@@ -156,10 +194,11 @@ fun CategoriesScreen(
                 tabs = tabs,
                 selectedType = selectedType,
                 selectionLoaded = selectionLoaded,
-                onSelectedTypeChange = viewModel::onSelectedTypeChange,
+                onSelectedTypeChange = onSelectedTypeChange,
                 persistScroll = listPristine,
                 searchKey = query,
                 onCategoryClick = onCategoryClick,
+                scrollStore = scrollStore,
             )
         }
     }
@@ -189,6 +228,7 @@ private fun TabbedCategories(
     persistScroll: Boolean,
     searchKey: String,
     onCategoryClick: (categoryId: String, title: String) -> Unit,
+    scrollStore: ScrollPositionRepository,
 ) {
     if (tabs.isEmpty()) return
     val pagerState = rememberPagerState(pageCount = { tabs.size })
@@ -251,7 +291,7 @@ private fun TabbedCategories(
         // per-tab lists are transient result sets: they start at the top and jump back on every
         // keystroke, so the best matches for the new query are in view.
         val listState = if (persistScroll) {
-            rememberPersistedLazyListState("categories.${tab.type}")
+            rememberPersistedLazyListState("categories.${tab.type}", scrollStore)
         } else {
             rememberLazyListState()
         }

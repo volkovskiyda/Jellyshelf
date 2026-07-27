@@ -86,8 +86,11 @@ fun rememberThumbnailModel(url: String?): String? {
  */
 @OptIn(FlowPreview::class)
 @Composable
-fun rememberPersistedLazyListState(key: String): LazyListState {
-    val store = koinInject<ScrollPositionRepository>()
+fun rememberPersistedLazyListState(
+    key: String,
+    // Injected by default; passed explicitly by host-side rendering, which has no Koin container.
+    store: ScrollPositionRepository = koinInject(),
+): LazyListState {
     val state = rememberSaveable(key, saver = LazyListState.Saver) {
         val pos = store.peek(key)
         LazyListState(pos.index, pos.offset)
@@ -140,9 +143,10 @@ fun rememberPersistedLazyListState(key: String): LazyListState {
 fun <T> rememberAnchoredLazyListState(
     key: String,
     items: List<T>,
+    // Declared before [anchorOf] so existing trailing-lambda call sites keep working.
+    store: ScrollPositionRepository = koinInject(),
     anchorOf: (T) -> String,
 ): LazyListState {
-    val store = koinInject<ScrollPositionRepository>()
     val state = rememberSaveable(key, saver = LazyListState.Saver) { LazyListState(0, 0) }
     val currentItems by rememberUpdatedState(items)
     val currentAnchorOf by rememberUpdatedState(anchorOf)
