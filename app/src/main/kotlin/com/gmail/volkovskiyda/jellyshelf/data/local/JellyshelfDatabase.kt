@@ -10,9 +10,10 @@ import androidx.room.TypeConverters
         CategoryEntity::class,
         VideoCategoryCrossRef::class,
     ],
-    version = 4,
-    // Schemas are checked in under app/schemas so future version bumps get real migrations —
-    // manual categories and in-app yt-dlp metadata are user-authored and must survive updates.
+    version = 1,
+    // Schemas are checked in under app/schemas so every future version bump ships a real migration
+    // in the same commit — manual categories and in-app yt-dlp metadata are user-authored and must
+    // survive updates.
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
