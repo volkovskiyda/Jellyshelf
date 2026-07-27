@@ -109,15 +109,23 @@ class SettingsViewModel(
     init {
         viewModelScope.launch {
             val s = settingsRepo.snapshot()
-            val cachedUsers = settingsCache.usersFor(s.serverUrl)
             val cur = _state.value
+            // This snapshot loads asynchronously — don't clobber text the user managed to type
+            // into the fields before it landed.
+            val edited = fieldsEdited
+            val serverUrl = if (edited) cur.serverUrl else s.serverUrl
+            // Looked up by the URL the field actually shows, not by the persisted one: entries
+            // are keyed by the server they came from, so an edited URL misses the cache and the
+            // chips stay cleared — which is what onServerUrlChange asked for. Restoring the old
+            // server's users here would let a tap persist a foreign user id under the new URL.
+            val cachedUsers = settingsCache.usersFor(serverUrl.trim())
             _state.value = cur.copy(
-                // This snapshot loads asynchronously — don't clobber text the user managed
-                // to type into the fields before it landed.
-                serverUrl = if (fieldsEdited) cur.serverUrl else s.serverUrl,
-                apiKey = if (fieldsEdited) cur.apiKey else s.apiKey,
-                indexUrl = if (fieldsEdited) cur.indexUrl else s.indexUrl,
+                serverUrl = serverUrl,
+                apiKey = if (edited) cur.apiKey else s.apiKey,
+                indexUrl = if (edited) cur.indexUrl else s.indexUrl,
                 users = cachedUsers.orEmpty(),
+                // Still the persisted user and scope: they are what sync uses until the next
+                // Connect, so the screen would lie by blanking them over an unsaved edit.
                 selectedUserId = s.userId,
                 selectedUserName = s.userName,
                 selectedScopeId = s.libraryId,
@@ -131,7 +139,7 @@ class SettingsViewModel(
             // Only hit the server when this process hasn't loaded users yet — tab switches
             // recreate this ViewModel, and re-connecting on every visit is wasted work. A
             // user already editing the fields connects explicitly with what they typed.
-            if (s.hasCredentials && cachedUsers == null && !fieldsEdited) connect(silent = true)
+            if (s.hasCredentials && cachedUsers == null && !edited) connect(silent = true)
         }
         observeSync()
     }
@@ -334,8 +342,14 @@ class SettingsViewModel(
         loadChildrenJob = viewModelScope.launch {
             _state.value = _state.value.copy(loadingFolders = true)
             runCatchingCancellable {
+                // Browse with the credentials that are actually saved, not with whatever is
+                // half-typed in the fields: the folder tree belongs to the connection the app is
+                // configured with, and an edit that hasn't been through Connect isn't one. The
+                // user and the folder being browsed do come from the screen — selectUser opens
+                // the browser before its own persist has necessarily landed.
+                val saved = settingsRepo.snapshot()
                 val folders = jellyfin
-                    .getChildFolders(s.serverUrl, s.apiKey, s.selectedUserId, s.currentParentId)
+                    .getChildFolders(saved.serverUrl, saved.apiKey, s.selectedUserId, s.currentParentId)
                     .map { FolderRef(it.id, it.name, it.path) }
                 _state.value = _state.value.copy(childFolders = folders, loadingFolders = false)
             }.onFailure { e ->
