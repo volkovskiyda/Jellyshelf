@@ -6,6 +6,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.ui.debounceSearchQuery
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,7 +49,7 @@ class CategoriesViewModel(
      * empty. Seeded from the container-held last emission on recreation (tab switch), so a
      * revisit shows the previous list immediately instead of a loading flash.
      */
-    val categories: StateFlow<CategoryList?> = _query
+    val categories: StateFlow<CategoryList?> = _query.debounceSearchQuery()
         .flatMapLatest { q ->
             val pristine = q.isBlank()
             (if (pristine) repo.observeCategories() else repo.searchCategories(q))

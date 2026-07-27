@@ -6,6 +6,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.ui.debounceSearchQuery
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,7 +46,9 @@ class LibraryViewModel(
      * revisit shows the previous list immediately instead of a loading flash.
      */
     val videos: StateFlow<LibraryVideos?> =
-        combine(_query, _durationFilter) { q, filter -> q to filter }
+        // Only the query is debounced — a duration chip tap is a single deliberate event and should
+        // apply at once, so it stays on the raw flow.
+        combine(_query.debounceSearchQuery(), _durationFilter) { q, filter -> q to filter }
             .flatMapLatest { (q, filter) ->
                 val pristine = q.isBlank() && filter == null
                 (if (pristine) repo.observeVideos() else repo.searchVideos(q, filter))

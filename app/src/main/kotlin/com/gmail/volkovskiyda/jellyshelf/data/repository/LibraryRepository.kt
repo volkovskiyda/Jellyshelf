@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -116,7 +117,7 @@ class DefaultLibraryRepository(
     private val jellyfin: JellyfinDataSource,
     private val settings: SettingsRepository,
     private val ytDlp: YtDlpMetadataSource,
-    dispatchers: DispatcherProvider,
+    private val dispatchers: DispatcherProvider,
 ) : LibraryRepository {
     private val videoDao = db.videoDao()
     private val categoryDao = db.categoryDao()
@@ -151,8 +152,13 @@ class DefaultLibraryRepository(
     override val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
     private var bulkJob: Job? = null
 
+    // Every list flow below ends in `flowOn(dispatchers.default)`: ViewModels collect these through
+    // `stateIn(viewModelScope)`, i.e. on Main.immediate, so without it the entity→domain mapping —
+    // and, worse, SearchRanking scanning the title, channel, description, tags and categories of a
+    // few thousand videos on every keystroke — would run on the main thread and jank the UI.
+    // Room already runs the queries themselves on its own executor; this moves the mapping too.
     override fun observeVideos(): Flow<List<Video>> =
-        videoDao.observeAll().map { it.map(VideoEntity::toDomain) }
+        videoDao.observeAll().map { it.map(VideoEntity::toDomain) }.flowOn(dispatchers.default)
 
     /**
      * Videos filtered to [bucket] (all durations when null) and, for a non-blank [query], narrowed
@@ -166,6 +172,7 @@ class DefaultLibraryRepository(
             videoDao.observeByDurationRange(bucket.minSeconds, bucket.maxSeconds)
         }
         return source.map { SearchRanking.rankVideos(query, it).map(VideoEntity::toDomain) }
+            .flowOn(dispatchers.default)
     }
 
     /** Videos in [categoryId], routing the "Others" virtual filters to live queries. */
@@ -175,17 +182,19 @@ class DefaultLibraryRepository(
         VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatched()
         VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatched()
         else -> videoDao.observeByCategory(categoryId)
-    }.map { it.map(VideoEntity::toDomain) }
+    }.map { it.map(VideoEntity::toDomain) }.flowOn(dispatchers.default)
 
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> =
         categoryDao.observeWithCounts().map { rows -> rows.map { it.toDomain() } }
+            .flowOn(dispatchers.default)
 
     override fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
         categoryDao.searchWithCounts(escapeLikePattern(query))
             .map { ranked -> SearchRanking.rankCategories(query, ranked).map { it.toDomain() } }
+            .flowOn(dispatchers.default)
 
     /**
      * The "Others" tab's virtual filters with live counts: Uncategorized (no yt-dlp/index metadata),
