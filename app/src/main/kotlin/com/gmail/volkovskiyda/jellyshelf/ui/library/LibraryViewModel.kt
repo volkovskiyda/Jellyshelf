@@ -5,8 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
+import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -37,7 +37,7 @@ class LibraryViewModel(
 
     /** Total videos in the library, independent of the current filter — the "all" denominator. */
     val totalCount: StateFlow<Int> =
-        repo.videoCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+        repo.videoCount().stateIn(viewModelScope, WhileUiSubscribed, 0)
 
     /**
      * Null while the very first Room emission is pending, so the UI can tell loading from
@@ -54,7 +54,7 @@ class LibraryViewModel(
             .onEach { filters.lastVideos = it.items }
             .stateIn(
                 viewModelScope,
-                SharingStarted.WhileSubscribed(5_000),
+                WhileUiSubscribed,
                 filters.lastVideos?.let {
                     LibraryVideos(it, _query.value.isBlank() && _durationFilter.value == null)
                 },

@@ -9,9 +9,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkFetch
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
+import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -26,7 +26,7 @@ class CategoryVideosViewModel(
 
     /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
     val videos: StateFlow<List<Video>?> = repo.observeVideosByCategory(categoryId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        .stateIn(viewModelScope, WhileUiSubscribed, null)
 
     val bulkFetch: StateFlow<BulkFetch> = repo.bulkFetch
 

@@ -10,10 +10,10 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
@@ -38,7 +38,7 @@ class DetailViewModel(
 
     val video: StateFlow<VideoDetailState> = repo.observeVideo(youtubeId)
         .map { it?.let(VideoDetailState::Loaded) ?: VideoDetailState.NotFound }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VideoDetailState.Loading)
+        .stateIn(viewModelScope, WhileUiSubscribed, VideoDetailState.Loading)
 
     val settings: StateFlow<Settings?> = settingsState.settings
 

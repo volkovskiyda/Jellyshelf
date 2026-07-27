@@ -11,11 +11,11 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
@@ -98,10 +98,10 @@ class SettingsViewModel(
             status = if (local.busy) local.status else sync.message ?: local.status,
             statusIsError = if (local.busy) local.statusIsError else sync.isError,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+    }.stateIn(viewModelScope, WhileUiSubscribed, SettingsUiState())
 
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+        .stateIn(viewModelScope, WhileUiSubscribed, 0)
 
     /** Set as soon as the user edits any connection field, see [init]. */
     private var fieldsEdited = false

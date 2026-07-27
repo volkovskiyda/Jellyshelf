@@ -5,8 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -57,14 +57,14 @@ class CategoriesViewModel(
         .onEach { filters.lastCategories = it.items }
         .stateIn(
             viewModelScope,
-            SharingStarted.WhileSubscribed(5_000),
+            WhileUiSubscribed,
             filters.lastCategories?.let { CategoryList(it, _query.value.isBlank()) },
         )
 
     /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
     val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()
         .onEach { filters.lastOthers = it }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), filters.lastOthers.orEmpty())
+        .stateIn(viewModelScope, WhileUiSubscribed, filters.lastOthers.orEmpty())
 
     fun onQueryChange(value: String) {
         _query.value = value
