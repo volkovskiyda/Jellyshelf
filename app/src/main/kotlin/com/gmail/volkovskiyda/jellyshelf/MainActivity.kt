@@ -81,8 +81,14 @@ class MainActivity : ComponentActivity() {
             // in, so agreeing with it keeps the hand-over invisible.
             val darkTheme = (themeState?.mode ?: themeModeCache.peek()).isDark()
             // Re-applied because the cache can be a launch stale, and because a mode change while
-            // running must restyle the bars — see [applyEdgeToEdge].
+            // running must restyle the bars — see [applyEdgeToEdge]. The window background is
+            // repainted alongside them: onCreate's paint owns the first frame, this owns staying
+            // current, which matters now that a system flip no longer recreates the activity and
+            // would otherwise leave a stale colour showing through IME-resize gaps and overscroll.
             DisposableEffect(darkTheme) {
+                window.setBackgroundDrawable(
+                    themeBackgroundArgb(this@MainActivity, darkTheme, buildInfo).toDrawable(),
+                )
                 applyEdgeToEdge(darkTheme)
                 onDispose {}
             }
