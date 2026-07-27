@@ -15,6 +15,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultLibraryRepositor
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
+import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
@@ -82,6 +83,7 @@ val appModule = module {
     single { WorkManager.getInstance(androidContext()) }
 
     singleOf(::DefaultSettingsRepository) { bind<SettingsRepository>() }
+    singleOf(::ThemeModeCache)
     singleOf(::DefaultScrollPositionRepository) { bind<ScrollPositionRepository>() }
     singleOf(::AppSettingsState)
     singleOf(::JellyfinClient)

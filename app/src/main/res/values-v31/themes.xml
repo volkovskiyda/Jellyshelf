@@ -1,0 +1,10 @@
+<resources>
+    <!-- The splash background is what the system paints before the app process exists, which is
+         why a forced light/dark mode needs its own theme rather than the DayNight default. -->
+    <style name="Theme.Jellyshelf.Splash.Light" parent="Theme.Jellyshelf">
+        <item name="android:windowSplashScreenBackground">@color/splash_background_light</item>
+    </style>
+    <style name="Theme.Jellyshelf.Splash.Dark" parent="Theme.Jellyshelf">
+        <item name="android:windowSplashScreenBackground">@color/splash_background_dark</item>
+    </style>
+</resources>

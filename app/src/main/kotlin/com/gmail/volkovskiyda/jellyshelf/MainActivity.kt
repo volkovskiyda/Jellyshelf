@@ -1,6 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf
 
+import android.content.res.Resources
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -27,6 +29,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavEntry
@@ -34,6 +37,8 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
+import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
@@ -45,6 +50,8 @@ import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.themeBackgroundArgb
+import org.koin.android.ext.android.inject
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 
@@ -56,30 +63,84 @@ private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
 private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
 
 class MainActivity : ComponentActivity() {
+    private val themeModeCache: ThemeModeCache by inject()
+    private val buildInfo: BuildInfo by inject()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Covers the frames before composition; the effect below takes over once the persisted
-        // theme mode is known, which is the only thing that can disagree with the system setting.
-        enableEdgeToEdge()
+        // Everything the window shows before composition — its colour and its bar icons — has to
+        // be decided now, from the cache, because the persisted theme is still an async read away.
+        val startupDark = cachedDarkTheme()
+        window.setBackgroundDrawable(themeBackgroundArgb(this, startupDark, buildInfo).toDrawable())
+        applyEdgeToEdge(startupDark)
+        selectSplashTheme()
         setContent {
             val viewModel: MainViewModel = koinViewModel()
             val themeState by viewModel.themeState.collectAsStateWithLifecycle()
-            // Auto while the setting is still loading — the same thing the window is already
-            // showing, and JellyshelfApp renders no content until its own read lands.
-            val darkTheme = (themeState?.mode ?: ThemeMode.AUTO).isDark()
-            // enableEdgeToEdge decides bar-icon contrast from the *system* dark mode, so a user
-            // who forces the app the other way would get white icons on white without this.
+            // The cached mode until the real one lands: it is what the window is already painted
+            // in, so agreeing with it keeps the hand-over invisible.
+            val darkTheme = (themeState?.mode ?: themeModeCache.peek()).isDark()
+            // Re-applied because the cache can be a launch stale, and because a mode change while
+            // running must restyle the bars — see [applyEdgeToEdge].
             DisposableEffect(darkTheme) {
-                enableEdgeToEdge(
-                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { darkTheme },
-                    navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { darkTheme },
-                )
+                applyEdgeToEdge(darkTheme)
                 onDispose {}
+            }
+            // Keeps the cache read by [cachedDarkTheme] honest for the next cold start.
+            LaunchedEffect(themeState) {
+                themeState?.let { themeModeCache.store(it.mode) }
             }
             JellyshelfTheme(darkTheme = darkTheme) {
                 JellyshelfApp(viewModel)
             }
         }
+    }
+
+    /**
+     * The theme to paint with before the persisted one can be read.
+     *
+     * The XML theme is `DayNight`, so left alone the window follows the *system* — and start-up
+     * takes about a second before anything paints over it, long enough to stare at a black window
+     * while waiting for a light-forced app. The cache answers synchronously, which DataStore
+     * cannot; it is stale only on the launch right after a mode change, which costs one
+     * wrong-coloured start-up window before the composition above corrects it and the cache.
+     */
+    private fun cachedDarkTheme(): Boolean = when (themeModeCache.peek()) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.AUTO -> resources.configuration.isNightModeActive
+    }
+
+    /**
+     * Picks the splash theme for the **next** launch, which is the only part of start-up the app
+     * cannot paint itself: the system builds the splash before the process exists, from the
+     * manifest's DayNight theme, so a light-forced app is preceded by a black splash.
+     *
+     * The platform persists this choice, and [Resources.ID_NULL] resets it — which is what lets
+     * [ThemeMode.AUTO] hand the decision back to DayNight, where it is already correct. Being a
+     * launch behind only shows on the first start after a mode change, the same as
+     * [ThemeModeCache].
+     */
+    private fun selectSplashTheme() {
+        if (!buildInfo.isAtLeast(Build.VERSION_CODES.S)) return
+        splashScreen.setSplashScreenTheme(
+            when (themeModeCache.peek()) {
+                ThemeMode.LIGHT -> R.style.Theme_Jellyshelf_Splash_Light
+                ThemeMode.DARK -> R.style.Theme_Jellyshelf_Splash_Dark
+                ThemeMode.AUTO -> Resources.ID_NULL
+            },
+        )
+    }
+
+    /**
+     * `enableEdgeToEdge` decides bar-icon contrast from the *system* dark mode, so a user who
+     * forces the app the other way gets white icons on white without this.
+     */
+    private fun applyEdgeToEdge(darkTheme: Boolean) {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { darkTheme },
+            navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { darkTheme },
+        )
     }
 }
 

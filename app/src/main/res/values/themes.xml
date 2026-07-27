@@ -1,3 +1,14 @@
 <resources>
     <style name="Theme.Jellyshelf" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+
+    <!--
+      Splash themes the app selects at runtime (see MainActivity) when the user forces light or
+      dark, because the manifest theme is DayNight and so follows the *system* instead. The
+      attribute that makes them differ is API 31+, so it lives in values-v31; these base
+      definitions exist at every API level so the style ids always resolve.
+
+      The platform persists the selected theme by name, so these names must stay stable.
+    -->
+    <style name="Theme.Jellyshelf.Splash.Light" parent="Theme.Jellyshelf" />
+    <style name="Theme.Jellyshelf.Splash.Dark" parent="Theme.Jellyshelf" />
 </resources>
