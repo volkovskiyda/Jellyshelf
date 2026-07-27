@@ -50,7 +50,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.sync.Mutex
@@ -150,7 +149,21 @@ class DefaultLibraryRepository(
     private val repoScope = dispatchers.ioScope("LibraryRepository")
     private val _bulkFetch = MutableStateFlow<BulkFetch>(BulkFetch.Idle)
     override val bulkFetch: StateFlow<BulkFetch> = _bulkFetch.asStateFlow()
+
+    /**
+     * Guards every read-modify-write of [bulkJob], [bulkGeneration] and the [_bulkFetch] state.
+     * Start and cancel both check-then-act on the current job, and are called straight from the
+     * UI rather than from a coroutine, so a plain lock (not a Mutex) is what fits.
+     */
+    private val bulkLock = Any()
     private var bulkJob: Job? = null
+
+    /**
+     * Bumped by every start and cancel. A run only publishes progress for its own generation, so
+     * a `Running` write that was already in flight when the user pressed Cancel can't land after
+     * the reset to `Idle` and strand the UI on a job that no longer exists.
+     */
+    private var bulkGeneration = 0L
 
     // Every list flow below ends in `flowOn(dispatchers.default)`: ViewModels collect these through
     // `stateIn(viewModelScope)`, i.e. on Main.immediate, so without it the entity→domain mapping —
@@ -416,43 +429,58 @@ class DefaultLibraryRepository(
      * Fetch metadata for every uncategorized (Jellyfin-only) video, one at a time, publishing
      * progress via [bulkFetch]. No-op if already running.
      */
-    // Both Job.isActive (the member, guarding here) and the imported CoroutineScope.isActive
-    // extension (the cancellation check inside launch) are intended resolutions.
-    @Suppress("MemberExtensionConflict")
     override fun startFetchMissing() {
-        if (bulkJob?.isActive == true) return
-        bulkJob = repoScope.launch {
-            val targets = videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
-            if (targets.isEmpty()) {
-                _bulkFetch.value = BulkFetch.Done(0, 0)
-                return@launch
-            }
-            var failed = 0
-            _bulkFetch.value = BulkFetch.Running(0, targets.size, 0)
-            targets.forEachIndexed { i, video ->
-                // A failure applying the result counts as failed too, so an unexpected exception
-                // can't kill the process or strand the Running state.
-                val ok = runCatchingCancellable {
-                    applyFetched(video.youtubeId, ytDlp.fetch(video.youtubeId))
-                }.getOrDefault(false)
-                if (!ok) failed++
-                // cancelFetchMissing resets to Idle without waiting for this job; a cancelled
-                // run must not write a stale Running over that.
-                if (!isActive) return@launch
-                _bulkFetch.value = BulkFetch.Running(i + 1, targets.size, failed)
-            }
-            _bulkFetch.value = BulkFetch.Done(targets.size, failed)
+        val generation = synchronized(bulkLock) {
+            if (bulkJob?.isActive == true) return
+            ++bulkGeneration
+        }
+        val job = repoScope.launch { runFetchMissing(generation) }
+        synchronized(bulkLock) {
+            // A cancel that landed while this job was being started bumped the generation past
+            // ours: this run is already obsolete, so stop it instead of publishing it as current.
+            if (generation == bulkGeneration) bulkJob = job else job.cancel()
         }
     }
 
+    private suspend fun runFetchMissing(generation: Long) {
+        val targets = videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
+        if (targets.isEmpty()) {
+            publishBulkFetch(generation, BulkFetch.Done(0, 0))
+            return
+        }
+        var failed = 0
+        publishBulkFetch(generation, BulkFetch.Running(0, targets.size, 0))
+        targets.forEachIndexed { i, video ->
+            // A failure applying the result counts as failed too, so an unexpected exception
+            // can't kill the process or strand the Running state. A per-video timeout inside
+            // YtDlpMetadataSource keeps one hung extraction from stalling the whole run.
+            val ok = runCatchingCancellable {
+                applyFetched(video.youtubeId, ytDlp.fetch(video.youtubeId))
+            }.getOrDefault(false)
+            if (!ok) failed++
+            publishBulkFetch(generation, BulkFetch.Running(i + 1, targets.size, failed))
+        }
+        publishBulkFetch(generation, BulkFetch.Done(targets.size, failed))
+    }
+
+    /** Publishes [state] only while [generation] is still the live run — see [bulkGeneration]. */
+    private fun publishBulkFetch(generation: Long, state: BulkFetch) = synchronized(bulkLock) {
+        if (generation == bulkGeneration) _bulkFetch.value = state
+    }
+
     override fun cancelFetchMissing() {
-        bulkJob?.cancel()
-        bulkJob = null
-        _bulkFetch.value = BulkFetch.Idle
+        val job = synchronized(bulkLock) {
+            bulkGeneration++
+            _bulkFetch.value = BulkFetch.Idle
+            bulkJob.also { bulkJob = null }
+        }
+        // Cancelling outside the lock: the running fetch's own cleanup publishes nothing (its
+        // generation is stale now) and must not have to wait on a lock the UI thread holds.
+        job?.cancel()
     }
 
     /** Clear a terminal [BulkFetch.Done] once the UI has shown it. */
-    override fun acknowledgeBulkFetch() {
+    override fun acknowledgeBulkFetch() = synchronized(bulkLock) {
         if (_bulkFetch.value is BulkFetch.Done) _bulkFetch.value = BulkFetch.Idle
     }
 
