@@ -42,6 +42,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
 import java.time.Instant
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +54,7 @@ import kotlinx.coroutines.launch
 import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
@@ -380,13 +382,18 @@ class DefaultLibraryRepository(
      * folder scope — are left untouched, so a subsequent sync rebuilds from scratch.
      */
     override suspend fun clearLocalData() {
-        writeMutex.withLock {
-            db.withTransaction {
-                categoryDao.clearCrossRefs()
-                categoryDao.clearCategories()
-                videoDao.clear()
+        // NonCancellable: a cancellation landing between the wipe and the marker reset would
+        // leave an empty library still claiming it synced recently, and the next sync would
+        // treat every video as newly deleted.
+        withContext(NonCancellable) {
+            writeMutex.withLock {
+                db.withTransaction {
+                    categoryDao.clearCrossRefs()
+                    categoryDao.clearCategories()
+                    videoDao.clear()
+                }
+                settings.setLastSyncAt(0L)
             }
-            settings.setLastSyncAt(0L)
         }
     }
 

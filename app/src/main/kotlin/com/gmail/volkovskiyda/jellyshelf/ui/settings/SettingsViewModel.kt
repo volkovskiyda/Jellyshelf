@@ -3,20 +3,27 @@ package com.gmail.volkovskiyda.jellyshelf.ui.settings
 import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
+import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
-import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Sentinel for the "all collections" (root) scope. */
 const val ROOT_SCOPE_ID = ""
@@ -61,16 +68,37 @@ data class SettingsUiState(
     val currentPath: String get() = breadcrumb.joinToString(CRUMB_SEPARATOR) { it.name }
 }
 
+/** Sync progress as owned by WorkManager, merged into [SettingsUiState] for display. */
+private data class SyncUi(val running: Boolean, val message: String?, val isError: Boolean)
+
 class SettingsViewModel(
     private val app: Application,
     private val settingsRepo: SettingsRepository,
     private val libraryRepo: LibraryRepository,
     private val jellyfin: JellyfinRepository,
     private val settingsCache: SettingsCache,
+    private val syncScheduler: SyncScheduler,
 ) : ViewModel() {
 
+    /** Local operations (connect, reset) only — sync lives in [_sync], see [state]. */
     private val _state = MutableStateFlow(SettingsUiState())
-    val state: StateFlow<SettingsUiState> = _state.asStateFlow()
+    private val _sync = MutableStateFlow<SyncUi?>(null)
+
+    /**
+     * Sync no longer runs in this scope, so its progress can't be held in [_state]: the worker
+     * outlives the ViewModel a tab switch clears. Merging the two here keeps the screen's
+     * contract unchanged while a sync started on one visit still reports on the next.
+     */
+    val state: StateFlow<SettingsUiState> = combine(_state, _sync) { local, sync ->
+        if (sync == null) local
+        else local.copy(
+            busy = local.busy || sync.running,
+            // A local operation's own message wins while it runs — a sync finishing in the
+            // middle of a connect must not overwrite "Connecting…".
+            status = if (local.busy) local.status else sync.message ?: local.status,
+            statusIsError = if (local.busy) local.statusIsError else sync.isError,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
@@ -105,6 +133,45 @@ class SettingsViewModel(
             // user already editing the fields connects explicitly with what they typed.
             if (s.hasCredentials && cachedUsers == null && !fieldsEdited) connect(silent = true)
         }
+        observeSync()
+    }
+
+    /**
+     * Mirrors the manual sync worker's state into [_sync]. Re-attaching on every ViewModel
+     * creation is what makes sync status survive a tab switch — WorkManager replays the current
+     * state of the unique work, finished or not.
+     */
+    private fun observeSync() {
+        syncScheduler.manualSyncInfo()
+            .mapNotNull { it.lastOrNull() }
+            .onEach { info ->
+                _sync.value = when (info.state) {
+                    WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING, WorkInfo.State.BLOCKED ->
+                        SyncUi(running = true, message = app.getString(R.string.syncing), isError = false)
+                    WorkInfo.State.SUCCEEDED -> {
+                        val out = info.outputData
+                        // The worker exits early without output when credentials are missing;
+                        // showing a 0/0 summary then would be a lie, so say nothing.
+                        val message = if (out.keyValueMap.isEmpty()) null else app.getString(
+                            R.string.sync_summary,
+                            out.getInt(SyncWorker.KEY_INDEXED, 0),
+                            out.getInt(SyncWorker.KEY_MATCHED, 0),
+                            out.getInt(SyncWorker.KEY_CATEGORIES, 0),
+                        )
+                        _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
+                        SyncUi(running = false, message = message, isError = false)
+                    }
+                    WorkInfo.State.FAILED -> SyncUi(
+                        running = false,
+                        message = info.outputData.getString(SyncWorker.KEY_ERROR)
+                            ?: app.getString(R.string.unknown_error),
+                        isError = true,
+                    )
+                    // Cancelled by "Reset local data", which posts its own status — leave it be.
+                    WorkInfo.State.CANCELLED -> null
+                }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun onServerUrlChange(value: String) {
@@ -282,6 +349,10 @@ class SettingsViewModel(
         if (_state.value.busy) return
         viewModelScope.launch {
             _state.value = _state.value.copy(busy = true, status = app.getString(R.string.clearing_local_data), statusIsError = false)
+            // Stop sync first: a worker running through the wipe would refill the tables, and
+            // the periodic one must not resurrect the data the user just asked us to drop.
+            syncScheduler.cancelAll()
+            _sync.value = null
             libraryRepo.clearLocalData()
             _state.value = _state.value.copy(
                 busy = false,
@@ -292,24 +363,19 @@ class SettingsViewModel(
         }
     }
 
+    /**
+     * Hands the sync to WorkManager and (re)creates the periodic one. Deliberately not awaited:
+     * a tab switch clears this ViewModel, which used to cancel the sync mid-flight.
+     */
     fun syncNow() {
-        if (_state.value.busy) return
+        val indexUrl = _state.value.indexUrl
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.syncing), statusIsError = false)
-            settingsRepo.setIndexUrl(_state.value.indexUrl)
-            val result = libraryRepo.sync()
-            val message = when (result) {
-                is SyncResult.Success ->
-                    app.getString(R.string.sync_summary, result.indexed, result.matched, result.categories)
-                is SyncResult.Error -> result.message
+            // The worker reads the index URL from settings, so persist before enqueueing — and
+            // do both even if this ViewModel is cleared in between.
+            withContext(NonCancellable) {
+                settingsRepo.setIndexUrl(indexUrl)
+                syncScheduler.syncNow()
             }
-            val s = settingsRepo.snapshot()
-            _state.value = _state.value.copy(
-                busy = false,
-                status = message,
-                statusIsError = result is SyncResult.Error,
-                lastSyncAt = s.lastSyncAt,
-            )
         }
     }
 }

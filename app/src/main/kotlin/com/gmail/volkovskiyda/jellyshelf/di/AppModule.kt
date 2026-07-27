@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.di
 import android.content.Context
 import android.os.Build
 import androidx.room.Room
+import androidx.work.WorkManager
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
@@ -16,6 +17,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultLibraryRepositor
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
+import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
@@ -60,6 +62,9 @@ val appModule = module {
     single { provideJson() }
     single { provideHttpClient(get(), get()) }
     single { provideDatabase(androidContext()) }
+    // Resolvable only after startKoin's workManagerFactory() has initialized WorkManager — Koin
+    // singles are lazy, so the first injection happens well after that.
+    single { WorkManager.getInstance(androidContext()) }
 
     singleOf(::DefaultSettingsRepository) { bind<SettingsRepository>() }
     singleOf(::DefaultScrollPositionRepository) { bind<ScrollPositionRepository>() }
@@ -69,6 +74,7 @@ val appModule = module {
     singleOf(::DefaultJellyfinRepository) { bind<JellyfinRepository>() }
     singleOf(::YtDlpMetadataSource)
     singleOf(::DefaultLibraryRepository) { bind<LibraryRepository>() }
+    singleOf(::SyncScheduler)
 
     // Process-lifetime UI state that must survive tab switches (which clear tab ViewModels).
     singleOf(::LibraryFilterState)

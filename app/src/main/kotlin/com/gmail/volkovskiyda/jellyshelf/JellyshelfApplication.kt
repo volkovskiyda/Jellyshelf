@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf
 
 import android.app.Application
-import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import org.koin.android.ext.android.get
@@ -29,6 +28,8 @@ class JellyshelfApplication : Application() {
         if (get<BuildInfo>().isDebug) {
             Timber.plant(Timber.DebugTree())
         }
-        SyncScheduler.schedulePeriodic(this)
+        // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
+        // launches, and re-scheduling on every start would undo "Reset local data", which
+        // cancels it. "Sync now" owns creating it (see SyncScheduler).
     }
 }
