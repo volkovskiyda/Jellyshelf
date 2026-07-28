@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -152,6 +153,11 @@ fun ThemeReveal(
         controller.radius.snapTo(if (darkTheme) 0f else target)
         controller.overlayBitmap = captured // The overlay covers frame one completely...
         applied = darkTheme // ...so the theme flip underneath it lands unseen.
+        // Let that frame pass before starting the clock. Re-theming the whole app is by far the
+        // most expensive frame of the change — long enough on a mid-range device that an animation
+        // started now would have run a third of its course before anything could be drawn, and the
+        // circle would open already half-grown instead of out of the switch.
+        withFrameNanos { }
         try {
             controller.radius.animateTo(
                 targetValue = if (darkTheme) target else 0f,

@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +18,11 @@ import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.LocalThemeRevealController
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeRevealController
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,6 +49,18 @@ class ThemeModeSwitchTest {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
                 ThemeModeSwitch(mode = state.mode, onClick = { state = state.next() })
+            }
+        }
+    }
+
+    /** The same switch, but composed under a reveal controller the way [MainActivity] provides one. */
+    private fun setContentWithReveal(controller: ThemeRevealController) {
+        var state by mutableStateOf(ThemeState())
+        composeRule.setContent {
+            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+                CompositionLocalProvider(LocalThemeRevealController provides controller) {
+                    ThemeModeSwitch(mode = state.mode, onClick = { state = state.next() })
+                }
             }
         }
     }
@@ -82,6 +100,37 @@ class ThemeModeSwitchTest {
         switch().performClick()
 
         assertMode(ThemeMode.AUTO)
+    }
+
+    /**
+     * A tap arms the circular reveal from the control's own centre, which is what lets the new
+     * theme grow out of the switch rather than replace the screen. The arming is spent by the first
+     * reader, so a tap that turns out to change nothing visible cannot animate a later, unrelated
+     * change.
+     */
+    @Test
+    fun a_tap_arms_the_reveal_from_the_control_centre() {
+        val controller = ThemeRevealController()
+        setContentWithReveal(controller)
+
+        switch().performClick()
+
+        val expected = switch().fetchSemanticsNode().boundsInWindow.center
+        val origin = controller.consumeOrigin()
+        assertNotNull("The tap armed no origin", origin)
+        assertEquals(expected.x, origin!!.x, 1f)
+        assertEquals(expected.y, origin.y, 1f)
+        assertNull("The origin survived being consumed", controller.consumeOrigin())
+    }
+
+    /** Nothing provides a controller in previews or screenshot tests; the switch still has to work. */
+    @Test
+    fun a_tap_without_a_reveal_controller_still_changes_the_mode() {
+        setContent()
+
+        switch().performClick()
+
+        assertMode(ThemeMode.DARK)
     }
 
     /** The accessibility state is what a screen-reader user has instead of the thumb's position. */

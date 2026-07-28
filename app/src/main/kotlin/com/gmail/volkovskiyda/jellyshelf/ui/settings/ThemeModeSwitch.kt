@@ -19,10 +19,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -30,6 +36,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.LocalThemeRevealController
 
 /** What the settings row and the switch's accessibility state call each mode. */
 internal val ThemeMode.labelRes: Int
@@ -76,14 +83,27 @@ internal fun ThemeModeSwitch(
         targetValue = STATION_SIZE * ThemeMode.entries.indexOf(mode),
         label = "themeThumbOffset",
     )
+    // Absent in previews and in tests that compose the switch on its own, which is the whole point
+    // of the local's null default: the switch keeps working, it just changes the theme without the
+    // animation.
+    val revealController = LocalThemeRevealController.current
+    var centerInWindow by remember { mutableStateOf<Offset?>(null) }
 
     Box(
         modifier = modifier
             .size(width = TRACK_WIDTH, height = STATION_SIZE)
+            .onGloballyPositioned { centerInWindow = it.boundsInWindow().center }
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-            .clickable(onClickLabel = stringResource(R.string.change_theme), onClick = onClick)
+            .clickable(onClickLabel = stringResource(R.string.change_theme)) {
+                // Armed before the mode change is even requested, because that request travels
+                // through the ViewModel and DataStore before it comes back as a new theme — by then
+                // the origin has to be waiting. A tap that changes nothing visible (light → auto
+                // under a light system) leaves the arming to expire unused; see [ThemeRevealController].
+                centerInWindow?.let { revealController?.armReveal(it) }
+                onClick()
+            }
             // The control as a whole reports which mode is selected, so TalkBack announces the
             // state once instead of reading three undifferentiated icons.
             .semantics { this.stateDescription = stateDescription },
