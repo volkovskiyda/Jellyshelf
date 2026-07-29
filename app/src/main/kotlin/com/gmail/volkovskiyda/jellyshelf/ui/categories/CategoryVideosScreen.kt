@@ -118,7 +118,6 @@ fun CategoryVideosScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CategoryVideosContent(
     title: String,
@@ -153,32 +152,7 @@ internal fun CategoryVideosContent(
     val videos = videosOrNull.orEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(title) },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.back),
-                    )
-                }
-            },
-            actions = {
-                if (videos.isNotEmpty()) {
-                    Text(
-                        pluralStringResource(R.plurals.video_count, videos.size, videos.size),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    IconButton(onClick = onShowDialog) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.PlaylistAdd,
-                            contentDescription = stringResource(R.string.create_playlist),
-                        )
-                    }
-                }
-            },
-        )
+        CategoryTopBar(title, videos.size, onBack, onShowDialog)
 
         // The in-app yt-dlp bulk fetch lives only on the Uncategorized filter.
         if (isUncategorized && (bulkFetch !is BulkProgress.Idle || videos.isNotEmpty())) {
@@ -210,29 +184,7 @@ internal fun CategoryVideosContent(
             )
         }
 
-        if (videosOrNull == null) {
-            // First Room emission still pending — don't flash the empty-state guidance.
-            LoadingState()
-        } else if (videos.isEmpty()) {
-            EmptyState(
-                stringResource(
-                    if (isUncategorized) R.string.empty_uncategorized else R.string.empty_category
-                ),
-            )
-        } else {
-            LazyColumn(
-                state = rememberAnchoredLazyListState(scrollKey, videos, scrollStore) { it.fileName },
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(videos, key = { it.youtubeId }) { video ->
-                    VideoRow(
-                        video = video,
-                        onClick = { onVideoClick(video) },
-                        thumbnailModel = thumbnailModel(video),
-                    )
-                }
-            }
-        }
+        CategoryVideoList(videosOrNull, isUncategorized, scrollKey, onVideoClick, scrollStore, thumbnailModel)
     }
 
     if (showDialog) {
@@ -251,6 +203,73 @@ internal fun CategoryVideosContent(
             onDismiss = onDismissRemoveDialog,
             onConfirm = onConfirmRemoveWatched,
         )
+    }
+}
+
+/** The category's title bar: back, count, and — once there is anything to play — Create playlist. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryTopBar(title: String, videoCount: Int, onBack: () -> Unit, onShowDialog: () -> Unit) {
+    TopAppBar(
+        title = { Text(title) },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                )
+            }
+        },
+        actions = {
+            if (videoCount > 0) {
+                Text(
+                    pluralStringResource(R.plurals.video_count, videoCount, videoCount),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                IconButton(onClick = onShowDialog) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.PlaylistAdd,
+                        contentDescription = stringResource(R.string.create_playlist),
+                    )
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun CategoryVideoList(
+    videosOrNull: List<Video>?,
+    isUncategorized: Boolean,
+    scrollKey: String,
+    onVideoClick: (Video) -> Unit,
+    scrollStore: ScrollPositionRepository,
+    thumbnailModel: (Video) -> String?,
+) {
+    val videos = videosOrNull.orEmpty()
+    if (videosOrNull == null) {
+        // First Room emission still pending — don't flash the empty-state guidance.
+        LoadingState()
+    } else if (videos.isEmpty()) {
+        EmptyState(
+            stringResource(
+                if (isUncategorized) R.string.empty_uncategorized else R.string.empty_category
+            ),
+        )
+    } else {
+        LazyColumn(
+            state = rememberAnchoredLazyListState(scrollKey, videos, scrollStore) { it.fileName },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            items(videos, key = { it.youtubeId }) { video ->
+                VideoRow(
+                    video = video,
+                    onClick = { onVideoClick(video) },
+                    thumbnailModel = thumbnailModel(video),
+                )
+            }
+        }
     }
 }
 
@@ -288,68 +307,65 @@ private fun BulkActionHeader(
                     progress = { fraction },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        buildString {
-                            append(stringResource(runningLabel, state.done, state.total))
-                            if (state.failed > 0) {
-                                append(" • ")
-                                append(stringResource(R.string.failed_count, state.failed))
-                            }
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
-                }
+                BulkStatusRow(
+                    text = bulkLabel(runningLabel, state.done, state.total, state.failed),
+                    actionLabel = stringResource(R.string.cancel),
+                    onAction = onCancel,
+                )
             }
 
-            is BulkProgress.Done -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        buildString {
-                            append(
-                                stringResource(doneLabel, state.total - state.failed, state.total)
-                            )
-                            if (state.failed > 0) {
-                                append(" • ")
-                                append(stringResource(R.string.failed_count, state.failed))
-                            }
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.dismiss)) }
-                }
-            }
+            is BulkProgress.Done -> BulkStatusRow(
+                text = bulkLabel(doneLabel, state.total - state.failed, state.total, state.failed),
+                actionLabel = stringResource(R.string.dismiss),
+                onAction = onDismiss,
+            )
 
-            BulkProgress.Idle -> {
-                if (destructive) {
-                    OutlinedButton(
-                        onClick = onStart,
-                        enabled = enabled,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error,
-                        ),
-                    ) { Text(idleLabel) }
-                } else {
-                    Button(
-                        onClick = onStart,
-                        enabled = enabled,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(idleLabel) }
-                }
-            }
+            BulkProgress.Idle -> BulkStartButton(idleLabel, enabled, destructive, onStart)
         }
     }
     HorizontalDivider()
+}
+
+/** "N of M" progress or summary text, with the failure count appended once there is one. */
+@Composable
+private fun bulkLabel(@StringRes label: Int, done: Int, total: Int, failed: Int): String = buildString {
+    append(stringResource(label, done, total))
+    if (failed > 0) {
+        append(" • ")
+        append(stringResource(R.string.failed_count, failed))
+    }
+}
+
+@Composable
+private fun BulkStatusRow(text: String, actionLabel: String, onAction: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onAction) { Text(actionLabel) }
+    }
+}
+
+@Composable
+private fun BulkStartButton(label: String, enabled: Boolean, destructive: Boolean, onStart: () -> Unit) {
+    if (destructive) {
+        OutlinedButton(
+            onClick = onStart,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+            ),
+        ) { Text(label) }
+    } else {
+        Button(
+            onClick = onStart,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(label) }
+    }
 }
 
 /**
