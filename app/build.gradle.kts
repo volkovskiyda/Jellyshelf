@@ -109,9 +109,7 @@ android {
         // Regenerate after dependency bumps with: ./gradlew :app:updateLintBaselineDebug
         baseline = file("lint-baseline.xml")
         // Also print findings to the console; file reports in build/reports/ stay as-is.
-        // Plain File("stdout") (not project file()) — lint only treats the bare name as console.
-        textReport = true
-        textOutput = File("stdout")
+        printTextReport = true
     }
 }
 
