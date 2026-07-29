@@ -4,12 +4,12 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
-import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
-import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
