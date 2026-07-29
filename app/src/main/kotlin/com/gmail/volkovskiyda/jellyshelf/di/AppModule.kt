@@ -34,6 +34,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryViewModel
+import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
@@ -105,6 +106,7 @@ val appModule = module {
     viewModelOf(::CategoriesViewModel)
     viewModelOf(::CategoryVideosViewModel)
     viewModelOf(::DetailViewModel)
+    viewModelOf(::PlayerViewModel)
     viewModelOf(::SettingsViewModel)
 
     workerOf(::SyncWorker)

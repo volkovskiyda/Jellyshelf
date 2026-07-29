@@ -97,6 +97,12 @@
     <string name="last_fetch_failed">Last metadata fetch failed %1$s: %2$s</string>
     <string name="no_app_found">No app found to handle this</string>
 
+    <!-- Player -->
+    <string name="pause">Pause</string>
+    <string name="seek_back_10">Back 10 seconds</string>
+    <string name="seek_forward_10">Forward 10 seconds</string>
+    <string name="playback_error">Playback failed: %1$s</string>
+
     <!-- Settings -->
     <string name="appearance">Appearance</string>
     <string name="theme">Theme</string>

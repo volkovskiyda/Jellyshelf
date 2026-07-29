@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf
 
+import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Color
 import android.os.Build
@@ -43,11 +44,13 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
+import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
+import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
@@ -58,6 +61,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.themeBackgroundArgb
 import org.koin.android.ext.android.inject
 import org.koin.androidx.compose.koinViewModel
+import org.koin.androidx.viewmodel.ext.android.viewModel
 import timber.log.Timber
 
 private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: ImageVector)
@@ -71,8 +75,13 @@ class MainActivity : ComponentActivity() {
     private val themeModeCache: ThemeModeCache by inject()
     private val buildInfo: BuildInfo by inject()
 
+    // The same instance composition resolves via koinViewModel(): both come from this activity's
+    // ViewModelStore. Held here so intent handling can reach it outside composition.
+    private val mainViewModel: MainViewModel by viewModel()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        forwardOpenPlayer(intent)
         // Everything the window shows before composition — its colour and its bar icons — has to
         // be decided now, from the cache, because the persisted theme is still an async read away.
         val startupDark = cachedDarkTheme()
@@ -80,7 +89,7 @@ class MainActivity : ComponentActivity() {
         applyEdgeToEdge(startupDark)
         selectSplashTheme()
         setContent {
-            val viewModel: MainViewModel = koinViewModel()
+            val viewModel = mainViewModel
             val themeState by viewModel.themeState.collectAsStateWithLifecycle()
             // The cached mode until the real one lands: it is what the window is already painted
             // in, so agreeing with it keeps the hand-over invisible.
@@ -114,6 +123,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        forwardOpenPlayer(intent)
+    }
+
+    /**
+     * A media-notification tap: [PlaybackService] put the playing video's youtubeId on the
+     * session-activity intent; the nav collects the request and pushes the player screen.
+     * Handles both the running-activity case (singleTop → onNewIntent) and a cold start.
+     */
+    private fun forwardOpenPlayer(intent: Intent?) {
+        intent?.getStringExtra(PlaybackService.EXTRA_OPEN_PLAYER)
+            ?.let(mainViewModel::requestOpenPlayer)
     }
 
     /**
@@ -192,6 +216,16 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             .collect { stack ->
                 Timber.tag("Navigation").d("backStack (${stack.size}): ${stack.joinToString(" -> ")}")
             }
+    }
+
+    // A media-notification tap opens the player for the id it carried. Runs only once the nav
+    // exists, which is what makes the cold-start tap work: startStack has already resolved.
+    val openPlayer by viewModel.openPlayer.collectAsStateWithLifecycle()
+    LaunchedEffect(openPlayer) {
+        openPlayer?.let { id ->
+            if (backStack.lastOrNull() != AppNavKey.Player(id)) backStack.add(AppNavKey.Player(id))
+            viewModel.consumeOpenPlayer()
+        }
     }
 
     val topLevel = listOf(
@@ -286,6 +320,13 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
 
                 is AppNavKey.Detail -> NavEntry(key) {
                     DetailScreen(
+                        youtubeId = key.youtubeId,
+                        onBack = { navThrottle { pop() } },
+                    )
+                }
+
+                is AppNavKey.Player -> NavEntry(key) {
+                    PlayerScreen(
                         youtubeId = key.youtubeId,
                         onBack = { navThrottle { pop() } },
                     )

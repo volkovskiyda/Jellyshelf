@@ -28,11 +28,15 @@
         <!-- uiMode handled in-process: a system dark-mode flip repaints the composition in place
              instead of tearing the activity down (and in a forced light/dark mode it changes
              nothing visible at all, so the recreation was pure waste). Every other configuration
-             change, rotation included, still recreates. -->
+             change, rotation included, still recreates.
+
+             singleTop so a media-notification tap lands in the running activity as onNewIntent
+             (forwarded to the player screen) instead of stacking a second instance. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="uiMode"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Jellyshelf">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

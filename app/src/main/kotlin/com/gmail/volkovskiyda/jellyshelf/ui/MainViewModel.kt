@@ -36,6 +36,23 @@ class MainViewModel(
     val themeState: StateFlow<ThemeState?> =
         settingsRepo.themeState.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /**
+     * A youtubeId whose player screen should open, set by a media-notification tap (the activity
+     * forwards the intent extra) and consumed by the nav once pushed. Survives the cold-start
+     * gap: the nav collects it only after [startStack] resolves, so a tap that launches the
+     * process still lands on the player.
+     */
+    private val _openPlayer = MutableStateFlow<String?>(null)
+    val openPlayer: StateFlow<String?> = _openPlayer.asStateFlow()
+
+    fun requestOpenPlayer(youtubeId: String) {
+        _openPlayer.value = youtubeId
+    }
+
+    fun consumeOpenPlayer() {
+        _openPlayer.value = null
+    }
+
     init {
         viewModelScope.launch {
             val s = settingsRepo.snapshot()
@@ -67,8 +84,11 @@ class MainViewModel(
     /** Persist the current back stack so the next launch reopens on the exact same screen. */
     fun saveBackStack(stack: List<AppNavKey>) {
         viewModelScope.launch {
+            // The player is deliberately not persisted: a relaunch lands on the screen beneath
+            // it instead of auto-reopening a player whose playback ended with the process.
+            val persistable = stack.filterNot { it is AppNavKey.Player }
             val raw = try {
-                json.encodeToString(stackSerializer, stack)
+                json.encodeToString(stackSerializer, persistable)
             } catch (_: Exception) {
                 return@launch
             }

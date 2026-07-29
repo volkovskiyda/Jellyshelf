@@ -19,4 +19,7 @@ sealed class AppNavKey : NavKey {
 
     @Serializable
     data class Detail(val youtubeId: String) : AppNavKey()
+
+    @Serializable
+    data class Player(val youtubeId: String) : AppNavKey()
 }
