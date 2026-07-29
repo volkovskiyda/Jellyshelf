@@ -57,13 +57,13 @@ class CategoriesViewModel(
         }
         // Cached whole, so the seed below keeps the pristine-ness that actually produced this list
         // rather than recomputing it from the query as it reads at recreation time.
-        .onEach { filters.lastCategories = it }
-        .stateIn(viewModelScope, WhileUiSubscribed, filters.lastCategories)
+        .onEach { filters.lastCategories.value = it }
+        .stateIn(viewModelScope, WhileUiSubscribed, filters.lastCategories.value)
 
     /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
     val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()
-        .onEach { filters.lastOthers = it }
-        .stateIn(viewModelScope, WhileUiSubscribed, filters.lastOthers.orEmpty())
+        .onEach { filters.lastOthers.value = it }
+        .stateIn(viewModelScope, WhileUiSubscribed, filters.lastOthers.value.orEmpty())
 
     fun onQueryChange(value: String) {
         _query.value = value

@@ -8,6 +8,7 @@ import com.yausername.youtubedl_android.YoutubeDLRequest
 import com.yausername.youtubedl_android.mapper.VideoInfo
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,15 +30,14 @@ open class YtDlpMetadataSource(
     private val appContext = context.applicationContext
     private val initMutex = Mutex()
 
-    @Volatile
-    private var initialized = false
+    private val initialized = MutableStateFlow(false)
 
     private suspend fun ensureInit() {
-        if (initialized) return
+        if (initialized.value) return
         initMutex.withLock {
-            if (!initialized) {
+            if (!initialized.value) {
                 YoutubeDL.getInstance().init(appContext)
-                initialized = true
+                initialized.value = true
             }
         }
     }

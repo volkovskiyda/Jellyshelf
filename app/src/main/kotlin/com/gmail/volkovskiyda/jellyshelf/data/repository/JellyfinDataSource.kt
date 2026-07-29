@@ -14,6 +14,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.utils.io.jvm.javaio.toInputStream
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
@@ -42,17 +43,16 @@ class JellyfinDataSource(
     private val json: Json,
 ) {
     // Cache the built API by "url|key" so we don't reconfigure the client each call. A single
-    // volatile pair keeps the key and its API published atomically, so a concurrent settings change
-    // can never pair one server's key with another server's client.
+    // atomically-swapped pair keeps the key and its API published together, so a concurrent
+    // settings change can never pair one server's key with another server's client.
     private data class CachedApi(val key: String, val api: JellyfinApi)
 
-    @Volatile
-    private var cached: CachedApi? = null
+    private val cached = MutableStateFlow<CachedApi?>(null)
 
     private fun api(serverUrl: String, credential: String): JellyfinApi {
         val key = "$serverUrl|$credential"
-        cached?.let { if (it.key == key) return it.api }
-        return client.create(serverUrl, credential).also { cached = CachedApi(key, it) }
+        cached.value?.let { if (it.key == key) return it.api }
+        return client.create(serverUrl, credential).also { cached.value = CachedApi(key, it) }
     }
 
     /**

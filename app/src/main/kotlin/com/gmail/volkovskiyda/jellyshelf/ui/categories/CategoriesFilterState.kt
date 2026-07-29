@@ -44,11 +44,9 @@ class CategoriesFilterState(
      * would then seed the old list with the new query's pristine-ness, and each tab's scroll
      * restore — which trusts that flag — would fire against contents it never belonged to.
      */
-    @Volatile
-    var lastCategories: CategoryList? = null
+    val lastCategories = MutableStateFlow<CategoryList?>(null)
 
-    @Volatile
-    var lastOthers: List<CategoryWithCount>? = null
+    val lastOthers = MutableStateFlow<List<CategoryWithCount>?>(null)
 
     init {
         // Restore the last-viewed Categories dimension so reopening the app lands on it rather

@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * Process-lifetime Settings cache. Tab switches clear the Settings ViewModel, and without this
@@ -10,13 +11,12 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 class SettingsCache {
     private data class Entry(val serverUrl: String, val users: List<User>)
 
-    @Volatile
-    private var entry: Entry? = null
+    private val entry = MutableStateFlow<Entry?>(null)
 
     fun usersFor(serverUrl: String): List<User>? =
-        entry?.takeIf { it.serverUrl == serverUrl }?.users
+        entry.value?.takeIf { it.serverUrl == serverUrl }?.users
 
     fun store(serverUrl: String, users: List<User>) {
-        entry = Entry(serverUrl, users)
+        entry.value = Entry(serverUrl, users)
     }
 }

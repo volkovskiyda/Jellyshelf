@@ -23,6 +23,5 @@ class LibraryFilterState {
      * scroll restore, which trusts that tag, would restore a position onto contents it never
      * belonged to.
      */
-    @Volatile
-    var lastVideos: LibraryVideos? = null
+    val lastVideos = MutableStateFlow<LibraryVideos?>(null)
 }

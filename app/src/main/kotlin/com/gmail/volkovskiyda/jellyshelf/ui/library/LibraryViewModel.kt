@@ -64,8 +64,8 @@ class LibraryViewModel(
             }
             // Cached whole, so the seed below keeps the query and filter that actually produced
             // this list rather than whatever they read as at recreation time.
-            .onEach { filters.lastVideos = it }
-            .stateIn(viewModelScope, WhileUiSubscribed, filters.lastVideos)
+            .onEach { filters.lastVideos.value = it }
+            .stateIn(viewModelScope, WhileUiSubscribed, filters.lastVideos.value)
 
     fun onQueryChange(value: String) {
         _query.value = value
