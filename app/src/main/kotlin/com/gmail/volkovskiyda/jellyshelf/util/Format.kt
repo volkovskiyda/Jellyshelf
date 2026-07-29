@@ -8,7 +8,6 @@ import java.time.format.DateTimeFormatter
 /** Ticks are 100-nanosecond units (Jellyfin/.NET). 10,000,000 ticks == 1 second. */
 const val TICKS_PER_SECOND = 10_000_000L
 
-fun secondsToTicks(seconds: Long): Long = seconds * TICKS_PER_SECOND
 fun ticksToSeconds(ticks: Long): Long = ticks / TICKS_PER_SECOND
 
 /** 10,000 ticks == 1 millisecond. External players report positions in milliseconds. */

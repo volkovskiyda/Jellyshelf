@@ -59,7 +59,7 @@ class LiveEndpointTest : KoinTest {
         val userId = api.getUsers().first().id
         // Round-tripping without throwing is the assertion: proves ItemsResponse/BaseItemDto decode.
         val views = api.getViews(userId)
-        assertTrue(views.totalRecordCount >= 0)
+        assertTrue(views.items.size >= 0)
     }
 
     @Test
@@ -67,7 +67,7 @@ class LiveEndpointTest : KoinTest {
         val api = jellyfinClient.create(config.serverUrl, config.apiKey)
         val userId = api.getUsers().first().id
         val resp = api.getItems(userId = userId, limit = 5)
-        assertTrue(resp.totalRecordCount >= 0)
+        assertTrue(resp.items.size >= 0)
     }
 
     @Test

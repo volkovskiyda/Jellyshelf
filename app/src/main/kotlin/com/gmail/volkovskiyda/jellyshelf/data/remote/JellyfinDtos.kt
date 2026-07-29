@@ -29,7 +29,6 @@ data class AuthenticationResult(
 @Serializable
 data class ItemsResponse(
     @SerialName("Items") val items: List<BaseItemDto> = emptyList(),
-    @SerialName("TotalRecordCount") val totalRecordCount: Int = 0,
 )
 
 @Serializable

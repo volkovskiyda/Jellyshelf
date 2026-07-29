@@ -8,8 +8,7 @@ import java.time.ZoneId
 class FormatTest {
 
     @Test
-    fun `tick conversions round-trip whole seconds and millis`() {
-        assertEquals(10_000_000L, secondsToTicks(1))
+    fun `tick conversions truncate to whole seconds and round-trip millis`() {
         assertEquals(1L, ticksToSeconds(10_000_000L))
         assertEquals(0L, ticksToSeconds(9_999_999L))
         assertEquals(10_000L, millisToTicks(1))
@@ -87,10 +86,10 @@ class FormatTest {
 
     @Test
     fun `watchedFraction coerces into unit range and handles unknown duration`() {
-        assertEquals(0f, watchedFraction(secondsToTicks(30), 0), 0f)
+        assertEquals(0f, watchedFraction(30 * TICKS_PER_SECOND, 0), 0f)
         assertEquals(0f, watchedFraction(0, 100), 0f)
-        assertEquals(0.5f, watchedFraction(secondsToTicks(50), 100), 0.001f)
-        assertEquals(1f, watchedFraction(secondsToTicks(200), 100), 0f)
-        assertEquals(0f, watchedFraction(-secondsToTicks(10), 100), 0f)
+        assertEquals(0.5f, watchedFraction(50 * TICKS_PER_SECOND, 100), 0.001f)
+        assertEquals(1f, watchedFraction(200 * TICKS_PER_SECOND, 100), 0f)
+        assertEquals(0f, watchedFraction(-10 * TICKS_PER_SECOND, 100), 0f)
     }
 }
