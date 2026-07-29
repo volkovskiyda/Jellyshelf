@@ -4,25 +4,12 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.AuthenticateByNameBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AuthenticationResult
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.CreatePlaylistBody
-import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinApi
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
-import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromStream
 import timber.log.Timber
-import java.io.IOException
 
 /** Paging safety cap — far above any real library, purely an infinite-loop backstop. */
 private const val MAX_PAGED_ITEMS = 1_000_000
@@ -38,9 +25,6 @@ private const val PLAYBACK_TAG = "Playback"
  */
 class JellyfinDataSource(
     private val client: JellyfinClient,
-    private val httpClient: HttpClient,
-    private val dispatchers: DispatcherProvider,
-    private val json: Json,
 ) {
     // Cache the built API by "url|key" so we don't reconfigure the client each call. A single
     // atomically-swapped pair keeps the key and its API published together, so a concurrent
@@ -149,7 +133,7 @@ class JellyfinDataSource(
 
     suspend fun setPlayed(serverUrl: String, credential: String, userId: String, itemId: String, played: Boolean) {
         val api = api(serverUrl, credential)
-        val response = if (played) api.markPlayed(userId, itemId) else api.markUnplayed(userId, itemId)
+        val response = api.setPlayed(userId, itemId, played)
         Timber.tag(PLAYBACK_TAG).d("setPlayed(played=$played) itemId=$itemId -> HTTP ${response.status.value}")
         // A non-2xx already threw (expectSuccess = true) inside the API call, so callers' best-effort
         // /toggle failure handling still sees a failed mark-played; reaching here means success.
@@ -201,30 +185,4 @@ class JellyfinDataSource(
     ): String = api(serverUrl, credential)
         .createPlaylist(CreatePlaylistBody(name = name, ids = itemIds, userId = userId))
         .id
-
-    /**
-     * Fetches the aggregated yt-dlp metadata index from an arbitrary URL. Throws on HTTP failure
-     * — callers must be able to tell a failed fetch from an index that is genuinely empty, since
-     * the former must never degrade existing index-sourced metadata.
-     */
-    @OptIn(ExperimentalSerializationApi::class)
-    suspend fun fetchIndex(indexUrl: String): List<IndexEntry> = withContext(dispatchers.io) {
-        // indexUrl is an arbitrary absolute URL (not a Jellyfin endpoint), so it uses the base
-        // httpClient directly. With expectSuccess = true a non-2xx throws a ResponseException here
-        // — still a throw, which is all this method's contract promises.
-        val stream = httpClient.get(indexUrl).bodyAsChannel().toInputStream()
-        // Decoded straight off the response stream rather than via bodyAsText(): a 10k-video
-        // index runs to tens of megabytes of JSON, and buffering the whole document into a String
-        // before parsing it would hold a second full copy for no gain.
-        stream.use {
-            try {
-                json.decodeFromStream(ListSerializer(IndexEntry.serializer()), it)
-            } catch (e: SerializationException) {
-                // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at
-                // minimum), so a blank or non-JSON 200 — captive portal, file caught mid-rewrite —
-                // must count as a failed fetch, or it would downgrade every index-sourced row.
-                throw IOException("Index fetch returned no usable JSON array", e)
-            }
-        }
-    }
 }

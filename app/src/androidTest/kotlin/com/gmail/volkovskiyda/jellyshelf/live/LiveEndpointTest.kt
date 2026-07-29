@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.live
 
+import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
 import io.ktor.client.HttpClient
@@ -27,7 +28,7 @@ import org.koin.test.inject
  * Uses the real [JellyfinClient]/[JellyfinDataSource] from `appModule` (tuned base Ktor client +
  * ContentNegotiation + kotlinx `Json` + timeouts), so it exercises the actual migrated stack.
  *
- * Write endpoints (markPlayed/updateUserData/createPlaylist) are intentionally not driven here —
+ * Write endpoints (setPlayed/updateUserData/createPlaylist) are intentionally not driven here —
  * they mutate real watch state, and a safe run needs a designated disposable test item on the
  * configured server (a follow-up, see the plan's item 09).
  */
@@ -36,6 +37,7 @@ class LiveEndpointTest : KoinTest {
     private val config by inject<JellyfinTestConfig>()
     private val jellyfinClient by inject<JellyfinClient>()
     private val dataSource by inject<JellyfinDataSource>()
+    private val indexSource by inject<IndexSource>()
 
     @Before
     fun setUp() {
@@ -82,7 +84,7 @@ class LiveEndpointTest : KoinTest {
     @Test
     fun fetchIndex_whenIndexUrlConfigured_deserializes() = runTest {
         assumeTrue("no JELLYFIN_INDEX_URL — skipping index fetch", config.indexUrl.isNotBlank())
-        val entries = dataSource.fetchIndex(config.indexUrl)
+        val entries = indexSource.fetchIndex(config.indexUrl)
         assertTrue(entries.size >= 0)
     }
 

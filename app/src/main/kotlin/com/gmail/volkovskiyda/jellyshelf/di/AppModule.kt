@@ -8,6 +8,7 @@ import coil.ImageLoader
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultJellyfinRepository
@@ -88,6 +89,7 @@ val appModule = module {
     singleOf(::AppSettingsState)
     singleOf(::JellyfinClient)
     singleOf(::JellyfinDataSource)
+    singleOf(::IndexSource)
     singleOf(::DefaultJellyfinRepository) { bind<JellyfinRepository>() }
     singleOf(::YtDlpMetadataSource)
     singleOf(::DefaultLibraryRepository) { bind<LibraryRepository>() }
@@ -111,7 +113,7 @@ val appModule = module {
 /** How the app names itself to Jellyfin — the "Client" column in its dashboard and session list. */
 private const val CLIENT_NAME = "Jellyshelf"
 
-// Shared lenient Json for both ContentNegotiation and the manual index decode (JellyfinDataSource).
+// Shared lenient Json for both ContentNegotiation and the manual index decode (IndexSource).
 // The three flags together keep request bodies wire-identical to the old Moshi output:
 //  - ignoreUnknownKeys: Jellyfin returns far more fields than we model; kotlinx throws otherwise.
 //  - explicitNulls=false: omit null-valued properties (e.g. UserItemDataBody.lastPlayedDate), as Moshi did.

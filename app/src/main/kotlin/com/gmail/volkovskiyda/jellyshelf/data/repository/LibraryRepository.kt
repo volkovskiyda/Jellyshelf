@@ -7,6 +7,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.VideoCategoryCrossRef
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.mapper.toDomain
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
+import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
@@ -210,6 +211,7 @@ private class BulkRunner(private val scope: CoroutineScope) {
 class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
     private val jellyfin: JellyfinDataSource,
+    private val indexSource: IndexSource,
     private val settings: SettingsRepository,
     private val ytDlp: YtDlpMetadataSource,
     private val dispatchers: DispatcherProvider,
@@ -352,7 +354,7 @@ class DefaultLibraryRepository(
         var indexAvailable = false
         val index: Map<String, IndexEntry> = if (s.indexUrl.isNotBlank()) {
             runCatchingCancellable {
-                jellyfin.fetchIndex(s.indexUrl).associateBy { it.id }.also { indexAvailable = true }
+                indexSource.fetchIndex(s.indexUrl).associateBy { it.id }.also { indexAvailable = true }
             }.getOrElse { e ->
                 // Swallowing this silently made an index URL that 404s indistinguishable from
                 // months of healthy syncs: metadata quietly freezes and new videos stay

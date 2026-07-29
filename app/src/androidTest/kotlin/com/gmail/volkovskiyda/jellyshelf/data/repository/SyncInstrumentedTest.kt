@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
+import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
@@ -169,8 +170,9 @@ class SyncInstrumentedTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val dataSource = JellyfinDataSource(JellyfinClient(httpClient), httpClient, dispatchers, json)
-        return DefaultLibraryRepository(db, dataSource, settings, ytDlp, dispatchers)
+        val dataSource = JellyfinDataSource(JellyfinClient(httpClient))
+        val indexSource = IndexSource(httpClient, dispatchers, json)
+        return DefaultLibraryRepository(db, dataSource, indexSource, settings, ytDlp, dispatchers)
     }
 
     private suspend fun storedIds() = db.videoDao().observeAll().first().map { it.youtubeId }.sorted()

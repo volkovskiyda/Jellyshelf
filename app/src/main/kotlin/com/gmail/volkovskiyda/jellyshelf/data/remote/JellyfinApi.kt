@@ -89,11 +89,12 @@ class JellyfinApi(private val client: HttpClient) {
         parameter("Limit", limit)
     }.body()
 
-    suspend fun markPlayed(userId: String, itemId: String): HttpResponse =
+    /** Marks [itemId] played or unplayed — the same endpoint either way: POST sets, DELETE clears. */
+    suspend fun setPlayed(userId: String, itemId: String, played: Boolean): HttpResponse = if (played) {
         client.post("Users/$userId/PlayedItems/$itemId")
-
-    suspend fun markUnplayed(userId: String, itemId: String): HttpResponse =
+    } else {
         client.delete("Users/$userId/PlayedItems/$itemId")
+    }
 
     /**
      * Deletes an item from the library, its media file included — Jellyfin has no trash to
