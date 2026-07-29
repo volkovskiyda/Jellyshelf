@@ -70,7 +70,7 @@ class JellyfinApi(private val client: HttpClient) {
         parentId: String? = null,
         recursive: Boolean = true,
         includeItemTypes: String = "Video,Movie,Episode,MusicVideo",
-        fields: String = "Path,ProviderIds,Overview,Genres,Tags,ProductionYear",
+        fields: String = "Path,Overview,Genres,Tags,ProductionYear",
         // Stable ordering matters: paging without a sort can skip items when the library
         // changes mid-sync, and a skipped item now gets deleted locally by the sync.
         sortBy: String = "SortName",

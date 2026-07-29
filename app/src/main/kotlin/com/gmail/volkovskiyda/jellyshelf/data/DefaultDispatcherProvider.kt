@@ -10,12 +10,11 @@ import kotlinx.coroutines.SupervisorJob
 import timber.log.Timber
 
 /**
- * Production [DispatcherProvider]. The three base dispatchers are constructor parameters defaulting
- * to the real ones, so a test can pass a single `TestDispatcher` for all three and drive every
+ * Production [DispatcherProvider]. The base dispatchers are constructor parameters defaulting
+ * to the real ones, so a test can pass a single `TestDispatcher` for both and drive every
  * scope deterministically.
  */
 class DefaultDispatcherProvider(
-    override val main: CoroutineDispatcher = Dispatchers.Main,
     override val default: CoroutineDispatcher = Dispatchers.Default,
     override val io: CoroutineDispatcher = Dispatchers.IO,
 ) : DispatcherProvider {

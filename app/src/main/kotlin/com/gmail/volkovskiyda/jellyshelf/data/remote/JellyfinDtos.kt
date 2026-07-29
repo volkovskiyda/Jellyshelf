@@ -43,7 +43,6 @@ data class BaseItemDto(
     @SerialName("Overview") val overview: String? = null,
     @SerialName("Genres") val genres: List<String>? = null,
     @SerialName("Tags") val tags: List<String>? = null,
-    @SerialName("ProviderIds") val providerIds: Map<String, String>? = null,
     @SerialName("UserData") val userData: UserDataDto? = null,
 )
 

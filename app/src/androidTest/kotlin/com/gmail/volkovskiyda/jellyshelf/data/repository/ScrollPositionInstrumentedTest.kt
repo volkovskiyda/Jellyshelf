@@ -34,7 +34,6 @@ class ScrollPositionInstrumentedTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     private val dispatchers = object : DispatcherProvider {
-        override val main = Dispatchers.Unconfined
         override val default = Dispatchers.Unconfined
         override val io = Dispatchers.IO
         override val ioSequential = Dispatchers.IO

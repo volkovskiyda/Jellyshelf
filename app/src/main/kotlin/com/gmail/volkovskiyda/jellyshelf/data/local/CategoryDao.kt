@@ -43,9 +43,6 @@ interface CategoryDao {
     )
     fun searchWithCounts(query: String): Flow<List<RankedCategory>>
 
-    @Query("DELETE FROM categories WHERE id = :categoryId")
-    suspend fun deleteCategory(categoryId: String)
-
     /** Drop this video's memberships in auto categories (keeping [keepType], i.e. manual), before re-deriving them. */
     @Query(
         "DELETE FROM video_category WHERE youtubeId = :youtubeId AND categoryId IN " +

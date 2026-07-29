@@ -82,7 +82,6 @@ class SyncInstrumentedTest {
 
     /** Everything on one real dispatcher; the repository only needs these to exist. */
     private val dispatchers = object : DispatcherProvider {
-        override val main = Dispatchers.Unconfined
         override val default = Dispatchers.Unconfined
         override val io = Dispatchers.Unconfined
         override val ioSequential = Dispatchers.Unconfined

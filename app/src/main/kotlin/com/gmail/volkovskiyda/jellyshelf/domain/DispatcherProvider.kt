@@ -13,7 +13,6 @@ import kotlinx.coroutines.CoroutineScope
  * shared singleton.
  */
 interface DispatcherProvider {
-    val main: CoroutineDispatcher
     val default: CoroutineDispatcher
     val io: CoroutineDispatcher
 
