@@ -5,6 +5,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- In-app playback runs as a media foreground service (PlaybackService). Its notification
+         needs POST_NOTIFICATIONS on API 33+, requested at runtime from the player screen; when
+         denied, playback still works — the media notification just stays hidden. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- allowBackup off: DataStore holds the Jellyfin api key in plaintext, which must not end
          up in device/cloud backups. Cleartext HTTP is permitted only in debug builds (see the
          debug manifest overlay). -->
@@ -32,6 +39,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Exported so media controllers outside the app (system media output switcher,
+             Android Auto and the like) can bind to the session; the media3 intent filter is
+             what they resolve. No permission on purpose (ExportedService): media3 gates every
+             controller through the session's own connect/command authorization instead. -->
+        <service
+            android:name=".playback.PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
         <!-- Remove WorkManager's default on-startup initializer: Koin's workManagerFactory()
              initializes WorkManager with the injection-aware worker factory instead (see

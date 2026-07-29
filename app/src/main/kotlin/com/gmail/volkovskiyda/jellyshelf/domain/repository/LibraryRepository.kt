@@ -40,5 +40,12 @@ interface LibraryRepository {
     suspend fun removeVideo(youtubeId: String)
     suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean
     fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean)
+
+    /**
+     * Local-only periodic position save from the in-app player, so process death mid-playback
+     * can't lose the spot. No server write — the server still sees exactly one report per stop
+     * ([reportPlaybackStopped]) — and never unmarks a played video. Fire-and-forget.
+     */
+    fun savePlaybackPosition(youtubeId: String, positionMs: Long)
     suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult
 }

@@ -10,7 +10,7 @@ import java.net.URLEncoder
 
 object Playback {
 
-    /** Shared logcat tag for the whole external-player flow: `adb logcat -s Playback`. */
+    /** Shared logcat tag for the whole playback flow, external and in-app: `adb logcat -s Playback`. */
     const val TAG = "Playback"
 
     /** Treat a stop within this many ms of the end as "finished" (players rarely report the exact end). */
@@ -23,8 +23,11 @@ object Playback {
     private const val EXTRA_VLC_DURATION = "extra_duration"
     private const val END_BY_COMPLETION = "playback_completion"
 
-    /** The header Jellyfin accepts a credential in — the same one every API call uses. */
-    private const val TOKEN_HEADER = "X-Emby-Token"
+    /**
+     * The header Jellyfin accepts a credential in — the same one every API call uses. Public so
+     * the in-app player's HTTP layer sends the credential the same way (never in the URL).
+     */
+    const val TOKEN_HEADER = "X-Emby-Token"
 
     /**
      * MX Player's request-headers extra: a String array of alternating name, value. VLC and other

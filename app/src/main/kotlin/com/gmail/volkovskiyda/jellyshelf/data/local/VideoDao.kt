@@ -95,6 +95,14 @@ interface VideoDao {
     @Query("UPDATE videos SET played = :played, playbackPositionTicks = :positionTicks WHERE youtubeId = :youtubeId")
     suspend fun updateWatchState(youtubeId: String, played: Boolean, positionTicks: Long)
 
+    /**
+     * Position-only write for the in-app player's periodic saves. The `played = 0` guard is the
+     * point: a save racing a completion report must neither flip watch state nor resurrect the
+     * cleared position of a row just marked played.
+     */
+    @Query("UPDATE videos SET playbackPositionTicks = :positionTicks WHERE youtubeId = :youtubeId AND played = 0")
+    suspend fun updatePlaybackPosition(youtubeId: String, positionTicks: Long)
+
     @Query("SELECT COUNT(*) FROM videos")
     fun count(): Flow<Int>
 

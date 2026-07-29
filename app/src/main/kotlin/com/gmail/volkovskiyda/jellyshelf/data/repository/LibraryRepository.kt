@@ -804,6 +804,19 @@ class DefaultLibraryRepository(
         repoScope.launch { onPlaybackStopped(youtubeId, positionMs, completed) }
     }
 
+    override fun savePlaybackPosition(youtubeId: String, positionMs: Long) {
+        // Fire-and-forget like reportPlaybackStopped: the playback service calls this every few
+        // seconds and must never wait on Room. The DAO query itself skips played rows.
+        repoScope.launch {
+            writeMutex.withLock {
+                videoDao.updatePlaybackPosition(youtubeId, millisToTicks(positionMs))
+                // Stamped like onPlaybackStopped's write: a sync whose server snapshot predates
+                // this save must keep the local position, not revert it.
+                localWatchWrites[youtubeId] = System.currentTimeMillis()
+            }
+        }
+    }
+
     private suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
         val positionTicks = millisToTicks(positionMs)
         Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")
