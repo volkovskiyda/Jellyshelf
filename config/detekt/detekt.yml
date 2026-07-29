@@ -6,10 +6,18 @@ build:
   maxIssues: 0
 
 complexity:
+  CyclomaticComplexMethod:
+    # Screen-content composables hold a whole screen's conditional layout by design.
+    ignoreAnnotated: ['Composable']
+  LongMethod:
+    # One content composable per screen is deliberate — its length *is* the screen's layout.
+    ignoreAnnotated: ['Composable']
   LongParameterList:
     # Stateless Compose content composables legitimately take a long parameter list — that *is*
     # the hoisted state and its callbacks (SettingsContent, DetailContent, LibraryContent).
     ignoreAnnotated: ['Composable']
+    # Defaulted parameters are API ergonomics, not call-site burden.
+    ignoreDefaultParameters: true
   TooManyFunctions:
     # One file per screen holds the screen, its content and its private sub-composables.
     ignoreAnnotatedFunctions: ['Composable']
@@ -31,6 +39,10 @@ style:
   MaxLineLength:
     # Matches the width the codebase is already written and commented to.
     maxLineLength: 120
+  ReturnCount:
+    # Guard-clause early returns are idiomatic here; 5 covers the deliberate cases while still
+    # catching pathological flow.
+    max: 5
   UnusedPrivateMember:
     # Previews are invoked reflectively by LayoutLib, never called from Kotlin.
     ignoreAnnotated: ['Preview', 'PreviewTest']
