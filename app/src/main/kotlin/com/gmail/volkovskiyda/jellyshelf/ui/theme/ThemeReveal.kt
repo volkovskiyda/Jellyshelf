@@ -24,13 +24,14 @@ import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
-import kotlinx.coroutines.CancellationException
+import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlin.math.hypot
 
 /**
@@ -118,40 +119,15 @@ fun ThemeReveal(
     // while a reveal plays, and an origin is consumed the moment it is used.
     LaunchedEffect(darkTheme) {
         if (applied == darkTheme) return@LaunchedEffect
-        val originInWindow = controller.consumeOrigin()
-        val placement = coords
-        // Nothing armed, not yet placed, or nothing drawn to capture: switch plainly. The size
-        // guard is not optional — toImageBitmap() throws on a zero-sized layer.
-        if (originInWindow == null ||
-            placement == null ||
-            layer.size.width == 0 ||
-            layer.size.height == 0
-        ) {
+        val start = captureRevealStart(controller, layer, coords)
+        if (start == null) {
             applied = darkTheme
             return@LaunchedEffect
         }
-        val captured = try {
-            layer.toImageBitmap()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            applied = darkTheme
-            return@LaunchedEffect
-        }
-
-        val local = placement.windowToLocal(originInWindow)
-        val width = placement.size.width.toFloat()
-        val height = placement.size.height.toFloat()
-        // Reach for the farthest corner, so the circle is guaranteed to cover the whole screen.
-        val target = hypot(
-            maxOf(local.x, width - local.x),
-            maxOf(local.y, height - local.y),
-        )
-
-        controller.origin = local
+        controller.origin = start.origin
         controller.expandToDark = darkTheme
-        controller.radius.snapTo(if (darkTheme) 0f else target)
-        controller.overlayBitmap = captured // The overlay covers frame one completely...
+        controller.radius.snapTo(if (darkTheme) 0f else start.targetRadius)
+        controller.overlayBitmap = start.captured // The overlay covers frame one completely...
         applied = darkTheme // ...so the theme flip underneath it lands unseen.
         // Let that frame pass before starting the clock. Re-theming the whole app is by far the
         // most expensive frame of the change — long enough on a mid-range device that an animation
@@ -160,7 +136,7 @@ fun ThemeReveal(
         withFrameNanos { }
         try {
             controller.radius.animateTo(
-                targetValue = if (darkTheme) target else 0f,
+                targetValue = if (darkTheme) start.targetRadius else 0f,
                 animationSpec = tween(REVEAL_DURATION_MS, easing = FastOutSlowInEasing),
             )
         } finally {
@@ -185,31 +161,71 @@ fun ThemeReveal(
         }
 
         // A sibling of the recorded content rather than a child of it, deliberately: the per-frame
-        // radius change then invalidates only this Canvas, and the snapshot can never end up being
-        // recorded back into the very layer it was captured from.
-        val previousFrame = controller.overlayBitmap
-        if (previousFrame != null) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag(THEME_REVEAL_OVERLAY_TAG)
-                    // The reveal owns the screen for its 400 ms; taps would otherwise land on a new
-                    // UI the user cannot see yet, under a frame that is already stale.
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) awaitPointerEvent().changes.forEach { it.consume() }
-                        }
-                    },
-            ) {
-                val circle = Path().apply {
-                    addOval(Rect(controller.origin, controller.radius.value))
+        // radius change then invalidates only the overlay's Canvas, and the snapshot can never end
+        // up being recorded back into the very layer it was captured from.
+        RevealOverlay(controller)
+    }
+}
+
+/** Everything a reveal needs the moment it starts: the frame to keep showing, where to grow from, and how far. */
+private class RevealStart(val captured: ImageBitmap, val origin: Offset, val targetRadius: Float)
+
+/**
+ * Decides whether this theme change can animate, and captures everything the reveal needs if so:
+ * the frame currently on screen, the armed origin in local coordinates, and the radius that covers
+ * the farthest corner. Null means switch plainly — nothing armed, not yet placed, or nothing drawn
+ * to capture.
+ */
+private suspend fun captureRevealStart(
+    controller: ThemeRevealController,
+    layer: GraphicsLayer,
+    placement: LayoutCoordinates?,
+): RevealStart? {
+    // Consumed first, unconditionally — a tap's arming is spent even when the reveal can't run.
+    val originInWindow = controller.consumeOrigin()
+    // The size guard is not optional: toImageBitmap() throws on a zero-sized layer.
+    val placed = placement?.takeIf { layer.size.width > 0 && layer.size.height > 0 }
+    if (originInWindow == null || placed == null) return null
+    val captured = runCatchingCancellable { layer.toImageBitmap() }.getOrNull()
+    return captured?.let { bitmap ->
+        val local = placed.windowToLocal(originInWindow)
+        val width = placed.size.width.toFloat()
+        val height = placed.size.height.toFloat()
+        // Reach for the farthest corner, so the circle is guaranteed to cover the whole screen.
+        val targetRadius = hypot(
+            maxOf(local.x, width - local.x),
+            maxOf(local.y, height - local.y),
+        )
+        RevealStart(bitmap, local, targetRadius)
+    }
+}
+
+/**
+ * The captured previous frame, clipped by the animated circle; composes to nothing once the
+ * reveal ends and the snapshot is dropped.
+ */
+@Composable
+private fun RevealOverlay(controller: ThemeRevealController) {
+    val previousFrame = controller.overlayBitmap ?: return
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag(THEME_REVEAL_OVERLAY_TAG)
+            // The reveal owns the screen for its 400 ms; taps would otherwise land on a new
+            // UI the user cannot see yet, under a frame that is already stale.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) awaitPointerEvent().changes.forEach { it.consume() }
                 }
-                // Going dark: the old light frame everywhere except a growing hole, through which
-                // the new dark theme shows. Going light: the old dark frame only inside a shrinking
-                // circle, collapsing into the origin over a UI that is already light.
-                val clipOp = if (controller.expandToDark) ClipOp.Difference else ClipOp.Intersect
-                clipPath(circle, clipOp) { drawImage(previousFrame) }
-            }
+            },
+    ) {
+        val circle = Path().apply {
+            addOval(Rect(controller.origin, controller.radius.value))
         }
+        // Going dark: the old light frame everywhere except a growing hole, through which
+        // the new dark theme shows. Going light: the old dark frame only inside a shrinking
+        // circle, collapsing into the origin over a UI that is already light.
+        val clipOp = if (controller.expandToDark) ClipOp.Difference else ClipOp.Intersect
+        clipPath(circle, clipOp) { drawImage(previousFrame) }
     }
 }
