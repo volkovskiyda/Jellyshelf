@@ -121,9 +121,9 @@
     <string name="enter_server_user_password">Enter server URL, username and password</string>
     <string name="show_advanced">Advanced ▾</string>
     <string name="hide_advanced">Advanced ▴</string>
-    <string name="api_key_explained">An API key is server-wide and admin-scoped. Use it only if password sign-in isn\'t an option; signing in gives this device a user-scoped token instead.</string>
+    <string name="api_key_explained">An API key is server-wide and admin-scoped. Use it only if password sign-in isn’t an option; signing in gives this device a user-scoped token instead.</string>
     <string name="token_in_query">Token in playback URL</string>
-    <string name="token_in_query_explained">Normally the token is passed to the player as a request header, keeping it out of the URL. Turn this on if your player can\'t use headers and playback fails.</string>
+    <string name="token_in_query_explained">Normally the token is passed to the player as a request header, keeping it out of the URL. Turn this on if your player can’t use headers and playback fails.</string>
     <string name="index_url_label">Metadata index URL (optional)</string>
     <string name="index_url_hint">https://host/jellyshelf-index.json</string>
     <string name="fill">Fill</string>
