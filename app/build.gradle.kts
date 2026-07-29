@@ -78,10 +78,10 @@ android {
     // fake lives in src/screenshotTest/kotlin instead. Collapse the two when the plugin exposes
     // its source set.
     sourceSets {
-        getByName("test") { kotlin.srcDir("src/testShared/kotlin") }
+        getByName("test") { kotlin.directories += "src/testShared/kotlin" }
         // Instrumented tests share them too — the sync suite needs the same in-memory
         // SettingsRepository the host-side tests use.
-        getByName("androidTest") { kotlin.srcDir("src/testShared/kotlin") }
+        getByName("androidTest") { kotlin.directories += "src/testShared/kotlin" }
     }
     buildFeatures {
         compose = true
