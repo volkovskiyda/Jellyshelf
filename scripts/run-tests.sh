@@ -161,8 +161,11 @@ if [[ "$FAILED" -ne 0 ]]; then
   print_report_link
   echo "Per-layer detail: app/build/reports/tests/ (unit),"
   echo "  app/build/reports/screenshotTest/ (goldens), app/build/reports/androidTests/ (behavior)."
-  echo "Goldens that changed on purpose are re-baked with:"
-  echo "  ./gradlew :app:updateDebugScreenshotTest"
+  if [[ "$SCREENSHOT_RESULT" == "FAILED" ]]; then
+    echo "Screenshot goldens differ. If the change is intentional (new feature, fixed typo),"
+    echo "re-bake the baselines and re-run:"
+    echo "  ./gradlew :app:updateDebugScreenshotTest"
+  fi
   exit 1
 fi
 

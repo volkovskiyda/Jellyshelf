@@ -312,6 +312,18 @@ tasks.register("testSummary") {
                     """<td>$errors</td><td>$warnings</td><td>$other</td></tr>"""
             }
         }
+        // Failed goldens are usually an intentional UI change, not a bug — surface the re-bake
+        // command on the page itself; scripts/run-tests.sh prints the same hint in the terminal.
+        val screenshotFailed = parsed.any { (label, stats, _) ->
+            label == "Screenshot goldens" && (stats?.second ?: 0) > 0
+        }
+        val screenshotHint = if (screenshotFailed) {
+            """<p class="hint">Screenshot goldens differ. If the change is intentional """ +
+                """(a new feature, a fixed typo), re-bake the baselines and re-run:<br>""" +
+                """<code>./gradlew :app:updateDebugScreenshotTest</code></p>"""
+        } else {
+            ""
+        }
         val analysisVerdict = "$analysisErrors analysis error" + if (analysisErrors == 1) "" else "s"
         val verdict = when {
             totalFailures > 0 && analysisErrors > 0 -> "$totalFailures failed, $analysisVerdict"
@@ -344,10 +356,13 @@ tasks.register("testSummary") {
               tr.notrun td { color: #999; font-style: italic; }
               tfoot td { font-weight: 600; border-top: 2px solid #ccc; border-bottom: none; }
               a { color: #1a4f9c; }
+              .hint { margin: .75rem 0 0; color: #b7791f; }
+              .hint code { background: #f2f2f2; padding: .1rem .4rem; border-radius: 4px; color: #222; }
               @media (prefers-color-scheme: dark) {
                 body { background: #16181c; color: #e6e6e6; }
                 th, td { border-color: #303540; } thead th { color: #9aa4b2; border-color: #454b57; }
                 tfoot td { border-color: #454b57; } a { color: #7aa7ff; } .meta { color: #9aa4b2; }
+                .hint code { background: #232833; color: #e6e6e6; }
               }
             </style></head><body>
             <h1>Jellyshelf test summary — $verdict</h1>
@@ -366,6 +381,7 @@ $rows
               <td>${totalTests - totalFailures - totalSkipped}</td>
               <td>$totalFailures</td><td>$totalSkipped</td></tr></tfoot>
             </table>
+$screenshotHint
             <h2>Static analysis</h2>
             <table>
               <thead><tr><th>Tool</th><th>Findings</th><th>Errors</th><th>Warnings</th><th>Other</th></tr></thead>
