@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
@@ -67,6 +68,10 @@ class FakeSettingsRepository(
 
     override suspend fun setTokenInQuery(enabled: Boolean) {
         _settings.value = _settings.value.copy(tokenInQuery = enabled)
+    }
+
+    override suspend fun setPlaybackMode(mode: PlaybackMode) {
+        _settings.value = _settings.value.copy(playbackMode = mode)
     }
 
     override suspend fun setIndexUrl(url: String) {

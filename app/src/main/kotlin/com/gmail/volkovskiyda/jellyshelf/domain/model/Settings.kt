@@ -32,6 +32,11 @@ data class Settings(
      * pick per player.
      */
     val tokenInQuery: Boolean = false,
+    /**
+     * How the split play button acts: in-app player, external chooser, or web deep link. Picking
+     * a mode from the button's dropdown saves it here app-wide.
+     */
+    val playbackMode: PlaybackMode = PlaybackMode.PLAY,
 ) {
     /**
      * The single value every authenticated request sends as `X-Emby-Token`: the user token when

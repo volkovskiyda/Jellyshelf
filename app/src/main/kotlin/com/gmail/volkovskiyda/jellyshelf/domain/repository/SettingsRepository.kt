@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.domain.repository
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
@@ -37,6 +38,9 @@ interface SettingsRepository {
 
     /** Advanced playback handoff: credential in the URL query rather than an intent header. */
     suspend fun setTokenInQuery(enabled: Boolean)
+
+    /** App-wide mode the split play button acts with; its dropdown persists the pick here. */
+    suspend fun setPlaybackMode(mode: PlaybackMode)
 
     /** Records that a sync finished at [timestamp] against library scope [libraryId]. */
     suspend fun setLastSync(timestamp: Long, libraryId: String)

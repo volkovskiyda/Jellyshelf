@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
@@ -38,6 +39,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val SELECTED_CATEGORY_TYPE = stringPreferencesKey("selected_category_type")
         val BACK_STACK = stringPreferencesKey("back_stack")
         val TOKEN_IN_QUERY = booleanPreferencesKey("token_in_query")
+        val PLAYBACK_MODE = stringPreferencesKey("playback_mode")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val THEME_TOWARD_DARK = booleanPreferencesKey("theme_toward_dark")
     }
@@ -59,6 +61,9 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             lastSyncAt = p[Keys.LAST_SYNC_AT] ?: 0L,
             lastSyncLibraryId = p[Keys.LAST_SYNC_LIBRARY_ID].orEmpty(),
             tokenInQuery = p[Keys.TOKEN_IN_QUERY] ?: false,
+            // By-name lookup so an unknown/absent stored value degrades to the default.
+            playbackMode = PlaybackMode.entries.firstOrNull { it.name == p[Keys.PLAYBACK_MODE] }
+                ?: PlaybackMode.PLAY,
         )
     }
 
@@ -119,6 +124,10 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setTokenInQuery(enabled: Boolean) {
         ds.edit { it[Keys.TOKEN_IN_QUERY] = enabled }
+    }
+
+    override suspend fun setPlaybackMode(mode: PlaybackMode) {
+        ds.edit { it[Keys.PLAYBACK_MODE] = mode.name }
     }
 
     override suspend fun setIndexUrl(url: String) {
