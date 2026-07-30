@@ -12,9 +12,11 @@ class Converters {
         Json.encodeToString(ListSerializer(String.serializer()), value)
 
     @TypeConverter
-    fun toStringList(value: String): List<String> =
-        if (value.isBlank()) emptyList()
-        else Json.decodeFromString(ListSerializer(String.serializer()), value)
+    fun toStringList(value: String): List<String> = if (value.isBlank()) {
+        emptyList()
+    } else {
+        Json.decodeFromString(ListSerializer(String.serializer()), value)
+    }
 
     @TypeConverter
     fun fromChapterList(value: List<Chapter>): String =

@@ -107,8 +107,8 @@ object Playback {
             putExtra("return_result", true)
             if (!tokenInQuery) putExtra(EXTRA_HEADERS, arrayOf(TOKEN_HEADER, credential))
             if (resumeMs > 0) {
-                putExtra(EXTRA_POSITION, resumeMs.toInt())     // MX Player resume (int ms)
-                putExtra(EXTRA_VLC_POSITION, resumeMs)         // VLC resume (long ms)
+                putExtra(EXTRA_POSITION, resumeMs.toInt()) // MX Player resume (int ms)
+                putExtra(EXTRA_VLC_POSITION, resumeMs) // VLC resume (long ms)
             }
         }
         // The credential is a secret whichever way it travelled — never log it.

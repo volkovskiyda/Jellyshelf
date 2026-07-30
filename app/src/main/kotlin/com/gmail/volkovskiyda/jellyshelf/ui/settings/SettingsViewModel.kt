@@ -105,14 +105,17 @@ class SettingsViewModel(
      * contract unchanged while a sync started on one visit still reports on the next.
      */
     val state: StateFlow<SettingsUiState> = combine(_state, _sync) { local, sync ->
-        if (sync == null) local
-        else local.copy(
-            busy = local.busy || sync.running,
-            // A local operation's own message wins while it runs — a sync finishing in the
-            // middle of a connect must not overwrite "Connecting…".
-            status = if (local.busy) local.status else sync.message ?: local.status,
-            statusIsError = if (local.busy) local.statusIsError else sync.isError,
-        )
+        if (sync == null) {
+            local
+        } else {
+            local.copy(
+                busy = local.busy || sync.running,
+                // A local operation's own message wins while it runs — a sync finishing in the
+                // middle of a connect must not overwrite "Connecting…".
+                status = if (local.busy) local.status else sync.message ?: local.status,
+                statusIsError = if (local.busy) local.statusIsError else sync.isError,
+            )
+        }
     }.stateIn(viewModelScope, WhileUiSubscribed, SettingsUiState())
 
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
@@ -186,7 +189,9 @@ class SettingsViewModel(
                         val out = info.outputData
                         // The worker exits early without output when credentials are missing;
                         // showing a 0/0 summary then would be a lie, so say nothing.
-                        val message = if (out.keyValueMap.isEmpty()) null else {
+                        val message = if (out.keyValueMap.isEmpty()) {
+                            null
+                        } else {
                             val summary = app.getString(
                                 R.string.sync_summary,
                                 out.getInt(SyncWorker.KEY_INDEXED, 0),
@@ -452,11 +457,14 @@ class SettingsViewModel(
                     selectedUserName = selected?.name ?: current.selectedUserName,
                     selectedScopeId = if (userChanged) ROOT_SCOPE_ID else current.selectedScopeId,
                     selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else current.selectedScopePath,
-                    status = if (users.isEmpty()) app.getString(R.string.connected_no_users)
-                    else app.getString(
-                        R.string.connected_users,
-                        app.resources.getQuantityString(R.plurals.user_count, users.size, users.size),
-                    ),
+                    status = if (users.isEmpty()) {
+                        app.getString(R.string.connected_no_users)
+                    } else {
+                        app.getString(
+                            R.string.connected_users,
+                            app.resources.getQuantityString(R.plurals.user_count, users.size, users.size),
+                        )
+                    },
                     statusIsError = false,
                 )
                 selected?.let {

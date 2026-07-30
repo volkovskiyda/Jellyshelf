@@ -49,23 +49,23 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         // into every collector (and out of the sync worker).
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { p ->
-        Settings(
-            serverUrl = p[Keys.SERVER_URL].orEmpty(),
-            apiKey = p[Keys.API_KEY].orEmpty(),
-            accessToken = p[Keys.ACCESS_TOKEN].orEmpty(),
-            userId = p[Keys.USER_ID].orEmpty(),
-            userName = p[Keys.USER_NAME].orEmpty(),
-            libraryId = p[Keys.LIBRARY_ID].orEmpty(),
-            libraryName = p[Keys.LIBRARY_NAME].orEmpty(),
-            indexUrl = p[Keys.INDEX_URL].orEmpty(),
-            lastSyncAt = p[Keys.LAST_SYNC_AT] ?: 0L,
-            lastSyncLibraryId = p[Keys.LAST_SYNC_LIBRARY_ID].orEmpty(),
-            tokenInQuery = p[Keys.TOKEN_IN_QUERY] ?: false,
-            // By-name lookup so an unknown/absent stored value degrades to the default.
-            playbackMode = PlaybackMode.entries.firstOrNull { it.name == p[Keys.PLAYBACK_MODE] }
-                ?: PlaybackMode.PLAY,
-        )
-    }
+            Settings(
+                serverUrl = p[Keys.SERVER_URL].orEmpty(),
+                apiKey = p[Keys.API_KEY].orEmpty(),
+                accessToken = p[Keys.ACCESS_TOKEN].orEmpty(),
+                userId = p[Keys.USER_ID].orEmpty(),
+                userName = p[Keys.USER_NAME].orEmpty(),
+                libraryId = p[Keys.LIBRARY_ID].orEmpty(),
+                libraryName = p[Keys.LIBRARY_NAME].orEmpty(),
+                indexUrl = p[Keys.INDEX_URL].orEmpty(),
+                lastSyncAt = p[Keys.LAST_SYNC_AT] ?: 0L,
+                lastSyncLibraryId = p[Keys.LAST_SYNC_LIBRARY_ID].orEmpty(),
+                tokenInQuery = p[Keys.TOKEN_IN_QUERY] ?: false,
+                // By-name lookup so an unknown/absent stored value degrades to the default.
+                playbackMode = PlaybackMode.entries.firstOrNull { it.name == p[Keys.PLAYBACK_MODE] }
+                    ?: PlaybackMode.PLAY,
+            )
+        }
 
     override suspend fun snapshot(): Settings = settings.first()
 

@@ -216,7 +216,9 @@ internal fun SettingsContent(
                             enabled = state.serverUrl.isNotBlank(),
                         ) { Text(stringResource(R.string.fill)) }
                     }
-                } else null,
+                } else {
+                    null
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -253,8 +255,11 @@ internal fun SettingsContent(
                 Text(
                     it,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (state.statusIsError) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary,
+                    color = if (state.statusIsError) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
                 )
             }
 

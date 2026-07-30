@@ -32,6 +32,7 @@ class DefaultScrollPositionRepository(
     // Disk writes run on a single-parallelism dispatcher so two rapid saves for the same key
     // can't commit in reverse order and leave the older position on disk.
     private val writeDispatcher = dispatchers.ioSequential
+
     // Losing a scroll position (disk full, DataStore corruption) must never crash the app —
     // these are all fire-and-forget best-effort writes; ioScope logs and moves on.
     private val scope = dispatchers.ioScope(TAG, "scroll persistence failed")

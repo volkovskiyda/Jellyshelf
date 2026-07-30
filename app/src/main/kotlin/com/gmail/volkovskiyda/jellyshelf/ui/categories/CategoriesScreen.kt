@@ -376,8 +376,11 @@ private fun tabsOf(all: List<CategoryWithCount>, searching: Boolean): List<Categ
     val byType = all.groupBy { it.category.type }
     return DIMENSIONS.mapNotNull { (type, titleRes) ->
         val items = byType[type].orEmpty()
-        if (items.isEmpty()) null
-        else CategoryTab(type, titleRes, if (searching) items else naturalSort(type, items))
+        if (items.isEmpty()) {
+            null
+        } else {
+            CategoryTab(type, titleRes, if (searching) items else naturalSort(type, items))
+        }
     }
 }
 

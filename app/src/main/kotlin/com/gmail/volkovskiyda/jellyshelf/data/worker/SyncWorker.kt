@@ -46,8 +46,11 @@ class SyncWorker(
             // A manual sync never retries even when the failure is transient: the user is
             // watching the screen and deserves the error now, with the button free to tap again.
             is SyncResult.Error ->
-                if (result.retryable && !inputData.getBoolean(KEY_MANUAL, false)) Result.retry()
-                else Result.failure(workDataOf(KEY_ERROR to result.message))
+                if (result.retryable && !inputData.getBoolean(KEY_MANUAL, false)) {
+                    Result.retry()
+                } else {
+                    Result.failure(workDataOf(KEY_ERROR to result.message))
+                }
         }
     }
 
