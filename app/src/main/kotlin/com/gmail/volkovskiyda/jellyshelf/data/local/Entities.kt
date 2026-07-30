@@ -4,6 +4,7 @@ import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 
 @Entity(tableName = "videos")
@@ -17,6 +18,8 @@ data class VideoEntity(
     val durationSeconds: Long,
     val uploadDate: String?,
     val description: String?,
+    /** Structured yt-dlp chapters, riding the metadata merge like [description]. */
+    val chapters: List<Chapter> = emptyList(),
     val tags: List<String>,
     val youtubeCategories: List<String>,
     val thumbnailUrl: String?,

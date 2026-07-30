@@ -96,7 +96,7 @@ class SyncInstrumentedTest {
         context: Context,
         dispatchers: DispatcherProvider,
         private val failing: Set<String> = emptySet(),
-    ) : YtDlpMetadataSource(context, dispatchers) {
+    ) : YtDlpMetadataSource(context, dispatchers, provideJson()) {
         val fetched = mutableListOf<String>()
 
         override suspend fun fetch(youtubeId: String): IndexEntry {

@@ -88,7 +88,7 @@ class RemoveWatchedInstrumentedTest {
 
     /** Never called here — every video gets index metadata, so no auto-fill pass has work to do. */
     private class UnusedYtDlp(context: Context, dispatchers: DispatcherProvider) :
-        YtDlpMetadataSource(context, dispatchers) {
+        YtDlpMetadataSource(context, dispatchers, provideJson()) {
         override suspend fun fetch(youtubeId: String): IndexEntry =
             error("yt-dlp must not be called by the removal tests (asked for $youtubeId)")
     }

@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.data.repository
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
+import com.gmail.volkovskiyda.jellyshelf.data.remote.toChapters
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
@@ -84,6 +85,9 @@ internal fun mergeVideo(
             ?: 0L,
         uploadDate = meta?.uploadDate ?: item.productionYear?.toString(),
         description = meta?.description ?: item.overview,
+        // Jellyfin has no chapter concept for these files, so unlike description there is no
+        // item fallback — no index entry simply means no structured chapters.
+        chapters = meta?.chapters.toChapters(),
         tags = meta?.tags ?: item.tags ?: emptyList(),
         youtubeCategories = meta?.categories ?: item.genres ?: emptyList(),
         // Stored without credentials; the UI appends the current api key when loading

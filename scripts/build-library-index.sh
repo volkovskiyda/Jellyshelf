@@ -41,6 +41,7 @@ cat "${files[@]}" \
       categories:  (.categories // []),
       description: .description,
       thumbnail:   .thumbnail,
+      chapters:    ((.chapters // []) | map({start: .start_time, title: .title})),
       fetchedAt:   .epoch
     })' > "$OUT"
 

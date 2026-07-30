@@ -24,6 +24,7 @@ fun VideoEntity.toDomain(): Video = Video(
     durationSeconds = durationSeconds,
     uploadDate = uploadDate,
     description = description,
+    chapters = chapters,
     tags = tags,
     youtubeCategories = youtubeCategories,
     thumbnailUrl = thumbnailUrl,

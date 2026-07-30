@@ -27,6 +27,11 @@ data class Video(
     val durationSeconds: Long,
     val uploadDate: String?,
     val description: String?,
+    /**
+     * Structured yt-dlp chapters — the *fallback* source: description-parsed timecodes win when
+     * both exist (the player applies the priority).
+     */
+    val chapters: List<Chapter> = emptyList(),
     val tags: List<String>,
     val youtubeCategories: List<String>,
     val thumbnailUrl: String?,

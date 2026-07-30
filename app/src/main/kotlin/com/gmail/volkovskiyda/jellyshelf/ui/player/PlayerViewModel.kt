@@ -42,12 +42,14 @@ class PlayerViewModel(
         .stateIn(viewModelScope, WhileUiSubscribed, null)
 
     /**
-     * Chapters parsed from the description's timecode lines ([parseTimecodes]); empty when the
-     * description has none that pass the chapter rules. Description-parsed timecodes are the
-     * priority source; structured yt-dlp chapters are the fallback when a video has some.
+     * The player's chapters: description-parsed timecodes first ([parseTimecodes]), structured
+     * yt-dlp chapters filling the gap — description wins when both exist (locked priority).
      */
     val chapters: StateFlow<List<Chapter>> = video
-        .map { parseTimecodes(it?.description, it?.durationSeconds ?: 0L) }
+        .map { video ->
+            parseTimecodes(video?.description, video?.durationSeconds ?: 0L)
+                .ifEmpty { video?.chapters.orEmpty() }
+        }
         .stateIn(viewModelScope, WhileUiSubscribed, emptyList())
 
     private val _controller = MutableStateFlow<MediaController?>(null)

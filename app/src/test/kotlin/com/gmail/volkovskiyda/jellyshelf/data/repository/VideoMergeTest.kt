@@ -2,8 +2,10 @@ package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
+import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexChapter
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDataDto
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
@@ -277,5 +279,48 @@ class VideoMergeTest {
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
         assertNull(merged.lastFetchError)
         assertEquals(0L, merged.lastFetchErrorAt)
+    }
+
+    // --- structured chapters ride the index merge like the other index fields ---
+
+    /** Wire chapters tighten on the way in: millis, blank/negative entries dropped, sorted. */
+    @Test
+    fun `index chapters are carried into the entity as clean domain chapters`() {
+        val merged = mergeVideo(
+            existing = null,
+            youtubeId = youtubeId,
+            item = item(),
+            meta = meta().copy(
+                chapters = listOf(
+                    IndexChapter(startSeconds = 120.5, title = "Main part"),
+                    IndexChapter(startSeconds = 0.0, title = "Intro"),
+                    IndexChapter(startSeconds = -3.0, title = "Negative start"),
+                    IndexChapter(startSeconds = 300.0, title = "   "),
+                    IndexChapter(startSeconds = null, title = "No start"),
+                ),
+            ),
+            indexAvailable = true,
+            serverBase = serverBase,
+            now = now,
+        )
+        assertEquals(
+            listOf(Chapter(0L, "Intro"), Chapter(120_500L, "Main part")),
+            merged.chapters,
+        )
+    }
+
+    /** No index entry means no structured chapters — Jellyfin has nothing to fall back to. */
+    @Test
+    fun `a row rebuilt without an index entry has no chapters`() {
+        val merged = mergeVideo(
+            existing = null,
+            youtubeId = youtubeId,
+            item = item(),
+            meta = null,
+            indexAvailable = true,
+            serverBase = serverBase,
+            now = now,
+        )
+        assertEquals(emptyList<Chapter>(), merged.chapters)
     }
 }
