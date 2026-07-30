@@ -570,7 +570,11 @@ class SettingsViewModel(
     fun resetLocalData() {
         if (_state.value.busy) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, status = app.getString(R.string.clearing_local_data), statusIsError = false)
+            _state.value = _state.value.copy(
+                busy = true,
+                status = app.getString(R.string.clearing_local_data),
+                statusIsError = false,
+            )
             // Stop sync first: a worker running through the wipe would refill the tables, and
             // the periodic one must not resurrect the data the user just asked us to drop.
             syncScheduler.cancelAll()

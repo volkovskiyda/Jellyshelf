@@ -819,16 +819,24 @@ class DefaultLibraryRepository(
 
     private suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
         val positionTicks = millisToTicks(positionMs)
-        Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs positionTicks=$positionTicks completed=$completed")
+        Timber.tag(PLAYBACK_TAG).d(
+            "onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs " +
+                "positionTicks=$positionTicks completed=$completed",
+        )
         var finished = completed
         val video = writeMutex.withLock {
             val v = videoDao.get(youtubeId) ?: run {
-                Timber.tag(PLAYBACK_TAG).w("onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report")
+                Timber.tag(PLAYBACK_TAG).w(
+                    "onPlaybackStopped: no local row for youtubeId=$youtubeId; nothing to report",
+                )
                 return
             }
             finished = completed ||
                 (v.durationSeconds > 0 && ticksToSeconds(positionTicks) >= v.durationSeconds - 5)
-            Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> local write played=$finished position=${if (finished) 0L else positionTicks}")
+            Timber.tag(PLAYBACK_TAG).d(
+                "onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> " +
+                    "local write played=$finished position=${if (finished) 0L else positionTicks}",
+            )
             videoDao.updateWatchState(youtubeId, finished, if (finished) 0L else positionTicks)
             localWatchWrites[youtubeId] = System.currentTimeMillis()
             v
@@ -837,7 +845,10 @@ class DefaultLibraryRepository(
         val s = settings.snapshot()
         val itemId = video.jellyfinItemId
         if (!s.isConnected || itemId == null) {
-            Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: skipping server report (connected=${s.isConnected} itemId=$itemId)")
+            Timber.tag(PLAYBACK_TAG).d(
+                "onPlaybackStopped: skipping server report (connected=${s.isConnected} " +
+                    "itemId=$itemId)",
+            )
             return
         }
         // Best-effort: the local resume position is already saved, so a failed server
@@ -854,7 +865,10 @@ class DefaultLibraryRepository(
                     jellyfin.setPlayed(s.serverUrl, s.credential, s.userId, itemId, played = true)
                 } else {
                     // Stopped partway — persist the resume position for "Continue Watching".
-                    Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId positionTicks=${latest.playbackPositionTicks}")
+                    Timber.tag(PLAYBACK_TAG).d(
+                        "onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId " +
+                            "positionTicks=${latest.playbackPositionTicks}",
+                    )
                     jellyfin.updatePlaybackState(
                         serverUrl = s.serverUrl,
                         credential = s.credential,

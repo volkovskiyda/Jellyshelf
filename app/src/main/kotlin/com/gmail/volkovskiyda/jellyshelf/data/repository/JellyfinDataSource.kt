@@ -171,7 +171,10 @@ class JellyfinDataSource(
                 lastPlayedDate = lastPlayedDate,
             ),
         )
-        Timber.tag(PLAYBACK_TAG).d("updatePlaybackState itemId=$itemId positionTicks=$positionTicks played=$played -> HTTP ${response.status.value}")
+        Timber.tag(PLAYBACK_TAG).d(
+            "updatePlaybackState itemId=$itemId positionTicks=$positionTicks played=$played -> " +
+                "HTTP ${response.status.value}",
+        )
         // A non-2xx already threw (expectSuccess = true) inside updateUserData; reaching here is success.
     }
 

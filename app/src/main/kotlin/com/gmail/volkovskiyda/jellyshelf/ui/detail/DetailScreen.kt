@@ -95,7 +95,10 @@ fun DetailScreen(
         Timber.tag(Playback.TAG).d("player returned: resultCode=${result.resultCode} hasData=${result.data != null}")
         val playback = Playback.parseResult(result.data)
             ?: return@rememberLauncherForActivityResult
-        Timber.tag(Playback.TAG).d("reporting playback stopped: positionMs=${playback.positionMs} completed=${playback.completed}")
+        Timber.tag(Playback.TAG).d(
+            "reporting playback stopped: positionMs=${playback.positionMs} " +
+                "completed=${playback.completed}",
+        )
         viewModel.reportPlaybackStopped(playback.positionMs, playback.completed)
     }
 
@@ -224,7 +227,11 @@ internal fun DetailContent(
                 formatUploadDate(current.uploadDate)?.let { add(it) }
             }.joinToString("  •  ")
             if (meta.isNotBlank()) {
-                Text(meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    meta,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             // Provenance on one line: where the metadata came from, and when this row last saw a

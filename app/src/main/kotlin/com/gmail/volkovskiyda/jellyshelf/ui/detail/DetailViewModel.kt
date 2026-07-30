@@ -96,7 +96,10 @@ class DetailViewModel(
 
     /** Repository-scoped, so the report survives leaving this screen mid-write. */
     fun reportPlaybackStopped(positionMs: Long, completed: Boolean) {
-        Timber.tag(Playback.TAG).d("DetailViewModel.reportPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs completed=$completed")
+        Timber.tag(Playback.TAG).d(
+            "DetailViewModel.reportPlaybackStopped: youtubeId=$youtubeId " +
+                "positionMs=$positionMs completed=$completed",
+        )
         repo.reportPlaybackStopped(youtubeId, positionMs, completed)
     }
 
