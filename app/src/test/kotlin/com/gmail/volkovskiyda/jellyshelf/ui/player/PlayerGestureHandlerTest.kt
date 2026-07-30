@@ -15,25 +15,40 @@ class PlayerGestureHandlerTest {
     private class RecordingHost(
         private val volume: Float = 0.5f,
         private val brightness: Float = 0.5f,
+        private val seekable: Boolean = true,
+        private val seekStart: Long = 60_000L,
+        private val seekDuration: Long = 600_000L,
     ) : PlayerGestureHandler.Host {
         val volumeChanges = mutableListOf<Float>()
         val brightnessChanges = mutableListOf<Float>()
+        val seekPreviews = mutableListOf<Pair<Long, Long>>()
+        val seekCommits = mutableListOf<Long>()
         var ended = 0
 
         override fun volumeFraction() = volume
         override fun brightnessFraction() = brightness
+        override fun canSeek() = seekable
+        override fun seekStartMs() = seekStart
+        override fun seekDurationMs() = seekDuration
         override fun onVolumeChange(fraction: Float) {
             volumeChanges += fraction
         }
         override fun onBrightnessChange(fraction: Float) {
             brightnessChanges += fraction
         }
+        override fun onSeekPreview(targetMs: Long, deltaMs: Long) {
+            seekPreviews += targetMs to deltaMs
+        }
+        override fun onSeekCommit(targetMs: Long) {
+            seekCommits += targetMs
+        }
         override fun onGestureEnd() {
             ended++
         }
     }
 
-    // Landscape-ish surface: full swipe range = 900 * 0.66 px of travel.
+    // Landscape-ish surface: full swipe range = 900 * 0.66 px of travel; a full-width
+    // horizontal drag travels 90 s, so here 1 px of scrub = 90 ms.
     private val size = IntSize(1000, 900)
     private val fullSwipePx = 900f * 0.66f
 
@@ -86,7 +101,7 @@ class PlayerGestureHandlerTest {
     }
 
     @Test
-    fun `a decisively horizontal drag locks away and never becomes a volume change`() {
+    fun `a decisively horizontal drag never becomes a volume change, even when it arcs`() {
         val host = RecordingHost()
         val handler = PlayerGestureHandler(host)
 
@@ -97,7 +112,76 @@ class PlayerGestureHandlerTest {
 
         assertTrue(host.volumeChanges.isEmpty())
         assertTrue(host.brightnessChanges.isEmpty())
+    }
+
+    @Test
+    fun `a rightward drag scrubs forward proportionally to the width`() {
+        val host = RecordingHost(seekStart = 60_000L, seekDuration = 600_000L)
+        val handler = PlayerGestureHandler(host)
+
+        handler.onDragStart(Offset(500f, 450f), size)
+        handler.onDrag(Offset(100f, 5f))
+        handler.onDrag(Offset(50f, 0f))
+        handler.onDragEnd()
+
+        // 100 px = 9 s, then 150 px cumulative = 13.5 s past the 60 s start.
+        assertEquals(listOf(69_000L to 9_000L, 73_500L to 13_500L), host.seekPreviews)
+        assertEquals(listOf(73_500L), host.seekCommits)
+        assertEquals(1, host.ended)
+    }
+
+    @Test
+    fun `a leftward drag scrubs backward and clamps at the beginning`() {
+        val host = RecordingHost(seekStart = 5_000L)
+        val handler = PlayerGestureHandler(host)
+
+        handler.onDragStart(Offset(500f, 450f), size)
+        handler.onDrag(Offset(-200f, 0f))
+        handler.onDragEnd()
+
+        // -200 px = -18 s: past the start of the video, so it lands on 0 with the real delta.
+        assertEquals(listOf(0L to -5_000L), host.seekPreviews)
+        assertEquals(listOf(0L), host.seekCommits)
+    }
+
+    @Test
+    fun `a scrub clamps at the duration`() {
+        val host = RecordingHost(seekStart = 590_000L, seekDuration = 600_000L)
+        val handler = PlayerGestureHandler(host)
+
+        handler.onDragStart(Offset(500f, 450f), size)
+        handler.onDrag(Offset(300f, 0f))
+        handler.onDragEnd()
+
+        assertEquals(listOf(600_000L to 10_000L), host.seekPreviews)
+        assertEquals(listOf(600_000L), host.seekCommits)
+    }
+
+    @Test
+    fun `horizontal drags do nothing while the item is not seekable`() {
+        val host = RecordingHost(seekable = false)
+        val handler = PlayerGestureHandler(host)
+
+        handler.onDragStart(Offset(500f, 450f), size)
+        handler.onDrag(Offset(100f, 0f))
+        handler.onDragEnd()
+
+        assertTrue(host.seekPreviews.isEmpty())
+        assertTrue(host.seekCommits.isEmpty())
         assertEquals(0, host.ended)
+    }
+
+    @Test
+    fun `drags starting at the left or right screen edge are left to the system`() {
+        val host = RecordingHost()
+        val handler = PlayerGestureHandler(host)
+
+        handler.onDragStart(Offset(20f, 450f), size)
+        handler.onDrag(Offset(100f, 0f))
+        handler.onDragStart(Offset(980f, 450f), size)
+        handler.onDrag(Offset(-100f, 0f))
+
+        assertTrue(host.seekPreviews.isEmpty())
     }
 
     @Test

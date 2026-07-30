@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,9 +38,10 @@ import kotlin.math.roundToInt
  * use. A drag that is decisively vertical (2:1 over its horizontal travel, the Jellyfin app's
  * rule) adjusts the music volume when it starts on the right half of the surface and the screen
  * brightness on the left; sweeping [FULL_SWIPE_RANGE_RATIO] of the surface height covers the
- * whole range. Decisively horizontal drags are recognized and locked so they can't turn into a
- * volume change mid-gesture, but do nothing yet (swipe-to-seek is the follow-up). Drags starting
- * in the edge strips are left to the system's own edge gestures.
+ * whole range. A decisively horizontal drag scrubs: a full surface width travels
+ * [SEEK_FULL_WIDTH_MS] through the video, the target is previewed while the finger moves, and
+ * the seek itself fires on release — also the Jellyfin app's behavior. Drags starting in the
+ * edge strips are left to the system's own edge gestures.
  *
  * A plain class so the state machine is unit-testable on the JVM; [playerDragGestures] is the
  * only Compose-facing piece.
@@ -53,21 +56,38 @@ internal class PlayerGestureHandler(private val host: Host) {
         /** Window brightness as a 0..1 fraction, seeded from the system value when unset. */
         fun brightnessFraction(): Float
 
+        /** Whether a seek gesture may lock right now: a seekable item with a known duration. */
+        fun canSeek(): Boolean
+
+        /** The playback position a locking seek gesture scrubs from. */
+        fun seekStartMs(): Long
+
+        /** The end of the seekable range — the duration. */
+        fun seekDurationMs(): Long
+
         fun onVolumeChange(fraction: Float)
 
         fun onBrightnessChange(fraction: Float)
 
-        /** A volume/brightness drag's pointer went up or was cancelled. */
+        /** The finger is mid-scrub: where it would land, and how far that is from the start. */
+        fun onSeekPreview(targetMs: Long, deltaMs: Long)
+
+        /** The finger lifted off a scrub: seek. */
+        fun onSeekCommit(targetMs: Long)
+
+        /** A locked drag's pointer went up or was cancelled. */
         fun onGestureEnd()
     }
 
-    private enum class Control { VOLUME, BRIGHTNESS, IGNORED }
+    private enum class Control { VOLUME, BRIGHTNESS, SEEK, IGNORED }
 
     private var size = IntSize.Zero
     private var start = Offset.Zero
     private var dragged = Offset.Zero
     private var control: Control? = null
     private var value = 0f
+    private var seekStartMs = 0L
+    private var seekDurationMs = 0L
 
     fun onDragStart(position: Offset, surfaceSize: IntSize) {
         size = surfaceSize
@@ -77,16 +97,10 @@ internal class PlayerGestureHandler(private val host: Host) {
     }
 
     fun onDrag(delta: Offset) {
-        if (size.height <= 0) return
+        if (size.height <= 0 || size.width <= 0) return
         dragged += delta
         if (control == null) {
-            control = decideControl()?.also { locked ->
-                value = when (locked) {
-                    Control.VOLUME -> host.volumeFraction()
-                    Control.BRIGHTNESS -> host.brightnessFraction()
-                    Control.IGNORED -> 0f
-                }
-            }
+            control = decideControl()?.also(::lock)
         }
         // Upward drag increases; a FULL_SWIPE_RANGE_RATIO-of-the-height drag sweeps 0..1.
         val fraction = -delta.y / (size.height * FULL_SWIPE_RANGE_RATIO)
@@ -99,13 +113,43 @@ internal class PlayerGestureHandler(private val host: Host) {
                 value = (value + fraction).coerceIn(0f, 1f)
                 host.onBrightnessChange(value)
             }
+            Control.SEEK -> {
+                val target = seekTarget()
+                host.onSeekPreview(target, target - seekStartMs)
+            }
             Control.IGNORED, null -> Unit
         }
     }
 
     fun onDragEnd() {
-        if (control == Control.VOLUME || control == Control.BRIGHTNESS) host.onGestureEnd()
+        when (control) {
+            Control.SEEK -> {
+                host.onSeekCommit(seekTarget())
+                host.onGestureEnd()
+            }
+            Control.VOLUME, Control.BRIGHTNESS -> host.onGestureEnd()
+            Control.IGNORED, null -> Unit
+        }
         control = null
+    }
+
+    /** Reads the locked control's starting point, so the first movement adjusts from reality. */
+    private fun lock(control: Control) {
+        when (control) {
+            Control.VOLUME -> value = host.volumeFraction()
+            Control.BRIGHTNESS -> value = host.brightnessFraction()
+            Control.SEEK -> {
+                seekStartMs = host.seekStartMs()
+                seekDurationMs = host.seekDurationMs()
+            }
+            Control.IGNORED -> Unit
+        }
+    }
+
+    /** Cumulative horizontal travel mapped linearly: a full surface width is [SEEK_FULL_WIDTH_MS]. */
+    private fun seekTarget(): Long {
+        val deltaMs = (dragged.x / size.width * SEEK_FULL_WIDTH_MS).toLong()
+        return (seekStartMs + deltaMs).coerceIn(0L, seekDurationMs)
     }
 
     /**
@@ -123,7 +167,12 @@ internal class PlayerGestureHandler(private val host: Host) {
                 start.x > size.width * VOLUME_ZONE_START -> Control.VOLUME
                 else -> Control.BRIGHTNESS
             }
-            dx > dy * AXIS_LOCK_RATIO -> Control.IGNORED
+            dx > dy * AXIS_LOCK_RATIO -> when {
+                start.x < size.width * EDGE_EXCLUSION_RATIO -> Control.IGNORED
+                start.x > size.width * (1f - EDGE_EXCLUSION_RATIO) -> Control.IGNORED
+                !host.canSeek() -> Control.IGNORED
+                else -> Control.SEEK
+            }
             else -> null
         }
     }
@@ -141,7 +190,13 @@ internal fun Modifier.playerDragGestures(handler: PlayerGestureHandler): Modifie
     }
 
 /** What the feedback pill shows while a drag is adjusting something. */
-internal data class GestureIndicator(val control: IndicatorControl, val fraction: Float)
+internal sealed interface GestureIndicator {
+    /** A volume or brightness level, as a fraction of its range. */
+    data class Level(val control: IndicatorControl, val fraction: Float) : GestureIndicator
+
+    /** A scrub in progress: where the finger would land, and how far that is from the start. */
+    data class Seek(val targetMs: Long, val deltaMs: Long) : GestureIndicator
+}
 
 internal enum class IndicatorControl { VOLUME, BRIGHTNESS }
 
@@ -192,7 +247,7 @@ internal fun clearBrightnessOverride(activity: Activity?) {
     }
 }
 
-/** The transient feedback pill for a drag in progress: icon plus a localized percentage. */
+/** The transient feedback pill for a drag in progress. */
 @Composable
 internal fun GestureIndicatorPill(indicator: GestureIndicator, modifier: Modifier = Modifier) {
     Row(
@@ -203,25 +258,55 @@ internal fun GestureIndicatorPill(indicator: GestureIndicator, modifier: Modifie
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            when (indicator.control) {
-                IndicatorControl.VOLUME -> if (indicator.fraction <= 0f) {
-                    Icons.AutoMirrored.Filled.VolumeOff
-                } else {
-                    Icons.AutoMirrored.Filled.VolumeUp
-                }
-                IndicatorControl.BRIGHTNESS -> Icons.Filled.BrightnessHigh
-            },
-            contentDescription = null,
-            tint = Color.White,
-        )
-        val percentFormat = remember { NumberFormat.getPercentInstance() }
-        Text(
-            percentFormat.format(indicator.fraction.toDouble()),
-            color = Color.White,
-            style = MaterialTheme.typography.labelLarge,
-        )
+        when (indicator) {
+            is GestureIndicator.Level -> LevelIndicator(indicator)
+            is GestureIndicator.Seek -> SeekIndicator(indicator)
+        }
     }
+}
+
+/** Volume/brightness: icon plus a localized percentage. */
+@Composable
+private fun LevelIndicator(indicator: GestureIndicator.Level) {
+    Icon(
+        when (indicator.control) {
+            IndicatorControl.VOLUME -> if (indicator.fraction <= 0f) {
+                Icons.AutoMirrored.Filled.VolumeOff
+            } else {
+                Icons.AutoMirrored.Filled.VolumeUp
+            }
+            IndicatorControl.BRIGHTNESS -> Icons.Filled.BrightnessHigh
+        },
+        contentDescription = null,
+        tint = Color.White,
+    )
+    val percentFormat = remember { NumberFormat.getPercentInstance() }
+    Text(
+        percentFormat.format(indicator.fraction.toDouble()),
+        color = Color.White,
+        style = MaterialTheme.typography.labelLarge,
+    )
+}
+
+/** Scrub: direction icon, the landing position, and the signed distance being jumped. */
+@Composable
+private fun SeekIndicator(indicator: GestureIndicator.Seek) {
+    Icon(
+        if (indicator.deltaMs >= 0) Icons.Filled.FastForward else Icons.Filled.FastRewind,
+        contentDescription = null,
+        tint = Color.White,
+    )
+    Text(
+        formatPosition(indicator.targetMs),
+        color = Color.White,
+        style = MaterialTheme.typography.labelLarge,
+    )
+    val sign = if (indicator.deltaMs < 0) "−" else "+"
+    Text(
+        sign + formatPosition(abs(indicator.deltaMs)),
+        color = Color.White.copy(alpha = 0.7f),
+        style = MaterialTheme.typography.labelLarge,
+    )
 }
 
 /** A drag must travel twice as far along one axis as the other before it locks. */
@@ -235,6 +320,9 @@ private const val EDGE_EXCLUSION_RATIO = 0.05f
 
 /** Vertical drags starting right of this width fraction adjust volume; left of it, brightness. */
 private const val VOLUME_ZONE_START = 0.5f
+
+/** A horizontal drag across the whole surface width travels this far through the video. */
+private const val SEEK_FULL_WIDTH_MS = 90_000L
 
 /** Mid-range stand-in when there is no window to read a brightness from. */
 private const val DEFAULT_BRIGHTNESS_FRACTION = 0.5f

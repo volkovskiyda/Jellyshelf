@@ -246,28 +246,43 @@ private fun PlayerWithControls(
     val playbackSpeed = rememberPlaybackSpeedState(controller)
     val presentationState = rememberPresentationState(controller)
 
-    // Drag gestures on the surface: volume right, brightness left (see PlayerGestureHandler).
-    // The pill lingers briefly after the finger lifts, then hides.
+    // Drag gestures on the surface: volume right, brightness left, horizontal scrubs (see
+    // PlayerGestureHandler). The pill lingers briefly after the finger lifts, then hides.
     val activity = LocalActivity.current
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     var gestureIndicator by remember { mutableStateOf<GestureIndicator?>(null) }
     var gestureActive by remember { mutableStateOf(false) }
-    val gestureHandler = remember(activity, audioManager) {
+    val gestureHandler = remember(controller, activity, audioManager) {
         PlayerGestureHandler(object : PlayerGestureHandler.Host {
             override fun volumeFraction() = audioManager.musicVolumeFraction()
 
             override fun brightnessFraction() = currentBrightnessFraction(activity)
 
+            override fun canSeek() = controller.isCurrentMediaItemSeekable && controller.duration > 0
+
+            override fun seekStartMs() = controller.currentPosition.coerceAtLeast(0)
+
+            override fun seekDurationMs() = controller.duration.coerceAtLeast(0)
+
             override fun onVolumeChange(fraction: Float) {
                 audioManager.setMusicVolumeFraction(fraction)
                 gestureActive = true
-                gestureIndicator = GestureIndicator(IndicatorControl.VOLUME, fraction)
+                gestureIndicator = GestureIndicator.Level(IndicatorControl.VOLUME, fraction)
             }
 
             override fun onBrightnessChange(fraction: Float) {
                 applyBrightnessFraction(activity, fraction)
                 gestureActive = true
-                gestureIndicator = GestureIndicator(IndicatorControl.BRIGHTNESS, fraction)
+                gestureIndicator = GestureIndicator.Level(IndicatorControl.BRIGHTNESS, fraction)
+            }
+
+            override fun onSeekPreview(targetMs: Long, deltaMs: Long) {
+                gestureActive = true
+                gestureIndicator = GestureIndicator.Seek(targetMs, deltaMs)
+            }
+
+            override fun onSeekCommit(targetMs: Long) {
+                controller.seekTo(targetMs)
             }
 
             override fun onGestureEnd() {
@@ -709,7 +724,7 @@ private fun RequestNotificationPermissionOnce() {
 }
 
 /** Position label: 0 is a real time here, unlike [formatDuration]'s "unknown" placeholder. */
-private fun formatPosition(ms: Long): String =
+internal fun formatPosition(ms: Long): String =
     if (ms <= 0) "0:00" else formatDuration(ms / MILLIS_PER_SECOND)
 
 /** The usual video-player spread; 1× sits mid-list where a thumb finds it fastest. */

@@ -248,7 +248,17 @@ private fun PlayerControlsWithChapters() {
 @Composable
 private fun VolumeGesturePill() {
     PreviewTheme(darkTheme = true) {
-        GestureIndicatorPill(GestureIndicator(IndicatorControl.VOLUME, 0.64f))
+        GestureIndicatorPill(GestureIndicator.Level(IndicatorControl.VOLUME, 0.64f))
+    }
+}
+
+/** The swipe-to-seek pill: where the finger would land, and the signed distance jumped. */
+@PreviewTest
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun SeekGesturePill() {
+    PreviewTheme(darkTheme = true) {
+        GestureIndicatorPill(GestureIndicator.Seek(targetMs = 754_000L, deltaMs = 45_000L))
     }
 }
 
