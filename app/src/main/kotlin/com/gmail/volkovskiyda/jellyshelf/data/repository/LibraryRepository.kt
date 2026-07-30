@@ -6,6 +6,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoCategoryCrossRef
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.mapper.toDomain
+import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
@@ -357,24 +358,7 @@ class DefaultLibraryRepository(
             return SyncResult.Error(message, retryable = !isPermanentFailure(e))
         }
 
-        // A failed index fetch must stay distinguishable from an index with no entries:
-        // [mergeVideo] keeps existing index-sourced metadata when the index was unavailable,
-        // instead of degrading those rows to bare Jellyfin fields.
-        var indexAvailable = false
-        val index: Map<String, IndexEntry> = if (s.indexUrl.isNotBlank()) {
-            runCatchingCancellable {
-                indexSource.fetchIndex(s.indexUrl).associateBy { it.id }.also { indexAvailable = true }
-            }.getOrElse { e ->
-                // Swallowing this silently made an index URL that 404s indistinguishable from
-                // months of healthy syncs: metadata quietly freezes and new videos stay
-                // uncategorized. The sync still completes — see [indexAvailable] above — but it
-                // says so, in the log and on the settings status line.
-                Timber.w(e, "Metadata index fetch failed; syncing with Jellyfin data only")
-                emptyMap()
-            }
-        } else {
-            emptyMap()
-        }
+        val (index, indexAvailable) = fetchIndex(s)
 
         val now = System.currentTimeMillis()
         val serverBase = s.serverUrl.trim().removeSuffix("/")
@@ -385,76 +369,17 @@ class DefaultLibraryRepository(
             // index entry unless the index entry is genuinely newer. Read inside the lock so no
             // other writer can slip between this snapshot and the upsert below.
             val existingById = videoDao.getAll().associateBy { it.youtubeId }
-            val videos = items.mapNotNull { item ->
-                val youtubeId = YoutubeId.fromPath(item.path) ?: return@mapNotNull null
-                mergeVideo(
-                    existing = existingById[youtubeId],
-                    youtubeId = youtubeId,
-                    item = item,
-                    meta = index[youtubeId],
-                    context = mergeContext,
-                    // A local watch-state write that landed after the server snapshot was taken
-                    // is newer than that snapshot — keep it.
-                    keepLocalWatchState = (localWatchWrites[youtubeId] ?: 0L) > fetchStartedAt,
-                )
-            }.distinctBy { it.youtubeId }
+            val videos = mergedVideos(items, existingById, index, mergeContext, fetchStartedAt)
 
             val prune = prunePolicy(
                 scopeChanged = s.libraryId != s.lastSyncLibraryId,
                 storedCount = existingById.size,
                 seenCount = videos.size,
             )
-            if (prune == Prune.NOTHING) {
-                Timber.w(
-                    "Sync saw only ${videos.size} of ${existingById.size} stored videos — " +
-                        "the server is likely mid-rescan; keeping every stored video this round."
-                )
-            }
-            // Rows this listing missed that the prune policy will keep: they stay fully intact,
-            // auto-categories included, so a video riding out its grace period doesn't drop out
-            // of its channel/year/duration categories only to reappear in them a few hours later.
-            val seenIds = videos.mapTo(HashSet(videos.size)) { it.youtubeId }
-            val retained = when (prune) {
-                Prune.IMMEDIATE -> emptyList()
-                Prune.NOTHING -> existingById.values.filter { it.youtubeId !in seenIds }
-                Prune.GRACE -> existingById.values.filter {
-                    it.youtubeId !in seenIds && it.missedSyncs + 1 < MAX_MISSED_SYNCS
-                }
-            }
+            val retained = retainedRows(prune, existingById, videos)
+            val (autoCategories, crossRefs) = autoAssignments(videos + retained, now)
 
-            // Auto-categorize each video along several dimensions: channel, upload year, upload
-            // month, duration band and YouTube category. Categories are deduped by id; every
-            // membership becomes a cross-ref. Videos with no metadata simply produce no
-            // auto-categories (they surface under the "Others" tab's Uncategorized filter instead).
-            val autoCategories = LinkedHashMap<String, CategoryEntity>()
-            val crossRefs = mutableListOf<VideoCategoryCrossRef>()
-            for (video in videos + retained) {
-                for (a in autoAssignmentsOf(video)) {
-                    autoCategories.getOrPut(a.id) { CategoryEntity(a.id, a.name, a.type, now) }
-                    crossRefs += VideoCategoryCrossRef(video.youtubeId, a.id)
-                }
-            }
-
-            db.withTransaction {
-                videoDao.upsert(videos)
-                // Videos gone from the server leave the library, and auto memberships are rebuilt
-                // from scratch so stale assignments (changed channel, date or duration) don't
-                // accumulate across syncs. Manual memberships survive except where their video
-                // was actually deleted.
-                when (prune) {
-                    Prune.IMMEDIATE -> videoDao.deleteNotSyncedAt(now)
-                    Prune.GRACE -> {
-                        videoDao.markMissedSince(now)
-                        videoDao.deleteAfterMissedSyncs(now, MAX_MISSED_SYNCS)
-                    }
-                    Prune.NOTHING -> Unit
-                }
-                categoryDao.clearAutoCrossRefs(keepType = CATEGORY_TYPE_MANUAL)
-                categoryDao.upsertAll(autoCategories.values.toList())
-                if (crossRefs.isNotEmpty()) categoryDao.upsertCrossRefs(crossRefs)
-                categoryDao.pruneOrphanCrossRefs()
-                categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
-            }
+            persistSync(prune, now, videos, autoCategories.values, crossRefs)
 
             settings.setLastSync(now, s.libraryId)
             SyncResult.Success(
@@ -472,6 +397,125 @@ class DefaultLibraryRepository(
         // silently doing nothing until the pass's own budget expired.
         val (autoFilled, autoFillFailed) = autoFillMissingMetadata()
         return synced.copy(autoFilled = autoFilled, autoFillFailed = autoFillFailed)
+    }
+
+    /**
+     * The metadata index keyed by video id, paired with whether it was actually reachable.
+     *
+     * A failed index fetch must stay distinguishable from an index with no entries: [mergeVideo]
+     * keeps existing index-sourced metadata when the index was unavailable, instead of degrading
+     * those rows to bare Jellyfin fields.
+     */
+    private suspend fun fetchIndex(s: Settings): Pair<Map<String, IndexEntry>, Boolean> {
+        if (s.indexUrl.isBlank()) return emptyMap<String, IndexEntry>() to false
+        return runCatchingCancellable {
+            indexSource.fetchIndex(s.indexUrl).associateBy { it.id } to true
+        }.getOrElse { e ->
+            // Swallowing this silently made an index URL that 404s indistinguishable from
+            // months of healthy syncs: metadata quietly freezes and new videos stay
+            // uncategorized. The sync still completes — see the flag above — but it
+            // says so, in the log and on the settings status line.
+            Timber.w(e, "Metadata index fetch failed; syncing with Jellyfin data only")
+            emptyMap<String, IndexEntry>() to false
+        }
+    }
+
+    /** Every server item that carries a YouTube id, merged with its stored row and index entry. */
+    private fun mergedVideos(
+        items: List<BaseItemDto>,
+        existingById: Map<String, VideoEntity>,
+        index: Map<String, IndexEntry>,
+        context: SyncMergeContext,
+        fetchStartedAt: Long,
+    ): List<VideoEntity> = items.mapNotNull { item ->
+        val youtubeId = YoutubeId.fromPath(item.path) ?: return@mapNotNull null
+        mergeVideo(
+            existing = existingById[youtubeId],
+            youtubeId = youtubeId,
+            item = item,
+            meta = index[youtubeId],
+            context = context,
+            // A local watch-state write that landed after the server snapshot was taken
+            // is newer than that snapshot — keep it.
+            keepLocalWatchState = (localWatchWrites[youtubeId] ?: 0L) > fetchStartedAt,
+        )
+    }.distinctBy { it.youtubeId }
+
+    /**
+     * Rows this listing missed that [prune] will keep: they stay fully intact, auto-categories
+     * included, so a video riding out its grace period doesn't drop out of its
+     * channel/year/duration categories only to reappear in them a few hours later.
+     */
+    private fun retainedRows(
+        prune: Prune,
+        existingById: Map<String, VideoEntity>,
+        videos: List<VideoEntity>,
+    ): List<VideoEntity> {
+        if (prune == Prune.NOTHING) {
+            Timber.w(
+                "Sync saw only ${videos.size} of ${existingById.size} stored videos — " +
+                    "the server is likely mid-rescan; keeping every stored video this round."
+            )
+        }
+        val seenIds = videos.mapTo(HashSet(videos.size)) { it.youtubeId }
+        return when (prune) {
+            Prune.IMMEDIATE -> emptyList()
+            Prune.NOTHING -> existingById.values.filter { it.youtubeId !in seenIds }
+            Prune.GRACE -> existingById.values.filter {
+                it.youtubeId !in seenIds && it.missedSyncs + 1 < MAX_MISSED_SYNCS
+            }
+        }
+    }
+
+    /**
+     * Auto-categorizes each row along several dimensions: channel, upload year, upload month,
+     * duration band and YouTube category. Categories are deduped by id; every membership becomes a
+     * cross-ref. Videos with no metadata simply produce no auto-categories (they surface under the
+     * "Others" tab's Uncategorized filter instead).
+     */
+    private fun autoAssignments(
+        rows: List<VideoEntity>,
+        now: Long,
+    ): Pair<Map<String, CategoryEntity>, List<VideoCategoryCrossRef>> {
+        val autoCategories = LinkedHashMap<String, CategoryEntity>()
+        val crossRefs = mutableListOf<VideoCategoryCrossRef>()
+        for (video in rows) {
+            for (a in autoAssignmentsOf(video)) {
+                autoCategories.getOrPut(a.id) { CategoryEntity(a.id, a.name, a.type, now) }
+                crossRefs += VideoCategoryCrossRef(video.youtubeId, a.id)
+            }
+        }
+        return autoCategories to crossRefs
+    }
+
+    /** Commits one sync pass: the merged rows, the prune the policy chose, and auto memberships. */
+    private suspend fun persistSync(
+        prune: Prune,
+        now: Long,
+        videos: List<VideoEntity>,
+        autoCategories: Collection<CategoryEntity>,
+        crossRefs: List<VideoCategoryCrossRef>,
+    ) {
+        db.withTransaction {
+            videoDao.upsert(videos)
+            // Videos gone from the server leave the library, and auto memberships are rebuilt
+            // from scratch so stale assignments (changed channel, date or duration) don't
+            // accumulate across syncs. Manual memberships survive except where their video
+            // was actually deleted.
+            when (prune) {
+                Prune.IMMEDIATE -> videoDao.deleteNotSyncedAt(now)
+                Prune.GRACE -> {
+                    videoDao.markMissedSince(now)
+                    videoDao.deleteAfterMissedSyncs(now, MAX_MISSED_SYNCS)
+                }
+                Prune.NOTHING -> Unit
+            }
+            categoryDao.clearAutoCrossRefs(keepType = CATEGORY_TYPE_MANUAL)
+            categoryDao.upsertAll(autoCategories.toList())
+            if (crossRefs.isNotEmpty()) categoryDao.upsertCrossRefs(crossRefs)
+            categoryDao.pruneOrphanCrossRefs()
+            categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
+        }
     }
 
     /**
