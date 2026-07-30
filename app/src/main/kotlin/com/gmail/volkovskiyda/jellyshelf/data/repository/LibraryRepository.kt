@@ -216,6 +216,7 @@ private class BulkRunner(private val scope: CoroutineScope) {
     }
 }
 
+@Suppress("TooManyFunctions") // the app's single library-domain facade
 class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
     private val jellyfin: JellyfinDataSource,

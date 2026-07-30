@@ -86,6 +86,7 @@ data class SettingsUiState(
 /** Sync progress as owned by WorkManager, merged into [SettingsUiState] for display. */
 private data class SyncUi(val running: Boolean, val message: String?, val isError: Boolean)
 
+@Suppress("TooManyFunctions") // one handler per settings action — mirrors SettingsActions
 class SettingsViewModel(
     private val app: Application,
     private val settingsRepo: SettingsRepository,

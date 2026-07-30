@@ -21,6 +21,7 @@ import java.util.UUID
 
 internal val Context.dataStore by preferencesDataStore(name = "settings")
 
+@Suppress("TooManyFunctions") // one accessor per persisted setting
 class DefaultSettingsRepository(context: Context) : SettingsRepository {
     private val ds = context.applicationContext.dataStore
 

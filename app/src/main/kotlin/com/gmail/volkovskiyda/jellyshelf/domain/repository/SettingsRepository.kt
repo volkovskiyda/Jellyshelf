@@ -7,6 +7,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import kotlinx.coroutines.flow.Flow
 
 /** Persistent app/connection settings. Backed by DataStore in the data layer. */
+@Suppress("TooManyFunctions") // one accessor per persisted setting
 interface SettingsRepository {
     val settings: Flow<Settings>
     suspend fun snapshot(): Settings

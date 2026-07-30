@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
  * (`data.repository.DefaultLibraryRepository`) orchestrates Room, Jellyfin and yt-dlp and maps
  * their rows/DTOs to the [Video]/[CategoryWithCount] domain models exposed here.
  */
+@Suppress("TooManyFunctions") // the app's single library-domain facade
 interface LibraryRepository {
     fun observeVideos(): Flow<List<Video>>
     fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>>

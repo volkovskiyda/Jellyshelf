@@ -6,6 +6,7 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+@Suppress("TooManyFunctions") // a Room DAO is one function per query, by design
 interface CategoryDao {
     @Upsert
     suspend fun upsert(category: CategoryEntity)

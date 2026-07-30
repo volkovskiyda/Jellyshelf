@@ -25,6 +25,7 @@ val emptySettings = Settings(
 )
 
 /** In-memory [SettingsRepository]: no DataStore, no disk, every write readable straight back. */
+@Suppress("TooManyFunctions") // mirrors the interface it fakes
 class FakeSettingsRepository(
     initial: Settings = emptySettings,
     backStackJson: String? = null,
