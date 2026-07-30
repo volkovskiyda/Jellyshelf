@@ -219,9 +219,17 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
-            // Seeks move the last observed position. The auto-transition jump to the next item's
-            // start must not: the transition report above still needs the old item's value.
-            if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+            // The order between this and onMediaItemTransition is not part of the Player
+            // contract, so anchor on media ids rather than on reasons: another item's position
+            // must never clobber the active one's — replacing a playing video would otherwise
+            // report position 0 for it and wipe its saved resume spot. Leaving the active item
+            // captures its exact final position (better than the ≤10 s-stale periodic value);
+            // movement within it (seeks) tracks the new side.
+            val leavingActive = oldPosition.mediaItem?.mediaId == activeMediaId &&
+                newPosition.mediaItem?.mediaId != activeMediaId
+            if (leavingActive) {
+                lastPositionMs = oldPosition.positionMs
+            } else if (newPosition.mediaItem?.mediaId == activeMediaId) {
                 lastPositionMs = newPosition.positionMs
             }
         }
