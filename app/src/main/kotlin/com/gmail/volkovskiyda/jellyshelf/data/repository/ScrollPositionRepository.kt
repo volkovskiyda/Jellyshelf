@@ -57,32 +57,45 @@ class DefaultScrollPositionRepository(
         val positions = HashMap<String, ScrollPosition>()
         val anchors = HashMap<String, AnchorPosition>()
         ds.data.first().asMap().forEach { (key, value) ->
-            val name = key.name
-            when {
-                name.endsWith(ANCHOR_SUFFIX) -> {
-                    val screen = name.removeSuffix(ANCHOR_SUFFIX)
-                    val anchor = value as? String ?: return@forEach
-                    anchors[screen] = (anchors[screen] ?: AnchorPosition("", 0)).copy(anchor = anchor)
-                }
-                name.endsWith(ANCHOR_OFFSET_SUFFIX) -> {
-                    val screen = name.removeSuffix(ANCHOR_OFFSET_SUFFIX)
-                    val offset = value as? Int ?: return@forEach
-                    anchors[screen] = (anchors[screen] ?: AnchorPosition("", 0)).copy(offset = offset)
-                }
-                name.endsWith(INDEX_SUFFIX) -> {
-                    val screen = name.removeSuffix(INDEX_SUFFIX)
-                    val v = value as? Int ?: return@forEach
-                    positions[screen] = (positions[screen] ?: ScrollPosition.Zero).copy(index = v)
-                }
-                name.endsWith(OFFSET_SUFFIX) -> {
-                    val screen = name.removeSuffix(OFFSET_SUFFIX)
-                    val v = value as? Int ?: return@forEach
-                    positions[screen] = (positions[screen] ?: ScrollPosition.Zero).copy(offset = v)
-                }
-            }
+            mergeEntry(key.name, value, positions, anchors)
         }
         positions.forEach { (k, v) -> cache.putIfAbsent(k, v) }
         anchors.forEach { (k, v) -> anchorCache.putIfAbsent(k, v) }
+    }
+
+    /**
+     * Folds one raw DataStore entry into the [positions]/[anchors] being assembled, keyed by the
+     * screen its suffix names. A value of the wrong type for its suffix is skipped silently — a
+     * single corrupt entry must not abort the seed and lose every other saved position.
+     */
+    private fun mergeEntry(
+        name: String,
+        value: Any?,
+        positions: MutableMap<String, ScrollPosition>,
+        anchors: MutableMap<String, AnchorPosition>,
+    ) {
+        when {
+            name.endsWith(ANCHOR_SUFFIX) -> {
+                val screen = name.removeSuffix(ANCHOR_SUFFIX)
+                val anchor = value as? String ?: return
+                anchors[screen] = (anchors[screen] ?: AnchorPosition("", 0)).copy(anchor = anchor)
+            }
+            name.endsWith(ANCHOR_OFFSET_SUFFIX) -> {
+                val screen = name.removeSuffix(ANCHOR_OFFSET_SUFFIX)
+                val offset = value as? Int ?: return
+                anchors[screen] = (anchors[screen] ?: AnchorPosition("", 0)).copy(offset = offset)
+            }
+            name.endsWith(INDEX_SUFFIX) -> {
+                val screen = name.removeSuffix(INDEX_SUFFIX)
+                val v = value as? Int ?: return
+                positions[screen] = (positions[screen] ?: ScrollPosition.Zero).copy(index = v)
+            }
+            name.endsWith(OFFSET_SUFFIX) -> {
+                val screen = name.removeSuffix(OFFSET_SUFFIX)
+                val v = value as? Int ?: return
+                positions[screen] = (positions[screen] ?: ScrollPosition.Zero).copy(offset = v)
+            }
+        }
     }
 
     /**
