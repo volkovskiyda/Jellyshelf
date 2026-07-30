@@ -11,6 +11,8 @@ import com.gmail.volkovskiyda.jellyshelf.util.fileNameFromPath
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 
+private const val MILLIS_PER_SECOND = 1000L
+
 /**
  * Pure merge of one Jellyfin [item] with its optional index entry [meta] and the [existing]
  * local row, deciding whose metadata wins:
@@ -34,7 +36,7 @@ internal fun mergeVideo(
     now: Long,
     keepLocalWatchState: Boolean = false,
 ): VideoEntity {
-    val indexUpdatedAt = meta?.fetchedAt?.let { it * 1000 } // epoch seconds -> millis
+    val indexUpdatedAt = meta?.fetchedAt?.let { it * MILLIS_PER_SECOND } // epoch seconds -> millis
     val retainedWatch = existing?.takeIf { keepLocalWatchState }
     val played = retainedWatch?.played ?: item.userData?.played ?: false
     val positionTicks =

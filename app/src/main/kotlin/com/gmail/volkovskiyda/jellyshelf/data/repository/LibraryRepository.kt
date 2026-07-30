@@ -66,6 +66,10 @@ import timber.log.Timber
 import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
 
+private val HTTP_CLIENT_ERRORS = 400..499
+private const val HTTP_REQUEST_TIMEOUT = 408
+private const val HTTP_TOO_MANY_REQUESTS = 429
+
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
  *  explicitly transient 408 (timeout) and 429 (throttling). Under Ktor's `expectSuccess = true`,
  *  a non-2xx surfaces as [ResponseException] (Client/ServerResponseException); timeouts throw
@@ -77,12 +81,16 @@ import kotlin.time.Duration.Companion.minutes
 internal fun isPermanentFailure(e: Throwable): Boolean {
     if (isCleartextBlocked(e)) return true
     val code = (e as? ResponseException)?.response?.status?.value
-    return code != null && code in 400..499 && code != 408 && code != 429
+    return code != null && code in HTTP_CLIENT_ERRORS &&
+        code != HTTP_REQUEST_TIMEOUT && code != HTTP_TOO_MANY_REQUESTS
 }
 
 /** Shared logcat tag for the external-player / playstate flow: `adb logcat -s Playback`. Kept in
  *  the data layer so it doesn't depend on the Android-heavy `util.Playback`. */
 private const val PLAYBACK_TAG = "Playback"
+
+/** Stopping within this many seconds of the end counts as a finished watch, not a resume point. */
+private const val COMPLETION_THRESHOLD_SECONDS = 5L
 
 /**
  * How many consecutive syncs may miss a video before it is deleted locally. At the sync worker's
@@ -832,7 +840,8 @@ class DefaultLibraryRepository(
                 return
             }
             finished = completed ||
-                (v.durationSeconds > 0 && ticksToSeconds(positionTicks) >= v.durationSeconds - 5)
+                v.durationSeconds > 0 &&
+                ticksToSeconds(positionTicks) >= v.durationSeconds - COMPLETION_THRESHOLD_SECONDS
             Timber.tag(PLAYBACK_TAG).d(
                 "onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> " +
                     "local write played=$finished position=${if (finished) 0L else positionTicks}",

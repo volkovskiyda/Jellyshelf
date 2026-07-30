@@ -16,6 +16,7 @@ fun millisToTicks(millis: Long): Long = millis * TICKS_PER_MILLI
 fun ticksToMillis(ticks: Long): Long = ticks / TICKS_PER_MILLI
 
 /** Formats a duration in seconds as H:MM:SS or M:SS. */
+@Suppress("MagicNumber") // 3600/60 are the hour/minute bases of the H:MM:SS shape, not named values
 fun formatDuration(totalSeconds: Long): String {
     if (totalSeconds <= 0) return "--:--"
     val h = totalSeconds / 3600
@@ -29,6 +30,7 @@ fun formatDuration(totalSeconds: Long): String {
  * ProductionYear fallback) renders as the year. Anything else is malformed metadata and
  * renders as nothing, matching the validation contract of [yearOf]/[yearMonthOf] below.
  */
+@Suppress("MagicNumber") // 4/6/8 are the "YYYYMMDD" substring offsets, not named values
 fun formatUploadDate(yyyymmdd: String?): String? {
     val d = yyyymmdd ?: return null
     if (!d.all { it.isDigit() }) return null
@@ -43,6 +45,7 @@ fun formatUploadDate(yyyymmdd: String?): String? {
  * The four-digit year from an upload-date string, or null if it has no leading year. Accepts
  * yt-dlp "YYYYMMDD" as well as the bare "YYYY" fallback stored from Jellyfin's ProductionYear.
  */
+@Suppress("MagicNumber") // 4 is the "YYYY" length, not a named value
 fun yearOf(uploadDate: String?): String? {
     val d = uploadDate ?: return null
     if (d.length < 4) return null
@@ -51,6 +54,7 @@ fun yearOf(uploadDate: String?): String? {
 }
 
 /** The "YYYY-MM" month from a "YYYYMMDD" upload date, or null if it lacks a month (bare year). */
+@Suppress("MagicNumber") // 4/6/12 are the "YYYYMM" substring offsets and month range, not named values
 fun yearMonthOf(uploadDate: String?): String? {
     val d = uploadDate ?: return null
     if (d.length < 6) return null

@@ -6,6 +6,7 @@ package com.gmail.volkovskiyda.jellyshelf.domain.model
  * [label] is what the UI shows. Ranges are half-open, [minSeconds, maxSeconds). Videos with an
  * unknown duration (0 seconds) fall into no bucket — [minSeconds] of the first bucket is 1.
  */
+@Suppress("MagicNumber") // the minute boundaries above are the bucket definitions themselves
 enum class DurationBucket(val id: String, val label: String, val minSeconds: Long, val maxSeconds: Long) {
     UNDER_10("0", "0–10 min", 1, 10 * 60),
     FROM_10_TO_30("1", "10–30 min", 10 * 60, 30 * 60),

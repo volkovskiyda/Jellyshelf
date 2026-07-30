@@ -14,6 +14,12 @@ import timber.log.Timber
 /** Paging safety cap — far above any real library, purely an infinite-loop backstop. */
 private const val MAX_PAGED_ITEMS = 1_000_000
 
+/** Page size for browsing folders — folder listings are small, so a bigger page is cheap. */
+private const val FOLDER_PAGE_SIZE = 500
+
+/** Page size for the full item listing used by sync. */
+private const val ITEM_PAGE_SIZE = 200
+
 /** Shared logcat tag for the external-player / playstate flow: `adb logcat -s Playback`. Kept in
  *  the data layer so it doesn't depend on the Android-heavy `util.Playback`. */
 private const val PLAYBACK_TAG = "Playback"
@@ -81,7 +87,7 @@ class JellyfinDataSource(
             // truncated in the browser. A short page is the sole terminator — some servers
             // omit TotalRecordCount, and a full page with total=0 must not stop the loop.
             val all = mutableListOf<BaseItemDto>()
-            val pageSize = 500
+            val pageSize = FOLDER_PAGE_SIZE
             var startIndex = 0
             while (true) {
                 val page = api.getChildFolders(
@@ -112,7 +118,7 @@ class JellyfinDataSource(
         val scopedParent = parentId?.takeIf { it.isNotBlank() }
         val all = mutableListOf<BaseItemDto>()
         var startIndex = 0
-        val pageSize = 200
+        val pageSize = ITEM_PAGE_SIZE
         while (true) {
             // A short page is the sole terminator — some servers omit TotalRecordCount, and
             // stopping early would look like server-side deletions to the sync.
