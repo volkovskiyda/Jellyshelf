@@ -1,10 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * How long typing has to pause before a query is searched. Long enough that a burst of keystrokes
