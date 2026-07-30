@@ -2,7 +2,8 @@
 # upgrade brings its new rules along instead of freezing a copy of the full default config here.
 
 build:
-  # Findings recorded in config/detekt/baseline.xml don't count; anything new fails the build.
+  # No baseline: every finding fails the build, so suppressed debt can't accumulate unseen.
+  # Anything deliberate is an annotated @Suppress at the declaration, or an exemption below.
   maxIssues: 0
 
 complexity:

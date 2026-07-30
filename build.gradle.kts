@@ -16,7 +16,6 @@ detekt {
     // The config file holds only this project's overrides; everything else comes from detekt's
     // defaults, so a version bump brings new rules instead of freezing a 500-line copy.
     buildUponDefaultConfig = true
-    baseline = file("config/detekt/baseline.xml")
     parallel = true
 }
 
@@ -33,8 +32,4 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
         sarif.required.set(false)
         md.required.set(false)
     }
-}
-
-tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach {
-    exclude("**/build/**")
 }
