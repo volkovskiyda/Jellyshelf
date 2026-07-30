@@ -378,6 +378,7 @@ class DefaultLibraryRepository(
 
         val now = System.currentTimeMillis()
         val serverBase = s.serverUrl.trim().removeSuffix("/")
+        val mergeContext = SyncMergeContext(serverBase, now, indexAvailable)
 
         val synced = writeMutex.withLock {
             // Existing rows, to honour newest-wins: a manual in-app yt-dlp fetch is kept over an
@@ -391,9 +392,7 @@ class DefaultLibraryRepository(
                     youtubeId = youtubeId,
                     item = item,
                     meta = index[youtubeId],
-                    indexAvailable = indexAvailable,
-                    serverBase = serverBase,
-                    now = now,
+                    context = mergeContext,
                     // A local watch-state write that landed after the server snapshot was taken
                     // is newer than that snapshot — keep it.
                     keepLocalWatchState = (localWatchWrites[youtubeId] ?: 0L) > fetchStartedAt,

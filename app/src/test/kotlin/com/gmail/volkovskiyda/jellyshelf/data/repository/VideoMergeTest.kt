@@ -21,6 +21,8 @@ class VideoMergeTest {
     private val now = 1_000_000L
     private val youtubeId = "dQw4w9WgXcQ"
 
+    private fun context(indexAvailable: Boolean) = SyncMergeContext(serverBase, now, indexAvailable)
+
     private fun item(
         played: Boolean = false,
         positionTicks: Long = 0L,
@@ -73,9 +75,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(played = true, positionTicks = 123L),
             meta = null,
-            indexAvailable = false,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = false),
         )
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
         assertEquals("Rich Title", merged.title)
@@ -93,9 +93,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = null,
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_JELLYFIN, merged.metadataSource)
         assertEquals("Jellyfin Name", merged.title)
@@ -110,9 +108,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = meta(fetchedAtSeconds = 2_000L), // 2_000_000 ms < 3_000_000 ms
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_YTDLP, merged.metadataSource)
         assertEquals("Rich Title", merged.title)
@@ -125,9 +121,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = meta(fetchedAtSeconds = 2_000L), // 2_000_000 ms > 1_000_000 ms
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
         assertEquals("Index Title", merged.title)
@@ -141,9 +135,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = null,
-            indexAvailable = false,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = false),
         )
         assertEquals(METADATA_SOURCE_YTDLP, merged.metadataSource)
     }
@@ -157,9 +149,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = meta(),
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
         assertEquals("Index Title", merged.title)
@@ -173,9 +163,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = null,
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_JELLYFIN, merged.metadataSource)
         assertEquals("Jellyfin Name", merged.title)
@@ -190,9 +178,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(played = false, positionTicks = 0L), // stale pre-write server snapshot
             meta = meta(),
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
             keepLocalWatchState = true,
         )
         assertTrue(merged.played)
@@ -210,9 +196,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = null,
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals("$serverBase/Items/jf-item-1/Images/Primary?maxWidth=480", merged.thumbnailUrl)
         assertFalse(merged.thumbnailUrl!!.contains("api_key"))
@@ -228,9 +212,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = null,
-            indexAvailable = false,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = false),
         )
         assertEquals("$serverBase/Items/jf-item-1/Images/Primary?maxWidth=480", merged.thumbnailUrl)
     }
@@ -251,9 +233,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = null,
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_JELLYFIN, merged.metadataSource)
         assertEquals("yt-dlp timed out", merged.lastFetchError)
@@ -272,9 +252,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = meta(),
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
         assertNull(merged.lastFetchError)
@@ -299,9 +277,7 @@ class VideoMergeTest {
                     IndexChapter(startSeconds = null, title = "No start"),
                 ),
             ),
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(
             listOf(Chapter(0L, "Intro"), Chapter(120_500L, "Main part")),
@@ -317,9 +293,7 @@ class VideoMergeTest {
             youtubeId = youtubeId,
             item = item(),
             meta = null,
-            indexAvailable = true,
-            serverBase = serverBase,
-            now = now,
+            context = context(indexAvailable = true),
         )
         assertEquals(emptyList<Chapter>(), merged.chapters)
     }
