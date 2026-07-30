@@ -6,6 +6,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -245,10 +246,52 @@ private fun PlayerWithControls(
     val playbackSpeed = rememberPlaybackSpeedState(controller)
     val presentationState = rememberPresentationState(controller)
 
+    // Drag gestures on the surface: volume right, brightness left (see PlayerGestureHandler).
+    // The pill lingers briefly after the finger lifts, then hides.
+    val activity = LocalActivity.current
+    val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
+    var gestureIndicator by remember { mutableStateOf<GestureIndicator?>(null) }
+    var gestureActive by remember { mutableStateOf(false) }
+    val gestureHandler = remember(activity, audioManager) {
+        PlayerGestureHandler(object : PlayerGestureHandler.Host {
+            override fun volumeFraction() = audioManager.musicVolumeFraction()
+
+            override fun brightnessFraction() = currentBrightnessFraction(activity)
+
+            override fun onVolumeChange(fraction: Float) {
+                audioManager.setMusicVolumeFraction(fraction)
+                gestureActive = true
+                gestureIndicator = GestureIndicator(IndicatorControl.VOLUME, fraction)
+            }
+
+            override fun onBrightnessChange(fraction: Float) {
+                applyBrightnessFraction(activity, fraction)
+                gestureActive = true
+                gestureIndicator = GestureIndicator(IndicatorControl.BRIGHTNESS, fraction)
+            }
+
+            override fun onGestureEnd() {
+                gestureActive = false
+            }
+        })
+    }
+    LaunchedEffect(gestureActive, gestureIndicator) {
+        if (!gestureActive && gestureIndicator != null) {
+            delay(INDICATOR_LINGER_MS)
+            gestureIndicator = null
+        }
+    }
+    // The override is window state and the window outlives this screen — always hand the user's
+    // own brightness back on leave.
+    DisposableEffect(activity) {
+        onDispose { clearBrightnessOverride(activity) }
+    }
+
     Box(
         Modifier
             .fillMaxSize()
-            .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } },
+            .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } }
+            .playerDragGestures(gestureHandler),
     ) {
         PlayerSurface(
             player = controller,
@@ -291,6 +334,15 @@ private fun PlayerWithControls(
                     chaptersOpen = false
                 },
                 onDismiss = { chaptersOpen = false },
+            )
+        }
+        gestureIndicator?.let { indicator ->
+            GestureIndicatorPill(
+                indicator,
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(top = 48.dp),
             )
         }
     }
@@ -665,6 +717,7 @@ private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
 private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L
+private const val INDICATOR_LINGER_MS = 800L
 private const val MILLIS_PER_SECOND = 1_000L
 private const val SCRIM_ALPHA = 0.4f
 private const val PANEL_SCRIM_ALPHA = 0.6f
