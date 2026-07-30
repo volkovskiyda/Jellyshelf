@@ -4,13 +4,15 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
-import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
-import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +35,7 @@ class DetailViewModel(
     private val app: Application,
     private val repo: LibraryRepository,
     settingsState: AppSettingsState,
+    private val settingsRepository: SettingsRepository,
     private val youtubeId: String,
 ) : ViewModel() {
 
@@ -60,6 +63,11 @@ class DetailViewModel(
 
     fun consumeMessage() {
         _message.value = null
+    }
+
+    /** Persists the mode picked in the split button's dropdown — app-wide, like the setting. */
+    fun setPlaybackMode(mode: PlaybackMode) {
+        viewModelScope.launch { settingsRepository.setPlaybackMode(mode) }
     }
 
     fun toggleWatched() {

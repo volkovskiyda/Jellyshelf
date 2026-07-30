@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -12,6 +13,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
@@ -71,7 +73,12 @@ class DetailContentTest {
         lastSyncLibraryId = "",
     )
 
-    private fun setContent(video: Video, onRemove: () -> Unit = {}) {
+    private fun setContent(
+        video: Video,
+        onPlay: (Video, Settings, PlaybackMode) -> Unit = { _, _, _ -> },
+        onSelectMode: (PlaybackMode) -> Unit = {},
+        onRemove: () -> Unit = {},
+    ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
                 DetailContent(
@@ -80,8 +87,8 @@ class DetailContentTest {
                     fetching = false,
                     thumbnailModel = null,
                     onBack = {},
-                    onPlay = { _, _ -> },
-                    onOpenInJellyfin = { _, _ -> },
+                    onPlay = onPlay,
+                    onSelectMode = onSelectMode,
                     onToggleWatched = {},
                     onFetchMetadata = {},
                     onRemove = onRemove,
@@ -174,5 +181,52 @@ class DetailContentTest {
         setContent(video.copy(missedSyncs = 1))
 
         composeRule.onNodeWithText(string(R.string.play)).assertIsEnabled()
+    }
+
+    @Test
+    fun `the chevron opens the mode menu with all three modes`() {
+        setContent(video)
+
+        composeRule.onNodeWithContentDescription(string(R.string.playback_options)).performClick()
+
+        composeRule.onNodeWithText(string(R.string.playback_mode_play)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.playback_mode_external)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.playback_mode_web)).assertIsDisplayed()
+    }
+
+    /** Menu item tap = save + act immediately, and with the tapped mode, not the saved one. */
+    @Test
+    fun `picking a mode from the menu saves it and plays with it`() {
+        var saved: PlaybackMode? = null
+        var played: PlaybackMode? = null
+        setContent(
+            video,
+            onPlay = { _, _, mode -> played = mode },
+            onSelectMode = { saved = it },
+        )
+
+        composeRule.onNodeWithContentDescription(string(R.string.playback_options)).performClick()
+        composeRule.onNodeWithText(string(R.string.playback_mode_external)).performClick()
+
+        assertEquals(PlaybackMode.EXTERNAL, saved)
+        assertEquals(PlaybackMode.EXTERNAL, played)
+    }
+
+    @Test
+    fun `the main half plays with the saved mode`() {
+        var played: PlaybackMode? = null
+        setContent(video, onPlay = { _, _, mode -> played = mode })
+
+        composeRule.onNodeWithText(string(R.string.play)).performClick()
+
+        assertEquals(settings.playbackMode, played)
+    }
+
+    /** The dropdown's web mode replaced the standalone button (string resource removed too). */
+    @Test
+    fun `the standalone open in jellyfin button is gone`() {
+        setContent(video)
+
+        composeRule.onNodeWithText("Open in Jellyfin").assertDoesNotExist()
     }
 }

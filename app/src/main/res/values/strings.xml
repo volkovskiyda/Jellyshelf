@@ -81,7 +81,11 @@
     <string name="video_not_found">Video not found.</string>
     <string name="play">Play</string>
     <string name="play_with">Play with</string>
-    <string name="open_in_jellyfin">Open in Jellyfin</string>
+    <!-- The split play button's mode menu; picking one saves it app-wide and acts immediately. -->
+    <string name="playback_mode_play">Play in app</string>
+    <string name="playback_mode_external">External player</string>
+    <string name="playback_mode_web">Open in web</string>
+    <string name="playback_options">Playback options</string>
     <string name="mark_watched">Mark as watched</string>
     <string name="mark_unwatched">Mark as unwatched</string>
     <string name="get_metadata">Get metadata</string>

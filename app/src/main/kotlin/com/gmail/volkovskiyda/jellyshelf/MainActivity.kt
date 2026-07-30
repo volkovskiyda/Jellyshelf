@@ -322,6 +322,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     DetailScreen(
                         youtubeId = key.youtubeId,
                         onBack = { navThrottle { pop() } },
+                        onPlayInApp = { id -> navThrottle { push(AppNavKey.Player(id)) } },
                     )
                 }
 

@@ -6,20 +6,27 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +39,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +55,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
@@ -61,13 +72,16 @@ import org.koin.core.parameter.parametersOf
 import timber.log.Timber
 
 /**
- * Detail screen: binds [DetailViewModel] and the external-player handoff to the stateless
- * [DetailContent] below, which previews and tests can render on its own.
+ * Detail screen: binds [DetailViewModel] and the playback-mode dispatch — in-app player push,
+ * external-player handoff, web deep link — to the stateless [DetailContent] below, which
+ * previews and tests can render on its own. [onPlayInApp] comes from the nav host: pushing the
+ * player screen is navigation, and navigation stays in JellyshelfNav like every other push.
  */
 @Composable
 fun DetailScreen(
     youtubeId: String,
     onBack: () -> Unit,
+    onPlayInApp: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -116,22 +130,25 @@ fun DetailScreen(
         fetching = fetching,
         thumbnailModel = thumbnailModel,
         onBack = onBack,
-        onPlay = { video, s ->
-            playerLauncher.launch(
-                Playback.externalPlayerIntent(
-                    context = context,
-                    serverUrl = s.serverUrl,
-                    itemId = requireNotNull(video.jellyfinItemId),
-                    credential = s.credential,
-                    title = video.title,
-                    resumeMs = ticksToMillis(video.playbackPositionTicks),
-                    tokenInQuery = s.tokenInQuery,
+        onPlay = { video, s, mode ->
+            when (mode) {
+                PlaybackMode.PLAY -> onPlayInApp(video.youtubeId)
+                PlaybackMode.EXTERNAL -> playerLauncher.launch(
+                    Playback.externalPlayerIntent(
+                        context = context,
+                        serverUrl = s.serverUrl,
+                        itemId = requireNotNull(video.jellyfinItemId),
+                        credential = s.credential,
+                        title = video.title,
+                        resumeMs = ticksToMillis(video.playbackPositionTicks),
+                        tokenInQuery = s.tokenInQuery,
+                    ),
                 )
-            )
+                PlaybackMode.WEB ->
+                    Playback.openInJellyfin(context, s.serverUrl, requireNotNull(video.jellyfinItemId))
+            }
         },
-        onOpenInJellyfin = { video, s ->
-            Playback.openInJellyfin(context, s.serverUrl, requireNotNull(video.jellyfinItemId))
-        },
+        onSelectMode = viewModel::setPlaybackMode,
         onToggleWatched = viewModel::toggleWatched,
         onFetchMetadata = viewModel::fetchMetadata,
         onRemove = viewModel::removeFromLibrary,
@@ -147,8 +164,8 @@ internal fun DetailContent(
     fetching: Boolean,
     thumbnailModel: String?,
     onBack: () -> Unit,
-    onPlay: (Video, Settings) -> Unit,
-    onOpenInJellyfin: (Video, Settings) -> Unit,
+    onPlay: (Video, Settings, PlaybackMode) -> Unit,
+    onSelectMode: (PlaybackMode) -> Unit,
     onToggleWatched: () -> Unit,
     onFetchMetadata: () -> Unit,
     onRemove: () -> Unit,
@@ -243,27 +260,61 @@ internal fun DetailContent(
 
             if (current.missingFromServer) MissingFromServerNotice()
 
-            // Playback actions. Both leave the app, and the second tap of a double-tap would
-            // land before the launched activity is on top — one shared throttle, so a stray
-            // repeat can't start two players (or a player and a browser).
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // One playback control: a split button. The main half acts with the saved mode; the
+            // chevron opens the mode menu, and picking an item saves the mode app-wide AND acts
+            // with it immediately (split-button convention, like IDE run buttons). Every mode
+            // leaves this screen one way or another, and the second tap of a double-tap would
+            // land before whatever launched is on top — one shared throttle for the whole row.
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 val itemId = current.jellyfinItemId
                 val s = settings
+                val enabled = s != null && itemId != null
                 val launchThrottle = rememberClickThrottle()
                 Button(
-                    onClick = { if (s != null && itemId != null) launchThrottle { onPlay(current, s) } },
-                    enabled = s != null && itemId != null,
+                    onClick = {
+                        if (s != null && itemId != null) {
+                            launchThrottle { onPlay(current, s, s.playbackMode) }
+                        }
+                    },
+                    enabled = enabled,
+                    shape = SplitButtonStartShape,
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
                     Text(stringResource(R.string.play))
                 }
-                OutlinedButton(
-                    onClick = {
-                        if (s != null && itemId != null) launchThrottle { onOpenInJellyfin(current, s) }
-                    },
-                    enabled = s != null && itemId != null,
-                ) {
-                    Text(stringResource(R.string.open_in_jellyfin))
+                Box {
+                    var modeMenuOpen by remember { mutableStateOf(false) }
+                    Button(
+                        onClick = { modeMenuOpen = true },
+                        enabled = enabled,
+                        shape = SplitButtonEndShape,
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowDropDown,
+                            contentDescription = stringResource(R.string.playback_options),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = modeMenuOpen,
+                        onDismissRequest = { modeMenuOpen = false },
+                    ) {
+                        PlaybackMode.entries.forEach { mode ->
+                            PlaybackModeMenuItem(
+                                mode = mode,
+                                selected = mode == s?.playbackMode,
+                                onClick = {
+                                    modeMenuOpen = false
+                                    if (s != null && itemId != null) {
+                                        // Save, then act with the *tapped* mode — the persisted
+                                        // flow value hasn't caught up yet.
+                                        onSelectMode(mode)
+                                        launchThrottle { onPlay(current, s, mode) }
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -318,6 +369,45 @@ internal fun DetailContent(
         }
     }
 }
+
+// Hand-composed split-button halves: material3 1.4.0 (BOM 2026.06.01) ships only the SplitButton
+// design *tokens*, not the SplitButtonLayout composable. Pill outer corners, small inner corners
+// and a 2 dp gap are what read as "one button in two halves".
+private val SplitButtonStartShape = RoundedCornerShape(
+    topStart = 20.dp,
+    bottomStart = 20.dp,
+    topEnd = 4.dp,
+    bottomEnd = 4.dp,
+)
+private val SplitButtonEndShape = RoundedCornerShape(
+    topStart = 4.dp,
+    bottomStart = 4.dp,
+    topEnd = 20.dp,
+    bottomEnd = 20.dp,
+)
+
+@Composable
+private fun PlaybackModeMenuItem(mode: PlaybackMode, selected: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(stringResource(mode.labelRes)) },
+        onClick = onClick,
+        // Every item carries the slot so the labels align; only the saved mode shows the check.
+        leadingIcon = {
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = null)
+            } else {
+                Spacer(Modifier.size(24.dp))
+            }
+        },
+    )
+}
+
+private val PlaybackMode.labelRes: Int
+    get() = when (this) {
+        PlaybackMode.PLAY -> R.string.playback_mode_play
+        PlaybackMode.EXTERNAL -> R.string.playback_mode_external
+        PlaybackMode.WEB -> R.string.playback_mode_web
+    }
 
 /**
  * Shown when the server's listing has stopped including this video. Deliberately worded as
