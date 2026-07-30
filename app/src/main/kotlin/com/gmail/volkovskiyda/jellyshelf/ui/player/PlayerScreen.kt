@@ -19,11 +19,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -112,7 +115,13 @@ fun PlayerScreen(
         if (c == null) {
             // Still connecting to the service. The back arrow stays reachable regardless.
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(4.dp),
+            ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.back),
@@ -276,7 +285,14 @@ internal fun PlayerControls(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = SCRIM_ALPHA))) {
+    // The scrim covers the full screen; the controls inside stay clear of the display cutout,
+    // whose insets — unlike the hidden system bars' — never drop to zero on notched devices.
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = SCRIM_ALPHA))
+            .windowInsetsPadding(WindowInsets.displayCutout),
+    ) {
         Row(
             Modifier.align(Alignment.TopStart).fillMaxWidth().padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -448,7 +464,9 @@ internal fun ChaptersPanel(
         modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = PANEL_SCRIM_ALPHA))
-            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+            // Scrim and tap-to-dismiss span everything; the panel stays out of the cutout.
+            .windowInsetsPadding(WindowInsets.displayCutout),
     ) {
         Column(
             Modifier
