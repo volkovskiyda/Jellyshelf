@@ -853,6 +853,10 @@ class DefaultLibraryRepository(
         }
         // Best-effort: the local resume position is already saved, so a failed server
         // write is swallowed.
+        reportPlaybackToServer(youtubeId, itemId, s)
+    }
+
+    private suspend fun reportPlaybackToServer(youtubeId: String, itemId: String, s: Settings) {
         runCatchingCancellable {
             playstateMutex.withLock {
                 // Re-read at send time (see setPlayed): a toggle that landed while this
