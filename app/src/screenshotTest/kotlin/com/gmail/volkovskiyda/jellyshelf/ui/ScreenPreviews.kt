@@ -7,6 +7,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesContent
@@ -15,6 +16,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailContent
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.VideoDetailState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryContent
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryVideos
+import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerControls
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsActions
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsContent
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsUiState
@@ -199,6 +201,37 @@ private fun DetailMissingFromServerDark() {
             onToggleWatched = {},
             onFetchMetadata = {},
             onRemove = {},
+        )
+    }
+}
+
+/**
+ * The player's controls overlay with chapters, landscape: the chapters button in the top bar,
+ * tick markers on the seek bar, and the current chapter's title above it. Black background
+ * standing in for the video surface the overlay normally covers.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_HEIGHT, heightDp = PHONE_WIDTH, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun PlayerControlsWithChapters() {
+    PreviewTheme(darkTheme = true) {
+        PlayerControls(
+            title = "A reasonably long video title that wraps onto a second line",
+            showPlay = false,
+            positionMs = 200_000L,
+            durationMs = 754_000L,
+            chapters = listOf(
+                Chapter(0L, "Intro"),
+                Chapter(120_000L, "Main part"),
+                Chapter(600_000L, "Outro"),
+            ),
+            onPlayPause = {},
+            onSeekBack = {},
+            onSeekForward = {},
+            onSeek = {},
+            onScrubbingChanged = {},
+            onOpenChapters = {},
+            onBack = {},
         )
     }
 }

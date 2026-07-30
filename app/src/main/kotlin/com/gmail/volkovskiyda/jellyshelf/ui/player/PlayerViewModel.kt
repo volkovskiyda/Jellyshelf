@@ -7,16 +7,19 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.util.parseTimecodes
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
@@ -37,6 +40,15 @@ class PlayerViewModel(
     /** The video row, for the title over the controls; null until it loads. */
     val video: StateFlow<Video?> = repo.observeVideo(youtubeId)
         .stateIn(viewModelScope, WhileUiSubscribed, null)
+
+    /**
+     * Chapters parsed from the description's timecode lines ([parseTimecodes]); empty when the
+     * description has none that pass the chapter rules. Description-parsed timecodes are the
+     * priority source; structured yt-dlp chapters are the fallback when a video has some.
+     */
+    val chapters: StateFlow<List<Chapter>> = video
+        .map { parseTimecodes(it?.description, it?.durationSeconds ?: 0L) }
+        .stateIn(viewModelScope, WhileUiSubscribed, emptyList())
 
     private val _controller = MutableStateFlow<MediaController?>(null)
     val controller: StateFlow<MediaController?> = _controller.asStateFlow()

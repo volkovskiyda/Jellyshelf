@@ -8,20 +8,27 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -43,6 +50,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -71,6 +80,8 @@ import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
+import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
@@ -91,6 +102,7 @@ fun PlayerScreen(
     val viewModel: PlayerViewModel = koinViewModel { parametersOf(youtubeId) }
     val controller by viewModel.controller.collectAsStateWithLifecycle()
     val video by viewModel.video.collectAsStateWithLifecycle()
+    val chapters by viewModel.chapters.collectAsStateWithLifecycle()
 
     RequestNotificationPermissionOnce()
     ImmersiveWhileHere()
@@ -108,14 +120,19 @@ fun PlayerScreen(
                 )
             }
         } else {
-            PlayerWithControls(controller = c, title = video?.title, onBack = onBack)
+            PlayerWithControls(controller = c, title = video?.title, chapters = chapters, onBack = onBack)
         }
     }
 }
 
 /** The connected player: surface, playback-state plumbing, and the tap-to-toggle overlay. */
 @Composable
-private fun PlayerWithControls(controller: MediaController, title: String?, onBack: () -> Unit) {
+private fun PlayerWithControls(
+    controller: MediaController,
+    title: String?,
+    chapters: List<Chapter>,
+    onBack: () -> Unit,
+) {
     // Snapshots the UI renders from — polled/listened, because a Player is not observable state.
     var positionMs by remember { mutableLongStateOf(controller.currentPosition.coerceAtLeast(0)) }
     var durationMs by remember { mutableLongStateOf(0L) }
@@ -172,13 +189,17 @@ private fun PlayerWithControls(controller: MediaController, title: String?, onBa
 
     var controlsVisible by remember { mutableStateOf(true) }
     var scrubbing by remember { mutableStateOf(false) }
-    // Auto-hide while playing; pausing or scrubbing pins the controls.
-    LaunchedEffect(controlsVisible, isPlaying, scrubbing) {
-        if (controlsVisible && isPlaying && !scrubbing) {
+    var chaptersOpen by remember { mutableStateOf(false) }
+    // Auto-hide while playing; pausing, scrubbing or the open chapter panel pins the controls.
+    val controlsPinned = scrubbing || chaptersOpen
+    LaunchedEffect(controlsVisible, isPlaying, controlsPinned) {
+        if (controlsVisible && isPlaying && !controlsPinned) {
             delay(CONTROLS_HIDE_DELAY_MS)
             controlsVisible = false
         }
     }
+    // The panel captures Back itself: closing it must not pop the whole player screen.
+    BackHandler(enabled = chaptersOpen) { chaptersOpen = false }
 
     val playPause = rememberPlayPauseButtonState(controller)
     val seekBack = rememberSeekBackButtonState(controller)
@@ -209,12 +230,25 @@ private fun PlayerWithControls(controller: MediaController, title: String?, onBa
                 showPlay = playPause.showPlay,
                 positionMs = positionMs,
                 durationMs = durationMs,
+                chapters = chapters,
                 onPlayPause = playPause::onClick,
                 onSeekBack = seekBack::onClick,
                 onSeekForward = seekForward::onClick,
                 onSeek = controller::seekTo,
                 onScrubbingChanged = { scrubbing = it },
+                onOpenChapters = { chaptersOpen = true },
                 onBack = onBack,
+            )
+        }
+        if (chaptersOpen) {
+            ChaptersPanel(
+                chapters = chapters,
+                currentChapter = currentChapter(chapters, positionMs),
+                onChapterClick = {
+                    controller.seekTo(it.startMs)
+                    chaptersOpen = false
+                },
+                onDismiss = { chaptersOpen = false },
             )
         }
     }
@@ -222,9 +256,9 @@ private fun PlayerWithControls(controller: MediaController, title: String?, onBa
 
 /**
  * The controls overlay, stateless so previews and tests can render it without a player: top bar
- * (back + title), centre transport row, bottom position–seek–duration bar. Its only internal
- * state is the in-flight scrub, reported via [onScrubbingChanged] so the caller can pin the
- * overlay open while the user drags.
+ * (back + title + chapters), centre transport row, bottom position–seek–duration bar with
+ * chapter tick markers. Its only internal state is the in-flight scrub, reported via
+ * [onScrubbingChanged] so the caller can pin the overlay open while the user drags.
  */
 @Composable
 internal fun PlayerControls(
@@ -232,11 +266,13 @@ internal fun PlayerControls(
     showPlay: Boolean,
     positionMs: Long,
     durationMs: Long,
+    chapters: List<Chapter>,
     onPlayPause: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
     onSeek: (Long) -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
+    onOpenChapters: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -258,7 +294,17 @@ internal fun PlayerControls(
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            if (chapters.isNotEmpty()) {
+                IconButton(onClick = onOpenChapters) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.FormatListBulleted,
+                        contentDescription = stringResource(R.string.chapters),
+                        tint = Color.White,
+                    )
+                }
+            }
         }
 
         Row(
@@ -295,49 +341,160 @@ internal fun PlayerControls(
         // While dragging, the labels and thumb show the scrub target; the seek fires on release.
         var scrubMs by remember { mutableStateOf<Long?>(null) }
         val shownMs = scrubMs ?: positionMs
-        Row(
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 12.dp)) {
+            // The chapter the shown position falls in — scrub-aware, so dragging previews the
+            // chapter you'd land in, not the one still playing.
+            currentChapter(chapters, shownMs)?.let { chapter ->
+                Text(
+                    chapter.title,
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    formatPosition(shownMs),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Slider(
+                    value = if (durationMs > 0) {
+                        (shownMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    },
+                    onValueChange = { fraction ->
+                        if (durationMs > 0) {
+                            if (scrubMs == null) onScrubbingChanged(true)
+                            scrubMs = (fraction * durationMs).toLong()
+                        }
+                    },
+                    onValueChangeFinished = {
+                        scrubMs?.let(onSeek)
+                        scrubMs = null
+                        onScrubbingChanged(false)
+                    },
+                    modifier = Modifier.weight(1f).chapterTicks(chapters, durationMs),
+                    enabled = durationMs > 0,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                    ),
+                )
+                Text(
+                    formatDuration(durationMs / MILLIS_PER_SECOND),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Chapter tick marks over the slider: a short vertical bar at each chapter start's fraction of
+ * the track. Drawn over the whole slider width — the M3 track spans it, the thumb just overlaps
+ * the ends — which keeps this independent of the slider's internals. The 0:00 tick is skipped:
+ * the track's start edge already marks it.
+ */
+private fun Modifier.chapterTicks(chapters: List<Chapter>, durationMs: Long): Modifier =
+    drawWithContent {
+        drawContent()
+        if (durationMs <= 0) return@drawWithContent
+        val half = CHAPTER_TICK_HEIGHT.toPx() / 2
+        chapters.forEach { chapter ->
+            if (chapter.startMs == 0L) return@forEach
+            val x = (chapter.startMs.toFloat() / durationMs) * size.width
+            val top = Offset(x, center.y - half)
+            val bottom = Offset(x, center.y + half)
+            // A white core in a dark halo, so the tick reads on the white played part of the
+            // track and on the dim unplayed part alike.
+            drawLine(
+                color = Color.Black.copy(alpha = 0.7f),
+                start = top,
+                end = bottom,
+                strokeWidth = CHAPTER_TICK_WIDTH.toPx() * 2,
+            )
+            drawLine(
+                color = Color.White,
+                start = top,
+                end = bottom,
+                strokeWidth = CHAPTER_TICK_WIDTH.toPx(),
+            )
+        }
+    }
+
+/**
+ * The tappable chapter list over a full-screen scrim: timestamp + title per row, the current
+ * chapter in the primary colour. Tapping outside (or Back, handled by the caller) dismisses.
+ */
+@Composable
+internal fun ChaptersPanel(
+    chapters: List<Chapter>,
+    currentChapter: Chapter?,
+    onChapterClick: (Chapter) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = PANEL_SCRIM_ALPHA))
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+    ) {
+        Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .heightIn(max = PANEL_MAX_HEIGHT)
+                .background(Color.Black.copy(alpha = PANEL_BACKGROUND_ALPHA))
+                // Swallow taps on the panel body so only the outside scrim dismisses.
+                .pointerInput(Unit) { detectTapGestures { } },
         ) {
             Text(
-                formatPosition(shownMs),
+                stringResource(R.string.chapters),
                 color = Color.White,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
-            Slider(
-                value = if (durationMs > 0) {
-                    (shownMs.toFloat() / durationMs).coerceIn(0f, 1f)
-                } else {
-                    0f
-                },
-                onValueChange = { fraction ->
-                    if (durationMs > 0) {
-                        if (scrubMs == null) onScrubbingChanged(true)
-                        scrubMs = (fraction * durationMs).toLong()
+            LazyColumn {
+                items(chapters, key = Chapter::startMs) { chapter ->
+                    val highlight = chapter == currentChapter
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onChapterClick(chapter) }
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            formatPosition(chapter.startMs),
+                            color = if (highlight) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                Color.White.copy(alpha = 0.7f)
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Text(
+                            chapter.title,
+                            color = if (highlight) MaterialTheme.colorScheme.primary else Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                },
-                onValueChangeFinished = {
-                    scrubMs?.let(onSeek)
-                    scrubMs = null
-                    onScrubbingChanged(false)
-                },
-                modifier = Modifier.weight(1f),
-                enabled = durationMs > 0,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                ),
-            )
-            Text(
-                formatDuration(durationMs / MILLIS_PER_SECOND),
-                color = Color.White,
-                style = MaterialTheme.typography.labelMedium,
-            )
+                }
+            }
         }
     }
 }
@@ -388,3 +545,8 @@ private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L
 private const val MILLIS_PER_SECOND = 1_000L
 private const val SCRIM_ALPHA = 0.4f
+private const val PANEL_SCRIM_ALPHA = 0.6f
+private const val PANEL_BACKGROUND_ALPHA = 0.92f
+private val PANEL_MAX_HEIGHT = 360.dp
+private val CHAPTER_TICK_HEIGHT = 8.dp
+private val CHAPTER_TICK_WIDTH = 2.dp

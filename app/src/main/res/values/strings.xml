@@ -106,6 +106,7 @@
     <string name="seek_back_10">Back 10 seconds</string>
     <string name="seek_forward_10">Forward 10 seconds</string>
     <string name="playback_error">Playback failed: %1$s</string>
+    <string name="chapters">Chapters</string>
 
     <!-- Settings -->
     <string name="appearance">Appearance</string>
