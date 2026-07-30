@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
  * rethrown so structured concurrency keeps working. Use this for any block that calls suspend
  * functions; the stdlib [runCatching] is fine for plain blocking code.
  */
+@Suppress("TooGenericExceptionCaught") // mirrors stdlib runCatching, minus cancellation — that's the contract
 inline fun <R> runCatchingCancellable(block: () -> R): Result<R> = try {
     Result.success(block())
 } catch (e: CancellationException) {

@@ -89,6 +89,7 @@ object Playback {
      * player that ignores the headers extra and would otherwise fail with 401. VLC's support for
      * custom headers has varied by version, which is exactly what that toggle covers.
      */
+    @Suppress("LongParameterList") // six non-default params, each required by the external-player intent contract
     fun externalPlayerIntent(
         context: Context,
         serverUrl: String,

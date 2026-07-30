@@ -197,6 +197,7 @@ internal fun JellyshelfApp(viewModel: MainViewModel = koinViewModel()) {
 }
 
 @Composable
+@Suppress("SpreadOperator") // rememberNavBackStack is vararg-only; copies a handful of nav keys, once per composition
 private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel) {
     val backStack = rememberNavBackStack(*startStack.toTypedArray())
     val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
