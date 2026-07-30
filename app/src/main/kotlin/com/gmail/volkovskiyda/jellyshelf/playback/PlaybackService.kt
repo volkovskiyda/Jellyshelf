@@ -10,6 +10,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -53,9 +54,11 @@ import timber.log.Timber
  * The `tokenInQuery` setting is an escape hatch for external players and is deliberately not
  * consulted here.
  *
- * Direct play only: no transcoding fallback, and media3's ffmpeg software decoders are not
- * published on Maven, so an exotic audio codec inside an mkv/webm may not decode on some
- * devices — the External playback mode is the user's escape hatch.
+ * Direct play first, transcoding second: media3's ffmpeg software decoders are not published
+ * on Maven, so an exotic codec inside an mkv/webm may not decode on some devices. When that
+ * happens ([isDecodeFailure]), [TranscodeFallbackListener] swaps the item for the server's HLS
+ * transcode ([Playback.hlsUrl]) at the same position — once; a failure of the transcode itself
+ * surfaces, and the player screen's toast points at the External playback mode.
  *
  * Server reporting reuses [LibraryRepository.reportPlaybackStopped] — one report per stop,
  * exactly like the external-player flow — plus periodic local-only saves
@@ -111,6 +114,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
             .build()
         player.addListener(WatchStateListener())
+        player.addListener(TranscodeFallbackListener())
         this.player = player
         session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity(youtubeId = null))
@@ -258,6 +262,41 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             repo.reportPlaybackStopped(id, durationMs, completed = true)
             // Remembered so onDestroy doesn't file a second, contradicting partway report.
             completionReported = true
+        }
+    }
+
+    /**
+     * Retries an undecodable direct-play item as the server's HLS transcode, at the position the
+     * failure left off. The rebuilt item keeps its media id and metadata, so watch-state
+     * tracking carries over untouched, and its playlist URL marks it as already-transcoding —
+     * which is what keeps a failing transcode from looping instead of surfacing.
+     */
+    private inner class TranscodeFallbackListener : Player.Listener {
+        override fun onPlayerError(error: PlaybackException) {
+            val p = player ?: return
+            val failed = p.currentMediaItem ?: return
+            val uri = failed.localConfiguration?.uri
+            if (!error.isDecodeFailure() || uri == null || uri.lastPathSegment == Playback.HLS_PLAYLIST) {
+                Timber.tag(Playback.TAG).e(error, "playback error, not retrying: ${error.errorCodeName}")
+                return
+            }
+            // An error keeps the player's position; the rebuilt item resumes right there.
+            val resumeMs = p.currentPosition
+            scope.launch {
+                val settings = settingsState.settings.filterNotNull().first()
+                val itemId = repo.observeVideo(failed.mediaId).first()?.jellyfinItemId ?: return@launch
+                // The service was torn down while the lookups suspended.
+                if (player !== p) return@launch
+                Timber.tag(Playback.TAG).w(
+                    "direct play failed (${error.errorCodeName}); retrying as HLS transcode at ${resumeMs}ms",
+                )
+                val transcoded = failed.buildUpon()
+                    .setUri(Playback.hlsUrl(settings.serverUrl, itemId))
+                    .build()
+                p.setMediaItem(transcoded, resumeMs)
+                p.prepare()
+                p.play()
+            }
         }
     }
 

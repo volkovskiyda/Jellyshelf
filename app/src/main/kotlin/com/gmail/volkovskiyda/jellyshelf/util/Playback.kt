@@ -51,6 +51,20 @@ object Playback {
         return "$url&api_key=${URLEncoder.encode(credential, "UTF-8")}"
     }
 
+    /** The HLS variant playlist's file name — also how an already-transcoding item is recognized. */
+    const val HLS_PLAYLIST = "main.m3u8"
+
+    /**
+     * HLS transcoding URL — the in-app player's fallback when the device can't decode what
+     * [streamUrl] serves. No codec constraints are passed on purpose: Jellyfin only
+     * stream-copies codecs the request lists as supported, so a bare request always transcodes
+     * to the server defaults (H.264/AAC), which any device decodes. The credential travels as a
+     * header here too — the playlist and every segment request go through the same
+     * authenticated datasource factory.
+     */
+    fun hlsUrl(serverUrl: String, itemId: String): String =
+        "${base(serverUrl)}/Videos/$itemId/$HLS_PLAYLIST"
+
     /** Jellyfin web details deep link — opens the item page in the Jellyfin app / browser. */
     fun detailsDeepLink(serverUrl: String, itemId: String): String =
         "${base(serverUrl)}/web/index.html#/details?id=$itemId"

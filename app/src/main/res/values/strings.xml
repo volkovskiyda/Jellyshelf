@@ -105,7 +105,8 @@
     <string name="pause">Pause</string>
     <string name="seek_back_10">Back 10 seconds</string>
     <string name="seek_forward_10">Forward 10 seconds</string>
-    <string name="playback_error">Playback failed: %1$s</string>
+    <string name="playback_error">Playback failed: %1$s — try the External player mode</string>
+    <string name="playback_transcoding_fallback">Direct play failed, switching to transcoding…</string>
     <string name="chapters">Chapters</string>
 
     <!-- Settings -->

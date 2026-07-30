@@ -57,4 +57,15 @@ class StreamUrlTest {
             Playback.streamUrl("$server/", itemId, credential = null),
         )
     }
+
+    /**
+     * The transcoding fallback URL: bare on purpose. No credential (it travels as a header) and
+     * no codec constraints — an empty supported-codec list is what forces Jellyfin to transcode
+     * instead of stream-copying the very codec the device just failed to decode.
+     */
+    @Test
+    fun `hls fallback url is bare of credentials and codec constraints`() {
+        assertEquals("$server/Videos/$itemId/main.m3u8", Playback.hlsUrl(server, itemId))
+        assertEquals("$server/Videos/$itemId/main.m3u8", Playback.hlsUrl("$server/", itemId))
+    }
 }

@@ -84,6 +84,7 @@ import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
+import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import kotlinx.coroutines.delay
@@ -148,8 +149,13 @@ private fun PlayerWithControls(
     var isPlaying by remember { mutableStateOf(controller.isPlaying) }
     var isBuffering by remember { mutableStateOf(controller.playbackState == Player.STATE_BUFFERING) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var transcodingNotice by remember { mutableStateOf(false) }
 
     DisposableEffect(controller) {
+        // The first decode failure isn't terminal — the service is already swapping in the HLS
+        // transcode — so it gets an explanatory notice instead of the error toast. A decode
+        // failure of the transcode itself (or any other error) surfaces for real.
+        var decodeFailureSeen = false
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -160,7 +166,12 @@ private fun PlayerWithControls(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                errorMessage = error.message ?: error.errorCodeName
+                if (error.isDecodeFailure() && !decodeFailureSeen) {
+                    decodeFailureSeen = true
+                    transcodingNotice = true
+                } else {
+                    errorMessage = error.message ?: error.errorCodeName
+                }
             }
         }
         controller.addListener(listener)
@@ -174,6 +185,13 @@ private fun PlayerWithControls(
         LaunchedEffect(message) {
             Toast.makeText(context, text, Toast.LENGTH_LONG).show()
             errorMessage = null
+        }
+    }
+    if (transcodingNotice) {
+        val text = stringResource(R.string.playback_transcoding_fallback)
+        LaunchedEffect(Unit) {
+            Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+            transcodingNotice = false
         }
     }
 
