@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,17 +33,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +66,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -79,6 +86,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
+import androidx.media3.ui.compose.state.rememberPlaybackSpeedState
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
@@ -90,6 +98,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import java.text.NumberFormat
 
 /**
  * In-app player: full-bleed video over black with hand-built Compose controls on the session's
@@ -217,8 +226,10 @@ private fun PlayerWithControls(
     var controlsVisible by remember { mutableStateOf(true) }
     var scrubbing by remember { mutableStateOf(false) }
     var chaptersOpen by remember { mutableStateOf(false) }
-    // Auto-hide while playing; pausing, scrubbing or the open chapter panel pins the controls.
-    val controlsPinned = scrubbing || chaptersOpen
+    var speedMenuOpen by remember { mutableStateOf(false) }
+    // Auto-hide while playing; scrubbing, the open chapter panel or the speed menu pins the
+    // controls (hiding them would tear the open menu out of the composition mid-use).
+    val controlsPinned = scrubbing || chaptersOpen || speedMenuOpen
     LaunchedEffect(controlsVisible, isPlaying, controlsPinned) {
         if (controlsVisible && isPlaying && !controlsPinned) {
             delay(CONTROLS_HIDE_DELAY_MS)
@@ -231,6 +242,7 @@ private fun PlayerWithControls(
     val playPause = rememberPlayPauseButtonState(controller)
     val seekBack = rememberSeekBackButtonState(controller)
     val seekForward = rememberSeekForwardButtonState(controller)
+    val playbackSpeed = rememberPlaybackSpeedState(controller)
     val presentationState = rememberPresentationState(controller)
 
     Box(
@@ -258,11 +270,14 @@ private fun PlayerWithControls(
                 positionMs = positionMs,
                 durationMs = durationMs,
                 chapters = chapters,
+                speed = playbackSpeed.playbackSpeed,
                 onPlayPause = playPause::onClick,
                 onSeekBack = seekBack::onClick,
                 onSeekForward = seekForward::onClick,
                 onSeek = controller::seekTo,
+                onSetSpeed = playbackSpeed::updatePlaybackSpeed,
                 onScrubbingChanged = { scrubbing = it },
+                onSpeedMenuChanged = { speedMenuOpen = it },
                 onOpenChapters = { chaptersOpen = true },
                 onBack = onBack,
             )
@@ -283,9 +298,10 @@ private fun PlayerWithControls(
 
 /**
  * The controls overlay, stateless so previews and tests can render it without a player: top bar
- * (back + title + chapters), centre transport row, bottom position–seek–duration bar with
- * chapter tick markers. Its only internal state is the in-flight scrub, reported via
- * [onScrubbingChanged] so the caller can pin the overlay open while the user drags.
+ * (back + title + speed menu + chapters), centre transport row, bottom position–seek–duration
+ * bar with chapter tick markers. Its only internal state is transient interaction — the
+ * in-flight scrub and the open speed menu — each reported via its `on*Changed` callback so the
+ * caller can pin the overlay open while the user is mid-gesture.
  */
 @Composable
 internal fun PlayerControls(
@@ -294,11 +310,14 @@ internal fun PlayerControls(
     positionMs: Long,
     durationMs: Long,
     chapters: List<Chapter>,
+    speed: Float,
     onPlayPause: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
     onSeek: (Long) -> Unit,
+    onSetSpeed: (Float) -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
+    onSpeedMenuChanged: (Boolean) -> Unit,
     onOpenChapters: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -330,6 +349,7 @@ internal fun PlayerControls(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            SpeedMenuButton(speed = speed, onSetSpeed = onSetSpeed, onMenuChanged = onSpeedMenuChanged)
             if (chapters.isNotEmpty()) {
                 IconButton(onClick = onOpenChapters) {
                     Icon(
@@ -431,6 +451,69 @@ internal fun PlayerControls(
             }
         }
     }
+}
+
+/**
+ * The playback-speed chip and its menu: the chip shows the current speed, tapping an option
+ * applies it immediately. Open state lives here (it is pure interaction), but is reported via
+ * [onMenuChanged] so the caller keeps the controls overlay pinned while the menu is up.
+ */
+@Composable
+private fun SpeedMenuButton(
+    speed: Float,
+    onSetSpeed: (Float) -> Unit,
+    onMenuChanged: (Boolean) -> Unit,
+) {
+    Box {
+        var menuOpen by remember { mutableStateOf(false) }
+        fun setMenu(open: Boolean) {
+            menuOpen = open
+            onMenuChanged(open)
+        }
+        // The chip's text is the bare value ("1×"); the description says what the button *is*.
+        val speedLabel = stringResource(R.string.playback_speed)
+        TextButton(
+            onClick = { setMenu(true) },
+            modifier = Modifier.semantics { contentDescription = speedLabel },
+        ) {
+            Text(formatSpeed(speed), color = Color.White, style = MaterialTheme.typography.labelLarge)
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { setMenu(false) }) {
+            PLAYBACK_SPEEDS.forEach { option ->
+                SpeedMenuItem(
+                    speed = option,
+                    selected = option == speed,
+                    onClick = {
+                        setMenu(false)
+                        onSetSpeed(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedMenuItem(speed: Float, selected: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(formatSpeed(speed)) },
+        onClick = onClick,
+        // Every item carries the slot so the labels align; only the active speed shows the check.
+        leadingIcon = {
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = null)
+            } else {
+                Spacer(Modifier.size(24.dp))
+            }
+        },
+    )
+}
+
+/** "1×", "1.5×": trailing zeros dropped and the decimal separator localized. */
+@Composable
+private fun formatSpeed(speed: Float): String {
+    val numberFormat = remember { NumberFormat.getNumberInstance() }
+    return stringResource(R.string.playback_speed_value, numberFormat.format(speed.toDouble()))
 }
 
 /**
@@ -576,6 +659,9 @@ private fun RequestNotificationPermissionOnce() {
 /** Position label: 0 is a real time here, unlike [formatDuration]'s "unknown" placeholder. */
 private fun formatPosition(ms: Long): String =
     if (ms <= 0) "0:00" else formatDuration(ms / MILLIS_PER_SECOND)
+
+/** The usual video-player spread; 1× sits mid-list where a thumb finds it fastest. */
+private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
 private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L
