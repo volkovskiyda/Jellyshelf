@@ -27,9 +27,12 @@ import timber.log.Timber
 
 /**
  * Connects the player screen to [PlaybackService]'s session. Owns a [MediaController] for the
- * screen's lifetime — built asynchronously here, released in [onCleared]. Releasing it does not
- * stop playback: leaving the screen keeps audio running by design, and the media notification
- * is the way back.
+ * screen's lifetime — built asynchronously here, released in [onCleared].
+ *
+ * Stopping is an explicit act, never a lifecycle one: [stopPlayback] is called from the screen's
+ * back paths (done watching), while merely leaving the app keeps playback and the notification
+ * alive (still watching). That is why [onCleared] only releases the controller — a stop from here
+ * would also fire on a configuration change, and this screen rotates freely.
  */
 class PlayerViewModel(
     app: Application,
@@ -76,6 +79,21 @@ class PlayerViewModel(
             }
             _controller.value = controller
         }
+    }
+
+    /**
+     * Explicit leave: stop, let the service file the one stop report, drop the notification.
+     *
+     * The pause is what makes that report carry the real position rather than one up to the
+     * service's save interval stale — [PlaybackService] only records the position on a pause that
+     * finds the player `STATE_READY`, and after a bare stop it is `IDLE`. Clearing the queue then
+     * fires `onMediaItemTransition(null)`, which is the *single* stop report; reporting from here
+     * as well would double-report, since the repository call is fire-and-forget and undeduped.
+     */
+    fun stopPlayback() {
+        val controller = _controller.value ?: return
+        controller.pause()
+        controller.clearMediaItems()
     }
 
     override fun onCleared() {

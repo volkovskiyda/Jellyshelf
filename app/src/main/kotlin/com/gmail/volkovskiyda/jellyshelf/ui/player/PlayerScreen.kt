@@ -103,8 +103,9 @@ import java.text.NumberFormat
 
 /**
  * In-app player: full-bleed video over black with hand-built Compose controls on the session's
- * [MediaController]. Back (or leaving any other way) deliberately does NOT stop playback —
- * audio continues in the background and the media notification is the way back to this screen.
+ * [MediaController]. Leaving the screen on purpose — any back arrow or system back — stops
+ * playback, reports the position to the server and drops the media notification: back means done
+ * watching. Merely hiding the app keeps playing, and the notification is the way back to here.
  * Orientation is free (sensor); the surface just re-fits.
  */
 @Composable
@@ -121,13 +122,21 @@ fun PlayerScreen(
     RequestNotificationPermissionOnce()
     ImmersiveWhileHere()
 
+    // Every explicit exit routes through here — and only explicit exits, which is why it is not
+    // an onCleared()/lifecycle hook: those also fire on rotation and on minimizing.
+    val leave = {
+        viewModel.stopPlayback()
+        onBack()
+    }
+
     Box(modifier.fillMaxSize().background(Color.Black)) {
         val c = controller
         if (c == null) {
-            // Still connecting to the service. The back arrow stays reachable regardless.
+            // Still connecting to the service. The back arrow stays reachable regardless — with
+            // no controller yet there is nothing to stop, so this is a plain leave.
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
             IconButton(
-                onClick = onBack,
+                onClick = leave,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .windowInsetsPadding(WindowInsets.displayCutout)
@@ -140,7 +149,7 @@ fun PlayerScreen(
                 )
             }
         } else {
-            PlayerWithControls(controller = c, title = video?.title, chapters = chapters, onBack = onBack)
+            PlayerWithControls(controller = c, title = video?.title, chapters = chapters, onBack = leave)
         }
     }
 }
@@ -237,8 +246,10 @@ private fun PlayerWithControls(
             controlsVisible = false
         }
     }
-    // The panel captures Back itself: closing it must not pop the whole player screen.
-    BackHandler(enabled = chaptersOpen) { chaptersOpen = false }
+    // One handler for both meanings of Back, so their priority is in the code rather than in the
+    // dispatcher's registration order: an open panel consumes the press (closing it must not pop
+    // the screen), and otherwise Back is the explicit leave that stops playback.
+    BackHandler { if (chaptersOpen) chaptersOpen = false else onBack() }
 
     val playPause = rememberPlayPauseButtonState(controller)
     val seekBack = rememberSeekBackButtonState(controller)
