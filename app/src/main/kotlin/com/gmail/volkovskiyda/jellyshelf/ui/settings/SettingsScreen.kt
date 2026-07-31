@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -26,6 +28,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -175,24 +180,7 @@ internal fun SettingsContent(
                 Text(stringResource(if (state.signedIn) R.string.sign_out else R.string.sign_in))
             }
 
-            OutlinedTextField(
-                value = state.indexUrl,
-                onValueChange = actions.onIndexUrlChange,
-                label = { Text(stringResource(R.string.index_url_label)) },
-                placeholder = { Text(stringResource(R.string.index_url_hint)) },
-                singleLine = true,
-                trailingIcon = if (state.indexUrl.isBlank()) {
-                    {
-                        TextButton(
-                            onClick = actions.fillIndexUrlFromServer,
-                            enabled = state.serverUrl.isNotBlank(),
-                        ) { Text(stringResource(R.string.fill)) }
-                    }
-                } else {
-                    null
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            if (state.canEditIndex) IndexUrlField(state = state, actions = actions)
 
             AdvancedAuthSection(
                 state = state,
@@ -353,6 +341,66 @@ private fun AdvancedAuthSection(
                 )
             }
         }
+    }
+}
+
+/**
+ * The metadata index URL, shown only once there are credentials to use it with
+ * ([SettingsUiState.canEditIndex]).
+ *
+ * Its trailing control changes with what there is to lose. Before the first sync the useful action
+ * is filling the field in, so **Fill** stays exactly as it was. Once a sync has run there is a
+ * populated library to damage, and the field locks: a mistyped index URL produces a half-populated
+ * library with no obvious cause. The unlock is deliberate and deliberately not remembered — it
+ * resets every time this screen is composed, so an accidental unlock cannot follow the user around.
+ */
+@Composable
+private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
+    var unlocked by remember { mutableStateOf(false) }
+    val locked = state.indexProtected && !unlocked
+    OutlinedTextField(
+        value = state.indexUrl,
+        onValueChange = actions.onIndexUrlChange,
+        label = { Text(stringResource(R.string.index_url_label)) },
+        placeholder = { Text(stringResource(R.string.index_url_hint)) },
+        singleLine = true,
+        // readOnly, not enabled = false: a locked field still has to be *readable*, and the
+        // disabled colours wash the URL out to the point of being hard to check at a glance.
+        readOnly = locked,
+        trailingIcon = {
+            if (state.indexProtected) {
+                LockToggle(unlocked = unlocked, onToggle = { unlocked = !unlocked })
+            } else if (state.indexUrl.isBlank()) {
+                TextButton(
+                    onClick = actions.fillIndexUrlFromServer,
+                    enabled = state.serverUrl.isNotBlank(),
+                ) { Text(stringResource(R.string.fill)) }
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/**
+ * The lock/unlock button. A custom two-state control, so it carries a `stateDescription` the way
+ * [ThemeModeSwitch] does — the icon alone tells a screen reader nothing about which state it is
+ * in, only what tapping it would do.
+ */
+@Composable
+private fun LockToggle(unlocked: Boolean, onToggle: () -> Unit) {
+    val stateLabel = stringResource(
+        if (unlocked) R.string.index_url_state_unlocked else R.string.index_url_state_locked,
+    )
+    IconButton(
+        onClick = onToggle,
+        modifier = Modifier.semantics { stateDescription = stateLabel },
+    ) {
+        Icon(
+            if (unlocked) Icons.Filled.LockOpen else Icons.Filled.Lock,
+            contentDescription = stringResource(
+                if (unlocked) R.string.lock_index_url else R.string.unlock_index_url,
+            ),
+        )
     }
 }
 

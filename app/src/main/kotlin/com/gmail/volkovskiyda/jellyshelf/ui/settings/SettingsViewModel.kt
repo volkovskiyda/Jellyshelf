@@ -72,9 +72,29 @@ data class SettingsUiState(
     val status: String? = null,
     val statusIsError: Boolean = false,
     val lastSyncAt: Long = 0L,
+    /**
+     * A sync is in flight. Distinct from [busy], which any settings operation raises — a sign-in
+     * must not make the index URL look sync-protected.
+     */
+    val syncRunning: Boolean = false,
 ) {
     /** ParentId of the folder currently being browsed ("" == root). */
     val currentParentId: String get() = breadcrumb.lastOrNull()?.id ?: ROOT_SCOPE_ID
+
+    /**
+     * Whether the metadata index URL is offered at all: it is a power-user field whose value only
+     * means anything once the app can reach the server, so it stays hidden until there are
+     * credentials. Either path counts — a signed-in user token, or an API key from the advanced
+     * section — because both leave the app able to sync.
+     */
+    val canEditIndex: Boolean get() = signedIn || apiKey.isNotBlank()
+
+    /**
+     * Whether editing the index URL now has something to break. Once a sync has run — or is
+     * running — a mistyped URL means a half-populated library and no obvious cause, so the field
+     * locks behind a deliberate unlock instead of staying open.
+     */
+    val indexProtected: Boolean get() = lastSyncAt != 0L || syncRunning
 
     /**
      * Path of the folder currently being browsed, from server-provided folder names — no
@@ -111,6 +131,7 @@ class SettingsViewModel(
         } else {
             local.copy(
                 busy = local.busy || sync.running,
+                syncRunning = sync.running,
                 // A local operation's own message wins while it runs — a sync finishing in the
                 // middle of a connect must not overwrite "Connecting…".
                 status = if (local.busy) local.status else sync.message ?: local.status,
