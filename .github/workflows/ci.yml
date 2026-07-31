@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true          # screenshot goldens are LFS objects (.gitattributes)
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21   # LTS; AGP 9 needs 17+, Gradle 9.6.1 fully supports 21
+      - uses: gradle/actions/setup-gradle@v6   # caching + wrapper validation
+
+      # detekt, :app:lintDebug, unit tests and the screenshot goldens. Exits non-zero if any
+      # layer fails, and skips the instrumented layer since no device is attached — so no
+      # workflow-side logic is needed. Note detekt has no baseline (deleted in 6ab505d): any
+      # finding fails the build, by design. Fix the finding, don't regenerate a baseline.
+      - run: scripts/run-tests.sh --host-only
+
+      - run: ./gradlew :app:assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-summary
+          path: |
+            app/build/test-summary/
+            app/build/reports/
+          if-no-files-found: ignore
