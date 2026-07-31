@@ -8,11 +8,10 @@ plugins {
     alias(libs.plugins.compose.screenshot)
 }
 
-// Reads KEY=VALUE lines from a repo-root env file (blanks/comments ignored); a missing file yields
-// an empty map. Feeds the opt-in live-endpoint instrumentation tests via
-// testInstrumentationRunnerArguments below, so the values reach the tests as `am instrument -e`
-// extras at run time and are never compiled into any app or test BuildConfig. Changing .test.env
-// needs no rebuild.
+// Reads KEY=VALUE lines from a repo-root config file (blanks/comments ignored); a missing file
+// yields an empty map. Both callers read a git-ignored file that has a committed .example.*
+// template: .test.env carries the opt-in live-endpoint test config, keystore.properties the
+// release signing values.
 fun loadEnv(file: java.io.File): Map<String, String> =
     file.takeIf { it.exists() }?.readLines()
         ?.mapNotNull { line ->
@@ -22,6 +21,7 @@ fun loadEnv(file: java.io.File): Map<String, String> =
         }?.toMap().orEmpty()
 
 val testEnv = loadEnv(rootProject.file(".test.env"))
+val keystoreEnv = loadEnv(rootProject.file("keystore.properties"))
 
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf"
@@ -36,7 +36,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Live-endpoint test config from the git-ignored .test.env, passed as runtime instrumentation
-        // extras (never baked into BuildConfig). Blank when the file is absent, so the live tests skip.
+        // extras (never baked into BuildConfig, so changing .test.env needs no rebuild). Blank when
+        // the file is absent, so the live tests skip.
         testInstrumentationRunnerArguments += mapOf(
             "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"].orEmpty(),
             "jellyfinApiKey" to testEnv["JELLYFIN_API_KEY"].orEmpty(),
@@ -51,6 +52,20 @@ android {
         }
     }
 
+    signingConfigs {
+        // Only created when keystore.properties supplies a keystore. Without it assembleRelease
+        // still configures and builds, producing an unsigned APK — PR CI never needs signing.
+        if (keystoreEnv.containsKey("KEYSTORE_FILE")) {
+            create("release") {
+                storeFile = rootProject.file(keystoreEnv.getValue("KEYSTORE_FILE"))
+                storePassword = keystoreEnv.getValue("KEYSTORE_PASSWORD")
+                keyAlias = keystoreEnv.getValue("KEY_ALIAS")
+                // PKCS12 (keytool's default store type): the key password IS the store password.
+                keyPassword = keystoreEnv.getValue("KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Install debug and release side by side, and change the launcher icon
@@ -59,6 +74,10 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            // findByName, not getByName: null on a checkout without keystore.properties, which
+            // leaves the APK unsigned rather than failing configuration. minSdk 30 means AGP
+            // signs with v2+ automatically, so no per-scheme flags are needed.
+            signingConfig = signingConfigs.findByName("release")
             // R8 shrinking/obfuscation. Library consumer rules (Ktor, Room, kotlinx-serialization)
             // come in automatically; app-specific rules live in src/main/keepRules/.
             optimization {
