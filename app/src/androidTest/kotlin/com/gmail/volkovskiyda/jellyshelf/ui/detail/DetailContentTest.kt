@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
@@ -91,6 +92,7 @@ class DetailContentTest {
         onSelectMode: (PlaybackMode) -> Unit = {},
         onRemove: () -> Unit = {},
         now: Long = NOW,
+        settings: Settings = this.settings,
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
@@ -253,6 +255,59 @@ class DetailContentTest {
         setContent(video)
 
         composeRule.onNodeWithText("Open in Jellyfin").assertDoesNotExist()
+    }
+
+    // --- demo mode: one bundled clip, in-app only ---
+
+    private val demoVideo = video.copy(jellyfinItemId = DEMO_ITEM_ID)
+    private val demoSettings = Settings(
+        serverUrl = "",
+        apiKey = "",
+        accessToken = "",
+        userId = "",
+        userName = "",
+        libraryId = "",
+        libraryName = "",
+        indexUrl = "",
+        lastSyncAt = 1L,
+        lastSyncLibraryId = "",
+        demoMode = true,
+    )
+
+    /**
+     * External hands a URL to another app and Web opens a browser at the server — neither exists
+     * in a demo, and no other app can read this one's assets. So the split button loses its half.
+     */
+    @Test
+    fun `demo mode drops the playback mode menu`() {
+        setContent(demoVideo, settings = demoSettings)
+
+        composeRule.onNodeWithContentDescription(string(R.string.playback_options)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `demo mode still plays in app`() {
+        var played: PlaybackMode? = null
+        setContent(demoVideo, settings = demoSettings, onPlay = { _, _, mode -> played = mode })
+
+        composeRule.onNodeWithText(string(R.string.play)).assertIsEnabled().performClick()
+
+        assertEquals(PlaybackMode.PLAY, played)
+    }
+
+    /** A mode saved during an earlier real connection must not survive into the demo. */
+    @Test
+    fun `demo mode forces play even with another mode saved`() {
+        var played: PlaybackMode? = null
+        setContent(
+            demoVideo,
+            settings = demoSettings.copy(playbackMode = PlaybackMode.EXTERNAL),
+            onPlay = { _, _, mode -> played = mode },
+        )
+
+        composeRule.onNodeWithText(string(R.string.play)).performClick()
+
+        assertEquals(PlaybackMode.PLAY, played)
     }
 
     private companion object {

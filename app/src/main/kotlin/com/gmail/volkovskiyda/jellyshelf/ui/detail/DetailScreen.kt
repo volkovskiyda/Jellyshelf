@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +56,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
+import com.gmail.volkovskiyda.jellyshelf.ui.ClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.DestructiveButton
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
@@ -130,7 +132,11 @@ fun DetailScreen(
         fetching = fetching,
         thumbnailModel = thumbnailModel,
         onBack = onBack,
-        onPlay = { video, s, mode ->
+        onPlay = { video, s, requestedMode ->
+            // The content hides the other modes in demo; this is the same rule at the dispatch,
+            // so nothing — a stale saved mode, a future caller — can hand a demo video to another
+            // app or to a browser pointed at a server that isn't there.
+            val mode = if (s.demoMode) PlaybackMode.PLAY else requestedMode
             when (mode) {
                 PlaybackMode.PLAY -> onPlayInApp(video.youtubeId)
                 PlaybackMode.EXTERNAL -> playerLauncher.launch(
@@ -266,56 +272,40 @@ internal fun DetailContent(
             // with it immediately (split-button convention, like IDE run buttons). Every mode
             // leaves this screen one way or another, and the second tap of a double-tap would
             // land before whatever launched is on top — one shared throttle for the whole row.
+            //
+            // In demo mode it is a plain button: EXTERNAL hands another app a URL, and WEB opens
+            // a server in a browser — neither of which exists here, and no other app can read
+            // this one's assets. The mode is forced to PLAY at dispatch as well as hidden, so a
+            // mode saved during an earlier real connection cannot fire a broken intent.
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 val itemId = current.jellyfinItemId
                 val s = settings
                 val enabled = s != null && itemId != null
+                val demo = s?.demoMode == true
                 val launchThrottle = rememberClickThrottle()
                 Button(
                     onClick = {
                         if (s != null && itemId != null) {
-                            launchThrottle { onPlay(current, s, s.playbackMode) }
+                            val mode = if (demo) PlaybackMode.PLAY else s.playbackMode
+                            launchThrottle { onPlay(current, s, mode) }
                         }
                     },
                     enabled = enabled,
-                    shape = SplitButtonStartShape,
+                    shape = if (demo) ButtonDefaults.shape else SplitButtonStartShape,
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
                     Text(stringResource(R.string.play))
                 }
-                Box {
-                    var modeMenuOpen by remember { mutableStateOf(false) }
-                    Button(
-                        onClick = { modeMenuOpen = true },
+                if (!demo) {
+                    PlaybackModeMenu(
+                        current = current,
+                        settings = s,
+                        itemId = itemId,
                         enabled = enabled,
-                        shape = SplitButtonEndShape,
-                        contentPadding = PaddingValues(horizontal = 8.dp),
-                    ) {
-                        Icon(
-                            Icons.Filled.ArrowDropDown,
-                            contentDescription = stringResource(R.string.playback_options),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = modeMenuOpen,
-                        onDismissRequest = { modeMenuOpen = false },
-                    ) {
-                        PlaybackMode.entries.forEach { mode ->
-                            PlaybackModeMenuItem(
-                                mode = mode,
-                                selected = mode == s?.playbackMode,
-                                onClick = {
-                                    modeMenuOpen = false
-                                    if (s != null && itemId != null) {
-                                        // Save, then act with the *tapped* mode — the persisted
-                                        // flow value hasn't caught up yet.
-                                        onSelectMode(mode)
-                                        launchThrottle { onPlay(current, s, mode) }
-                                    }
-                                },
-                            )
-                        }
-                    }
+                        launchThrottle = launchThrottle,
+                        onPlay = onPlay,
+                        onSelectMode = onSelectMode,
+                    )
                 }
             }
 
@@ -383,6 +373,57 @@ private val SplitButtonEndShape = RoundedCornerShape(
     topEnd = 20.dp,
     bottomEnd = 20.dp,
 )
+
+/**
+ * The split button's other half: the chevron and the mode menu behind it. Picking an item saves
+ * the mode app-wide *and* acts with it immediately (split-button convention, like IDE run
+ * buttons), acting with the tapped mode rather than the persisted flow value, which has not caught
+ * up yet.
+ *
+ * Its own composable so demo mode can simply not render it — see [DetailContent], where the modes
+ * it offers are both unreachable without a server.
+ */
+@Composable
+@Suppress("LongParameterList") // the split button's other half; every parameter is its state
+private fun PlaybackModeMenu(
+    current: Video,
+    settings: Settings?,
+    itemId: String?,
+    enabled: Boolean,
+    launchThrottle: ClickThrottle,
+    onPlay: (Video, Settings, PlaybackMode) -> Unit,
+    onSelectMode: (PlaybackMode) -> Unit,
+) {
+    Box {
+        var modeMenuOpen by remember { mutableStateOf(false) }
+        Button(
+            onClick = { modeMenuOpen = true },
+            enabled = enabled,
+            shape = SplitButtonEndShape,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+        ) {
+            Icon(
+                Icons.Filled.ArrowDropDown,
+                contentDescription = stringResource(R.string.playback_options),
+            )
+        }
+        DropdownMenu(expanded = modeMenuOpen, onDismissRequest = { modeMenuOpen = false }) {
+            PlaybackMode.entries.forEach { mode ->
+                PlaybackModeMenuItem(
+                    mode = mode,
+                    selected = mode == settings?.playbackMode,
+                    onClick = {
+                        modeMenuOpen = false
+                        if (settings != null && itemId != null) {
+                            onSelectMode(mode)
+                            launchThrottle { onPlay(current, settings, mode) }
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun PlaybackModeMenuItem(mode: PlaybackMode, selected: Boolean, onClick: () -> Unit) {

@@ -14,6 +14,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -21,6 +22,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
@@ -93,13 +95,17 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         super.onCreate()
         // A source per stream, reading the credential at creation time so a re-login between
         // plays is picked up without restarting the service.
-        val dataSourceFactory = DataSource.Factory {
+        val httpFactory = DataSource.Factory {
             DefaultHttpDataSource.Factory()
                 .setDefaultRequestProperties(
                     mapOf(Playback.TOKEN_HEADER to settingsState.settings.value?.credential.orEmpty()),
                 )
                 .createDataSource()
         }
+        // Media3's standard composition: `asset:` and `file:` URIs — which is what a demo video
+        // resolves to — route to local sources, while every http(s) URI is handed to the factory
+        // above and behaves exactly as it did before, credential-at-creation-time included.
+        val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
@@ -192,13 +198,24 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             return item
         }
         val artworkUrl = authorizedImageUrl(video.thumbnailUrl, settings.serverUrl, settings.credential)
+        // Demo rows have no server behind them, so there is no stream URL to build — every one of
+        // them plays the bundled clip. Keyed off the sentinel item id rather than the demoMode
+        // setting: it is the row that is or isn't playable, and a row outliving the flag (a demo
+        // half-cleared by a crash) must not turn into a request against a blank server URL.
+        val uri = if (jellyfinItemId == DEMO_ITEM_ID) {
+            DEMO_SAMPLE_URI
+        } else {
+            Playback.streamUrl(settings.serverUrl, jellyfinItemId, credential = null)
+        }
         return item.buildUpon()
-            .setUri(Playback.streamUrl(settings.serverUrl, jellyfinItemId, credential = null))
+            .setUri(uri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(video.title)
                     .setArtist(video.channel)
                     // Query-credentialed: the session's bitmap loader fetches it with no headers.
+                    // A demo row's artwork is a `file:///android_asset/` URL, which the loader
+                    // reads directly — verified on device; the notification shows the thumbnail.
                     .setArtworkUri(artworkUrl?.toUri())
                     .build(),
             )
@@ -300,6 +317,14 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             val p = player ?: return
             val failed = p.currentMediaItem ?: return
             val uri = failed.localConfiguration?.uri
+            // A demo item has no server to transcode it: swapping in an HLS URL built from a blank
+            // server URL would turn "this bundled clip would not decode" into a confusing network
+            // error. Let the real one surface instead. (In practice the bundled H.264/AAC clip
+            // decodes everywhere; this is about never converting an impossible state into a lie.)
+            if (uri?.scheme == DEMO_SAMPLE_SCHEME) {
+                Timber.tag(Playback.TAG).e(error, "demo clip failed to play: ${error.errorCodeName}")
+                return
+            }
             if (!error.isDecodeFailure() || uri == null || uri.lastPathSegment == Playback.HLS_PLAYLIST) {
                 Timber.tag(Playback.TAG).e(error, "playback error, not retrying: ${error.errorCodeName}")
                 return
@@ -353,6 +378,14 @@ class PlaybackService : MediaSessionService(), KoinComponent {
          * tap should reopen.
          */
         const val EXTRA_OPEN_PLAYER = "com.gmail.volkovskiyda.jellyshelf.playback.OPEN_PLAYER"
+
+        /**
+         * The bundled clip every demo video plays — a Big Buck Bunny excerpt, CC-BY 3.0, credited
+         * in the README. `asset:///` is media3's own scheme for APK assets, served by
+         * [DefaultDataSource] rather than over HTTP.
+         */
+        private const val DEMO_SAMPLE_SCHEME = "asset"
+        private const val DEMO_SAMPLE_URI = "$DEMO_SAMPLE_SCHEME:///demo/sample.mp4"
 
         /**
          * Deliberately asymmetric: skipping filler is the common case, re-hearing a line the rare
