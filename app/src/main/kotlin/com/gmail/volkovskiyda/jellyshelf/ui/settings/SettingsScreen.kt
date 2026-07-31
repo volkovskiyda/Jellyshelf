@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.ui.formatSyncTime
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberNow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import org.koin.androidx.compose.koinViewModel
@@ -80,6 +82,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val videoCount by viewModel.videoCount.collectAsStateWithLifecycle()
+    val now by rememberNow()
 
     SettingsContent(
         state = state,
@@ -107,6 +110,7 @@ fun SettingsScreen(
         ),
         modifier = modifier,
         nudgeScope = viewModel.nudgeScope,
+        now = now,
     )
 }
 
@@ -124,6 +128,9 @@ internal fun SettingsContent(
     // Fired when a Sync now tap was spent pointing at the scope instead of syncing. A flow rather
     // than a flag: the shake happens once and is over, and a flag would have to be cleared.
     nudgeScope: Flow<Unit> = emptyFlow(),
+    // Passed in rather than read here, so previews and tests can pin it: a relative label built
+    // from the wall clock would make their output depend on when they ran.
+    now: Long = 0L,
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
     val scopeShake = rememberScopeShake(nudgeScope)
@@ -253,7 +260,13 @@ internal fun SettingsContent(
                     R.string.library_summary,
                     pluralStringResource(R.plurals.video_count, videoCount, videoCount),
                 ) + "  •  " +
-                    stringResource(if (state.lastSyncAt > 0) R.string.last_sync_recorded else R.string.never_synced),
+                    // The time itself, not just that one was recorded: relative while it is
+                    // recent, exact once it is not (see formatSyncTime).
+                    (
+                        formatSyncTime(state.lastSyncAt, now)
+                            ?.let { stringResource(R.string.synced_at, it) }
+                            ?: stringResource(R.string.never_synced)
+                        ),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

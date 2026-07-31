@@ -84,6 +84,47 @@ class FormatTest {
         assertNull(formatTimestamp(-1L, utc))
     }
 
+    // A fixed "now" and ages measured back from it — the function takes now as a parameter
+    // precisely so these stay deterministic.
+    private val now = 1_784_974_530_000L
+    private fun aged(millis: Long) = syncTimeOf(now - millis, now, utc)
+
+    @Test
+    fun `syncTimeOf says just now under a minute`() {
+        assertEquals(SyncTime.JustNow, aged(0L))
+        assertEquals(SyncTime.JustNow, aged(59_999L))
+    }
+
+    @Test
+    fun `syncTimeOf counts whole minutes, then whole hours`() {
+        assertEquals(SyncTime.Minutes(1), aged(60_000L))
+        assertEquals(SyncTime.Minutes(12), aged(12 * 60_000L))
+        assertEquals(SyncTime.Minutes(59), aged(59 * 60_000L + 59_999L))
+        assertEquals(SyncTime.Hours(1), aged(60 * 60_000L))
+        assertEquals(SyncTime.Hours(2), aged(2 * 60 * 60_000L))
+    }
+
+    /** The case a later refactor breaks: asserted at exactly three hours and either side of it. */
+    @Test
+    fun `syncTimeOf switches to an exact stamp at three hours`() {
+        val threeHours = 3 * 60 * 60_000L
+        assertEquals(SyncTime.Hours(2), aged(threeHours - 1L))
+        assertEquals(SyncTime.Absolute("2026-07-25 07:15"), aged(threeHours))
+        assertEquals(SyncTime.Absolute("2026-07-25 07:15"), aged(threeHours + 1L))
+    }
+
+    @Test
+    fun `syncTimeOf clamps a future timestamp instead of counting down`() {
+        // Clock skew, or a server running ahead of the device: "in -3 minutes" is not a thing.
+        assertEquals(SyncTime.JustNow, syncTimeOf(now + 3 * 60_000L, now, utc))
+    }
+
+    @Test
+    fun `syncTimeOf treats zero and negatives as nothing to show`() {
+        assertNull(syncTimeOf(0L, now, utc))
+        assertNull(syncTimeOf(-1L, now, utc))
+    }
+
     @Test
     fun `watchedFraction coerces into unit range and handles unknown duration`() {
         assertEquals(0f, watchedFraction(30 * TICKS_PER_SECOND, 0), 0f)

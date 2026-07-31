@@ -60,11 +60,12 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
+import com.gmail.volkovskiyda.jellyshelf.ui.formatSyncTime
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberNow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
-import com.gmail.volkovskiyda.jellyshelf.util.formatTimestamp
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import org.koin.androidx.compose.koinViewModel
@@ -127,7 +128,9 @@ fun DetailScreen(
     val resolveThumbnail = rememberVideoThumbnailResolver()
     val thumbnailModel = current?.let(resolveThumbnail)
 
+    val now by rememberNow()
     DetailContent(
+        now = now,
         videoState = videoState,
         settings = settings,
         fetching = fetching,
@@ -161,6 +164,7 @@ fun DetailScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList") // stateless content: one parameter per thing it renders or reports
 internal fun DetailContent(
     videoState: VideoDetailState,
     settings: Settings?,
@@ -173,6 +177,9 @@ internal fun DetailContent(
     onFetchMetadata: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
+    // Passed in rather than read here, so previews and tests can pin it: a relative label built
+    // from the wall clock would make their output depend on when they ran.
+    now: Long = 0L,
 ) {
     val current = (videoState as? VideoDetailState.Loaded)?.video
 
@@ -241,7 +248,7 @@ internal fun DetailContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 MetadataSourceBadge(current.metadataSource)
-                formatTimestamp(current.lastSyncedAt)?.let { syncedAt ->
+                formatSyncTime(current.lastSyncedAt, now)?.let { syncedAt ->
                     Text(
                         stringResource(R.string.last_synced, syncedAt),
                         style = MaterialTheme.typography.labelMedium,
@@ -257,7 +264,7 @@ internal fun DetailContent(
                 Text(
                     stringResource(
                         R.string.last_fetch_failed,
-                        formatTimestamp(current.lastFetchErrorAt).orEmpty(),
+                        formatSyncTime(current.lastFetchErrorAt, now).orEmpty(),
                         fetchError,
                     ),
                     style = MaterialTheme.typography.bodySmall,

@@ -30,6 +30,14 @@ import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsUiState
 private const val PHONE_WIDTH = 400
 private const val PHONE_HEIGHT = 800
 
+/**
+ * A pinned clock for the sync-time labels, which are relative for their first three hours. Read
+ * from the wall clock these goldens would render differently depending on when they ran; twelve
+ * minutes apart, they render "synced 12 minutes ago" every time.
+ */
+private const val PREVIEW_SYNCED_AT = 1_785_143_919_405L
+private const val PREVIEW_NOW = PREVIEW_SYNCED_AT + 12 * 60_000L
+
 private val librarySample = listOf(
     sampleVideo,
     watchedVideo.copy(youtubeId = "b", title = "Second video, already watched"),
@@ -413,10 +421,11 @@ private fun SettingsConnected() {
                 selectedUserId = "user-id",
                 selectedUserName = "Sample User",
                 status = "Synced 812/879 videos with metadata into 214 categories",
-                lastSyncAt = 1_785_143_919_405L,
+                lastSyncAt = PREVIEW_SYNCED_AT,
             ),
             videoCount = 879,
             actions = SettingsActions(),
+            now = PREVIEW_NOW,
         )
     }
 }
@@ -463,11 +472,12 @@ private fun SettingsSignedIn() {
                 signedIn = true,
                 selectedUserId = "user-id",
                 selectedUserName = "Sample User",
-                lastSyncAt = 1_785_143_919_405L,
+                lastSyncAt = PREVIEW_SYNCED_AT,
             ),
             videoCount = 879,
             actions = SettingsActions(),
             advancedExpanded = true,
+            now = PREVIEW_NOW,
         )
     }
 }
@@ -486,10 +496,11 @@ private fun SettingsIndexUnavailable() {
                 selectedUserId = "user-id",
                 selectedUserName = "Sample User",
                 status = "Synced 0/879 videos with metadata into 0 categories • metadata index unavailable",
-                lastSyncAt = 1_785_143_919_405L,
+                lastSyncAt = PREVIEW_SYNCED_AT,
             ),
             videoCount = 879,
             actions = SettingsActions(),
+            now = PREVIEW_NOW,
         )
     }
 }

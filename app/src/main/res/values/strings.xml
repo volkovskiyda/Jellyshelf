@@ -97,6 +97,16 @@
     <string name="source_index">Script · index</string>
     <string name="source_jellyfin">Jellyfin only</string>
     <string name="last_synced">Synced %1$s</string>
+    <!-- The relative halves of a sync time; past three hours it becomes an exact stamp. -->
+    <string name="synced_just_now">just now</string>
+    <plurals name="synced_minutes_ago">
+        <item quantity="one">%d minute ago</item>
+        <item quantity="other">%d minutes ago</item>
+    </plurals>
+    <plurals name="synced_hours_ago">
+        <item quantity="one">%d hour ago</item>
+        <item quantity="other">%d hours ago</item>
+    </plurals>
     <!-- Shown on a video still lacking metadata whose last yt-dlp fetch failed: when, then why. -->
     <string name="last_fetch_failed">Last metadata fetch failed %1$s: %2$s</string>
     <string name="no_app_found">No app found to handle this</string>
@@ -165,7 +175,7 @@
     <string name="reset_dialog_text">This clears all synced videos and categories on this device. Server URL, API key, user and folder are kept. Tap Sync now afterwards to rebuild.</string>
     <string name="reset">Reset</string>
     <string name="library_summary">Library: %1$s</string>
-    <string name="last_sync_recorded">last sync recorded</string>
+    <string name="synced_at">synced %1$s</string>
     <string name="never_synced">never synced</string>
     <string name="enter_server_and_key">Enter server URL and API key first</string>
     <string name="connecting">Connecting…</string>

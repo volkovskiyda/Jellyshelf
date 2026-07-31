@@ -78,6 +78,7 @@ class DetailContentTest {
         onPlay: (Video, Settings, PlaybackMode) -> Unit = { _, _, _ -> },
         onSelectMode: (PlaybackMode) -> Unit = {},
         onRemove: () -> Unit = {},
+        now: Long = NOW,
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
@@ -92,6 +93,9 @@ class DetailContentTest {
                     onToggleWatched = {},
                     onFetchMetadata = {},
                     onRemove = onRemove,
+                    // Pinned: sync times are relative now, so the wall clock would decide what
+                    // this renders.
+                    now = now,
                 )
             }
         }
@@ -131,8 +135,17 @@ class DetailContentTest {
     }
 
     @Test
-    fun `a synced video shows when it was last synced`() {
-        val syncedAt = 1_784_974_530_000L
+    fun `a recent sync is shown relatively`() {
+        setContent(video.copy(lastSyncedAt = NOW - 12 * MINUTE_MS))
+
+        val relative = composeRule.activity.resources
+            .getQuantityString(R.plurals.synced_minutes_ago, 12, 12)
+        composeRule.onNodeWithText(string(R.string.last_synced).format(relative)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a sync older than three hours is shown as an exact stamp`() {
+        val syncedAt = NOW - 4 * HOUR_MS
         setContent(video.copy(lastSyncedAt = syncedAt))
 
         // Formatted in the device's zone, so the expectation is derived rather than hardcoded —
@@ -228,5 +241,12 @@ class DetailContentTest {
         setContent(video)
 
         composeRule.onNodeWithText("Open in Jellyfin").assertDoesNotExist()
+    }
+
+    private companion object {
+        /** A fixed clock for the relative sync labels; ages below are measured back from it. */
+        const val NOW = 1_784_974_530_000L
+        const val MINUTE_MS = 60_000L
+        const val HOUR_MS = 60 * MINUTE_MS
     }
 }
