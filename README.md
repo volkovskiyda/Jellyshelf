@@ -6,6 +6,9 @@ YouTube category, plus your own manual categories), plays it on a built-in Media
 and syncs watch status with Jellyfin over the REST API. Playback can also be handed to an
 external player or to the Jellyfin web UI — the choice is a setting on the play button.
 
+No Jellyfin server to hand? **Settings → Try demo** runs the whole app on a seeded library —
+see [Demo mode](#demo-mode--try-it-without-a-server).
+
 `com.gmail.volkovskiyda.jellyshelf` · single-module · Compose + Navigation 3 + Adaptive ·
 Media3 (ExoPlayer + MediaSession) · Room · Ktor (OkHttp engine) / kotlinx.serialization ·
 WorkManager · DataStore · Coil · Koin · bundled yt-dlp (youtubedl-android).
@@ -118,6 +121,46 @@ one certificate/host. Index URL: `https://media.example.com/jellyshelf-index.jso
 > builds — only debug builds allow cleartext traffic (see [Build](#build)). A plain `http://` URL
 > on a release build fails before it reaches the network; the app says so instead of surfacing
 > the platform's raw "CLEARTEXT communication … not permitted" error.
+
+## Demo mode — try it without a server
+
+**Settings → Try demo** fills the library with ~60 seeded videos and opens it. No server, no
+network, no account: everything downstream of a populated library — browsing, search, the duration
+filter, the auto-categories, continue-watching, the in-app player — works exactly as it does after
+a real sync, because the seeder builds its rows and derives its categories with the same code a
+sync uses.
+
+There is a second way in, through the real sign-in form, which demonstrates the sign-in
+choreography the button skips:
+
+| Field | Value |
+| --- | --- |
+| Server URL | `jellyfin` |
+| Username | `demo` |
+| Password | anything — except `incorrect` |
+
+Password `incorrect` is deliberate: it shows the genuine authentication-failure state, with no
+server anywhere to reject anything. Any other password enters the demo. These values are matched
+before any URL normalization and before any network call, and none of them is ever stored as a
+connection.
+
+**Leaving** is the ordinary **Reset local data**, which drops the seeded rows and the demo flag
+together. Connecting to a real server clears the demo data first, so seeded rows never meet a real
+sync — the Settings screen says so while a demo is loaded.
+
+The dataset is [`app/src/main/assets/demo/library.json`](app/src/main/assets/demo/library.json),
+a real, valid example of the metadata index format that
+[`scripts/build-library-index.sh`](scripts/build-library-index.sh) emits — worth a look if you are
+setting that pipeline up. Watch state is derived in code by position in the list rather than
+authored in the JSON, so the watched / part-watched / unwatched mix is guaranteed whatever the
+content is edited to.
+
+The bundled assets are regenerable: [`scripts/make-demo-thumbnails.sh`](scripts/make-demo-thumbnails.sh)
+draws the thumbnails, and [`scripts/make-demo-clip.sh`](scripts/make-demo-clip.sh) cuts the video.
+
+> Every demo video plays the same ten-second clip: an excerpt from **Big Buck Bunny**,
+> © 2008 Blender Foundation, [peach.blender.org](https://peach.blender.org), used under
+> [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 
 ## Setup in the app (Settings tab)
 
@@ -318,6 +361,12 @@ changing it needs no rebuild.
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
+
+The one bundled asset that is not original to this project is the demo clip,
+`app/src/main/assets/demo/sample.mp4` — a ten-second excerpt from **Big Buck Bunny**,
+© 2008 Blender Foundation, [peach.blender.org](https://peach.blender.org), used under
+[CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/). The demo thumbnails and the demo
+dataset are original.
 
 ```
 Copyright 2026 Dmytro Volkovskiy
