@@ -54,6 +54,11 @@ class ThemeRevealTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    // Deliberately without enableAccessibilityChecks(), unlike every other Compose-rule test here:
+    // the checks run before each action that changes the UI, and this test halts the clock to
+    // assert on specific frames of the reveal — they would perturb exactly what it measures. The
+    // switch's own accessibility is covered by ThemeModeSwitchTest.
+
     private val controller = ThemeRevealController()
 
     /** Held outside the composition, the way the real theme flow is: the target, not what is drawn. */

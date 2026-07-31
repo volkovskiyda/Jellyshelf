@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.library
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -14,6 +15,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +36,16 @@ class LibraryContentTest {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    /**
+     * Fails this class's tests on unlabelled clickables, undersized touch targets and unreadable
+     * contrast — checked before every action that changes the UI, so the whole rendered tree is
+     * covered, not only the nodes an assertion happens to name.
+     */
+    @Before
+    fun enableAccessibilityChecks() {
+        composeRule.enableAccessibilityChecks()
+    }
 
     private fun video(id: String, title: String) = Video(
         youtubeId = id,

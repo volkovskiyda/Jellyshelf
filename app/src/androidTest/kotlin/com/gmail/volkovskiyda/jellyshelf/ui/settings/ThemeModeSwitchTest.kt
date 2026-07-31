@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -23,6 +24,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeRevealController
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,6 +43,16 @@ class ThemeModeSwitchTest {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    /**
+     * Fails this class's tests on unlabelled clickables, undersized touch targets and unreadable
+     * contrast — checked before every action that changes the UI, so the whole rendered tree is
+     * covered, not only the nodes an assertion happens to name.
+     */
+    @Before
+    fun enableAccessibilityChecks() {
+        composeRule.enableAccessibilityChecks()
+    }
 
     private fun setContent(initial: ThemeState = ThemeState()) {
         // Held outside the composition, the way the real ViewModel holds it: created inside, it

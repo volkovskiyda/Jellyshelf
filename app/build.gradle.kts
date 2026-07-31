@@ -467,6 +467,11 @@ dependencies {
     // ComponentActivity they launch into.
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // Fails a Compose test on unlabelled clickables, undersized touch targets and low contrast,
+    // checked before every action that changes the UI. BOM-managed; pulls the Accessibility Test
+    // Framework transitively. @RequiresApi(34) — both run surfaces (the Pixel 5 on API 34, Test
+    // Lab on API 36) clear it, and lint does not check test sources, so minSdk 30 is not a bar.
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4.accessibility)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     androidTestImplementation(platform(libs.koin.bom))
     androidTestImplementation(platform(libs.ktor.bom))
