@@ -21,9 +21,13 @@ import com.gmail.volkovskiyda.jellyshelf.util.normalizeServerUrl
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onEach
@@ -119,6 +123,15 @@ class SettingsViewModel(
     /** Local operations (connect, reset) only — sync lives in [_sync], see [state]. */
     private val _state = MutableStateFlow(SettingsUiState())
     private val _sync = MutableStateFlow<SyncUi?>(null)
+
+    /**
+     * "Look at the sync scope" — a one-shot event, not a state flag, because it fires and is over:
+     * a flag would have to be cleared afterwards, and a stale one would shake the section again on
+     * the next recomposition. Extra buffer capacity so an emission is never dropped while the
+     * screen is between subscriptions (a tab switch clears the collector, not the ViewModel).
+     */
+    private val _nudgeScope = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val nudgeScope: SharedFlow<Unit> = _nudgeScope.asSharedFlow()
 
     /**
      * Sync no longer runs in this scope, so its progress can't be held in [_state]: the worker
@@ -377,6 +390,9 @@ class SettingsViewModel(
                 // a parent id that may not exist for them — same reset as switching users by hand.
                 val userChanged = session.user.id != _state.value.selectedUserId
                 if (userChanged) settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_PATH)
+                // Re-arm the scope nudge here, with the rest of the post-sign-in state, so "once
+                // per sign-in" holds by construction rather than by comparing timestamps.
+                settingsRepo.setSyncScopeNudged(false)
                 _state.value = _state.value.copy(
                     busy = false,
                     password = "",
@@ -623,9 +639,29 @@ class SettingsViewModel(
      * Hands the sync to WorkManager and (re)creates the periodic one. Deliberately not awaited:
      * a tab switch clears this ViewModel, which used to cancel the sync mid-flight.
      */
+    /**
+     * Syncs — unless this is the first sync since signing in and the scope is still the whole
+     * server, in which case it points that out instead and lets the next tap through.
+     *
+     * The rule lives here rather than in the composable because it is a rule: what the screen does
+     * with [nudgeScope] is a rendering choice, but *whether* a tap syncs is not. Arming is once per
+     * sign-in and survives process death, so the nudge can never become a permanent extra tap.
+     */
     fun syncNow() {
         val indexUrl = _state.value.indexUrl
         viewModelScope.launch {
+            if (shouldNudgeScope()) {
+                settingsRepo.setSyncScopeNudged(true)
+                _state.value = _state.value.copy(
+                    status = app.getString(R.string.check_sync_scope_first),
+                    statusIsError = false,
+                )
+                // Emitted as well as written to the status line: the shake is the eye-catching
+                // half, the status text is the half a screen reader and a stopped animation
+                // still have.
+                _nudgeScope.emit(Unit)
+                return@launch
+            }
             // The worker reads the index URL from settings, so persist before enqueueing — and
             // do both even if this ViewModel is cleared in between.
             withContext(NonCancellable) {
@@ -634,4 +670,18 @@ class SettingsViewModel(
             }
         }
     }
+
+    private suspend fun shouldNudgeScope(): Boolean =
+        shouldNudgeSyncScope(_state.value.selectedScopeId, settingsRepo.syncScopeNudged.first())
 }
+
+/**
+ * Whether a **Sync now** tap should point at the sync scope instead of syncing: only when the
+ * scope is still the whole server *and* the user has not already been told so since signing in.
+ *
+ * A free function so the rule is testable on its own — [SettingsViewModel] needs an `Application`
+ * to build, which puts it out of reach of a host-side test in a codebase that deliberately has no
+ * Robolectric.
+ */
+internal fun shouldNudgeSyncScope(scopeId: String, alreadyNudged: Boolean): Boolean =
+    scopeId == ROOT_SCOPE_ID && !alreadyNudged

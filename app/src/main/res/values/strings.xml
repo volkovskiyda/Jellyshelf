@@ -107,6 +107,7 @@
     <string name="seek_forward_30">Forward 30 seconds</string>
     <string name="previous_video">Previous video</string>
     <string name="next_video">Next video</string>
+    <string name="check_sync_scope_first">Check the sync scope first</string>
     <string name="unlock_index_url">Unlock the index URL</string>
     <string name="lock_index_url">Lock the index URL</string>
     <string name="index_url_state_locked">Locked</string>

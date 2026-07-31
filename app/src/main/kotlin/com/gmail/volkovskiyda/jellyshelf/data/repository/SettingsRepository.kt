@@ -46,6 +46,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val THEME_TOWARD_DARK = booleanPreferencesKey("theme_toward_dark")
         val LIBRARY_DURATION_FILTER = stringPreferencesKey("library_duration_filter")
         val CATEGORIES_SEARCH_ALL = booleanPreferencesKey("categories_search_all")
+        val SYNC_SCOPE_NUDGED = booleanPreferencesKey("sync_scope_nudged")
     }
 
     override val settings: Flow<Settings> = ds.data
@@ -220,5 +221,14 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setCategoriesSearchAll(enabled: Boolean) {
         ds.edit { it[Keys.CATEGORIES_SEARCH_ALL] = enabled }
+    }
+
+    /** Unreadable preferences degrade to "not yet nudged" — one spare nudge, never a lost sync. */
+    override val syncScopeNudged: Flow<Boolean> = ds.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[Keys.SYNC_SCOPE_NUDGED] ?: false }
+
+    override suspend fun setSyncScopeNudged(nudged: Boolean) {
+        ds.edit { it[Keys.SYNC_SCOPE_NUDGED] = nudged }
     }
 }

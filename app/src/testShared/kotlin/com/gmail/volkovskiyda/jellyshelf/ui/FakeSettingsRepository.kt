@@ -34,6 +34,7 @@ class FakeSettingsRepository(
     themeState: ThemeState = ThemeState(),
     libraryDurationFilter: DurationBucket? = null,
     categoriesSearchAll: Boolean = false,
+    syncScopeNudged: Boolean = false,
 ) : SettingsRepository {
     private val _settings = MutableStateFlow(initial)
     private val _backStackJson = MutableStateFlow(backStackJson)
@@ -41,6 +42,7 @@ class FakeSettingsRepository(
     private val _themeState = MutableStateFlow(themeState)
     private val _libraryDurationFilter = MutableStateFlow(libraryDurationFilter)
     private val _categoriesSearchAll = MutableStateFlow(categoriesSearchAll)
+    private val _syncScopeNudged = MutableStateFlow(syncScopeNudged)
 
     override val settings: Flow<Settings> = _settings
     override suspend fun snapshot(): Settings = _settings.value
@@ -111,6 +113,11 @@ class FakeSettingsRepository(
     override val categoriesSearchAll: Flow<Boolean> = _categoriesSearchAll
     override suspend fun setCategoriesSearchAll(enabled: Boolean) {
         _categoriesSearchAll.value = enabled
+    }
+
+    override val syncScopeNudged: Flow<Boolean> = _syncScopeNudged
+    override suspend fun setSyncScopeNudged(nudged: Boolean) {
+        _syncScopeNudged.value = nudged
     }
 
     /** What [setBackStackJson] last persisted. */

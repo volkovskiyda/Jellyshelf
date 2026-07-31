@@ -77,4 +77,14 @@ interface SettingsRepository {
     /** Whether Categories search spans every dimension rather than the open tab. */
     val categoriesSearchAll: Flow<Boolean>
     suspend fun setCategoriesSearchAll(enabled: Boolean)
+
+    /**
+     * Whether the user has already been shown that the sync scope is still "all collections".
+     *
+     * Persisted rather than held in memory because the nudge is once *per sign-in*, and a process
+     * death between signing in and the first sync must not re-arm it — that would make the nudge
+     * an intermittent extra tap rather than a one-off. Cleared on a successful sign-in.
+     */
+    val syncScopeNudged: Flow<Boolean>
+    suspend fun setSyncScopeNudged(nudged: Boolean)
 }

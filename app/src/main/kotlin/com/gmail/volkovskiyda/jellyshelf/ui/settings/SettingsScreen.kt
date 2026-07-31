@@ -1,5 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
+import android.content.Context
+import android.provider.Settings
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +51,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -51,10 +60,14 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import org.koin.androidx.compose.koinViewModel
+import kotlin.math.roundToInt
 
 /**
  * Settings tab: binds [SettingsViewModel] to the stateless [SettingsContent] below, which
@@ -93,6 +106,7 @@ fun SettingsScreen(
             resetLocalData = viewModel::resetLocalData,
         ),
         modifier = modifier,
+        nudgeScope = viewModel.nudgeScope,
     )
 }
 
@@ -107,8 +121,12 @@ internal fun SettingsContent(
     // screenshot tests can render it — collapsing it by default would otherwise hide that whole
     // fallback path from the goldens.
     advancedExpanded: Boolean = false,
+    // Fired when a Sync now tap was spent pointing at the scope instead of syncing. A flow rather
+    // than a flag: the shake happens once and is over, and a flag would have to be cleared.
+    nudgeScope: Flow<Unit> = emptyFlow(),
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
+    val scopeShake = rememberScopeShake(nudgeScope)
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(title = { Text(stringResource(R.string.tab_settings)) })
@@ -189,7 +207,14 @@ internal fun SettingsContent(
             )
 
             if (state.selectedUserId.isNotBlank()) {
-                ScopeSection(state = state, actions = actions)
+                // The wrapper exists only to carry the shake offset, so it has to repeat the
+                // parent's spacing — ScopeSection emits several siblings and was relying on it.
+                Column(
+                    modifier = Modifier.offset { IntOffset(scopeShake.value.roundToInt(), 0) },
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ScopeSection(state = state, actions = actions)
+                }
             }
 
             HorizontalDivider()
@@ -345,6 +370,38 @@ private fun AdvancedAuthSection(
 }
 
 /**
+ * The horizontal offset the sync-scope section is drawn at: zero, except for three quick
+ * oscillations each time [nudge] fires.
+ *
+ * The shake is the *only* motion form of the nudge, so it has to survive the accessibility
+ * "remove animations" setting — where [MotionDurationScale] reports a scale of zero, the animation
+ * would complete instantly and the user would see nothing at all. That is not a silent no-op here:
+ * the same nudge always writes "Check the sync scope first" to the status line, which is the form
+ * a screen reader and a stopped animation both still get. This function simply skips the motion.
+ */
+@Composable
+private fun rememberScopeShake(nudge: Flow<Unit>): Animatable<Float, AnimationVector1D> {
+    val offset = remember { Animatable(0f) }
+    val shakePx = with(LocalDensity.current) { SHAKE_DISTANCE.toPx() }
+    val motionScale = LocalContext.current.animationsEnabled()
+    LaunchedEffect(nudge, shakePx, motionScale) {
+        nudge.collect {
+            if (!motionScale) return@collect
+            repeat(SHAKE_CYCLES) {
+                offset.animateTo(shakePx, tween(SHAKE_STEP_MS))
+                offset.animateTo(-shakePx, tween(SHAKE_STEP_MS))
+            }
+            offset.animateTo(0f, tween(SHAKE_STEP_MS))
+        }
+    }
+    return offset
+}
+
+/** The system's "remove animations" accessibility setting, as a plain boolean. */
+private fun Context.animationsEnabled(): Boolean =
+    Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+
+/**
  * The metadata index URL, shown only once there are credentials to use it with
  * ([SettingsUiState.canEditIndex]).
  *
@@ -468,3 +525,10 @@ private fun ScopeSection(state: SettingsUiState, actions: SettingsActions) {
         }
     }
 }
+
+/** How far the scope section swings either way when the nudge fires. */
+private val SHAKE_DISTANCE = 8.dp
+
+/** Three there-and-back swings plus the settle, at [SHAKE_STEP_MS] each — ~300 ms in total. */
+private const val SHAKE_CYCLES = 3
+private const val SHAKE_STEP_MS = 40
