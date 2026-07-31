@@ -39,6 +39,27 @@ class WatchStateTrackerTest {
         assertEquals(WatchAction.Report("a", 700_000L, completed = true), report)
     }
 
+    /**
+     * Pressing next: the outgoing video is reported at the position it was actually left at, not
+     * at the last periodic tick — that is what the server stores as its resume point, and being
+     * up to a save interval short of it is a visible jump backwards next time.
+     *
+     * The discontinuity arrives first because media3 queues `EVENT_POSITION_DISCONTINUITY` ahead
+     * of `EVENT_MEDIA_ITEM_TRANSITION` (ExoPlayerImpl, 1.10.1). The tracker does not rely on that
+     * — it anchors on media ids — but the exact position does, so it is worth stating.
+     */
+    @Test
+    fun `pressing next reports the video it left, at the position it left it`() {
+        playing("a", positionMs = 100_000L)
+
+        tracker.onPositionDiscontinuity("a", 108_400L, "b", 0L)
+
+        assertEquals(
+            WatchAction.Report("a", 108_400L, completed = false),
+            tracker.onItemChanged("b", autoAdvance = false),
+        )
+    }
+
     @Test
     fun `a video replaced mid-way is reported at its position, not as complete`() {
         playing("a", positionMs = 120_000L)
@@ -119,6 +140,33 @@ class WatchStateTrackerTest {
         tracker.onEnded(durationMs = 754_000L)
 
         assertNull(tracker.onDestroy(754_000L))
+    }
+
+    /**
+     * The end of a queue, then back. Nothing transitions when the last video ends, so the video
+     * stays active with its completion already filed — and leaving the player clears the queue,
+     * which arrives here as a transition to nothing.
+     *
+     * A report from that clear would carry `completed = false` and a position ten seconds shy of
+     * the end, and the repository's near-end rule only covers five: the server would be told the
+     * video the user just finished is unwatched and resumable.
+     */
+    @Test
+    fun `clearing the queue after a completed video reports nothing`() {
+        playing("a", positionMs = 700_000L)
+        tracker.onEnded(durationMs = 754_000L)
+
+        assertNull(tracker.onItemChanged(null, autoAdvance = false))
+    }
+
+    /** Same contradiction, reached by pressing previous instead of back. */
+    @Test
+    fun `skipping off a completed video reports nothing`() {
+        playing("a", positionMs = 700_000L)
+        tracker.onEnded(durationMs = 754_000L)
+
+        assertNull(tracker.onItemChanged("b", autoAdvance = false))
+        assertEquals("b", tracker.activeMediaId)
     }
 
     @Test

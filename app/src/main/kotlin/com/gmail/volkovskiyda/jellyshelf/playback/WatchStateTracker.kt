@@ -41,10 +41,15 @@ internal class WatchStateTracker {
     /**
      * The active item changed. Reports the outgoing one — as *completed* only on an auto-advance,
      * since any other reason is a replacement mid-way (a new video picked from Detail).
+     *
+     * Silent when that video already reported its completion, for the same reason [onDestroy] is:
+     * the last video of a queue ends without transitioning anywhere, so it is still active when
+     * the user leaves and clears the queue. A second report would carry `completed = false` at a
+     * position up to a save interval short of the end, and un-watch what was just watched.
      */
     fun onItemChanged(newMediaId: String?, autoAdvance: Boolean): WatchAction.Report? {
         val previous = activeMediaId
-        val report = if (previous != null && previous != newMediaId) {
+        val report = if (previous != null && previous != newMediaId && !completionReported) {
             WatchAction.Report(previous, lastPositionMs, completed = autoAdvance)
         } else {
             null
