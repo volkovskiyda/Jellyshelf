@@ -3,6 +3,19 @@
 -keep class com.yausername.** { *; }
 -dontwarn com.yausername.**
 
+# youtubedl-android unpacks the bundled Python runtime — and every yt-dlp self-update — with
+# Apache Commons Compress (transitive through :common). ExtraFieldUtils' static initialiser
+# reflectively instantiates every ZipExtraField via newInstance(); R8 sees only the `.class`
+# literals, so it strips the no-arg constructors and marks the classes abstract. register()
+# then throws InstantiationException, the initialiser dies, and every later zip read fails with
+# NoClassDefFoundError on ExtraFieldUtils — i.e. YoutubeDL.init() cannot unpack anything, so
+# in-app metadata fetch is dead in release builds while working fine in debug.
+# Scoped to the constructors on purpose: a blanket keep on the package would also retain the
+# tar/7z/bzip2 archivers that R8 correctly strips.
+-keep class * implements org.apache.commons.compress.archivers.zip.ZipExtraField {
+    public <init>();
+}
+
 # Keeps the app's @Serializable classes and their generated serializers. Covers two users of
 # kotlinx-serialization: the Navigation 3 back-stack keys (restored from saved state) and the
 # remote DTOs in data.remote (the Ktor ContentNegotiation request/response bodies).
