@@ -18,7 +18,6 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryContent
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryVideos
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicator
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicatorPill
-import com.gmail.volkovskiyda.jellyshelf.ui.player.IndicatorControl
 import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerControls
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsActions
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsContent
@@ -239,16 +238,6 @@ private fun PlayerControlsWithChapters() {
             onOpenChapters = {},
             onBack = {},
         )
-    }
-}
-
-/** The volume drag's feedback pill, mid-gesture, over the black player surface. */
-@PreviewTest
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun VolumeGesturePill() {
-    PreviewTheme(darkTheme = true) {
-        GestureIndicatorPill(GestureIndicator.Level(IndicatorControl.VOLUME, 0.64f))
     }
 }
 

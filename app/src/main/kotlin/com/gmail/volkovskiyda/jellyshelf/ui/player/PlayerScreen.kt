@@ -6,7 +6,6 @@ package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.AudioManager
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -257,35 +256,17 @@ private fun PlayerWithControls(
     val playbackSpeed = rememberPlaybackSpeedState(controller)
     val presentationState = rememberPresentationState(controller)
 
-    // Drag gestures on the surface: volume right, brightness left, horizontal scrubs (see
-    // PlayerGestureHandler). The pill lingers briefly after the finger lifts, then hides.
-    val activity = LocalActivity.current
-    val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
+    // The surface's one drag gesture: horizontal scrubbing (see PlayerGestureHandler). The pill
+    // lingers briefly after the finger lifts, then hides.
     var gestureIndicator by remember { mutableStateOf<GestureIndicator?>(null) }
     var gestureActive by remember { mutableStateOf(false) }
-    val gestureHandler = remember(controller, activity, audioManager) {
+    val gestureHandler = remember(controller) {
         PlayerGestureHandler(object : PlayerGestureHandler.Host {
-            override fun volumeFraction() = audioManager.musicVolumeFraction()
-
-            override fun brightnessFraction() = currentBrightnessFraction(activity)
-
             override fun canSeek() = controller.isCurrentMediaItemSeekable && controller.duration > 0
 
             override fun seekStartMs() = controller.currentPosition.coerceAtLeast(0)
 
             override fun seekDurationMs() = controller.duration.coerceAtLeast(0)
-
-            override fun onVolumeChange(fraction: Float) {
-                audioManager.setMusicVolumeFraction(fraction)
-                gestureActive = true
-                gestureIndicator = GestureIndicator.Level(IndicatorControl.VOLUME, fraction)
-            }
-
-            override fun onBrightnessChange(fraction: Float) {
-                applyBrightnessFraction(activity, fraction)
-                gestureActive = true
-                gestureIndicator = GestureIndicator.Level(IndicatorControl.BRIGHTNESS, fraction)
-            }
 
             override fun onSeekPreview(targetMs: Long, deltaMs: Long) {
                 gestureActive = true
@@ -306,11 +287,6 @@ private fun PlayerWithControls(
             delay(INDICATOR_LINGER_MS)
             gestureIndicator = null
         }
-    }
-    // The override is window state and the window outlives this screen — always hand the user's
-    // own brightness back on leave.
-    DisposableEffect(activity) {
-        onDispose { clearBrightnessOverride(activity) }
     }
 
     Box(
