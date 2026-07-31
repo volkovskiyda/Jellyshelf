@@ -73,6 +73,28 @@ class NavigationStackTest {
         assertEquals(saved, startStackOf(repo))
     }
 
+    /**
+     * A Detail entry written before the player origin existed carries no `origin` field. It has
+     * to decode — an in-place upgrade restores this stack on the very first launch, and a
+     * required field here would send that launch down the unreadable-stack path below, silently
+     * dropping the user back to Library.
+     */
+    @Test
+    fun `a Detail entry saved before origins existed still restores`() = runTest {
+        val repo = FakeSettingsRepository(
+            emptySettings.copy(serverUrl = "https://example.org", apiKey = "key"),
+            backStackJson = """
+                [{"type":"com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey.Library"},
+                 {"type":"com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey.Detail",
+                  "youtubeId":"1ubm7Q6DL-I"}]
+            """.trimIndent(),
+        )
+        assertEquals(
+            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I", origin = null)),
+            startStackOf(repo),
+        )
+    }
+
     /** A stack written by an older schema must degrade to Library, never crash the launch. */
     @Test
     fun `an unreadable saved stack falls back to Library`() = runTest {

@@ -209,8 +209,9 @@ private fun DetailMissingFromServerDark() {
 
 /**
  * The player's controls overlay with chapters, landscape: the chapters button in the top bar,
- * tick markers on the seek bar, and the current chapter's title above it. Black background
- * standing in for the video surface the overlay normally covers.
+ * tick markers on the seek bar, and the chapter-step row above it. Mid-queue, so both transport
+ * arrows are live. Black background standing in for the video surface the overlay normally
+ * covers.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_HEIGHT, heightDp = PHONE_WIDTH, showBackground = true, backgroundColor = 0xFF000000)
@@ -228,9 +229,46 @@ private fun PlayerControlsWithChapters() {
                 Chapter(600_000L, "Outro"),
             ),
             speed = 1f,
+            hasPrevious = true,
+            hasNext = true,
             onPlayPause = {},
             onSeekBack = {},
             onSeekForward = {},
+            onPrevious = {},
+            onNext = {},
+            onSeek = {},
+            onSetSpeed = {},
+            onScrubbingChanged = {},
+            onSpeedMenuChanged = {},
+            onOpenChapters = {},
+            onBack = {},
+        )
+    }
+}
+
+/**
+ * The same overlay at the end of a single-video queue — the notification-reopen case: both
+ * transport arrows dimmed, and no chapter-step row at all because the video has no chapters.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_HEIGHT, heightDp = PHONE_WIDTH, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun PlayerControlsSingleVideo() {
+    PreviewTheme(darkTheme = true) {
+        PlayerControls(
+            title = "The only video in the queue",
+            showPlay = false,
+            positionMs = 200_000L,
+            durationMs = 754_000L,
+            chapters = emptyList(),
+            speed = 1f,
+            hasPrevious = false,
+            hasNext = false,
+            onPlayPause = {},
+            onSeekBack = {},
+            onSeekForward = {},
+            onPrevious = {},
+            onNext = {},
             onSeek = {},
             onSetSpeed = {},
             onScrubbingChanged = {},

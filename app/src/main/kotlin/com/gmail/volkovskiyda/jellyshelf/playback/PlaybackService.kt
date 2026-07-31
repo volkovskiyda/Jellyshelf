@@ -160,17 +160,24 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
             val resolved = mediaItems.map { resolve(it) }
-            val defaultStart =
-                startIndex == C.INDEX_UNSET && startPositionMs == C.TIME_UNSET && resolved.isNotEmpty()
-            if (defaultStart) {
-                // The resume path: a bare setMediaItem(mediaId) starts from the locally saved
-                // position. A controller that wants somewhere specific passes it explicitly.
-                val resumeTicks = resolved.first().mediaId
-                    .let { repo.observeVideo(it).first()?.playbackPositionTicks } ?: 0L
-                MediaSession.MediaItemsWithStartPosition(resolved, 0, ticksToMillis(resumeTicks))
-            } else {
-                MediaSession.MediaItemsWithStartPosition(resolved, startIndex, startPositionMs)
+            if (startPositionMs != C.TIME_UNSET || resolved.isEmpty()) {
+                // A controller that wants a specific position passes one — the transcode
+                // fallback, which must land exactly where the failed decode left off.
+                return@future MediaSession.MediaItemsWithStartPosition(
+                    resolved,
+                    startIndex,
+                    startPositionMs,
+                )
             }
+            // The resume path: no position asked for, so the item being started begins where it
+            // was last left. The index matters as much as the position — a queue names the video
+            // it opens on, and reading the resume ticks of item 0 instead would restore a
+            // position from a different video (or, before this branch covered an explicit index
+            // at all, start every queued video at 0).
+            val index = if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.indices)
+            val resumeTicks =
+                repo.observeVideo(resolved[index].mediaId).first()?.playbackPositionTicks ?: 0L
+            MediaSession.MediaItemsWithStartPosition(resolved, index, ticksToMillis(resumeTicks))
         }
     }
 

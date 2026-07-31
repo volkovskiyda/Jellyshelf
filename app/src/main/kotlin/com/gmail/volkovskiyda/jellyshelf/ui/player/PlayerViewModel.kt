@@ -4,21 +4,28 @@ import android.app.Application
 import android.content.ComponentName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.parseTimecodes
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.guava.await
@@ -34,14 +41,26 @@ import timber.log.Timber
  * alive (still watching). That is why [onCleared] only releases the controller — a stop from here
  * would also fire on a configuration change, and this screen rotates freely.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel(
     app: Application,
-    repo: LibraryRepository,
+    private val repo: LibraryRepository,
+    private val libraryFilters: LibraryFilterState,
     private val youtubeId: String,
+    private val origin: PlayerOrigin?,
 ) : ViewModel() {
 
+    /**
+     * What is playing *now*, which stops being the video the screen was opened with as soon as
+     * the queue advances — by the next button or by a video ending. Everything the screen shows
+     * about the video hangs off this, so a title and a chapter list can never describe the
+     * previous item.
+     */
+    private val currentId = MutableStateFlow(youtubeId)
+
     /** The video row, for the title over the controls; null until it loads. */
-    val video: StateFlow<Video?> = repo.observeVideo(youtubeId)
+    val video: StateFlow<Video?> = currentId
+        .flatMapLatest { repo.observeVideo(it) }
         .stateIn(viewModelScope, WhileUiSubscribed, null)
 
     /**
@@ -70,16 +89,46 @@ class PlayerViewModel(
                 return@launch
             }
             // Already on this video (reopened from the notification): attach without touching
-            // playback. Anything else starts it — a bare mediaId, no URI: the service resolves
+            // playback. Anything else starts it — bare mediaIds, no URIs: the service resolves
             // the stream URL and seeds the saved resume position (see PlaybackService).
             if (controller.currentMediaItem?.mediaId != youtubeId) {
-                controller.setMediaItem(MediaItem.Builder().setMediaId(youtubeId).build())
+                val queue = playbackQueue(originIds(), youtubeId)
+                controller.setMediaItems(
+                    queue.ids.map { MediaItem.Builder().setMediaId(it).build() },
+                    queue.startIndex,
+                    // Unset, so the session seeds the position this video was left at.
+                    C.TIME_UNSET,
+                )
                 controller.prepare()
                 controller.play()
             }
+            // A null item is the queue being cleared on the way out (see stopPlayback); keeping
+            // the last id there leaves the title in place while the screen finishes leaving.
+            controller.addListener(object : Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    currentId.value = mediaItem?.mediaId ?: currentId.value
+                }
+            })
             _controller.value = controller
         }
     }
+
+    /**
+     * One snapshot of the origin list, not a live flow: a queue that re-shuffles under the user
+     * because a sync landed mid-video is worse than a slightly stale one.
+     *
+     * The library case reads the list the screen last rendered rather than re-querying, because
+     * that emission carries the search query and duration filter the user had applied — going
+     * back to the repository would queue videos they had filtered away. It falls back to the
+     * unnarrowed library only when there is no such emission, which today means a player restored
+     * into a process that never rendered the library tab.
+     */
+    private suspend fun originIds(): List<String> = when (origin) {
+        null -> emptyList()
+        PlayerOrigin.Library ->
+            libraryFilters.lastVideos.value?.items ?: repo.observeVideos().first()
+        is PlayerOrigin.Category -> repo.observeVideosByCategory(origin.categoryId).first()
+    }.map { it.youtubeId }
 
     /**
      * Explicit leave: stop, let the service file the one stop report, drop the notification.

@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.di
 import android.app.Application
 import android.content.Context
 import androidx.work.WorkerParameters
+import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import io.ktor.client.engine.HttpClientEngine
 import org.junit.Test
 import org.koin.core.annotation.KoinExperimentalAPI
@@ -21,7 +22,12 @@ import org.koin.test.verify.verify
  * - [Context]/[Application] — registered by `androidContext()` in `startKoin`.
  * - [WorkerParameters] — supplied by the WorkManager factory to `SyncWorker`.
  * - [String] — the `youtubeId` / `categoryId` runtime params passed via `parametersOf` to the
- *   detail and category-videos ViewModels.
+ *   detail, category-videos and player ViewModels.
+ * - [PlayerOrigin] — the player's other runtime param, the list it was opened from. `verify`
+ *   reflects `PlayerViewModel`'s constructor even though the module builds it by hand, and cannot
+ *   see that the definition resolves this one with `getOrNull` (it is nullable — the
+ *   media-notification path has no origin). Nothing in the graph *provides* a PlayerOrigin, so
+ *   whitelisting it cannot mask a real missing binding.
  * - [Boolean]/[Int] — the `BuildInfo(isDebug, sdkInt)` constructor constants, wired in the module
  *   from `BuildConfig.DEBUG` / `Build.VERSION.SDK_INT` (no other definition injects a bare
  *   Boolean/Int, so whitelisting them here can't mask a real missing binding).
@@ -41,6 +47,7 @@ class AppModuleVerifyTest {
                 Application::class,
                 WorkerParameters::class,
                 String::class,
+                PlayerOrigin::class,
                 Boolean::class,
                 Int::class,
                 HttpClientEngine::class,

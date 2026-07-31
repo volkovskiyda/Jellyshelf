@@ -44,6 +44,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
+import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
@@ -224,7 +225,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     val openPlayer by viewModel.openPlayer.collectAsStateWithLifecycle()
     LaunchedEffect(openPlayer) {
         openPlayer?.let { id ->
-            if (backStack.lastOrNull() != AppNavKey.Player(id)) backStack.add(AppNavKey.Player(id))
+            // Compare on the video, not the whole key: a player opened from a list carries an
+            // origin the notification knows nothing about, and re-pushing it would stack two
+            // player entries for the same video.
+            val top = backStack.lastOrNull()
+            val alreadyOpen = top is AppNavKey.Player && top.youtubeId == id
+            if (!alreadyOpen) backStack.add(AppNavKey.Player(id))
             viewModel.consumeOpenPlayer()
         }
     }
@@ -296,7 +302,11 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             when (key) {
                 is AppNavKey.Library -> NavEntry(key) {
                     LibraryScreen(
-                        onVideoClick = { navThrottle { push(AppNavKey.Detail(it.youtubeId)) } },
+                        onVideoClick = {
+                            // The origin rides on Detail so that Play, one screen later, still
+                            // knows which list the user was in — Detail itself never reads it.
+                            navThrottle { push(AppNavKey.Detail(it.youtubeId, PlayerOrigin.Library)) }
+                        },
                     )
                 }
 
@@ -314,7 +324,10 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     CategoryVideosScreen(
                         categoryId = key.categoryId,
                         title = key.title,
-                        onVideoClick = { navThrottle { push(AppNavKey.Detail(it.youtubeId)) } },
+                        onVideoClick = {
+                            val origin = PlayerOrigin.Category(key.categoryId)
+                            navThrottle { push(AppNavKey.Detail(it.youtubeId, origin)) }
+                        },
                         onBack = { navThrottle { pop() } },
                     )
                 }
@@ -323,13 +336,14 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     DetailScreen(
                         youtubeId = key.youtubeId,
                         onBack = { navThrottle { pop() } },
-                        onPlayInApp = { id -> navThrottle { push(AppNavKey.Player(id)) } },
+                        onPlayInApp = { id -> navThrottle { push(AppNavKey.Player(id, key.origin)) } },
                     )
                 }
 
                 is AppNavKey.Player -> NavEntry(key) {
                     PlayerScreen(
                         youtubeId = key.youtubeId,
+                        origin = key.origin,
                         onBack = { navThrottle { pop() } },
                     )
                 }

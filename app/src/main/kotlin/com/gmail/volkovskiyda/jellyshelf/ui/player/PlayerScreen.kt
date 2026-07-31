@@ -34,10 +34,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -68,6 +72,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -79,8 +84,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.ui.compose.PlayerSurface
@@ -92,6 +99,7 @@ import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
+import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
@@ -114,8 +122,9 @@ fun PlayerScreen(
     youtubeId: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    origin: PlayerOrigin? = null,
 ) {
-    val viewModel: PlayerViewModel = koinViewModel { parametersOf(youtubeId) }
+    val viewModel: PlayerViewModel = koinViewModel { parametersOf(youtubeId, origin) }
     val controller by viewModel.controller.collectAsStateWithLifecycle()
     val video by viewModel.video.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
@@ -170,6 +179,10 @@ private fun PlayerWithControls(
     var isBuffering by remember { mutableStateOf(controller.playbackState == Player.STATE_BUFFERING) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var transcodingNotice by remember { mutableStateOf(false) }
+    // Where in the queue we are. Only the ends matter to the UI, and they move whenever the queue
+    // advances, so they are listened for rather than polled with the position.
+    var hasPrevious by remember { mutableStateOf(controller.hasPreviousMediaItem()) }
+    var hasNext by remember { mutableStateOf(controller.hasNextMediaItem()) }
 
     DisposableEffect(controller) {
         // The first decode failure isn't terminal — the service is already swapping in the HLS
@@ -179,6 +192,18 @@ private fun PlayerWithControls(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                hasPrevious = controller.hasPreviousMediaItem()
+                hasNext = controller.hasNextMediaItem()
+            }
+
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                // The queue itself arrives asynchronously — the session resolves every id before
+                // the timeline exists, so the first read above is of an empty one.
+                hasPrevious = controller.hasPreviousMediaItem()
+                hasNext = controller.hasNextMediaItem()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -358,9 +383,15 @@ private fun PlayerWithControls(
                 durationMs = durationMs,
                 chapters = chapters,
                 speed = playbackSpeed.playbackSpeed,
+                hasPrevious = hasPrevious,
+                hasNext = hasNext,
                 onPlayPause = playPause::onClick,
                 onSeekBack = seekBack::onClick,
                 onSeekForward = seekForward::onClick,
+                // The explicit *MediaItem* variants: seekToPrevious() would restart the current
+                // video once past its threshold, which is a different button entirely.
+                onPrevious = controller::seekToPreviousMediaItem,
+                onNext = controller::seekToNextMediaItem,
                 onSeek = controller::seekTo,
                 onSetSpeed = playbackSpeed::updatePlaybackSpeed,
                 onScrubbingChanged = { scrubbing = it },
@@ -394,12 +425,13 @@ private fun PlayerWithControls(
 
 /**
  * The controls overlay, stateless so previews and tests can render it without a player: top bar
- * (back + title + speed menu + chapters), centre transport row, bottom position–seek–duration
- * bar with chapter tick markers. Its only internal state is transient interaction — the
- * in-flight scrub and the open speed menu — each reported via its `on*Changed` callback so the
- * caller can pin the overlay open while the user is mid-gesture.
+ * (back + title + speed menu + chapters), centre transport row, bottom chapter-step row and
+ * position–seek–duration bar with chapter tick markers. Its only internal state is transient
+ * interaction — the in-flight scrub and the open speed menu — each reported via its `on*Changed`
+ * callback so the caller can pin the overlay open while the user is mid-gesture.
  */
 @Composable
+@Suppress("LongParameterList") // A stateless overlay: every control it renders is one more pair.
 internal fun PlayerControls(
     title: String?,
     showPlay: Boolean,
@@ -407,9 +439,13 @@ internal fun PlayerControls(
     durationMs: Long,
     chapters: List<Chapter>,
     speed: Float,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
     onPlayPause: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
     onSeek: (Long) -> Unit,
     onSetSpeed: (Float) -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
@@ -457,11 +493,22 @@ internal fun PlayerControls(
             }
         }
 
+        // Five buttons at the old 40.dp spacing overflow a portrait phone (the play button alone
+        // is 72.dp and the rest carry 48.dp touch targets), so the gaps shrink rather than the
+        // targets.
         Row(
             Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.spacedBy(40.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconButton(onClick = onPrevious, enabled = hasPrevious) {
+                Icon(
+                    Icons.Filled.SkipPrevious,
+                    contentDescription = stringResource(R.string.previous_video),
+                    tint = transportTint(hasPrevious),
+                    modifier = Modifier.size(36.dp),
+                )
+            }
             IconButton(onClick = onSeekBack) {
                 Icon(
                     Icons.Filled.Replay10,
@@ -486,24 +533,21 @@ internal fun PlayerControls(
                     modifier = Modifier.size(40.dp),
                 )
             }
+            IconButton(onClick = onNext, enabled = hasNext) {
+                Icon(
+                    Icons.Filled.SkipNext,
+                    contentDescription = stringResource(R.string.next_video),
+                    tint = transportTint(hasNext),
+                    modifier = Modifier.size(36.dp),
+                )
+            }
         }
 
         // While dragging, the labels and thumb show the scrub target; the seek fires on release.
         var scrubMs by remember { mutableStateOf<Long?>(null) }
         val shownMs = scrubMs ?: positionMs
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 12.dp)) {
-            // The chapter the shown position falls in — scrub-aware, so dragging previews the
-            // chapter you'd land in, not the one still playing.
-            currentChapter(chapters, shownMs)?.let { chapter ->
-                Text(
-                    chapter.title,
-                    color = Color.White.copy(alpha = 0.8f),
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            }
+            if (chapters.isNotEmpty()) ChapterStepRow(chapters, shownMs, onSeek)
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -548,6 +592,58 @@ internal fun PlayerControls(
         }
     }
 }
+
+/**
+ * The current chapter's name with a step arrow on either side, above the seek bar.
+ *
+ * Chapter stepping lives here rather than in the transport row or on a long-press of the seek
+ * buttons: the transport row is already five buttons wide on a portrait phone, and a long-press
+ * would be invisible to anyone who did not go looking. Next to the chapter name the arrows
+ * explain themselves, and the row is already conditional on the video having chapters at all —
+ * which most do not.
+ *
+ * The name follows the scrubbed position, so dragging previews the chapter you would land in
+ * rather than the one still playing.
+ */
+@Composable
+private fun ChapterStepRow(chapters: List<Chapter>, shownMs: Long, onSeek: (Long) -> Unit) {
+    val previousMs = previousChapterStartMs(chapters, shownMs)
+    val nextMs = nextChapterStartMs(chapters, shownMs)
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = { previousMs?.let(onSeek) }, enabled = previousMs != null) {
+            Icon(
+                Icons.Filled.FastRewind,
+                contentDescription = stringResource(R.string.previous_chapter),
+                tint = transportTint(previousMs != null),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Text(
+            currentChapter(chapters, shownMs)?.title.orEmpty(),
+            color = Color.White.copy(alpha = 0.8f),
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = { nextMs?.let(onSeek) }, enabled = nextMs != null) {
+            Icon(
+                Icons.Filled.FastForward,
+                contentDescription = stringResource(R.string.next_chapter),
+                tint = transportTint(nextMs != null),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/** White when it does something, visibly dimmed at the ends of a queue or a chapter list. */
+private fun transportTint(enabled: Boolean): Color =
+    if (enabled) Color.White else Color.White.copy(alpha = DISABLED_ALPHA)
 
 /**
  * The playback-speed chip and its menu: the chip shows the current speed, tapping an option
@@ -767,6 +863,7 @@ private const val CONTROLS_HIDE_DELAY_MS = 3_000L
 private const val INDICATOR_LINGER_MS = 800L
 private const val MILLIS_PER_SECOND = 1_000L
 private const val SCRIM_ALPHA = 0.4f
+private const val DISABLED_ALPHA = 0.35f
 private const val PANEL_SCRIM_ALPHA = 0.6f
 private const val PANEL_BACKGROUND_ALPHA = 0.92f
 private val PANEL_MAX_HEIGHT = 360.dp
