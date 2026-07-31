@@ -1,6 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -9,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -18,6 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -152,10 +158,33 @@ internal fun Modifier.playerDragGestures(handler: PlayerGestureHandler): Modifie
         )
     }
 
-/** What the feedback pill shows while a drag is adjusting something. */
+/**
+ * Calls [onRelease] every time a gesture ends — whoever consumed the events in between.
+ *
+ * The whole point is the pass it listens on. [PointerEventPass.Initial] is dispatched before the
+ * Main pass, where the tap detector consumes the rest of a long press's event stream; a Main-pass
+ * `waitForUpOrCancellation` reads that consumption as a cancellation and fires early, which is
+ * why press-and-hold cannot find its own release any other way. Meant to run alongside
+ * `detectTapGestures` in one `pointerInput`, whose `onLongPress` has no release half.
+ */
+internal suspend fun PointerInputScope.awaitGestureReleases(onRelease: () -> Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var event: PointerEvent
+        do {
+            event = awaitPointerEvent(PointerEventPass.Initial)
+        } while (event.changes.any { it.pressed })
+        onRelease()
+    }
+}
+
+/** What the feedback pill shows while a gesture is adjusting something. */
 internal sealed interface GestureIndicator {
     /** A scrub in progress: where the finger would land, and how far that is from the start. */
     data class Seek(val targetMs: Long, val deltaMs: Long) : GestureIndicator
+
+    /** Press-and-hold's temporary speed override, for as long as the finger stays down. */
+    data class Speed(val speed: Float) : GestureIndicator
 }
 
 /** The transient feedback pill for a drag in progress. */
@@ -171,8 +200,20 @@ internal fun GestureIndicatorPill(indicator: GestureIndicator, modifier: Modifie
     ) {
         when (indicator) {
             is GestureIndicator.Seek -> SeekIndicator(indicator)
+            is GestureIndicator.Speed -> SpeedIndicator(indicator)
         }
     }
+}
+
+/** Hold-to-speed: the speedometer and the multiplier currently forced. */
+@Composable
+private fun SpeedIndicator(indicator: GestureIndicator.Speed) {
+    Icon(Icons.Filled.Speed, contentDescription = null, tint = Color.White)
+    Text(
+        formatSpeed(indicator.speed),
+        color = Color.White,
+        style = MaterialTheme.typography.labelLarge,
+    )
 }
 
 /** Scrub: direction icon, the landing position, and the signed distance being jumped. */

@@ -110,8 +110,8 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 true,
             )
             .setHandleAudioBecomingNoisy(true)
-            .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
-            .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
+            .setSeekBackIncrementMs(SEEK_BACK_INCREMENT_MS)
+            .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
             .build()
         player.addListener(WatchStateListener())
         player.addListener(TranscodeFallbackListener())
@@ -335,7 +335,15 @@ class PlaybackService : MediaSessionService(), KoinComponent {
          */
         const val EXTRA_OPEN_PLAYER = "com.gmail.volkovskiyda.jellyshelf.playback.OPEN_PLAYER"
 
-        private const val SEEK_INCREMENT_MS = 10_000L
+        /**
+         * Deliberately asymmetric: skipping filler is the common case, re-hearing a line the rare
+         * one. The player screen's buttons and its double-tap read these through media3's
+         * seek-button states, so the two can never drift apart.
+         */
+        private const val SEEK_BACK_INCREMENT_MS = 10_000L
+        private const val SEEK_FORWARD_INCREMENT_MS = 30_000L
+
+        // Unrelated to the seek increments despite matching one of them today.
         private const val POSITION_SAVE_INTERVAL_MS = 10_000L
     }
 }

@@ -104,7 +104,7 @@
     <!-- Player -->
     <string name="pause">Pause</string>
     <string name="seek_back_10">Back 10 seconds</string>
-    <string name="seek_forward_10">Forward 10 seconds</string>
+    <string name="seek_forward_30">Forward 30 seconds</string>
     <string name="playback_speed">Playback speed</string>
     <!-- The multiplication sign after the bare number: “1×”, “1.5×”. -->
     <string name="playback_speed_value">%1$s×</string>

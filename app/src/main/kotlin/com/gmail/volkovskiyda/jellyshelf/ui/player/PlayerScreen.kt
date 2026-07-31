@@ -34,7 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
@@ -95,7 +95,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.text.NumberFormat
@@ -289,10 +291,50 @@ private fun PlayerWithControls(
         }
     }
 
+    // Press-and-hold forces 3× until the finger lifts. The speed to go back to is read off the
+    // controller at press time, not assumed to be 1× — a hold started at 1.5× returns to 1.5×.
+    var speedBeforeHold by remember { mutableStateOf<Float?>(null) }
+
     Box(
         Modifier
             .fillMaxSize()
-            .pointerInput(Unit) { detectTapGestures { controlsVisible = !controlsVisible } }
+            // Both halves of the hold live in one pointerInput, keyed on the controller the
+            // button states are themselves remembered from, so neither can restart mid-gesture.
+            .pointerInput(controller) {
+                coroutineScope {
+                    launch {
+                        detectTapGestures(
+                            // Which half was tapped picks the direction; the increments come from
+                            // the player, so a double-tap and the buttons cannot disagree.
+                            onDoubleTap = { offset ->
+                                if (offset.x < size.width / 2) {
+                                    seekBack.onClick()
+                                } else {
+                                    seekForward.onClick()
+                                }
+                            },
+                            onLongPress = {
+                                speedBeforeHold = controller.playbackParameters.speed
+                                controller.setPlaybackSpeed(HOLD_SPEED)
+                                gestureActive = true
+                                gestureIndicator = GestureIndicator.Speed(HOLD_SPEED)
+                            },
+                            onTap = { controlsVisible = !controlsVisible },
+                        )
+                    }
+                    // onLongPress has no release half; this supplies it.
+                    launch {
+                        awaitGestureReleases {
+                            val restore = speedBeforeHold
+                            if (restore != null) {
+                                speedBeforeHold = null
+                                controller.setPlaybackSpeed(restore)
+                                gestureActive = false
+                            }
+                        }
+                    }
+                }
+            }
             .playerDragGestures(gestureHandler),
     ) {
         PlayerSurface(
@@ -438,8 +480,8 @@ internal fun PlayerControls(
             }
             IconButton(onClick = onSeekForward) {
                 Icon(
-                    Icons.Filled.Forward10,
-                    contentDescription = stringResource(R.string.seek_forward_10),
+                    Icons.Filled.Forward30,
+                    contentDescription = stringResource(R.string.seek_forward_30),
                     tint = Color.White,
                     modifier = Modifier.size(40.dp),
                 )
@@ -565,7 +607,7 @@ private fun SpeedMenuItem(speed: Float, selected: Boolean, onClick: () -> Unit) 
 
 /** "1×", "1.5×": trailing zeros dropped and the decimal separator localized. */
 @Composable
-private fun formatSpeed(speed: Float): String {
+internal fun formatSpeed(speed: Float): String {
     val numberFormat = remember { NumberFormat.getNumberInstance() }
     return stringResource(R.string.playback_speed_value, numberFormat.format(speed.toDouble()))
 }
@@ -714,8 +756,11 @@ private fun RequestNotificationPermissionOnce() {
 internal fun formatPosition(ms: Long): String =
     if (ms <= 0) "0:00" else formatDuration(ms / MILLIS_PER_SECOND)
 
-/** The usual video-player spread; 1× sits mid-list where a thumb finds it fastest. */
-private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+/** The usual video-player spread, up to 3× for skimming talk-heavy videos. */
+private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
+
+/** What press-and-hold temporarily forces the speed to, until the finger lifts. */
+private const val HOLD_SPEED = 3f
 
 private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L
