@@ -46,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,15 +75,26 @@ import kotlin.math.roundToInt
 /**
  * Settings tab: binds [SettingsViewModel] to the stateless [SettingsContent] below, which
  * previews and tests can render without a ViewModel or a Koin container.
+ *
+ * @param onDemoEntered the demo library has just been seeded — the host navigates to it. Handled
+ *   there rather than here because where the app *goes* is the nav's business, not this screen's.
  */
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
+    onDemoEntered: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val videoCount by viewModel.videoCount.collectAsStateWithLifecycle()
     val now by rememberNow()
+
+    // rememberUpdatedState so a recomposition with a new callback doesn't restart the collection
+    // — and, more importantly, doesn't drop the emission that arrives during the restart.
+    val demoEntered by rememberUpdatedState(onDemoEntered)
+    LaunchedEffect(viewModel) {
+        viewModel.demoEntered.collect { demoEntered() }
+    }
 
     SettingsContent(
         state = state,
@@ -98,6 +110,7 @@ fun SettingsScreen(
             fillIndexUrlFromServer = viewModel::fillIndexUrlFromServer,
             signIn = viewModel::signIn,
             signOut = viewModel::signOut,
+            tryDemo = viewModel::tryDemo,
             connect = { viewModel.connect() },
             selectUser = viewModel::selectUser,
             openBrowser = viewModel::openBrowser,
@@ -205,6 +218,25 @@ internal fun SettingsContent(
                 Text(stringResource(if (state.signedIn) R.string.sign_out else R.string.sign_in))
             }
 
+            // The one-tap way into the demo, next to the sign-in form it stands in for. (Typing
+            // the demo credentials into that form works too — see SettingsViewModel.signIn.)
+            if (state.canTryDemo) {
+                OutlinedButton(
+                    onClick = actions.tryDemo,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.try_demo)) }
+            }
+            // Says what the library is, and warns before the fact that connecting will replace it
+            // — the auto-clear is silent by design, so this line is where it is announced.
+            if (state.demoMode) {
+                Text(
+                    stringResource(R.string.demo_mode_active),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             if (state.canEditIndex) IndexUrlField(state = state, actions = actions)
 
             AdvancedAuthSection(
@@ -213,7 +245,7 @@ internal fun SettingsContent(
                 initiallyExpanded = advancedExpanded,
             )
 
-            if (state.selectedUserId.isNotBlank()) {
+            if (state.selectedUserId.isNotBlank() && !state.demoUserSelected) {
                 // The wrapper exists only to carry the shake offset, so it has to repeat the
                 // parent's spacing — ScopeSection emits several siblings and was relying on it.
                 Column(

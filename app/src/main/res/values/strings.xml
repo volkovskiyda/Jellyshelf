@@ -153,6 +153,11 @@
     <string name="sign_in_failed">Sign-in failed: %1$s</string>
     <string name="invalid_username_or_password">the server rejected this username and password</string>
     <string name="enter_server_user_password">Enter server URL, username and password</string>
+    <!-- Demo mode: a seeded library with no server behind it. -->
+    <string name="try_demo">Try demo</string>
+    <string name="loading_demo_library">Loading demo library…</string>
+    <string name="demo_library_loaded">Demo library loaded</string>
+    <string name="demo_mode_active">Demo mode — connecting to a server clears the demo data. Reset local data leaves the demo.</string>
     <string name="show_advanced">Advanced ▾</string>
     <string name="hide_advanced">Advanced ▴</string>
     <string name="api_key_explained">An API key is server-wide and admin-scoped. Use it only if password sign-in isn’t an option; signing in gives this device a user-scoped token instead.</string>

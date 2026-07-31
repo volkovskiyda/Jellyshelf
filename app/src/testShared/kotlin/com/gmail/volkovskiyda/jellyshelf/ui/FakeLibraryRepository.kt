@@ -19,6 +19,10 @@ import kotlinx.coroutines.flow.map
  * — throws, deliberately: a test that reaches one of them has wandered outside what this fake
  * models, and a silent no-op would let it pass while proving nothing.
  *
+ * The two exceptions are [seedDemoLibrary] and [clearLocalData], which are *counted* rather than
+ * either performed or refused: whether they were called, and how often, is the assertion demo-mode
+ * tests are making, and a throw would only tell them the call happened once.
+ *
  * [videos] and [searchResults] are hot, so a test can emit a new list into a collector that is
  * already running and watch the flow assembly react.
  */
@@ -67,8 +71,27 @@ class FakeLibraryRepository(
     override fun startRemoveWatched(): Unit = notModelled()
     override fun cancelRemoveWatched(): Unit = notModelled()
     override fun acknowledgeBulkRemove(): Unit = notModelled()
-    override suspend fun seedDemoLibrary(): Unit = notModelled()
-    override suspend fun clearLocalData(): Unit = notModelled()
+
+    /** How many times the demo library was seeded. */
+    var seeds = 0
+        private set
+
+    /** How many times the local library was wiped. */
+    var clears = 0
+        private set
+
+    /** Calls to [seedDemoLibrary] and [clearLocalData] in order, for asserting which came first. */
+    val writeOrder = mutableListOf<String>()
+
+    override suspend fun seedDemoLibrary() {
+        seeds++
+        writeOrder += "seed"
+    }
+
+    override suspend fun clearLocalData() {
+        clears++
+        writeOrder += "clear"
+    }
     override suspend fun removeVideo(youtubeId: String): Unit = notModelled()
     override suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean = notModelled()
     override fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean): Unit =

@@ -317,7 +317,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 }
 
                 is AppNavKey.Settings -> NavEntry(key) {
-                    SettingsScreen()
+                    SettingsScreen(
+                        // A seeded demo goes straight to the library it just filled. switchTo
+                        // replaces the stack rather than pushing, so Back exits from Library
+                        // instead of walking back into the Settings screen that started it.
+                        onDemoEntered = { switchTo(AppNavKey.Library) },
+                    )
                 }
 
                 is AppNavKey.CategoryVideos -> NavEntry(key) {

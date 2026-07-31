@@ -18,6 +18,7 @@ internal data class SettingsActions(
     val fillIndexUrlFromServer: () -> Unit = {},
     val signIn: () -> Unit = {},
     val signOut: () -> Unit = {},
+    val tryDemo: () -> Unit = {},
     val connect: () -> Unit = {},
     val selectUser: (User) -> Unit = {},
     val openBrowser: () -> Unit = {},

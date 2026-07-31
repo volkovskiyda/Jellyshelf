@@ -7,6 +7,11 @@ import androidx.work.WorkInfo
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_BAD_PASSWORD
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_SERVER
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER_ID
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Session
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
@@ -27,8 +32,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -81,6 +88,8 @@ data class SettingsUiState(
      * must not make the index URL look sync-protected.
      */
     val syncRunning: Boolean = false,
+    /** The library holds seeded demo data rather than a real server's. */
+    val demoMode: Boolean = false,
 ) {
     /** ParentId of the folder currently being browsed ("" == root). */
     val currentParentId: String get() = breadcrumb.lastOrNull()?.id ?: ROOT_SCOPE_ID
@@ -92,6 +101,19 @@ data class SettingsUiState(
      * section — because both leave the app able to sync.
      */
     val canEditIndex: Boolean get() = signedIn || apiKey.isNotBlank()
+
+    /**
+     * Whether to offer the demo. Only with nothing configured — either credential counts, on the
+     * same reading as [canEditIndex] — and only when the library isn't already a demo, since the
+     * way *out* of one is Reset local data rather than a second tap of this.
+     */
+    val canTryDemo: Boolean get() = !demoMode && !signedIn && apiKey.isBlank()
+
+    /**
+     * The picked user is the demo server's fake one. There is no item tree behind it, so the sync
+     * scope section — whose every control is a request — has nothing to offer and stays hidden.
+     */
+    val demoUserSelected: Boolean get() = selectedUserId == DEMO_USER_ID
 
     /**
      * Whether editing the index URL now has something to break. Once a sync has run — or is
@@ -132,6 +154,14 @@ class SettingsViewModel(
      */
     private val _nudgeScope = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val nudgeScope: SharedFlow<Unit> = _nudgeScope.asSharedFlow()
+
+    /**
+     * "The demo library is ready" — the screen's host turns it into a jump to Library. One-shot
+     * for the same reason as [nudgeScope]: navigating is an event, and a flag would fire again on
+     * the next recomposition (and would have to be cleared by whoever consumed it).
+     */
+    private val _demoEntered = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val demoEntered: SharedFlow<Unit> = _demoEntered.asSharedFlow()
 
     /**
      * Sync no longer runs in this scope, so its progress can't be held in [_state]: the worker
@@ -179,7 +209,12 @@ class SettingsViewModel(
                 username = if (edited) cur.username else s.userName,
                 signedIn = s.isSignedIn,
                 tokenInQuery = s.tokenInQuery,
-                users = cachedUsers.orEmpty(),
+                // `edited` guards this for the same reason as the fields above, and for one more:
+                // a Connect that finished while this read was still in flight has already put the
+                // right users on screen, and the cache lookup — which misses on an edited URL —
+                // would wipe them. onServerUrlChange clears the chips itself, so keeping what is
+                // there cannot resurrect another server's users either.
+                users = if (edited) cur.users else cachedUsers.orEmpty(),
                 // Still the persisted user and scope: they are what sync uses until the next
                 // Connect, so the screen would lie by blanking them over an unsaved edit.
                 selectedUserId = s.userId,
@@ -204,6 +239,13 @@ class SettingsViewModel(
         // find already changed, since this ViewModel is recreated on every visit.
         settingsRepo.themeState
             .onEach { _state.value = _state.value.copy(themeState = it) }
+            .launchIn(viewModelScope)
+        // Collected too, and for a stronger reason: this screen is where demo mode is both entered
+        // and left, so a snapshot taken in init would be stale before the user's next tap.
+        settingsRepo.settings
+            .map { it.demoMode }
+            .distinctUntilChanged()
+            .onEach { _state.value = _state.value.copy(demoMode = it) }
             .launchIn(viewModelScope)
         observeSync()
     }
@@ -361,9 +403,17 @@ class SettingsViewModel(
         // username loses the trailing space a keyboard suggestion appends, and the password loses
         // only line breaks — a paste artifact; no field this feeds can legitimately contain one,
         // but a password may genuinely contain spaces, so those stay.
-        val serverUrl = normalizeServerUrl(s.serverUrl)
         val username = s.username.trim()
         val password = s.password.filterNot { it == '\n' || it == '\r' }
+        // Before normalizeServerUrl, deliberately: "jellyfin" is a magic word, not a host, and
+        // normalizing it would produce https://jellyfin and a doomed request to a real network.
+        // A blank password still falls through to the field check below — "any password" is not
+        // "no password", and the empty form should say so exactly as it does for a real server.
+        if (isDemoSignIn(s.serverUrl, username) && password.isNotBlank()) {
+            signInAsDemoUser(password)
+            return
+        }
+        val serverUrl = normalizeServerUrl(s.serverUrl)
         if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
             _state.value = s.copy(
                 status = app.getString(R.string.enter_server_user_password),
@@ -379,34 +429,9 @@ class SettingsViewModel(
                 status = app.getString(R.string.signing_in),
                 statusIsError = false,
             )
+            clearDemoLibrary()
             runCatchingCancellable {
-                val session = jellyfin.signIn(serverUrl, username, password)
-                // Persist only after the server accepted the credentials, so a typo can never
-                // overwrite a working configuration.
-                settingsRepo.setConnection(serverUrl, s.apiKey)
-                settingsRepo.setIndexUrl(s.indexUrl)
-                settingsRepo.setSession(session.accessToken, session.user.id, session.user.name)
-                // A different user means a different item tree, so the old folder scope points at
-                // a parent id that may not exist for them — same reset as switching users by hand.
-                val userChanged = session.user.id != _state.value.selectedUserId
-                if (userChanged) settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_PATH)
-                // Re-arm the scope nudge here, with the rest of the post-sign-in state, so "once
-                // per sign-in" holds by construction rather than by comparing timestamps.
-                settingsRepo.setSyncScopeNudged(false)
-                _state.value = _state.value.copy(
-                    busy = false,
-                    password = "",
-                    signedIn = true,
-                    username = session.user.name,
-                    selectedUserId = session.user.id,
-                    selectedUserName = session.user.name,
-                    selectedScopeId = if (userChanged) ROOT_SCOPE_ID else _state.value.selectedScopeId,
-                    selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else _state.value.selectedScopePath,
-                    // The user picker is an API-key-mode affordance; a token identifies its user.
-                    users = emptyList(),
-                    status = app.getString(R.string.signed_in_as, session.user.name),
-                    statusIsError = false,
-                )
+                persistSession(jellyfin.signIn(serverUrl, username, password), serverUrl)
             }.onFailure { e ->
                 // 401 here is the server rejecting the username/password pair — verified against
                 // Jellyfin 10.11: a malformed request 400s instead. Say so, rather than showing
@@ -425,6 +450,117 @@ class SettingsViewModel(
             }
         }
     }
+
+    /**
+     * Records an accepted sign-in: the token, the user it names, and the connection fields the
+     * form was holding. Only ever called after the server said yes, so a typo can never overwrite
+     * a working configuration.
+     */
+    private suspend fun persistSession(session: Session, serverUrl: String) {
+        val form = _state.value
+        settingsRepo.setConnection(serverUrl, form.apiKey)
+        settingsRepo.setIndexUrl(form.indexUrl)
+        settingsRepo.setSession(session.accessToken, session.user.id, session.user.name)
+        // A different user means a different item tree, so the old folder scope points at a parent
+        // id that may not exist for them — same reset as switching users by hand.
+        val userChanged = session.user.id != form.selectedUserId
+        if (userChanged) settingsRepo.setLibrary(ROOT_SCOPE_ID, ROOT_SCOPE_PATH)
+        // Re-armed here, with the rest of the post-sign-in state, so "once per sign-in" holds by
+        // construction rather than by comparing timestamps.
+        settingsRepo.setSyncScopeNudged(false)
+        _state.value = _state.value.copy(
+            busy = false,
+            password = "",
+            signedIn = true,
+            username = session.user.name,
+            selectedUserId = session.user.id,
+            selectedUserName = session.user.name,
+            selectedScopeId = if (userChanged) ROOT_SCOPE_ID else form.selectedScopeId,
+            selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else form.selectedScopePath,
+            // The user picker is an API-key-mode affordance; a token identifies its user.
+            users = emptyList(),
+            status = app.getString(R.string.signed_in_as, session.user.name),
+            statusIsError = false,
+        )
+    }
+
+    // --- Demo mode --------------------------------------------------------
+
+    /** The Settings button: seed the demo library and go straight to it. */
+    fun tryDemo() {
+        if (_state.value.busy) return
+        viewModelScope.launch { enterDemo() }
+    }
+
+    /**
+     * The sign-in form's demo path, reached only with the magic credentials. [DEMO_BAD_PASSWORD]
+     * routes through the *real* failure presentation — the same two strings a rejected 401
+     * produces — so the error state is demonstrable without a server to reject anything. Any other
+     * password enters the demo the button would have.
+     *
+     * Nothing here writes a connection: [enterDemo] seeds and marks the library, and the failure
+     * branch writes only to the status line.
+     */
+    private fun signInAsDemoUser(password: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                busy = true,
+                status = app.getString(R.string.signing_in),
+                statusIsError = false,
+            )
+            if (isDemoAuthFailure(password)) {
+                _state.value = _state.value.copy(
+                    busy = false,
+                    password = "",
+                    status = app.getString(
+                        R.string.sign_in_failed,
+                        app.getString(R.string.invalid_username_or_password),
+                    ),
+                    statusIsError = true,
+                )
+                return@launch
+            }
+            enterDemo()
+        }
+    }
+
+    /**
+     * Seeds the demo library and announces it, for both entry points.
+     *
+     * `NonCancellable` around the seed: it writes the rows and the flag that describes them
+     * together, and this ViewModel is cleared by a tab switch — which is exactly what the
+     * navigation afterwards causes.
+     */
+    private suspend fun enterDemo() {
+        _state.value = _state.value.copy(
+            busy = true,
+            status = app.getString(R.string.loading_demo_library),
+            statusIsError = false,
+        )
+        withContext(NonCancellable) { libraryRepo.seedDemoLibrary() }
+        _state.value = _state.value.copy(
+            busy = false,
+            // Whatever was typed to get here is not a credential and does not linger.
+            password = "",
+            status = app.getString(R.string.demo_library_loaded),
+            statusIsError = false,
+            lastSyncAt = settingsRepo.snapshot().lastSyncAt,
+        )
+        _demoEntered.emit(Unit)
+    }
+
+    /**
+     * Drops a demo library before a *real* connection is made. Demo rows carry a sentinel item id
+     * and belong to no server, so a sync would treat every one of them as missing and spend its
+     * grace period deleting them — while they sat in the library looking like real videos in the
+     * meantime. Silent, and announced in advance by the demo caption on this screen: seeding is
+     * one tap away, so there is nothing here worth a confirmation dialog.
+     */
+    private suspend fun clearDemoLibrary() {
+        if (settingsRepo.snapshot().demoMode) libraryRepo.clearLocalData()
+    }
+
+    // ----------------------------------------------------------------------
 
     /** Drops the token (and the user it identified); the server URL and API key stay put. */
     fun signOut() {
@@ -459,6 +595,12 @@ class SettingsViewModel(
         // The screen disables buttons via `busy`, but that state is a frame stale — guard here
         // so two taps landing in the same frame can't run concurrent operations.
         if (s.busy) return
+        // Ahead of both normalizeServerUrl and the api-key check: the demo server is a magic word
+        // rather than a host, and someone trying the demo has no API key to type.
+        if (isDemoServer(s.serverUrl)) {
+            offerDemoUser()
+            return
+        }
         // Same courtesy as signIn: a bare host gets its https:// before anything is tried.
         val serverUrl = normalizeServerUrl(s.serverUrl)
         if (serverUrl.isBlank() || s.apiKey.isBlank()) {
@@ -473,6 +615,7 @@ class SettingsViewModel(
                 status = if (silent) s.status else app.getString(R.string.connecting),
                 statusIsError = false,
             )
+            clearDemoLibrary()
             runCatchingCancellable {
                 val users = jellyfin.getUsers(serverUrl, s.apiKey)
                 // Persist only after the server accepted the credentials, so a typo can never
@@ -495,14 +638,7 @@ class SettingsViewModel(
                     selectedUserName = selected?.name ?: current.selectedUserName,
                     selectedScopeId = if (userChanged) ROOT_SCOPE_ID else current.selectedScopeId,
                     selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else current.selectedScopePath,
-                    status = if (users.isEmpty()) {
-                        app.getString(R.string.connected_no_users)
-                    } else {
-                        app.getString(
-                            R.string.connected_users,
-                            app.resources.getQuantityString(R.plurals.user_count, users.size, users.size),
-                        )
-                    },
+                    status = connectedStatus(users.size),
                     statusIsError = false,
                 )
                 selected?.let {
@@ -519,7 +655,38 @@ class SettingsViewModel(
         }
     }
 
+    /**
+     * The user list the demo server "returns": one fake user, in the same state slot the real one
+     * fills, so the advanced flow is visibly the flow it demonstrates. Nothing is persisted and no
+     * request is made — the chip is presentation; signing in as `demo` is what actually does
+     * something.
+     */
+    private fun offerDemoUser() {
+        _state.value = _state.value.copy(
+            users = listOf(User(id = DEMO_USER_ID, name = DEMO_USER)),
+            status = connectedStatus(1),
+            statusIsError = false,
+        )
+    }
+
+    /** What the connect step reports: how many users came back, or that none did. */
+    private fun connectedStatus(userCount: Int): String = if (userCount == 0) {
+        app.getString(R.string.connected_no_users)
+    } else {
+        app.getString(
+            R.string.connected_users,
+            app.resources.getQuantityString(R.plurals.user_count, userCount, userCount),
+        )
+    }
+
     fun selectUser(user: User) {
+        // The demo user has no server behind it: persisting it would write a user id under a
+        // connection that doesn't exist, and browsing its folders would be a real request to
+        // nowhere. Tapping the chip selects it on screen and stops there.
+        if (user.id == DEMO_USER_ID) {
+            _state.value = _state.value.copy(selectedUserId = user.id, selectedUserName = user.name)
+            return
+        }
         _state.value = _state.value.copy(
             selectedUserId = user.id,
             selectedUserName = user.name,
@@ -685,3 +852,23 @@ class SettingsViewModel(
  */
 internal fun shouldNudgeSyncScope(scopeId: String, alreadyNudged: Boolean): Boolean =
     scopeId == ROOT_SCOPE_ID && !alreadyNudged
+
+/**
+ * Whether the server field names the demo rather than a server. Matched against the **raw** field:
+ * `normalizeServerUrl` would turn it into `https://jellyfin`, and by then it is indistinguishable
+ * from a real host on someone's LAN — one that a connect attempt would genuinely try to reach.
+ *
+ * Trimmed and case-insensitive because it is typed by hand, on a keyboard that capitalizes.
+ *
+ * Free functions, like [shouldNudgeSyncScope], so the rules are testable without an `Application`.
+ */
+internal fun isDemoServer(serverUrl: String): Boolean =
+    serverUrl.trim().equals(DEMO_SERVER, ignoreCase = true)
+
+/** Whether this sign-in is the magic demo one: the demo server *and* the demo user. */
+internal fun isDemoSignIn(serverUrl: String, username: String): Boolean =
+    isDemoServer(serverUrl) && username.trim().equals(DEMO_USER, ignoreCase = true)
+
+/** Whether a demo password asks for the authentication-failure demonstration instead of the demo. */
+internal fun isDemoAuthFailure(password: String): Boolean =
+    password.trim().equals(DEMO_BAD_PASSWORD, ignoreCase = true)

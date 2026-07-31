@@ -1,12 +1,14 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER_ID
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The two derived flags behind the metadata index URL field: whether it is offered at all, and
- * whether it is worth protecting yet. Pure state, so no ViewModel and no device.
+ * The derived flags behind the metadata index URL field — whether it is offered at all, and
+ * whether it is worth protecting yet — and behind the demo affordances. Pure state, so no
+ * ViewModel and no device.
  */
 class SettingsUiStateTest {
 
@@ -47,5 +49,32 @@ class SettingsUiStateTest {
         // busy covers sign-in and folder browsing too; only a sync means there is a populated
         // library to damage.
         assertFalse(SettingsUiState(signedIn = true, busy = true).indexProtected)
+    }
+
+    // --- the demo affordances ---
+
+    @Test
+    fun `a fresh install is offered the demo`() {
+        assertTrue(SettingsUiState().canTryDemo)
+    }
+
+    @Test
+    fun `a configured install is not`() {
+        // Either credential means there is a real server to sync from, which is the better offer.
+        assertFalse(SettingsUiState(signedIn = true).canTryDemo)
+        assertFalse(SettingsUiState(apiKey = "key").canTryDemo)
+    }
+
+    @Test
+    fun `an install already in demo mode is not offered it again`() {
+        // The way out is Reset local data, not a second tap of the same button.
+        assertFalse(SettingsUiState(demoMode = true).canTryDemo)
+    }
+
+    @Test
+    fun `the sync scope hides behind the demo user`() {
+        // A real user id opens the scope section; the demo server's fake one has no item tree.
+        assertFalse(SettingsUiState(selectedUserId = "user-id").demoUserSelected)
+        assertTrue(SettingsUiState(selectedUserId = DEMO_USER_ID).demoUserSelected)
     }
 }

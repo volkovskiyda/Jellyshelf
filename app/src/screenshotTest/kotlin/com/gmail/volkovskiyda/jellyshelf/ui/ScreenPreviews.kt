@@ -404,6 +404,25 @@ private fun SettingsDisconnected() {
     }
 }
 
+/**
+ * A running demo: the "Try demo" button has given way to the caption that says what the library is
+ * and warns that connecting will replace it. The state is otherwise a disconnected install, which
+ * is exactly what a demo is.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun SettingsDemoMode() {
+    PreviewTheme {
+        SettingsContent(
+            state = SettingsUiState(demoMode = true, lastSyncAt = PREVIEW_SYNCED_AT),
+            videoCount = 60,
+            actions = SettingsActions(),
+            now = PREVIEW_NOW,
+        )
+    }
+}
+
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
 @Composable
