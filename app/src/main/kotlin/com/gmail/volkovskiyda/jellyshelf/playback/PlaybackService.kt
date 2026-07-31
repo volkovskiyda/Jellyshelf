@@ -83,9 +83,8 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private var player: ExoPlayer? = null
     private var session: MediaSession? = null
 
-    private var activeMediaId: String? = null
-    private var lastPositionMs = 0L
-    private var completionReported = false
+    /** Which video is active, where it reached, and what has been reported — the rules live here. */
+    private val watch = WatchStateTracker()
     private var saveJob: Job? = null
 
     override fun onCreate() {
@@ -128,10 +127,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         // The final stop report — fire-and-forget on the repository's own scope, so it survives
         // this service going away (swipe from recents, system stop).
         val p = player
-        val id = activeMediaId
-        if (p != null && id != null && !completionReported) {
-            repo.reportPlaybackStopped(id, p.currentPosition, completed = false)
-        }
+        if (p != null) watch.onDestroy(p.currentPosition).perform()
         session?.release()
         p?.release()
         session = null
@@ -211,16 +207,10 @@ class PlaybackService : MediaSessionService(), KoinComponent {
      */
     private inner class WatchStateListener : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            val previous = activeMediaId
-            if (previous != null && previous != mediaItem?.mediaId) {
-                // Auto-advance means the previous video played to its end; any other reason is
-                // a replacement mid-way (a new video picked from Detail).
-                val completed = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO
-                repo.reportPlaybackStopped(previous, lastPositionMs, completed)
-            }
-            activeMediaId = mediaItem?.mediaId
-            lastPositionMs = 0L
-            completionReported = false
+            watch.onItemChanged(
+                newMediaId = mediaItem?.mediaId,
+                autoAdvance = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
+            ).perform()
             // A notification tap should reopen the player on whatever is playing now.
             session?.setSessionActivity(sessionActivity(mediaItem?.mediaId))
         }
@@ -230,45 +220,40 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
-            // The order between this and onMediaItemTransition is not part of the Player
-            // contract, so anchor on media ids rather than on reasons: another item's position
-            // must never clobber the active one's — replacing a playing video would otherwise
-            // report position 0 for it and wipe its saved resume spot. Leaving the active item
-            // captures its exact final position (better than the ≤10 s-stale periodic value);
-            // movement within it (seeks) tracks the new side.
-            val leavingActive = oldPosition.mediaItem?.mediaId == activeMediaId &&
-                newPosition.mediaItem?.mediaId != activeMediaId
-            if (leavingActive) {
-                lastPositionMs = oldPosition.positionMs
-            } else if (newPosition.mediaItem?.mediaId == activeMediaId) {
-                lastPositionMs = newPosition.positionMs
-            }
+            watch.onPositionDiscontinuity(
+                oldMediaId = oldPosition.mediaItem?.mediaId,
+                oldPositionMs = oldPosition.positionMs,
+                newMediaId = newPosition.mediaItem?.mediaId,
+                newPositionMs = newPosition.positionMs,
+            )
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
-                completionReported = false
+                watch.onPlaying()
                 startPeriodicSave()
             } else {
                 saveJob?.cancel()
-                // Save on a genuine pause (READY) so a swipe-away right after loses nothing.
-                // Buffering isn't a pause; ended has its own full report.
-                val id = activeMediaId
                 val p = player
-                if (id != null && p != null && p.playbackState == Player.STATE_READY) {
-                    lastPositionMs = p.currentPosition
-                    repo.savePlaybackPosition(id, p.currentPosition)
-                }
+                watch.onPaused(
+                    positionMs = p?.currentPosition ?: 0L,
+                    ready = p?.playbackState == Player.STATE_READY,
+                ).perform()
             }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState != Player.STATE_ENDED) return
-            val id = activeMediaId ?: return
-            val durationMs = player?.duration?.takeIf { it != C.TIME_UNSET } ?: lastPositionMs
-            repo.reportPlaybackStopped(id, durationMs, completed = true)
-            // Remembered so onDestroy doesn't file a second, contradicting partway report.
-            completionReported = true
+            watch.onEnded(player?.duration?.takeIf { it != C.TIME_UNSET }).perform()
+        }
+    }
+
+    /** Carries out what [WatchStateTracker] decided; null means there was nothing to do. */
+    private fun WatchAction?.perform() {
+        when (this) {
+            null -> Unit
+            is WatchAction.Report -> repo.reportPlaybackStopped(youtubeId, positionMs, completed)
+            is WatchAction.Save -> repo.savePlaybackPosition(youtubeId, positionMs)
         }
     }
 
@@ -312,12 +297,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         saveJob = scope.launch {
             while (isActive) {
                 delay(POSITION_SAVE_INTERVAL_MS)
-                val id = activeMediaId
-                val positionMs = player?.currentPosition
-                if (id != null && positionMs != null) {
-                    lastPositionMs = positionMs
-                    repo.savePlaybackPosition(id, positionMs)
-                }
+                player?.currentPosition?.let { watch.onPeriodicSave(it).perform() }
             }
         }
     }
