@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -107,5 +109,109 @@ class VideoDaoInstrumentedTest {
 
         val continueWatching = dao.observeContinueWatching().first().map { it.youtubeId }
         assertEquals(listOf("watching"), continueWatching)
+    }
+
+    /**
+     * What SQLite says it will do with [sql] — one line per step of the plan.
+     *
+     * The queries below are pasted from [VideoDao] rather than run through it, because what is
+     * under test is the *planner's* choice, and a DAO method returns rows either way. An index the
+     * planner declines to use is worse than no index: it still costs write time on every upsert
+     * and on every 10-second playback-position save.
+     */
+    private fun explain(sql: String): String =
+        db.openHelper.writableDatabase.query("EXPLAIN QUERY PLAN $sql").use { cursor ->
+            buildString {
+                while (cursor.moveToNext()) {
+                    appendLine(cursor.getString(cursor.getColumnIndexOrThrow("detail")))
+                }
+            }
+        }
+
+    /**
+     * The failure this whole group exists to catch: reading every row of the table.
+     *
+     * Only a bare `SCAN videos` counts. `SCAN videos USING INDEX …` is an ordered walk *of the
+     * index*, which is the good outcome for an unfiltered `ORDER BY fileName` — it is how the
+     * sort disappears.
+     */
+    private fun assertNoTableScan(plan: String) {
+        assertFalse(plan, plan.lineSequence().any { it.trim() == "SCAN videos" })
+    }
+
+    /** Reaches the rows through an index and delivers them already ordered — no sort at all. */
+    private fun assertReadsInOrderFromIndex(sql: String) {
+        val plan = explain(sql)
+        assertTrue(plan, "USING INDEX" in plan || "USING COVERING INDEX" in plan)
+        assertNoTableScan(plan)
+        assertFalse(plan, "TEMP B-TREE" in plan)
+    }
+
+    @Test
+    fun theUnfilteredBrowseList_readsInOrderFromAnIndex() {
+        assertReadsInOrderFromIndex("SELECT * FROM videos ORDER BY fileName")
+    }
+
+    @Test
+    fun theWatchedAndUnwatchedLists_seekByPlayedAndReadInOrder() {
+        assertReadsInOrderFromIndex("SELECT * FROM videos WHERE played = 1 ORDER BY fileName")
+        assertReadsInOrderFromIndex("SELECT * FROM videos WHERE played = 0 ORDER BY fileName")
+    }
+
+    @Test
+    fun continueWatching_seeksBothColumnsAndSortsOnlyTheMatches() {
+        // An inequality mid-index (playbackPositionTicks > 0) means the columns after it are no
+        // longer in order, so the sort survives — and should. The alternative the planner passed
+        // over is reading every unwatched video in fileName order to keep a handful with
+        // progress; seeking straight to that handful and sorting it is the cheaper shape.
+        val plan = explain(
+            "SELECT * FROM videos WHERE played = 0 AND playbackPositionTicks > 0 ORDER BY fileName",
+        )
+        assertTrue(plan, "index_videos_played_playbackPositionTicks_fileName" in plan)
+        assertNoTableScan(plan)
+    }
+
+    @Test
+    fun theUncategorizedFilter_seeksBySourceAndReadsInOrder() {
+        assertReadsInOrderFromIndex(
+            "SELECT * FROM videos WHERE metadataSource = 'ytdlp' ORDER BY fileName",
+        )
+    }
+
+    @Test
+    fun theDurationBucketFilter_seeksTheRangeInsteadOfScanning() {
+        // Same rule as continue-watching: a range cannot also deliver fileName order, so this
+        // sorts a bucket rather than the library.
+        val plan = explain(
+            "SELECT * FROM videos WHERE durationSeconds >= 60 AND durationSeconds < 600 " +
+                "ORDER BY fileName",
+        )
+        assertTrue(plan, "index_videos_durationSeconds" in plan)
+        assertNoTableScan(plan)
+    }
+
+    @Test
+    fun theSyncPrune_scansOnPurpose_becauseAnIndexCannotServeInequality() {
+        // Deliberately *not* indexed on lastSyncedAt. `!=` is not a range, so SQLite scans even
+        // when the index exists (verified by adding one and re-reading this plan) — it would be
+        // write cost on every upsert buying nothing. This asserts the scan so that a future
+        // reader sees the omission is a decision rather than an oversight.
+        val plan = explain("DELETE FROM videos WHERE lastSyncedAt != 5")
+        assertTrue(plan, "SCAN videos" in plan)
+    }
+
+    @Test
+    fun theWatchStateCounts_areServedFromAnIndexWithoutTouchingTheTable() {
+        // These are the queries a playback-position save re-runs every 10 seconds, on every
+        // browse Flow left mounted behind the player — the reason the index matters at all.
+        for (sql in listOf(
+            "SELECT COUNT(*) FROM videos WHERE played = 1",
+            "SELECT COUNT(*) FROM videos WHERE played = 0",
+            "SELECT COUNT(*) FROM videos WHERE played = 0 AND playbackPositionTicks > 0",
+        )) {
+            val plan = explain(sql)
+            assertTrue(plan, "USING COVERING INDEX" in plan)
+            assertNoTableScan(plan)
+        }
     }
 }

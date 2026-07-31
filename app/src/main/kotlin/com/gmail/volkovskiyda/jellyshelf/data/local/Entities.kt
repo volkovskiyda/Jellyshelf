@@ -7,7 +7,38 @@ import androidx.room.PrimaryKey
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 
-@Entity(tableName = "videos")
+/**
+ * Composites over single columns wherever a query filters *and* sorts, so SQLite can seek the
+ * matching range and then read it already in `fileName` order instead of scanning the table and
+ * sorting the result. That matters more than table size alone suggests: every browse read is a
+ * `Flow`, and Room re-runs all of them on any write to this table — including the
+ * playback-position save that fires every 10 seconds while an unwatched video plays.
+ *
+ * The leftmost-prefix rule keeps the list short: `["played", "fileName"]` also serves the bare
+ * `WHERE played = …` counts, and `["played", "playbackPositionTicks", "fileName"]` serves
+ * continue-watching without a second index. `youtubeId` is the primary key and needs none. The
+ * write cost is these five B-trees per upsert, which is a sync-time cost paid once against a read
+ * win paid continuously.
+ *
+ * Every index here is asserted on in `VideoDaoInstrumentedTest`, by `EXPLAIN QUERY PLAN` rather
+ * than by assumption — one the planner declines to use would be pure write cost.
+ */
+@Entity(
+    tableName = "videos",
+    indices = [
+        // The universal browse order (observeAll and every unfiltered read).
+        Index("fileName"),
+        // Watched / unwatched lists and their counts.
+        Index(value = ["played", "fileName"]),
+        // Continue-watching: played = 0 AND playbackPositionTicks > 0, then fileName.
+        Index(value = ["played", "playbackPositionTicks", "fileName"]),
+        // The Uncategorized filter and countBySource.
+        Index(value = ["metadataSource", "fileName"]),
+        // Duration-bucket range scan. A range cannot also deliver fileName order, so this one
+        // still sorts — it just sorts a bucket instead of the library.
+        Index("durationSeconds"),
+    ],
+)
 data class VideoEntity(
     @PrimaryKey val youtubeId: String,
     val jellyfinItemId: String?,

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "ef0c812aeeea225516bc67cbc2868ad6",
+    "identityHash": "0f5e2c677773de57f39325cf3e185352",
     "entities": [
       {
         "tableName": "videos",
@@ -139,7 +139,58 @@
           "columnNames": [
             "youtubeId"
           ]
-        }
+        },
+        "indices": [
+          {
+            "name": "index_videos_fileName",
+            "unique": false,
+            "columnNames": [
+              "fileName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_videos_fileName` ON `${TABLE_NAME}` (`fileName`)"
+          },
+          {
+            "name": "index_videos_played_fileName",
+            "unique": false,
+            "columnNames": [
+              "played",
+              "fileName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_videos_played_fileName` ON `${TABLE_NAME}` (`played`, `fileName`)"
+          },
+          {
+            "name": "index_videos_played_playbackPositionTicks_fileName",
+            "unique": false,
+            "columnNames": [
+              "played",
+              "playbackPositionTicks",
+              "fileName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_videos_played_playbackPositionTicks_fileName` ON `${TABLE_NAME}` (`played`, `playbackPositionTicks`, `fileName`)"
+          },
+          {
+            "name": "index_videos_metadataSource_fileName",
+            "unique": false,
+            "columnNames": [
+              "metadataSource",
+              "fileName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_videos_metadataSource_fileName` ON `${TABLE_NAME}` (`metadataSource`, `fileName`)"
+          },
+          {
+            "name": "index_videos_durationSeconds",
+            "unique": false,
+            "columnNames": [
+              "durationSeconds"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_videos_durationSeconds` ON `${TABLE_NAME}` (`durationSeconds`)"
+          }
+        ]
       },
       {
         "tableName": "categories",
@@ -216,7 +267,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ef0c812aeeea225516bc67cbc2868ad6')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0f5e2c677773de57f39325cf3e185352')"
     ]
   }
 }
