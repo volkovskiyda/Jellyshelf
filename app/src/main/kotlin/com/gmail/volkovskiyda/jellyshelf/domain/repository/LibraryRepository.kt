@@ -37,6 +37,18 @@ interface LibraryRepository {
     fun startRemoveWatched()
     fun cancelRemoveWatched()
     fun acknowledgeBulkRemove()
+
+    /**
+     * Fills the library with the bundled demo dataset — no server, no network — and records that
+     * the library is now a demo ([com.gmail.volkovskiyda.jellyshelf.domain.model.Settings.demoMode]).
+     * Auto-categories are derived by the same code a real sync uses, so the Categories screen looks
+     * exactly as it would after one.
+     *
+     * Idempotent: rows are keyed by their id, so seeding over an existing demo library replaces it
+     * rather than duplicating it. [clearLocalData] is the way out.
+     */
+    suspend fun seedDemoLibrary()
+
     suspend fun clearLocalData()
     suspend fun removeVideo(youtubeId: String)
     suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean

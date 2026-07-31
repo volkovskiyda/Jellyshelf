@@ -67,6 +67,7 @@ class FakeLibraryRepository(
     override fun startRemoveWatched(): Unit = notModelled()
     override fun cancelRemoveWatched(): Unit = notModelled()
     override fun acknowledgeBulkRemove(): Unit = notModelled()
+    override suspend fun seedDemoLibrary(): Unit = notModelled()
     override suspend fun clearLocalData(): Unit = notModelled()
     override suspend fun removeVideo(youtubeId: String): Unit = notModelled()
     override suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean = notModelled()

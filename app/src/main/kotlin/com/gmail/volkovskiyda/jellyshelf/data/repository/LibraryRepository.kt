@@ -10,6 +10,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
+import com.gmail.volkovskiyda.jellyshelf.data.remote.toChapters
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
@@ -21,8 +22,10 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_MANUAL
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
@@ -125,6 +128,27 @@ private const val FETCH_FAILED_ERROR = "yt-dlp failed to fetch metadata."
 
 /** The row went away between the fetch and the write — not a fetch failure. */
 private const val VIDEO_NOT_FOUND_ERROR = "Video not found locally."
+
+/** Every nth seeded video is watched, and every mth is left part-watched. Coprime, so both land. */
+private const val DEMO_PLAYED_EVERY = 4
+private const val DEMO_IN_PROGRESS_EVERY = 7
+
+/** How far into a part-watched demo video its resume point sits. */
+private const val DEMO_RESUME_PERCENT = 40
+private const val PERCENT = 100
+
+private const val MILLIS_PER_SECOND = 1_000L
+
+/** The watch state one seeded row starts life with. */
+private class DemoWatchState(val played: Boolean, val positionTicks: Long, val playCount: Int)
+
+/**
+ * Whether a demo entry carries any of the metadata an index match supplies. Entries with none are
+ * seeded as Jellyfin-sourced — see [DefaultLibraryRepository.demoVideo].
+ */
+internal val IndexEntry.hasIndexMetadata: Boolean
+    get() = channel != null || duration != null || uploadDate != null ||
+        description != null || !categories.isNullOrEmpty() || !tags.isNullOrEmpty()
 
 /** What a sync does with the stored videos its server listing didn't contain. */
 internal enum class Prune {
@@ -772,9 +796,103 @@ class DefaultLibraryRepository(
     override fun acknowledgeBulkRemove() = removeRunner.acknowledge()
 
     /**
+     * Fills the library from the bundled demo dataset, then marks the install as a demo.
+     *
+     * Deliberately built out of the sync path's own parts — [autoAssignments] and [persistSync] —
+     * rather than a parallel writer: the Categories screen after a seed must be the same screen it
+     * is after a real sync, and the only way to guarantee that is to derive it with the same code.
+     * [Prune.NOTHING] because there is no server listing to compare against; the upserts are keyed
+     * by video id, which is what makes re-seeding idempotent.
+     *
+     * [setLastSync][SettingsRepository.setLastSync] with an empty scope is what moves the app off
+     * the Settings screen on the next launch (`MainViewModel` starts on Library whenever the
+     * library has ever been populated), and it leaves the connection fields untouched — a demo
+     * install has none.
+     */
+    override suspend fun seedDemoLibrary() {
+        val entries = indexSource.demoEntries()
+        val now = System.currentTimeMillis()
+        val videos = entries.mapIndexed { index, entry -> demoVideo(entry, index, now) }
+        // NonCancellable for the same reason as clearLocalData: the rows and the flag that says
+        // what they are must land together, or the app describes a library it doesn't have.
+        withContext(NonCancellable) {
+            writeMutex.withLock {
+                val (autoCategories, crossRefs) = autoAssignments(videos, now)
+                persistSync(Prune.NOTHING, now, videos, autoCategories.values, crossRefs)
+                settings.setLastSync(now, "")
+                settings.setDemoMode(true)
+            }
+        }
+    }
+
+    /**
+     * One demo entry → one row, mapped exactly as [mergeVideo]'s index branch maps a real one, so
+     * a demo library exercises the same fields the app reads everywhere else.
+     *
+     * Entries carrying no index metadata at all (a bare title, as an unmatched file on a real
+     * server produces) are stored as Jellyfin-sourced rather than index-sourced: that is what they
+     * would be after a real sync, and it gives the "Uncategorized" filter genuine members instead
+     * of an empty row on the Others tab.
+     */
+    private fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
+        val title = entry.title ?: entry.id
+        val indexed = entry.hasIndexMetadata
+        val durationSeconds = entry.duration ?: 0L
+        val watch = demoWatchState(index, durationSeconds)
+        return VideoEntity(
+            youtubeId = entry.id,
+            jellyfinItemId = DEMO_ITEM_ID,
+            // Real rows take the file name from the server path; demo rows have no server, and the
+            // title is what that file would have been called. It drives the universal browse order.
+            fileName = "$title.mp4",
+            title = title,
+            channel = entry.channel,
+            channelId = entry.channelId,
+            durationSeconds = durationSeconds,
+            uploadDate = entry.uploadDate,
+            description = entry.description,
+            chapters = entry.chapters.toChapters(),
+            tags = entry.tags.orEmpty(),
+            youtubeCategories = entry.categories.orEmpty(),
+            thumbnailUrl = entry.thumbnail,
+            played = watch.played,
+            playbackPositionTicks = watch.positionTicks,
+            playCount = watch.playCount,
+            lastSyncedAt = now,
+            metadataSource = if (indexed) METADATA_SOURCE_INDEX else METADATA_SOURCE_JELLYFIN,
+            metadataUpdatedAt = if (indexed) (entry.updatedAtMillis ?: now) else 0L,
+        )
+    }
+
+    /**
+     * Watch state by position in the dataset rather than authored in the JSON: the mix is then
+     * guaranteed — Watched, Continue watching and Unwatched all have members however the content
+     * is later edited — and the asset stays pure content.
+     *
+     * Played wins where the two cycles coincide, and a video of unknown length can't be
+     * mid-watched (the progress bar divides by its duration).
+     */
+    private fun demoWatchState(index: Int, durationSeconds: Long): DemoWatchState = when {
+        index % DEMO_PLAYED_EVERY == DEMO_PLAYED_EVERY - 1 ->
+            DemoWatchState(played = true, positionTicks = 0L, playCount = 1)
+        index % DEMO_IN_PROGRESS_EVERY == DEMO_IN_PROGRESS_EVERY - 1 && durationSeconds > 0 ->
+            DemoWatchState(
+                played = false,
+                positionTicks = millisToTicks(
+                    durationSeconds * MILLIS_PER_SECOND * DEMO_RESUME_PERCENT / PERCENT,
+                ),
+                playCount = 0,
+            )
+        else -> DemoWatchState(played = false, positionTicks = 0L, playCount = 0)
+    }
+
+    /**
      * Wipe all locally cached library data (videos, categories, their links) and
      * reset the last-sync marker. Connection settings — server URL, API key, user,
      * folder scope — are left untouched, so a subsequent sync rebuilds from scratch.
+     *
+     * This is also the way out of demo mode, which is why the flag goes with the rows: it
+     * describes what the library holds, and after this the library holds nothing.
      */
     override suspend fun clearLocalData() {
         // NonCancellable: a cancellation landing between the wipe and the marker reset would
@@ -788,6 +906,7 @@ class DefaultLibraryRepository(
                     videoDao.clear()
                 }
                 settings.setLastSync(0L, "")
+                settings.setDemoMode(false)
             }
         }
     }

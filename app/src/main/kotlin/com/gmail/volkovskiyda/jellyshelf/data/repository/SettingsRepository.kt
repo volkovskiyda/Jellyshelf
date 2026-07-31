@@ -48,6 +48,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val LIBRARY_DURATION_FILTER = stringPreferencesKey("library_duration_filter")
         val CATEGORIES_SEARCH_ALL = booleanPreferencesKey("categories_search_all")
         val SYNC_SCOPE_NUDGED = booleanPreferencesKey("sync_scope_nudged")
+        val DEMO_MODE = booleanPreferencesKey("demo_mode")
     }
 
     /**
@@ -80,6 +81,9 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
                 // By-name lookup so an unknown/absent stored value degrades to the default.
                 playbackMode = PlaybackMode.entries.firstOrNull { it.name == p[Keys.PLAYBACK_MODE] }
                     ?: PlaybackMode.PLAY,
+                // Unset (and unreadable) reads as "not a demo" — the safe direction: a real
+                // library presented as a demo would hide server actions that genuinely work.
+                demoMode = p[Keys.DEMO_MODE] ?: false,
             )
         }
 
@@ -154,6 +158,10 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             it[Keys.LAST_SYNC_AT] = timestamp
             it[Keys.LAST_SYNC_LIBRARY_ID] = libraryId
         }
+    }
+
+    override suspend fun setDemoMode(enabled: Boolean) {
+        ds.edit { it[Keys.DEMO_MODE] = enabled }
     }
 
     /**

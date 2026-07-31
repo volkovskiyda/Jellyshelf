@@ -37,6 +37,16 @@ data class Settings(
      * a mode from the button's dropdown saves it here app-wide.
      */
     val playbackMode: PlaybackMode = PlaybackMode.PLAY,
+    /**
+     * Whether the library holds seeded demo data rather than a real server's. Set by the demo
+     * seeder and cleared by "Reset local data" — the flag never outlives the rows it describes.
+     *
+     * Read by the UI (which hides server-dependent affordances) and by playback (which plays a
+     * bundled clip). Demo installs have no credentials, so [isConnected] is false throughout and
+     * every network path already declines on its own; this flag is about *presentation*, not about
+     * suppressing requests.
+     */
+    val demoMode: Boolean = false,
 ) {
     /**
      * The single value every authenticated request sends as `X-Emby-Token`: the user token when

@@ -31,8 +31,11 @@ private class WatchState(val played: Boolean, val positionTicks: Long, val playC
  */
 private class ResolvedRow(val youtubeId: String, val fileName: String, val watch: WatchState)
 
-/** The index entry's extraction time as epoch millis — the feed carries seconds. */
-private val IndexEntry?.updatedAtMillis: Long? get() = this?.fetchedAt?.let { it * MILLIS_PER_SECOND }
+/**
+ * The index entry's extraction time as epoch millis — the feed carries seconds. Also used by the
+ * demo seeder, which stamps its rows exactly as an index match would.
+ */
+internal val IndexEntry?.updatedAtMillis: Long? get() = this?.fetchedAt?.let { it * MILLIS_PER_SECOND }
 
 /**
  * Pure merge of one Jellyfin [item] with its optional index entry [meta] and the [existing]

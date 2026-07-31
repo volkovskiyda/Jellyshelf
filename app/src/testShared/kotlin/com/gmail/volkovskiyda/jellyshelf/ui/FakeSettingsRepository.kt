@@ -90,6 +90,10 @@ class FakeSettingsRepository(
         _settings.value = _settings.value.copy(lastSyncAt = timestamp, lastSyncLibraryId = libraryId)
     }
 
+    override suspend fun setDemoMode(enabled: Boolean) {
+        _settings.value = _settings.value.copy(demoMode = enabled)
+    }
+
     override val selectedCategoryType: Flow<String?> = _selectedCategoryType
     override suspend fun setSelectedCategoryType(type: String) {
         _selectedCategoryType.value = type

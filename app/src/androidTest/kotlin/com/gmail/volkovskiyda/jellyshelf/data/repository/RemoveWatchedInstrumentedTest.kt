@@ -157,9 +157,17 @@ class RemoveWatchedInstrumentedTest {
             install(ContentNegotiation) { json(json) }
         }
         val dataSource = JellyfinDataSource(JellyfinClient(httpClient))
-        val indexSource = IndexSource(httpClient, dispatchers, json)
+        val indexSource =
+            IndexSource(ApplicationProvider.getApplicationContext(), httpClient, dispatchers, json)
         val ytDlp = UnusedYtDlp(ApplicationProvider.getApplicationContext(), dispatchers)
-        return DefaultLibraryRepository(db, dataSource, indexSource, settings, ytDlp, dispatchers)
+        return DefaultLibraryRepository(
+            db,
+            dataSource,
+            indexSource,
+            settings,
+            ytDlp,
+            dispatchers,
+        )
     }
 
     private suspend fun storedIds() = db.videoDao().observeAll().first().map { it.youtubeId }.sorted()

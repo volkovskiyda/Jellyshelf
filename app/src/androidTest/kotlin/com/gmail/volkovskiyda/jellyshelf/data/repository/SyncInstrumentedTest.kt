@@ -171,8 +171,16 @@ class SyncInstrumentedTest {
             install(ContentNegotiation) { json(json) }
         }
         val dataSource = JellyfinDataSource(JellyfinClient(httpClient))
-        val indexSource = IndexSource(httpClient, dispatchers, json)
-        return DefaultLibraryRepository(db, dataSource, indexSource, settings, ytDlp, dispatchers)
+        val indexSource =
+            IndexSource(ApplicationProvider.getApplicationContext(), httpClient, dispatchers, json)
+        return DefaultLibraryRepository(
+            db,
+            dataSource,
+            indexSource,
+            settings,
+            ytDlp,
+            dispatchers,
+        )
     }
 
     private suspend fun storedIds() = db.videoDao().observeAll().first().map { it.youtubeId }.sorted()

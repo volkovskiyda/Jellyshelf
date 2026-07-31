@@ -47,6 +47,13 @@ interface SettingsRepository {
     /** Records that a sync finished at [timestamp] against library scope [libraryId]. */
     suspend fun setLastSync(timestamp: Long, libraryId: String)
 
+    /**
+     * Records whether the library currently holds seeded demo data. Written by the demo seeder and
+     * cleared with the data itself by [LibraryRepository.clearLocalData], so the flag can never
+     * describe rows that are no longer there.
+     */
+    suspend fun setDemoMode(enabled: Boolean)
+
     /** The Categories dimension (tab) the user last settled on, or null if never set. */
     val selectedCategoryType: Flow<String?>
     suspend fun setSelectedCategoryType(type: String)
