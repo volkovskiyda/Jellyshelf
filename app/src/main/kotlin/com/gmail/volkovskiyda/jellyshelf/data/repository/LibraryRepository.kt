@@ -865,9 +865,16 @@ class DefaultLibraryRepository(
     override fun savePlaybackPosition(youtubeId: String, positionMs: Long) {
         // Fire-and-forget like reportPlaybackStopped: the playback service calls this every few
         // seconds and must never wait on Room. The DAO query itself skips played rows.
+        val positionTicks = millisToTicks(positionMs)
         repoScope.launch {
             writeMutex.withLock {
-                videoDao.updatePlaybackPosition(youtubeId, millisToTicks(positionMs))
+                // Ticks only start being recorded once the video is genuinely under way
+                // ([isWorthResuming]). Gating the stop report alone would not be enough — this
+                // runs every few seconds regardless, so the trivial position would already be on
+                // disk, and both the resume seed and the next sync would treat it as real.
+                val v = videoDao.get(youtubeId) ?: return@withLock
+                if (!isWorthResuming(positionTicks, v.durationSeconds)) return@withLock
+                videoDao.updatePlaybackPosition(youtubeId, positionTicks)
                 // Stamped like onPlaybackStopped's write: a sync whose server snapshot predates
                 // this save must keep the local position, not revert it.
                 localWatchWrites[youtubeId] = System.currentTimeMillis()
@@ -892,6 +899,16 @@ class DefaultLibraryRepository(
             finished = completed ||
                 v.durationSeconds > 0 &&
                 ticksToSeconds(positionTicks) >= v.durationSeconds - COMPLETION_THRESHOLD_SECONDS
+            // Barely into it and not finished — stepping past this video rather than watching it.
+            // Nothing is written at all, locally or to the server: the position it already holds
+            // is a better answer than the one this stop would replace it with.
+            if (!finished && !isWorthResuming(positionTicks, v.durationSeconds)) {
+                Timber.tag(PLAYBACK_TAG).d(
+                    "onPlaybackStopped: only ${ticksToSeconds(positionTicks)}s into " +
+                        "${v.durationSeconds}s; leaving the stored position alone",
+                )
+                return
+            }
             Timber.tag(PLAYBACK_TAG).d(
                 "onPlaybackStopped: durationSeconds=${v.durationSeconds} finished=$finished -> " +
                     "local write played=$finished position=${if (finished) 0L else positionTicks}",

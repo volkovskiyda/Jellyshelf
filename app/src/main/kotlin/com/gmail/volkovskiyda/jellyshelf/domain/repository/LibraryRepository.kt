@@ -40,12 +40,27 @@ interface LibraryRepository {
     suspend fun clearLocalData()
     suspend fun removeVideo(youtubeId: String)
     suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean
+
+    /**
+     * One report per stop, from either player: the position is stored locally and mirrored to
+     * Jellyfin — as a finished watch when [completed] (or within a few seconds of the end),
+     * otherwise as a resume point.
+     *
+     * A stop barely into a video records **nothing at all**, keeping whatever position the video
+     * already held. Stepping through a queue with previous/next passes over videos without
+     * watching them, and a resume point a few seconds in is worse than none — it would also
+     * overwrite a real one. Fire-and-forget.
+     */
     fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean)
 
     /**
      * Local-only periodic position save from the in-app player, so process death mid-playback
      * can't lose the spot. No server write — the server still sees exactly one report per stop
      * ([reportPlaybackStopped]) — and never unmarks a played video. Fire-and-forget.
+     *
+     * Starts recording only once the video is far enough in to be worth resuming, on the same bar
+     * [reportPlaybackStopped] uses: this runs every few seconds, so without it the trivial
+     * position would be on disk regardless of what any stop report decided.
      */
     fun savePlaybackPosition(youtubeId: String, positionMs: Long)
     suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult
