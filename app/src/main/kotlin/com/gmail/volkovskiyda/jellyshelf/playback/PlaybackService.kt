@@ -48,7 +48,9 @@ import timber.log.Timber
  * Controllers send bare ids — `MediaItem(mediaId = youtubeId)` and nothing else, because a
  * MediaItem's localConfiguration does not survive controller→session transit even in-process.
  * [SessionCallback] resolves the id against the library: stream URL, notification metadata and
- * the saved resume position.
+ * the saved resume position. It can seed that position only for the video a queue *opens* on —
+ * media3 takes one start position per playlist — so [ResumeSeedingListener] covers the rest of
+ * the queue as it is reached.
  *
  * The credential travels only as an `X-Emby-Token` request header ([Playback.TOKEN_HEADER]).
  * The `tokenInQuery` setting is an escape hatch for external players and is deliberately not
@@ -114,6 +116,8 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             .build()
         player.addListener(WatchStateListener())
         player.addListener(TranscodeFallbackListener())
+        // Last, so a transition has already been reported and re-tracked before this seeks.
+        player.addListener(ResumeSeedingListener())
         this.player = player
         session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity(youtubeId = null))
@@ -211,6 +215,10 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 newMediaId = mediaItem?.mediaId,
                 autoAdvance = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
             ).perform()
+            // A new video gets its own save interval rather than inheriting the previous one's
+            // phase — otherwise a tick due in the next few milliseconds could save it at position
+            // zero, beating [ResumeSeedingListener] to the row it is about to resume from.
+            if (player?.isPlaying == true) startPeriodicSave()
             // A notification tap should reopen the player on whatever is playing now.
             session?.setSessionActivity(sessionActivity(mediaItem?.mediaId))
         }
@@ -254,6 +262,30 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             null -> Unit
             is WatchAction.Report -> repo.reportPlaybackStopped(youtubeId, positionMs, completed)
             is WatchAction.Save -> repo.savePlaybackPosition(youtubeId, positionMs)
+        }
+    }
+
+    /**
+     * Starts each video the queue moves to where the user last left it — see [resumeSeekMs] for
+     * which moves count and why the others must not.
+     *
+     * The lookup is asynchronous, so the video plays from its start for the moment it takes Room
+     * to answer. That is deliberate: blocking the transition on a disk read would stall playback
+     * for every video, including the ones with nothing to resume.
+     */
+    private inner class ResumeSeedingListener : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val mediaId = mediaItem?.mediaId ?: return
+            val p = player ?: return
+            scope.launch {
+                val ticks = repo.observeVideo(mediaId).first()?.playbackPositionTicks ?: 0L
+                val seekMs = resumeSeekMs(reason, ticks) ?: return@launch
+                // The service was torn down, or the queue moved on again, while the lookup
+                // suspended — seeking now would land in whatever is playing instead.
+                if (player !== p || p.currentMediaItem?.mediaId != mediaId) return@launch
+                Timber.tag(Playback.TAG).d("resuming $mediaId at ${seekMs}ms")
+                p.seekTo(seekMs)
+            }
         }
     }
 
