@@ -1,12 +1,14 @@
 # Jellyshelf
 
 An Android companion for a self-hosted **Jellyfin** library of yt-dlp-archived YouTube
-videos. It categorizes the archive (auto-by-channel + your own manual categories) and
-syncs watch status with Jellyfin over the REST API. Playback stays in Jellyfin (or any
-external player) — Jellyshelf is the catalog + sync layer, not a video player.
+videos. It categorizes the archive (automatically by channel, year, month, duration and
+YouTube category, plus your own manual categories), plays it on a built-in Media3 player,
+and syncs watch status with Jellyfin over the REST API. Playback can also be handed to an
+external player or to the Jellyfin web UI — the choice is a setting on the play button.
 
 `com.gmail.volkovskiyda.jellyshelf` · single-module · Compose + Navigation 3 + Adaptive ·
-Room · Ktor (OkHttp engine) / kotlinx.serialization · WorkManager · DataStore · lightweight manual DI.
+Media3 (ExoPlayer + MediaSession) · Room · Ktor (OkHttp engine) / kotlinx.serialization ·
+WorkManager · DataStore · Coil · Koin · bundled yt-dlp (youtubedl-android).
 
 ## The data pipeline
 
@@ -15,6 +17,8 @@ videos/*.mp4  ──fetch-youtube-metadata.sh──►  *.info.json (sidecars)
 *.info.json   ──build-library-index.sh────►  jellyshelf-index.json  ──HTTP──┐
                                                                             ▼
 Jellyfin  ──REST (X-Emby-Token)──►  items + watch state  ──join by YouTube id──►  Room  ──►  UI
+                                                                            ▲
+                              bundled yt-dlp  ──in-app fetch, per video──────┘
 ```
 
 1. **`scripts/fetch-youtube-metadata.sh`** (requires [`yt-dlp`](https://github.com/yt-dlp/yt-dlp)
@@ -34,16 +38,23 @@ Jellyfin  ──REST (X-Emby-Token)──►  items + watch state  ──join by
 2. **`scripts/build-library-index.sh`** (requires [`jq`](https://jqlang.github.io/jq/)) —
    aggregates every `*.info.json` under a dir into one flat `jellyshelf-index.json` array
    (id, title, channel, channelId, duration, uploadDate, tags, categories, description,
-   thumbnail). Re-run it whenever you add videos.
+   thumbnail, chapters, fetchedAt). Re-run it whenever you add videos.
    ```bash
    scripts/build-library-index.sh /media/youtube jellyshelf-index.json   # args: DIR [OUT]
    ```
    Then serve the output over HTTP so the phone can reach it — see
    [Serving the index](#serving-the-index).
 3. **The app** pulls Jellyfin items (→ Jellyfin ItemId, watch state, duration) and the
-   index (→ channel, tags, upload date, description, thumbnail), joins them by YouTube id
-   into Room, and auto-groups by channel. The index URL is optional — without it the app
+   index (→ channel, tags, upload date, description, chapters, thumbnail), joins them by
+   YouTube id into Room, and auto-groups along five dimensions: channel, year, month,
+   duration band and YouTube category. The index URL is optional — without it the app
    falls back to Jellyfin's own metadata (no channel grouping).
+4. **The app can also skip the scripts entirely.** It bundles yt-dlp
+   (youtubedl-android), so any video Jellyfin has but the index doesn't can be filled in
+   from the device: per video from its detail screen, in bulk from the **Others →
+   Uncategorized** filter, and automatically during a sync while fewer than ten videos are
+   missing metadata. Newest extraction wins, so an in-app fetch is not overwritten by a
+   staler index entry on the next sync.
 
 ## Serving the index
 
@@ -110,13 +121,21 @@ one certificate/host. Index URL: `https://media.example.com/jellyshelf-index.jso
 
 ## Setup in the app (Settings tab)
 
-1. **Server URL** — e.g. `https://192.168.1.10:8096`. Release builds accept `https://` only; a
-   plain-HTTP LAN server needs a debug build.
+1. **Server URL** — e.g. `https://192.168.1.10:8096`. Typed without a scheme, it is read as
+   `https://`. Release builds accept `https://` only; a plain-HTTP LAN server needs a debug build.
 2. **Username + password → Sign in** — exchanges them for a *user-scoped* access token
    (`POST /Users/AuthenticateByName`). Only the token is stored; the password is discarded as
    soon as the token comes back. The token identifies the user, so there is nothing to pick.
 3. **Metadata index URL** (optional) — where you serve `jellyshelf-index.json`.
-4. **Sync now** — first sync; a WorkManager job then re-syncs every 3 hours.
+4. **Sync scope** (optional) — browse the server's collections and pick one folder to sync
+   instead of everything. Narrowing it deletes the now-out-of-scope videos locally right away;
+   videos that merely stop appearing in an unchanged scope get a grace period of three syncs
+   first, so a Jellyfin rescan doesn't empty the library.
+5. **Sync now** — first sync; a WorkManager job then re-syncs every 3 hours.
+
+**Appearance → Theme** overrides light/dark independently of the system: tapping the switch walks
+light → auto → dark and back, and the change animates as a circular reveal from the tap. Auto is
+the default and follows the system.
 
 If the server later rejects the token (password change, session revoked), the app says
 "session expired — sign in again" and stops syncing rather than falling back to anything else.
@@ -133,75 +152,168 @@ token wins whenever one is present.
 
 ## Watching a video
 
-From a video's detail screen:
-- **Play** — fires an `ACTION_VIEW` intent at the Jellyfin static stream
-  (`/Videos/{id}/stream?static=true`) → opens in VLC / MX / any player.
-- **Open in Jellyfin** — deep-links to the Jellyfin web details page
+A video's detail screen has one **Play** button with a dropdown next to it. The dropdown picks
+how *every* video plays from then on — it is the setting, there is no Settings-screen row:
+
+- **Play in app** (default) — the built-in Media3 player, described below.
+- **External player** — fires an `ACTION_VIEW` intent at the Jellyfin static stream
+  (`/Videos/{id}/stream?static=true`) → VLC / MX / any player.
+- **Open in web** — deep-links to the Jellyfin web details page
   (`/web/index.html#/details?id={id}`).
 
-The credential is **not** in that URL by default. It is passed as an `X-Emby-Token` request
-header via the intent's `headers` extra, because an `ACTION_VIEW` URL is handed to whichever app
-the user picks and then persists in that player's recent-files list, its logs, and any cast
-target. A header is used for the request and not retained.
+### The in-app player
+
+Immersive fullscreen, free orientation, screen kept awake while playing. It plays the direct
+stream and, if the device can't decode it, retries once through the server's HLS transcode
+(`/Videos/{id}/main.m3u8`) at the same position — no codec constraints are sent, so Jellyfin
+transcodes to H.264/AAC, which anything decodes. If the transcode fails too, the error points at
+the External player mode.
+
+- **Queue** — opening a video from a list queues that whole list, so previous/next step through
+  it. Opened from the media notification there is no list, so the queue is just that one video.
+- **Chapters** — parsed from the yt-dlp `chapters` field, or from YouTube-style `0:00 Intro`
+  timecodes in the description (only when they follow YouTube's own rules: three or more, first
+  at zero, ascending, within the runtime — otherwise none, since wrong chapters are worse than
+  no chapters). Previous-chapter restarts the current one when more than 3 s into it.
+- **Seeking** — 10 s back / 30 s forward, deliberately asymmetric. Drag horizontally to scrub
+  with a preview, seeking on release. Press and hold for 3× speed; the speed menu offers
+  0.5×–3×.
+- **Background playback** — a `MediaSessionService` owns the player, so playback survives leaving
+  the screen and system surfaces (notification, output switcher, Android Auto) can drive it.
+  Tapping the notification reopens the player on whatever is playing.
+- **Resume** — the position is saved locally every 10 seconds and on pause, so process death
+  can't lose it, and reported to Jellyfin once per stop. Positions only start counting once the
+  video is genuinely under way (a tenth of it, or one minute, whichever is smaller), so stepping
+  through a queue can't overwrite a resume point you earned with one you didn't.
+
+The media notification needs `POST_NOTIFICATIONS` on API 33+, requested from the player screen.
+Denied, playback still works — the notification just stays hidden.
+
+### Where the credential goes
+
+The in-app player always sends it as an `X-Emby-Token` request header, never in the URL.
+
+For the **external player** that is the default too, passed via the intent's `headers` extra,
+because an `ACTION_VIEW` URL is handed to whichever app the user picks and then persists in that
+player's recent-files list, its logs, and any cast target. A header is used for the request and
+not retained.
 
 A chooser can't know in advance which player will be picked, so this can't be decided per player.
 If yours ignores the headers extra (VLC's support has varied by version) playback fails with a
 401 — turn on **Settings → Advanced → Token in playback URL** to put it back in the query
-instead.
+instead. That toggle applies to the external-player intent only.
 
-Watch state syncs both ways: the app reads `Played` / `PlaybackPositionTicks` / `PlayCount`
-from Jellyfin on every sync, and writes back when you mark watched/unwatched.
+### Watch state
+
+Syncs both ways: the app reads `Played` / `PlaybackPositionTicks` / `PlayCount` from Jellyfin on
+every sync, and writes back when you mark watched/unwatched or finish a video. A finished video
+is marked played through `/PlayedItems` (the endpoint that actually increments `PlayCount` and
+stamps `LastPlayedDate`); one stopped partway writes its resume position instead, which is what
+puts it in Jellyfin's "Continue Watching". MX Player and VLC report their position back on exit,
+so the external path records progress too; other players simply won't.
 
 ## Endpoints to verify against your Jellyfin version
 
 The client (`data/remote/JellyfinApi.kt`) — hand-written Ktor calls, not a Retrofit interface —
 targets standard endpoints; confirm these against your server build and adjust if needed:
-- `GET /Users`, `GET /Items` — stable.
-- `POST` / `DELETE /Users/{userId}/PlayedItems/{itemId}` — mark (un)watched.
-- `POST /Sessions/Playing/Progress` — position write; some versions prefer a play-session
-  flow. Position *reads* come with `/Items` and are reliable.
+- `POST /Users/AuthenticateByName` — sign-in. Needs the `MediaBrowser …` authorization header,
+  which is the one call that doesn't carry `X-Emby-Token`.
+- `GET /Users` — the user list, in advanced API-key mode only.
+- `GET /Users/{userId}/Views`, `GET /Items?IsFolder=true` — the sync-scope folder browser.
+- `GET /Items` — the paged library listing (`SortName` ascending, 200 per page). Watch state
+  reads come with it and are reliable.
+- `POST` / `DELETE /Users/{userId}/PlayedItems/{itemId}` — mark (un)watched, and what a finished
+  video reports through.
+- `POST /Users/{userId}/Items/{itemId}/UserData` — resume-position write ("Continue Watching").
+- `DELETE /Items/{itemId}` — "Remove watched", which deletes the media file too.
+- `POST /Playlists` — create a playlist from a category.
+- `GET /Videos/{id}/stream?static=true`, `GET /Videos/{id}/main.m3u8` — direct play and the
+  transcode fallback. `GET /Items/{id}/Images/Primary` — thumbnails.
+
+`POST /Sessions/Playing/Progress` is implemented but **not** called: live session reporting
+("now playing" on the server dashboard) is backlog, and resume positions go to `UserData`
+instead, which persists them without a live session to sustain.
 
 ## Build
 
 ```bash
 ./gradlew :app:assembleDebug        # -> app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:installDebug         # to a connected device/emulator
+./gradlew :app:assembleRelease      # R8-shrunk; signed only if keystore.properties exists
 ```
 
-Minimum: `minSdk 30`, `compileSdk 37`. Debug builds allow cleartext HTTP for LAN servers.
+Minimum: `minSdk 30`, `compileSdk 37`. Debug builds allow cleartext HTTP for LAN servers, and
+install alongside release (`.debug` application id, badged launcher icon).
+
+**arm64 only.** The bundled yt-dlp ships a Python runtime per ABI, so the APK is restricted to
+`arm64-v8a` to avoid carrying a second copy. Physical devices are effectively all arm64; an
+**x86_64 emulator cannot install the APK** (`INSTALL_FAILED_NO_MATCHING_ABIS`) — use an arm64
+system image.
+
+**Signing** is optional and reads `keystore.properties` at the repo root (see
+[Environment config](#environment-config)). Without that file `assembleRelease` still configures
+and builds — it just produces an unsigned APK, which is what keeps CI from needing a keystore.
 
 ## Testing
 
+One command runs every layer available and prints a single verdict:
+
 ```bash
+scripts/run-tests.sh              # everything: static analysis, unit, screenshots, on-device
+scripts/run-tests.sh --host-only  # skip the device layer even if one is attached
+```
+
+It aggregates all of it into one page at `app/build/test-summary/index.html`, on failures too.
+The layers can also be run individually:
+
+```bash
+./gradlew detekt :app:lintDebug           # static analysis
 ./gradlew :app:testDebugUnitTest          # JVM unit tests incl. MockEngine networking tests
+./gradlew :app:validateDebugScreenshotTest  # Compose screenshot goldens (host-side, LayoutLib)
 ./gradlew :app:connectedDebugAndroidTest  # instrumentation tests (needs a device/emulator)
 ```
 
+- **Static analysis** — detekt (with the ktlint rule set) plus Android lint at
+  `checkAllWarnings`. detekt carries **no baseline** by design: any finding fails the build, so
+  fix the finding rather than regenerating one.
 - **Unit tests** (`src/test`) run on the JVM with no device. `JellyfinApiTest` drives the Ktor
-  client over a `MockEngine` to lock in the migrated request-body wire format, URL/header
-  construction, unknown-key tolerance, and error mapping.
-- **Instrumentation tests** (`src/androidTest`) run in a real APK: Room DAO round-trips and the
-  on-device kotlinx.serialization path (a lighter stand-in for full R8/keep-rule validation).
+  client over a `MockEngine` to lock in the request-body wire format, URL/header construction,
+  unknown-key tolerance, and error mapping. The decision-heavy pieces — merge, prune policy,
+  resume rules, chapter parsing, search ranking — are pure functions tested here rather than
+  on a device.
+- **Screenshot goldens** (`src/screenshotTest`) render previews host-side. Reference PNGs live in
+  Git LFS, so a clone needs `git lfs install`. When a diff is an intentional UI change, re-bake
+  with `./gradlew :app:updateDebugScreenshotTest`.
+- **Instrumentation tests** (`src/androidTest`) run in a real APK: Compose behavior tests, Room
+  DAO round-trips, the on-device kotlinx.serialization path, and a browse-cost benchmark over a
+  10k-row library. Compose tests run the accessibility checks, so an unlabelled control, an
+  undersized touch target or low contrast fails the suite. There is no Robolectric on purpose.
+  With no device attached these layers **skip** rather than fail, in Gradle and in the script
+  both.
 - **Live-endpoint tests** (`LiveEndpointTest`) hit a real Jellyfin and are **opt-in via `.test.env`**:
   copy `.example.test.env` → `.test.env` and fill in the server URL / API key / index URL. They
   **skip automatically** (never fail) when `.test.env` is absent/blank or the server is unreachable,
   so a plain `connectedDebugAndroidTest` on a fresh checkout stays green.
 
+CI (`.github/workflows/ci.yml`) runs `scripts/run-tests.sh --host-only` plus `assembleDebug` on
+every push to `main` and every PR, and uploads the summary and reports as artifacts.
+
 ### Environment config
 
-Local config lives in git-ignored `.env`-style files at the repo root, **not** `local.properties`.
-Copy the committed `.example.*` templates and fill them in:
+Local config lives in git-ignored `KEY=VALUE` files at the repo root, **not** `local.properties`.
+Both are optional; copy the committed `.example.*` template and fill it in when you need one:
 
 | File | Committed? | Purpose |
 |------|-----------|---------|
-| `.test.env` | git-ignored | Real live-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_API_KEY`, `JELLYFIN_INDEX_URL`. |
+| `.test.env` | git-ignored | Live-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_API_KEY`, `JELLYFIN_INDEX_URL`. Absent → the live tests skip. |
 | `.example.test.env` | committed | Template for `.test.env`. |
-| `.env` | git-ignored | General local config (none needed yet). |
-| `.example.env` | committed | Template for `.env`. |
+| `keystore.properties` | git-ignored | Release signing: `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Absent → release builds are unsigned. |
+| `.example.keystore.properties` | committed | Template for `keystore.properties`. |
+| `*.jks` | git-ignored | The keystore itself, sitting next to those files. |
 
-Gradle's `loadEnv(".test.env")` reads the test config and passes it to the instrumentation tests as
-runtime runner arguments (`am instrument -e` extras) — the values are never compiled into any
-`BuildConfig`.
+Gradle's `loadEnv` reads both. The test config is passed to the instrumentation tests as runtime
+runner arguments (`am instrument -e` extras), so it is never compiled into any `BuildConfig` and
+changing it needs no rebuild.
 
 ## License
 
