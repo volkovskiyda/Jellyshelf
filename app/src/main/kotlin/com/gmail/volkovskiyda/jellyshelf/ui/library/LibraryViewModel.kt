@@ -71,7 +71,5 @@ class LibraryViewModel(
         _query.value = value
     }
 
-    fun onDurationFilterChange(bucket: DurationBucket?) {
-        _durationFilter.value = bucket
-    }
+    fun onDurationFilterChange(bucket: DurationBucket?) = filters.setDurationFilter(bucket)
 }

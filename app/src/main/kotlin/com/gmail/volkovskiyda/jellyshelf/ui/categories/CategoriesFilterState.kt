@@ -13,8 +13,8 @@ import kotlinx.coroutines.launch
  * [com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState]).
  */
 class CategoriesFilterState(
-    settingsRepository: SettingsRepository,
-    dispatchers: DispatcherProvider,
+    private val settingsRepository: SettingsRepository,
+    private val dispatchers: DispatcherProvider,
 ) {
     val query = MutableStateFlow("")
     val searchAll = MutableStateFlow(false)
@@ -48,16 +48,31 @@ class CategoriesFilterState(
 
     val lastOthers = MutableStateFlow<List<CategoryWithCount>?>(null)
 
+    /**
+     * Applies the toggle and persists it, on a scope that outlives any ViewModel — a bottom-nav
+     * tab switch clears the `ViewModelStore` and would cancel the write. Fire-and-forget.
+     */
+    fun setSearchAll(enabled: Boolean) {
+        searchAll.value = enabled
+        dispatchers.applicationScope.launch { settingsRepository.setCategoriesSearchAll(enabled) }
+    }
+
     init {
         // Restore the last-viewed Categories dimension so reopening the app lands on it rather
-        // than the first tab. Async, best-effort: don't overwrite a selection the user already
-        // made this session before the read landed, and flip selectionLoaded either way so the
+        // than the first tab, and the search-all toggle with it — it is a mode the user switched
+        // on deliberately. Async, best-effort: don't overwrite either value if the user already
+        // set it this session before the read landed, and flip selectionLoaded either way so the
         // UI stops deferring pager tracking.
+        //
+        // searchAll rides the same flag rather than getting its own: the pager must not settle
+        // before it lands, for exactly the reason selectionLoaded documents.
         dispatchers.applicationScope.launch {
             val persisted = settingsRepository.selectedCategoryType.first()
             if (persisted != null && selectedType.value == null) {
                 selectedType.value = persisted
             }
+            val persistedSearchAll = settingsRepository.categoriesSearchAll.first()
+            if (!searchAll.value) searchAll.value = persistedSearchAll
             selectionLoaded.value = true
         }
     }

@@ -69,9 +69,7 @@ class CategoriesViewModel(
         _query.value = value
     }
 
-    fun onSearchAllChange(value: Boolean) {
-        _searchAll.value = value
-    }
+    fun onSearchAllChange(value: Boolean) = filters.setSearchAll(value)
 
     fun onSelectedTypeChange(value: String) {
         if (filters.selectedType.value == value) return

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
@@ -43,6 +44,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val PLAYBACK_MODE = stringPreferencesKey("playback_mode")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val THEME_TOWARD_DARK = booleanPreferencesKey("theme_toward_dark")
+        val LIBRARY_DURATION_FILTER = stringPreferencesKey("library_duration_filter")
+        val CATEGORIES_SEARCH_ALL = booleanPreferencesKey("categories_search_all")
     }
 
     override val settings: Flow<Settings> = ds.data
@@ -186,5 +189,36 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setBackStackJson(json: String) {
         ds.edit { it[Keys.BACK_STACK] = json }
+    }
+
+    /**
+     * Matched by [DurationBucket.id], so an id this version no longer knows — a bucket removed or
+     * renumbered later — reads back as "no filter" instead of throwing on the launch that restores
+     * it. Same degrade-to-default contract as [settings] and [selectedCategoryType].
+     */
+    override val libraryDurationFilter: Flow<DurationBucket?> = ds.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs ->
+            prefs[Keys.LIBRARY_DURATION_FILTER]
+                ?.let { stored -> DurationBucket.entries.firstOrNull { it.id == stored } }
+        }
+
+    /** Null clears the key rather than storing a sentinel for "no filter". */
+    override suspend fun setLibraryDurationFilter(bucket: DurationBucket?) {
+        ds.edit {
+            if (bucket == null) {
+                it.remove(Keys.LIBRARY_DURATION_FILTER)
+            } else {
+                it[Keys.LIBRARY_DURATION_FILTER] = bucket.id
+            }
+        }
+    }
+
+    override val categoriesSearchAll: Flow<Boolean> = ds.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[Keys.CATEGORIES_SEARCH_ALL] ?: false }
+
+    override suspend fun setCategoriesSearchAll(enabled: Boolean) {
+        ds.edit { it[Keys.CATEGORIES_SEARCH_ALL] = enabled }
     }
 }
