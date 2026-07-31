@@ -14,3 +14,7 @@ build
 .test.env
 keystore.properties
 *.jks
+
+# Android Studio's "Generate Signed Bundle / APK" wizard writes outside build/
+/app/release/
+/app/debug/
