@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
+import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filterNotNull
@@ -90,7 +91,29 @@ class NavigationStackTest {
             """.trimIndent(),
         )
         assertEquals(
-            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I", origin = null)),
+            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I", PlayerOrigin.None)),
+            startStackOf(repo),
+        )
+    }
+
+    /**
+     * The other half of that upgrade: while `origin` was nullable the encoder wrote an explicit
+     * `"origin": null` for every Detail opened from the notification path. Now that the field is
+     * non-null, only `coerceInputValues` keeps that from failing the decode — and a failed decode
+     * here is the same silent drop back to Library.
+     */
+    @Test
+    fun `a Detail entry saved with a null origin restores as None`() = runTest {
+        val repo = FakeSettingsRepository(
+            emptySettings.copy(serverUrl = "https://example.org", apiKey = "key"),
+            backStackJson = """
+                [{"type":"com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey.Library"},
+                 {"type":"com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey.Detail",
+                  "youtubeId":"1ubm7Q6DL-I","origin":null}]
+            """.trimIndent(),
+        )
+        assertEquals(
+            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I", PlayerOrigin.None)),
             startStackOf(repo),
         )
     }

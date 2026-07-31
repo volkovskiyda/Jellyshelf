@@ -21,7 +21,14 @@ class MainViewModel(
 
     // Tolerate stacks written by an older schema (e.g. a renamed key field) by dropping them
     // rather than crashing the launch; decode failures fall back to a plain Library start.
-    private val json = Json { ignoreUnknownKeys = true }
+    // coerceInputValues keeps that fallback from being needed for the one schema change that has
+    // already happened: stacks written while AppNavKey.origin was nullable hold an explicit
+    // `"origin": null`, which now reads back as PlayerOrigin.None instead of failing the decode
+    // and losing the screen the user left on.
+    private val json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+    }
     private val stackSerializer = ListSerializer(AppNavKey.serializer())
 
     /** The back stack to seed the nav with on launch; null until it's resolved from settings. */

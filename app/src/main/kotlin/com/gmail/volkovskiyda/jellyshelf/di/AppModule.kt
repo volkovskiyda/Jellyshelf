@@ -51,7 +51,6 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import org.koin.android.ext.koin.androidContext
-import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.androidx.workmanager.dsl.workerOf
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -107,18 +106,7 @@ val appModule = module {
     viewModelOf(::CategoriesViewModel)
     viewModelOf(::CategoryVideosViewModel)
     viewModelOf(::DetailViewModel)
-    // Spelled out rather than viewModelOf: the origin is genuinely optional, and a null in a
-    // ParametersHolder cannot be matched by type — getOrNull is what makes "no origin" resolve to
-    // null instead of falling through to a missing PlayerOrigin definition.
-    viewModel { params ->
-        PlayerViewModel(
-            app = get(),
-            repo = get(),
-            libraryFilters = get(),
-            youtubeId = params.get(),
-            origin = params.getOrNull(),
-        )
-    }
+    viewModelOf(::PlayerViewModel)
     viewModelOf(::SettingsViewModel)
 
     workerOf(::SyncWorker)

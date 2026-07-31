@@ -18,10 +18,16 @@ sealed class AppNavKey : NavKey {
     data class CategoryVideos(val categoryId: String, val title: String) : AppNavKey()
 
     @Serializable
-    data class Detail(val youtubeId: String, val origin: PlayerOrigin? = null) : AppNavKey()
+    data class Detail(
+        val youtubeId: String,
+        val origin: PlayerOrigin = PlayerOrigin.None,
+    ) : AppNavKey()
 
     @Serializable
-    data class Player(val youtubeId: String, val origin: PlayerOrigin? = null) : AppNavKey()
+    data class Player(
+        val youtubeId: String,
+        val origin: PlayerOrigin = PlayerOrigin.None,
+    ) : AppNavKey()
 }
 
 /**
@@ -29,13 +35,20 @@ sealed class AppNavKey : NavKey {
  * follow the order the user was browsing rather than the whole library.
  *
  * A sealed hierarchy of data objects/classes rather than an id plus a magic string, because the
- * back stack is persisted as JSON and this rides along inside it. Every case is optional
- * (`origin = null`): the media-notification path has no list context, and a stack persisted
- * before this existed decodes with the default — which is what keeps an in-place upgrade from
- * crashing on launch.
+ * back stack is persisted as JSON and this rides along inside it. "No list" is [None] rather than
+ * a null, so every consumer handles it as one more case of the same `when` — and so Koin can
+ * type-match it as a `parametersOf` argument, which a null can never be.
  */
 @Serializable
 sealed class PlayerOrigin {
+    /**
+     * No list context: the media-notification path, and the default a back stack persisted
+     * before origins existed decodes with. Plays the one video alone, both transport buttons
+     * disabled — exactly the behavior the player had before queues.
+     */
+    @Serializable
+    data object None : PlayerOrigin()
+
     /** The library tab, as the user had it narrowed at the time. */
     @Serializable
     data object Library : PlayerOrigin()

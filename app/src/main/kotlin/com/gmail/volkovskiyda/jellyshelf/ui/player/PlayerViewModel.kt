@@ -47,7 +47,7 @@ class PlayerViewModel(
     private val repo: LibraryRepository,
     private val libraryFilters: LibraryFilterState,
     private val youtubeId: String,
-    private val origin: PlayerOrigin?,
+    private val origin: PlayerOrigin,
 ) : ViewModel() {
 
     /**
@@ -124,7 +124,7 @@ class PlayerViewModel(
      * into a process that never rendered the library tab.
      */
     private suspend fun originIds(): List<String> = when (origin) {
-        null -> emptyList()
+        PlayerOrigin.None -> emptyList()
         PlayerOrigin.Library ->
             libraryFilters.lastVideos.value?.items ?: repo.observeVideos().first()
         is PlayerOrigin.Category -> repo.observeVideosByCategory(origin.categoryId).first()

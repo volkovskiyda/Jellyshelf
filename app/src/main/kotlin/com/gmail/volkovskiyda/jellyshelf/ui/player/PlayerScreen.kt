@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
@@ -101,6 +100,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
+import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import kotlinx.coroutines.coroutineScope
@@ -122,7 +122,7 @@ fun PlayerScreen(
     youtubeId: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    origin: PlayerOrigin? = null,
+    origin: PlayerOrigin = PlayerOrigin.None,
 ) {
     val viewModel: PlayerViewModel = koinViewModel { parametersOf(youtubeId, origin) }
     val controller by viewModel.controller.collectAsStateWithLifecycle()
@@ -145,19 +145,14 @@ fun PlayerScreen(
             // Still connecting to the service. The back arrow stays reachable regardless — with
             // no controller yet there is nothing to stop, so this is a plain leave.
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-            IconButton(
+            BackButton(
                 onClick = leave,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .windowInsetsPadding(WindowInsets.displayCutout)
                     .padding(4.dp),
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                    tint = Color.White,
-                )
-            }
+                tint = Color.White,
+            )
         } else {
             PlayerWithControls(controller = c, title = video?.title, chapters = chapters, onBack = leave)
         }
@@ -466,13 +461,7 @@ internal fun PlayerControls(
             Modifier.align(Alignment.TopStart).fillMaxWidth().padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                    tint = Color.White,
-                )
-            }
+            BackButton(onClick = onBack, tint = Color.White)
             Text(
                 title.orEmpty(),
                 color = Color.White,

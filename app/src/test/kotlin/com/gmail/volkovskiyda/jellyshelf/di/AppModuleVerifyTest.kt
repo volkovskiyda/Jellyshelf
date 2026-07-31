@@ -23,10 +23,8 @@ import org.koin.test.verify.verify
  * - [WorkerParameters] — supplied by the WorkManager factory to `SyncWorker`.
  * - [String] — the `youtubeId` / `categoryId` runtime params passed via `parametersOf` to the
  *   detail, category-videos and player ViewModels.
- * - [PlayerOrigin] — the player's other runtime param, the list it was opened from. `verify`
- *   reflects `PlayerViewModel`'s constructor even though the module builds it by hand, and cannot
- *   see that the definition resolves this one with `getOrNull` (it is nullable — the
- *   media-notification path has no origin). Nothing in the graph *provides* a PlayerOrigin, so
+ * - [PlayerOrigin] — the player's other runtime param, the list it was opened from, passed via
+ *   `parametersOf` alongside the youtubeId. Nothing in the graph *provides* a PlayerOrigin, so
  *   whitelisting it cannot mask a real missing binding.
  * - [Boolean]/[Int] — the `BuildInfo(isDebug, sdkInt)` constructor constants, wired in the module
  *   from `BuildConfig.DEBUG` / `Build.VERSION.SDK_INT` (no other definition injects a bare
