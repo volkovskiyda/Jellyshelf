@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
@@ -49,10 +50,20 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val SYNC_SCOPE_NUDGED = booleanPreferencesKey("sync_scope_nudged")
     }
 
-    override val settings: Flow<Settings> = ds.data
-        // A transient disk read failure must degrade to defaults, not propagate an IOException
-        // into every collector (and out of the sync worker).
+    /**
+     * Every read starts here rather than at [ds] directly: a transient disk read failure must
+     * degrade to defaults, not propagate an IOException into every collector (and out of the sync
+     * worker). One flow, so no accessor can be added later that forgets the rule — the whole file
+     * has the same "unreadable preferences read as unset" contract, and each accessor's KDoc says
+     * what unset means for it.
+     *
+     * Non-IOException failures still throw: those are bugs (a bad key type, a serializer fault),
+     * and swallowing them would hide a setting that silently never persists.
+     */
+    private val prefs: Flow<Preferences> = ds.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+
+    override val settings: Flow<Settings> = prefs
         .map { p ->
             Settings(
                 serverUrl = p[Keys.SERVER_URL].orEmpty(),
@@ -114,8 +125,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             .let { it[Keys.DEVICE_ID].orEmpty() }
     }
 
-    private suspend fun snapshotDeviceId(): String? = ds.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    private suspend fun snapshotDeviceId(): String? = prefs
         .first()[Keys.DEVICE_ID]
         ?.takeIf { it.isNotBlank() }
 
@@ -151,8 +161,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
      * preference kept out of [Settings] since it has nothing to do with the server connection.
      * Null on a disk read failure degrades to "no restore", matching [settings].
      */
-    override val selectedCategoryType: Flow<String?> = ds.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    override val selectedCategoryType: Flow<String?> = prefs
         .map { it[Keys.SELECTED_CATEGORY_TYPE] }
 
     override suspend fun setSelectedCategoryType(type: String) {
@@ -163,8 +172,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
      * The theme override, defaulting to auto — which is also what an unreadable preferences file
      * degrades to, so a disk failure leaves the app following the system rather than blank.
      */
-    override val themeState: Flow<ThemeState> = ds.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    override val themeState: Flow<ThemeState> = prefs
         .map {
             ThemeState(
                 mode = ThemeMode.fromStorage(it[Keys.THEME_MODE]),
@@ -184,8 +192,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
      * navigation so the app reopens on the exact screen the user left, restored by MainViewModel.
      * Serialization (an AppNavKey list) lives in the ViewModel; the repo stays a plain string store.
      */
-    override val backStackJson: Flow<String?> = ds.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    override val backStackJson: Flow<String?> = prefs
         .map { it[Keys.BACK_STACK] }
 
     override suspend fun setBackStackJson(json: String) {
@@ -197,10 +204,9 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
      * renumbered later — reads back as "no filter" instead of throwing on the launch that restores
      * it. Same degrade-to-default contract as [settings] and [selectedCategoryType].
      */
-    override val libraryDurationFilter: Flow<DurationBucket?> = ds.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
-        .map { prefs ->
-            prefs[Keys.LIBRARY_DURATION_FILTER]
+    override val libraryDurationFilter: Flow<DurationBucket?> = prefs
+        .map { p ->
+            p[Keys.LIBRARY_DURATION_FILTER]
                 ?.let { stored -> DurationBucket.entries.firstOrNull { it.id == stored } }
         }
 
@@ -215,8 +221,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         }
     }
 
-    override val categoriesSearchAll: Flow<Boolean> = ds.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    override val categoriesSearchAll: Flow<Boolean> = prefs
         .map { it[Keys.CATEGORIES_SEARCH_ALL] ?: false }
 
     override suspend fun setCategoriesSearchAll(enabled: Boolean) {
@@ -224,8 +229,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
     }
 
     /** Unreadable preferences degrade to "not yet nudged" — one spare nudge, never a lost sync. */
-    override val syncScopeNudged: Flow<Boolean> = ds.data
-        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+    override val syncScopeNudged: Flow<Boolean> = prefs
         .map { it[Keys.SYNC_SCOPE_NUDGED] ?: false }
 
     override suspend fun setSyncScopeNudged(nudged: Boolean) {

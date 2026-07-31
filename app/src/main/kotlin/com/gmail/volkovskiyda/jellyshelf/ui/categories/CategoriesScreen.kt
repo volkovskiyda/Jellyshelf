@@ -12,16 +12,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -54,6 +48,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
+import com.gmail.volkovskiyda.jellyshelf.ui.SearchField
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberPersistedLazyListState
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -116,22 +111,10 @@ internal fun CategoriesContent(
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(title = { Text(stringResource(R.string.tab_categories)) })
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear_search))
-                    }
-                }
-            },
-            placeholder = { Text(stringResource(R.string.search_categories)) },
+        SearchField(
+            query = query,
+            onQueryChange = onQueryChange,
+            placeholder = stringResource(R.string.search_categories),
         )
 
         val searching = query.isNotBlank()

@@ -1,6 +1,5 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
-import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,31 +10,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -46,8 +40,11 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGOR
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
+import com.gmail.volkovskiyda.jellyshelf.ui.DestructiveButton
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
+import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
@@ -67,7 +64,6 @@ fun CategoryVideosScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val viewModel: CategoryVideosViewModel = koinViewModel { parametersOf(categoryId) }
     val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
@@ -79,12 +75,9 @@ fun CategoryVideosScreen(
     var showDialog by rememberSaveable { mutableStateOf(false) }
     var showRemoveDialog by rememberSaveable { mutableStateOf(false) }
     val message by viewModel.message.collectAsStateWithLifecycle()
-    LaunchedEffect(message) {
-        message?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            showDialog = false
-            viewModel.consumeMessage()
-        }
+    ToastOnMessage(message) {
+        showDialog = false
+        viewModel.consumeMessage()
     }
 
     CategoryVideosContent(
@@ -212,14 +205,7 @@ internal fun CategoryVideosContent(
 private fun CategoryTopBar(title: String, videoCount: Int, onBack: () -> Unit, onShowDialog: () -> Unit) {
     TopAppBar(
         title = { Text(title) },
-        navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back),
-                )
-            }
-        },
+        navigationIcon = { BackButton(onClick = onBack) },
         actions = {
             if (videoCount > 0) {
                 Text(
@@ -351,14 +337,7 @@ private fun BulkStatusRow(text: String, actionLabel: String, onAction: () -> Uni
 @Composable
 private fun BulkStartButton(label: String, enabled: Boolean, destructive: Boolean, onStart: () -> Unit) {
     if (destructive) {
-        OutlinedButton(
-            onClick = onStart,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.error,
-            ),
-        ) { Text(label) }
+        DestructiveButton(label = label, onClick = onStart, enabled = enabled)
     } else {
         Button(
             onClick = onStart,

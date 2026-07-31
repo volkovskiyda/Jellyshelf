@@ -1,6 +1,5 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -18,18 +17,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -58,8 +54,11 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
+import com.gmail.volkovskiyda.jellyshelf.ui.DestructiveButton
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
+import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.formatSyncTime
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberNow
@@ -108,12 +107,7 @@ fun DetailScreen(
     val fetching by viewModel.fetching.collectAsStateWithLifecycle()
 
     val message by viewModel.message.collectAsStateWithLifecycle()
-    LaunchedEffect(message) {
-        message?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            viewModel.consumeMessage()
-        }
-    }
+    ToastOnMessage(message) { viewModel.consumeMessage() }
 
     // Leave as soon as this screen's own Remove has landed, instead of showing the user the
     // "video not found" state their tap just created.
@@ -188,14 +182,7 @@ internal fun DetailContent(
         topBar = {
             TopAppBar(
                 title = { Text(current?.channel ?: stringResource(R.string.video_fallback_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back),
-                        )
-                    }
-                },
+                navigationIcon = { BackButton(onClick = onBack) },
             )
         },
     ) { padding ->
@@ -367,13 +354,10 @@ internal fun DetailContent(
             // Only offered once the server has stopped listing the video: for anything still in
             // the library, sync owns the local rows and a manual delete would just be undone.
             if (current.missingFromServer) {
-                OutlinedButton(
+                DestructiveButton(
+                    label = stringResource(R.string.remove_from_library),
                     onClick = onRemove,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) { Text(stringResource(R.string.remove_from_library)) }
+                )
             }
 
             current.description?.takeIf { it.isNotBlank() }?.let { desc ->

@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -64,6 +63,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.ui.DestructiveButton
 import com.gmail.volkovskiyda.jellyshelf.ui.formatSyncTime
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberNow
 import kotlinx.coroutines.flow.Flow
@@ -232,14 +232,11 @@ internal fun SettingsContent(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.sync_now)) }
 
-            OutlinedButton(
+            DestructiveButton(
+                label = stringResource(R.string.reset_local_data),
                 onClick = { showResetDialog = true },
                 enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
-                ),
-            ) { Text(stringResource(R.string.reset_local_data)) }
+            )
 
             if (state.busy) CircularProgressIndicator()
 

@@ -513,9 +513,22 @@ class DefaultLibraryRepository(
             categoryDao.clearAutoCrossRefs(keepType = CATEGORY_TYPE_MANUAL)
             categoryDao.upsertAll(autoCategories.toList())
             if (crossRefs.isNotEmpty()) categoryDao.upsertCrossRefs(crossRefs)
-            categoryDao.pruneOrphanCrossRefs()
-            categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
+            pruneCategoryLeftovers()
         }
+    }
+
+    /**
+     * What a deleted video leaves behind: its category cross-refs, and any category those were
+     * the last members of. Always in the same transaction as the delete that orphaned them —
+     * orphan cross-refs are what the Categories screen counts, so a reader in between would see
+     * inflated counts and categories that no longer have anything in them.
+     *
+     * Both queries are full-table passes, which is why callers run this once per batch rather
+     * than once per video.
+     */
+    private suspend fun pruneCategoryLeftovers() {
+        categoryDao.pruneOrphanCrossRefs()
+        categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
     }
 
     /**
@@ -726,16 +739,10 @@ class DefaultLibraryRepository(
                 publish(BulkProgress.Running(i + 1, targets.size, failed))
             }
         } finally {
-            // Pruned once for the whole run, not per video: both queries are full-table passes.
-            // In a `finally` because a cancelled run has still deleted rows, and the orphan
-            // cross-refs they leave would inflate every category's count on the Categories screen.
+            // In a `finally` because a cancelled run has still deleted rows, and what they left
+            // behind has to go with them.
             withContext(NonCancellable) {
-                writeMutex.withLock {
-                    db.withTransaction {
-                        categoryDao.pruneOrphanCrossRefs()
-                        categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
-                    }
-                }
+                writeMutex.withLock { db.withTransaction { pruneCategoryLeftovers() } }
             }
         }
         publish(BulkProgress.Done(targets.size, failed))
@@ -798,8 +805,7 @@ class DefaultLibraryRepository(
             writeMutex.withLock {
                 db.withTransaction {
                     videoDao.delete(youtubeId)
-                    categoryDao.pruneOrphanCrossRefs()
-                    categoryDao.pruneEmptyCategories(CATEGORY_TYPE_MANUAL)
+                    pruneCategoryLeftovers()
                 }
             }
         }

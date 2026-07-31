@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,12 +16,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,7 +45,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -374,5 +386,97 @@ fun EmptyState(message: String, modifier: Modifier = Modifier) {
 fun LoadingState(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
+    }
+}
+
+/**
+ * The back affordance, with the one content description every screen announces it by — so
+ * TalkBack (and the instrumented tests that find it by that text) hear the same thing whether
+ * they are in a top bar or over the player's video.
+ *
+ * [tint] is unset by default and resolves inside the button, exactly where a bare [Icon] would
+ * have read it; the player passes white because its overlay sits on video rather than a surface.
+ */
+@Composable
+fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
+    IconButton(onClick = onClick, modifier = modifier) {
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = stringResource(R.string.back),
+            tint = tint.takeOrElse { LocalContentColor.current },
+        )
+    }
+}
+
+/**
+ * The search box above the Library and Categories lists: full width, one line, a clear button
+ * that appears only once there is something to clear.
+ *
+ * [placeholder] is the only difference between the two — each names what it searches, since a
+ * bare "Search" on the Categories tab reads as searching videos.
+ */
+@Composable
+fun SearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear_search))
+                }
+            }
+        },
+        placeholder = { Text(placeholder) },
+    )
+}
+
+/**
+ * An action that deletes something: outlined rather than filled, in the error color. The weight
+ * is deliberate — these sit next to ordinary buttons ("Sync now", "Fetch metadata") and must not
+ * read as one of them, but they are also not the primary action of any screen.
+ */
+@Composable
+fun DestructiveButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth(),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = MaterialTheme.colorScheme.error,
+        ),
+    ) { Text(label) }
+}
+
+/**
+ * Shows each one-shot [message] a ViewModel emits as a toast and hands it back as consumed, so a
+ * recomposition (or a rotation) can't show it twice.
+ *
+ * [onConsumed] rather than a repository call, because the screens do different things with the
+ * same signal — Category videos also closes its dialog on it.
+ */
+@Composable
+fun ToastOnMessage(message: String?, onConsumed: () -> Unit) {
+    val context = LocalContext.current
+    LaunchedEffect(message) {
+        message?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            onConsumed()
+        }
     }
 }
