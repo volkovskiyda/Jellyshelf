@@ -297,6 +297,11 @@ system image.
 [Environment config](#environment-config)). Without that file `assembleRelease` still configures
 and builds — it just produces an unsigned APK, which is what keeps CI from needing a keystore.
 
+Versions are never edited by hand: `versionCode` is the commit count and `versionName` comes from
+the release tag, both supplied by CI. Every green push to `main` reaches testers through Firebase
+App Distribution, and a `v*` tag publishes a signed APK to the Releases page —
+see [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Testing
 
 One command runs every layer available and prints a single verdict:
