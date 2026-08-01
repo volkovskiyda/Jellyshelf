@@ -89,7 +89,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0   # versionCode is the commit count; no lfs — nothing here reads a golden
+          fetch-depth: 0   # versionCode is the commit count
+          lfs: true        # not for goldens — the release build reads the LFS-tracked baseline
+                           # profile, and a pointer file fails expandReleaseArtProfileWildcards
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
