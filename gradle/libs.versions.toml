@@ -42,6 +42,10 @@ koinBom = "4.2.2"
 # the project's Kotlin version without blocking it.
 detekt = "1.23.8"
 # Compose Preview Screenshot Testing. Alpha and versioned independently of AGP; needs AGP 9.0+.
+# This ref also decides two transitives that dependencyUpdates keeps offering newer versions of:
+# layoutlib (the renderer behind the goldens) and the JUnit Platform line. Both are the plugin's
+# choice, not ours, and both move only when it publishes — forcing them means re-rendering every
+# LFS-tracked golden, or running an alpha compiled against JUnit Platform 1.x on 6.x.
 composeScreenshot = "0.0.1-alpha16"
 # Firebase. The BoM pins every SDK member, so firebase-crashlytics carries no version of its own.
 # The two Gradle plugins version independently of the BoM and of each other: google-services reads
