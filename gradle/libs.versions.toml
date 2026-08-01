@@ -1,4 +1,13 @@
 [versions]
+# Android SDK levels. minSdk and compileSdk are shared by :app and :baselineprofile — the
+# macrobenchmark module instruments the app it profiles, so both must compile against the same
+# platform and accept the same devices. targetSdk belongs to :app alone (a com.android.test module
+# declares none) and holds its own ref rather than reusing compileSdk's: the two move at different
+# times, since compiling against a new platform to see its warnings is a smaller step than opting
+# into its behaviour changes.
+minSdk = "30"
+compileSdk = "37"
+targetSdk = "37"
 # One ref per artifact family (navigation3, adaptive, coroutines, room, ktor): the members ship as
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.

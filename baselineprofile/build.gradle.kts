@@ -5,10 +5,10 @@ plugins {
 
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf.baselineprofile"
-    compileSdk = 37
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        minSdk = 30
+        minSdk = libs.versions.minSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {

@@ -38,12 +38,12 @@ val releaseVersion = findProperty("releaseVersion") as String?
 
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf"
-    compileSdk = 37
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
         applicationId = "com.gmail.volkovskiyda.jellyshelf"
-        minSdk = 30
-        targetSdk = 37
+        minSdk = libs.versions.minSdk.get().toInt()
+        targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = buildNumber ?: 1
         versionName = releaseVersion ?: buildNumber?.let { "$baseVersion.$it" } ?: baseVersion
 
