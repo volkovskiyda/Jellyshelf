@@ -39,11 +39,35 @@ base64 -i jellyshelf-release.jks | gh secret set KEYSTORE_BASE64
 gh secret set FIREBASE_SERVICE_ACCOUNT < firebase-ci.json && rm firebase-ci.json
 ```
 
-`FIREBASE_SERVICE_ACCOUNT` is a JSON key for a service account in the `jellyshelf-3dfc8` project.
-Create it in the Google Cloud console (IAM → Service Accounts) and grant it:
+`FIREBASE_SERVICE_ACCOUNT` is a JSON key for the `firebase-ci` service account in the
+`jellyshelf-3dfc8` project. To recreate it from scratch:
 
-- **Firebase App Distribution Admin** (`roles/firebaseappdistro.admin`) — the `distribute` job.
-- **Firebase Test Lab Admin** (`roles/cloudtestservice.testAdmin`) — the `testlab` job.
+```sh
+gcloud services enable iam.googleapis.com toolresults.googleapis.com testing.googleapis.com \
+  firebaseappdistribution.googleapis.com --project=jellyshelf-3dfc8
+
+gcloud iam service-accounts create firebase-ci --project=jellyshelf-3dfc8 \
+  --display-name=firebase-ci \
+  --description="GitHub Actions: Firebase App Distribution uploads and Test Lab runs"
+
+gcloud projects add-iam-policy-binding jellyshelf-3dfc8 --condition=None \
+  --member=serviceAccount:firebase-ci@jellyshelf-3dfc8.iam.gserviceaccount.com \
+  --role=roles/editor
+
+gcloud iam service-accounts keys create firebase-ci.json --project=jellyshelf-3dfc8 \
+  --iam-account=firebase-ci@jellyshelf-3dfc8.iam.gserviceaccount.com
+```
+
+**Why `roles/editor` and not something narrower.** The `testlab` job writes to the free Test Lab
+results bucket that Firebase provides, and
+[gcloud requires `roles/editor` on the principal to use it](https://firebase.google.com/docs/test-lab/android/iam-permissions-reference).
+`roles/cloudtestservice.testAdmin` is only sufficient alongside `roles/firebase.analyticsViewer`
+*and* a `--results-bucket` you own — a bucket, a lifecycle rule and a workflow flag, to narrow a key
+that is already confined to this one throwaway project. Editor also subsumes App Distribution, so
+the one binding covers both jobs.
+
+`toolresults.googleapis.com` is easy to miss: Test Lab stores every run's results through it, so the
+`testlab` job fails without it even though `testing.googleapis.com` is on.
 
 Then, in the Firebase console, open **App Distribution**, and create a tester group named `testers`.
 

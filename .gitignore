@@ -14,6 +14,7 @@ build
 .test.env
 keystore.properties
 *.jks
+/firebase-ci.json
 
 # /debug.keystore is deliberately NOT ignored. It is committed so this machine, any contributor
 # and CI all sign debug builds with the same certificate — the Firebase API key's Android app
