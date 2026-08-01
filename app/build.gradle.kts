@@ -26,6 +26,16 @@ fun loadEnv(file: java.io.File): Map<String, String> =
 val testEnv = loadEnv(rootProject.file(".test.env"))
 val keystoreEnv = loadEnv(rootProject.file("keystore.properties"))
 
+// Versioning is a CI concern; nothing here is edited per release. Both workflows pass
+// -PbuildNumber=$(git rev-list --count HEAD) — one monotonic versionCode shared by App Distribution
+// builds and tagged releases, so neither can ever install "over" the other backwards. (github.run_number
+// would not do: it counts per workflow.) release.yml additionally passes -PreleaseVersion from the
+// tag, which is the only thing that ever sets a versionName by hand. Local and IDE builds pass
+// neither and stay at 1 / the base version.
+val baseVersion = "1.0"
+val buildNumber = (findProperty("buildNumber") as String?)?.toIntOrNull()
+val releaseVersion = findProperty("releaseVersion") as String?
+
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf"
     compileSdk = 37
@@ -34,8 +44,8 @@ android {
         applicationId = "com.gmail.volkovskiyda.jellyshelf"
         minSdk = 30
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = buildNumber ?: 1
+        versionName = releaseVersion ?: buildNumber?.let { "$baseVersion.$it" } ?: baseVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Live-endpoint test config from the git-ignored .test.env, passed as runtime instrumentation

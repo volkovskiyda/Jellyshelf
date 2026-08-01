@@ -39,3 +39,42 @@ jobs:
             app/build/test-summary/
             app/build/reports/
           if-no-files-found: ignore
+
+  # Every green main push reaches testers, with no manual step. PRs never get here.
+  distribute:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # versionCode is the commit count; no lfs — nothing here reads a golden
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore signing
+        env:
+          KEYSTORE_PROPERTIES_BASE64: ${{ secrets.KEYSTORE_PROPERTIES_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: scripts/restore-signing.sh
+
+      - name: Build signed release APK
+        run: ./gradlew :app:assembleRelease -PbuildNumber=$(git rev-list --count HEAD)
+
+      - name: Upload to Firebase App Distribution
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+        run: |
+          set -euo pipefail
+          : "${FIREBASE_SERVICE_ACCOUNT:?set the FIREBASE_SERVICE_ACCOUNT repository secret (see docs/RELEASING.md)}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx firebase-tools@15 appdistribution:distribute \
+            app/build/outputs/apk/release/app-release.apk \
+            --app 1:967566106537:android:1b97dedaa2eec8bdbeeeb8 \
+            --groups testers \
+            --release-notes "main @ ${GITHUB_SHA::7}: $(git log -1 --pretty=%s)"
