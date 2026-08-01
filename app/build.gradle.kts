@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
     alias(libs.plugins.compose.screenshot)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 // Reads KEY=VALUE lines from a repo-root config file (blanks/comments ignored); a missing file
@@ -53,6 +55,17 @@ android {
     }
 
     signingConfigs {
+        // A project-local debug keystore, committed with the standard debug credentials, instead of
+        // the per-machine ~/.android/debug.keystore AGP would otherwise generate. It gives this
+        // laptop, any contributor and CI the same debug SHA-1, which is what the Firebase API key's
+        // Android app restriction is pinned to (see app/google-services.json). The shared keystore
+        // is deliberately left where it is — other projects' installed debug builds depend on it.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         // Only created when keystore.properties supplies a keystore. Without it assembleRelease
         // still configures and builds, producing an unsigned APK — PR CI never needs signing.
         if (keystoreEnv.containsKey("KEYSTORE_FILE")) {
@@ -72,6 +85,11 @@ android {
             // (debug overrides ic_launcher_foreground in src/debug/res with a "d" badge).
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // Debug isn't minified, so there is no mapping worth uploading — the task would just
+            // cost build time and demand credentials on every assembleDebug, including CI's.
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+            }
         }
         release {
             // findByName, not getByName: null on a checkout without keystore.properties, which
@@ -82,6 +100,12 @@ android {
             // come in automatically; app-specific rules live in src/main/keepRules/.
             optimization {
                 enable = true
+            }
+            // Ship the R8 mapping to Crashlytics so release stack traces arrive deobfuscated.
+            // Item 05 attaches the same file to each GitHub Release; the two serve different
+            // readers and both are worth having.
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = true
             }
         }
     }
@@ -461,6 +485,8 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.coil.compose)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
     implementation(platform(libs.ktor.bom))
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

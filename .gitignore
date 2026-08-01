@@ -15,6 +15,11 @@ build
 keystore.properties
 *.jks
 
+# /debug.keystore is deliberately NOT ignored. It is committed so this machine, any contributor
+# and CI all sign debug builds with the same certificate — the Firebase API key's Android app
+# restriction is pinned to that SHA-1. It holds the conventional debug credentials and signs
+# nothing that ships; only the release keystore above is secret.
+
 # Android Studio's "Generate Signed Bundle / APK" wizard writes outside build/
 /app/release/
 /app/debug/

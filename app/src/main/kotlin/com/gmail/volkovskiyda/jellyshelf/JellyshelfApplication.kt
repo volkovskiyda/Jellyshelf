@@ -5,6 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.koin.workManagerFactory
@@ -23,13 +24,20 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
             workManagerFactory()
             modules(appModule)
         }
-        // Plant the debug tree after Koin starts so the flag comes from the injected BuildInfo (the
-        // single source of truth). Release plants no tree, so every Timber call is a no-op at
-        // runtime — and R8's -assumenosideeffects rules (src/main/keepRules) strip the calls from
-        // release bytecode entirely.
-        if (get<BuildInfo>().isDebug) {
+        // Read after Koin starts so the flag comes from the injected BuildInfo (the single source
+        // of truth), and shared by the two gates below rather than resolved from the graph twice.
+        val isDebug = get<BuildInfo>().isDebug
+        // Release plants no tree, so every Timber call is a no-op at runtime — and R8's
+        // -assumenosideeffects rules (src/main/keepRules) strip the calls from release bytecode
+        // entirely.
+        if (isDebug) {
             Timber.plant(Timber.DebugTree())
         }
+        // The inverse gate: only release builds report crashes, so the dashboard describes real
+        // usage and development crashes never dilute the crash-free-users metric. Crashlytics
+        // persists this flag, so setting it on every start is what keeps a build that changes type
+        // from inheriting the previous answer.
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!isDebug)
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
         // launches, and re-scheduling on every start would undo "Reset local data", which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).

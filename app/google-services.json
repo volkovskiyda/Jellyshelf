@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "967566106537",
+    "project_id": "jellyshelf-3dfc8",
+    "storage_bucket": "jellyshelf-3dfc8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:967566106537:android:1b97dedaa2eec8bdbeeeb8",
+        "android_client_info": {
+          "package_name": "com.gmail.volkovskiyda.jellyshelf"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB00RyxJRE06cDG5SNw9twcwJPYnesPA6g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:967566106537:android:5d12e18dbbc3ec2ebeeeb8",
+        "android_client_info": {
+          "package_name": "com.gmail.volkovskiyda.jellyshelf.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB00RyxJRE06cDG5SNw9twcwJPYnesPA6g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
