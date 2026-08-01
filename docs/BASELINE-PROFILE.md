@@ -35,19 +35,22 @@ stays `false` so `assembleRelease` never asks for a device.
   adb shell settings put global stay_on_while_plugged_in 7
   adb shell settings put system screen_off_timeout 1800000   # restore yours afterwards
   ```
-- **No signing setup.** The `nonMinifiedRelease` variant the generator profiles is signed with the
-  committed `debug.keystore`, so a checkout without `keystore.properties` generates exactly as well
-  as one with it. Signing cannot reach a profile — it is a list of classes and methods.
+- **Nothing to set up for signing.** The `nonMinifiedRelease` variant the generator profiles inherits
+  the release signing config, so with `keystore.properties` at the repo root it is signed exactly
+  like the APK that ships. A checkout without those signing files falls back to the committed
+  `debug.keystore` instead of producing an unsigned, uninstallable APK, so anyone can still generate
+  a profile — that path is the backup, not the normal one. Signing cannot reach a profile either
+  way: it is a list of classes and methods.
 - **`git lfs install`** in the clone, so the committed profile is stored as an LFS object.
 - **No Jellyfin server, account or network.** The run drives [demo mode](../README.md#demo-mode--try-it-without-a-server):
   it taps **Try demo**, which seeds ~60 videos from a bundled asset, and every video plays a bundled
   clip. That is deliberate — two profiles then differ because the *app* changed, not because the
   library did.
 
-The run installs under the release application id (no `.debug` suffix) but with the debug
-certificate, so it cannot update an installed *release* build of the app — uninstall one first if the
-device has it, an App Distribution build included. The `.debug` build is a separate package and is
-left alone.
+The run installs under the release application id (no `.debug` suffix), so it replaces an installed
+release build of the app — cleanly, since both carry the release certificate. Only in the debug-signed
+fallback case do the certificates differ, and then the install is refused rather than performed; see
+[below](#when-it-goes-wrong). The `.debug` build is a separate package and is left alone either way.
 
 ## Generate
 
@@ -68,6 +71,13 @@ It is a real device run: two tests, each repeating its journey across several it
 process kill between them, until the profile stabilises. The task is on `:app`, not on
 `:baselineprofile` — that module exposes only the `collect…` and `connected…` halves.
 
+The variant it profiles is `nonMinifiedRelease`: the release build type with R8 switched off, and
+nothing else changed. Application id, `BuildConfig.DEBUG`, manifest, resources and — when
+`keystore.properties` is present — the signing certificate are all the release configuration.
+R8 is the one deliberate difference, because a profile written against obfuscated names would match
+nothing in the APK that ships; AGP maps the committed profile through R8 when it builds the real
+release APK.
+
 With no device attached this **fails**, on purpose. `:app`'s `connected*AndroidTest` skip guard
 covers that project's tasks only, and this is an explicit manual command rather than something a
 build stumbles into.
@@ -81,6 +91,20 @@ itself.
 Both failure modes below produce a *plausible-looking* file, so check rather than assume. Figures in
 the last column come from a healthy run — successive runs vary by a few hundred entries either way,
 so a new profile should land in the same ballpark rather than match exactly.
+
+Start with what the run itself prints — the plugin compares the new profile against the one it
+replaces:
+
+```
+Comparison with previous baseline profile:
+  40438 Old rules
+  40277 New rules
+  22 Added rules (0.05%)
+  183 Removed rules (0.45%)
+```
+
+Fractions of a percent are ordinary run-to-run drift. A near-total replacement means something
+structural changed, and the obfuscation trap below is the first thing to suspect.
 
 ```sh
 cd app/src/release/generated/baselineProfiles
@@ -130,19 +154,20 @@ missing. The usual cause is the resource-id bridge — `testTagsAsResourceId` on
 Scaffold, and the `library_list` / `library_row` tags in `LibraryScreen` — since UiAutomator cannot
 see Compose test tags without it.
 
-**`INSTALL_FAILED_UPDATE_INCOMPATIBLE` before any test runs.** A release-signed build of the app is
-already on the device, and the generator's APK carries the debug certificate under the same
-application id. `adb uninstall com.gmail.volkovskiyda.jellyshelf`, then re-run — the `.debug` build is
-a different package and can stay where it is.
+**`INSTALL_FAILED_UPDATE_INCOMPATIBLE` before any test runs.** Specific to the no-keystore fallback:
+the APK is debug-signed, while the release build already on the device carries the release
+certificate under the same application id. `adb uninstall com.gmail.volkovskiyda.jellyshelf`, then
+re-run — the `.debug` build is a different package and can stay where it is. With
+`keystore.properties` in place both are release-signed and the update just works.
 
 **The library never fills.** The demo seed writes ~60 videos and their categories to a real database;
 the generator allows 30 s for it. A device that is throttling or unusually busy can miss that.
 
-**Firebase errors in logcat during the run.** Expected, and harmless. The variant is not debuggable,
-so `JellyshelfApplication` switches Crashlytics collection on, while the project's Firebase API key
-is restricted to the release package with the release certificate and the debug package with the
-debug one — a debug-signed release package is neither pair. Nothing in the journey depends on
-Firebase, and demo mode needs no network at all.
+**Firebase errors in logcat during the run.** The no-keystore fallback again, and harmless. The
+variant is not debuggable, so `JellyshelfApplication` switches Crashlytics collection on, while the
+project's Firebase API key is restricted to the release package with the release certificate and the
+debug package with the debug one — a debug-signed release package is neither pair. Nothing in the
+journey depends on Firebase, and demo mode needs no network at all.
 
 ## Is it earning its place?
 

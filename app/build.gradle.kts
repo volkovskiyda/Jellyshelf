@@ -184,16 +184,19 @@ ksp {
 // is deliberately left minified — that variant exists to be release-like.
 androidComponents {
     finalizeDsl { android ->
-        val debugSigning = android.signingConfigs.getByName("debug")
         android.buildTypes.filter { it.name.startsWith("nonMinified") }.forEach { buildType ->
             buildType.optimization.enable = false
-            // Signed with the committed debug keystore instead of the release config it inherits.
-            // That config exists only when keystore.properties does, so on a checkout without one
-            // the generator's APK came out unsigned, the device refused to install it, and
-            // regenerating the profile was effectively maintainer-only. Signing cannot reach the
-            // profile — it is a list of classes and methods — so uniform debug signing costs the
-            // generated file nothing and makes the run reproducible for anyone.
-            buildType.signingConfig = debugSigning
+            // Signing is left exactly as inherited from release — the generator should profile a
+            // build signed the way the shipped one is — and only filled in when that inheritance
+            // yields nothing. It yields nothing on a checkout without keystore.properties, where
+            // release's config is never created (see buildTypes.release above): the APK then comes
+            // out unsigned, the device refuses to install it, and generating a profile would be
+            // impossible for anyone but the keystore holder. The committed debug keystore is the
+            // fallback for that case alone. Signing cannot reach the profile either way — it is a
+            // list of classes and methods.
+            if (buildType.signingConfig == null) {
+                buildType.signingConfig = android.signingConfigs.getByName("debug")
+            }
         }
     }
 }
