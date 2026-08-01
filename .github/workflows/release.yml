@@ -47,7 +47,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          V=${GITHUB_REF_NAME#v}
+          # Assets carry the versionCode as well as the tag. The tag alone is ambiguous — v1.0 says
+          # nothing about which build it was — and versionCode is the one identifier shared with the
+          # App Distribution builds, so mapping-1.0.164.txt can be matched to a crash by hand.
+          V="${GITHUB_REF_NAME#v}.$(git rev-list --count HEAD)"
           cp app/build/outputs/apk/release/app-release.apk "jellyshelf-$V.apk"
           cp app/build/outputs/mapping/release/mapping.txt "mapping-$V.txt"
           gh release create "$GITHUB_REF_NAME" "jellyshelf-$V.apk" "mapping-$V.txt" \

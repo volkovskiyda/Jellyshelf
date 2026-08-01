@@ -20,13 +20,19 @@ scripts/release.sh
 It checks that `HEAD` is `origin/main` with a clean tree, shows the versionCode the build will get,
 asks for the version name, then tags `v<name>` and pushes. The
 [Release workflow](../.github/workflows/release.yml) takes over and publishes a release with
-`jellyshelf-<version>.apk` and `mapping-<version>.txt` attached.
+`jellyshelf-<version>.<versionCode>.apk` and `mapping-<version>.<versionCode>.txt` attached.
+
+The APK's own `versionName` is the tag alone — tag `v1.0` reports `1.0` — but the **asset filenames
+append the versionCode**, so `v1.0` at commit 164 publishes `jellyshelf-1.0.164.apk`. The tag by
+itself does not identify a build, and versionCode is the only identifier shared with the App
+Distribution channel, which is what lets a mapping file be matched to a crash by hand.
 
 Plain `git tag v<version> && git push origin v<version>` does the same thing.
 
 **Keep the mapping file.** Release builds are R8-obfuscated, so a stack trace from a released APK is
-unreadable without the `mapping-<version>.txt` from that exact build. Firebase Crashlytics gets its
-own copy automatically; the release asset is for anyone reading a trace pasted into an issue.
+unreadable without the `mapping-<version>.<versionCode>.txt` from that exact build. Firebase
+Crashlytics gets its own copy automatically; the release asset is for anyone reading a trace pasted
+into an issue.
 
 ## One-time setup
 
