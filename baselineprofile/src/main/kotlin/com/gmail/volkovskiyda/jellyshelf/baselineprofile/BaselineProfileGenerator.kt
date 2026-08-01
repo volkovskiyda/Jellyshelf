@@ -25,7 +25,9 @@ import org.junit.runners.MethodSorters
  * ./gradlew :app:generateReleaseBaselineProfile
  * ```
  *
- * then commit what lands in `app/src/release/generated/baselineProfiles/`. Regenerate when the
+ * then commit what lands in `app/src/release/generated/baselineProfiles/` — but check it first:
+ * two failure modes yield a plausible-looking, worthless profile, and `docs/BASELINE-PROFILE.md` is
+ * the runbook that lists them along with the rest of the prerequisites. Regenerate when the
  * startup path changes shape, not on every commit. CI never runs this: the app APK is arm64-only,
  * which no x86_64 runner or managed device can install, and `automaticGenerationDuringBuild` stays
  * false so `assembleRelease` never needs a device.
