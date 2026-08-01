@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      ktor-utils references java.lang.management from IntelliJ-debugger-only code
+      (io.ktor.util.debug.IntellijIdeaDebugDetector) that never runs on Android.
+
+      Scoped to the one artifact rather than baselined: a baseline entry pins the finding to the
+      jar's cache path, which embeds the version and its hash, so every ktor bump unmatched the
+      entry and failed the build twice over (stale LintBaselineFixed plus the re-fired error).
+      Matching on the artifact name survives version bumps, and InvalidPackage stays live for
+      every other dependency.
+    -->
+    <issue id="InvalidPackage">
+        <ignore regexp="ktor-utils-jvm" />
+    </issue>
+</lint>

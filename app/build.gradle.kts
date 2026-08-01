@@ -157,11 +157,9 @@ android {
         checkAllWarnings = true
         // The one check checkAllWarnings leaves off (experimental interprocedural analysis).
         enable += "WrongThreadInterprocedural"
-        // Baseline (not disable) for the one known third-party false positive: ktor-utils
-        // references java.lang.management from IntelliJ-debugger-only code that never runs on
-        // Android (InvalidPackage). Baselining keeps the check live for future dependencies.
-        // Regenerate after dependency bumps with: ./gradlew :app:updateLintBaselineDebug
-        baseline = file("lint-baseline.xml")
+        // The one known third-party false positive (ktor-utils referencing java.lang.management)
+        // is suppressed per-artifact in lint.xml, not baselined: a baseline pins the finding to a
+        // jar path that carries the version, so it needed regenerating on every ktor bump.
         // Also print findings to the console; file reports in build/reports/ stay as-is.
         printTextReport = true
     }
