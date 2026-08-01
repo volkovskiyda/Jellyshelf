@@ -7,3 +7,14 @@
 # not the src/<variant>/screenshotTest/ that its own documentation implies. Verify with
 # `git check-attr filter -- <path>` after a plugin upgrade.
 app/src/screenshotTest*/reference/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# The generated baseline profile, tracked here for the same reason and with the same caveat: it is
+# regenerated wholesale (see :baselineprofile) rather than edited, so every regeneration would
+# otherwise add a full ~15k-line copy to the pack forever. The trade-off cuts the other way from the
+# goldens, though — this is plain text, which git would delta well and LFS stores whole. Tracked
+# from the first commit anyway, because converting later means rewriting history.
+#
+# The path is chosen by the androidx.baselineprofile plugin: src/<variant>/generated/baselineProfiles/,
+# holding baseline-prof.txt and startup-prof.txt. Verify with `git check-attr filter -- <path>`
+# after a plugin upgrade.
+app/src/release/generated/baselineProfiles/*.txt filter=lfs diff=lfs merge=lfs -text

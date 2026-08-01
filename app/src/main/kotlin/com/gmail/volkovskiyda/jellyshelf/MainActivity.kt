@@ -29,9 +29,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -199,6 +202,7 @@ internal fun JellyshelfApp(viewModel: MainViewModel = koinViewModel()) {
 
 @Composable
 @Suppress("SpreadOperator") // rememberNavBackStack is vararg-only; copies a handful of nav keys, once per composition
+@OptIn(ExperimentalComposeUiApi::class) // testTagsAsResourceId, on the Scaffold below
 private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel) {
     val backStack = rememberNavBackStack(*startStack.toTypedArray())
     val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
@@ -271,7 +275,14 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     val navThrottle = rememberClickThrottle()
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            // Republishes every Compose testTag below this point as an Android resource id. It
+            // changes nothing for the app or for the Compose test suite, which match on semantics
+            // directly; it exists for the baseline-profile generator, which drives the app through
+            // UiAutomator. UiAutomator cannot see test tags at all without this, so By.res(...)
+            // would match nothing and quietly profile the launch and nothing else.
+            .semantics { testTagsAsResourceId = true },
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {

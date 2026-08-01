@@ -40,6 +40,15 @@ composeScreenshot = "0.0.1-alpha16"
 googleServices = "4.5.0"
 firebaseBom = "34.17.0"
 firebaseCrashlyticsPlugin = "3.0.7"
+# Baseline profile. The benchmark family (the plugin and macro-junit4) ships as a set and shares one
+# ref. This is a pre-release on purpose: 1.4.1 is the latest stable, but it refuses to apply to an
+# AGP 9 application module ("Module `:app` is not a supported android module"), and 1.5.0-beta01 is
+# the first version that accepts one. Drop back to stable once 1.5.0 ships.
+# profileinstaller is the runtime half: it installs the committed profile on devices where ART does
+# not pick it up by itself, and it versions independently of the benchmark family.
+androidxBaselineProfile = "1.5.0-beta01"
+profileinstaller = "1.4.1"
+uiautomator = "2.4.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -103,11 +112,16 @@ detekt-formatting = { group = "io.gitlab.arturbosch.detekt", name = "detekt-form
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-ui-test-junit4-accessibility = { group = "androidx.compose.ui", name = "ui-test-junit4-accessibility" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "androidxBaselineProfile" }
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
+androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-test = { id = "com.android.test", version.ref = "agp" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "androidxBaselineProfile" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "googleDevtoolsKsp" }
 jetbrains-kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

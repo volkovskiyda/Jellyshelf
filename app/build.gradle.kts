@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.compose.screenshot)
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 // Reads KEY=VALUE lines from a repo-root config file (blanks/comments ignored); a missing file
@@ -159,6 +160,32 @@ android {
 ksp {
     // Check generated Room schemas into app/schemas so version bumps can ship real migrations.
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// The baseline-profile plugin derives its nonMinifiedRelease variant from release so the generator
+// runs against readable class names, and it does that by clearing the legacy isMinifyEnabled flag —
+// which this project never sets: R8 is switched on through the release buildType's optimization
+// block, and it survived the copy. The first profile generated here came out fully obfuscated as a
+// result, which is worse than having none, because R8 picks fresh names on every build and not one
+// entry would have matched the APK it shipped in.
+//
+// finalizeDsl rather than the buildTypes block: the plugin copies release's settings onto the new
+// build type after any configureEach there has run, so this has to be the last word. benchmarkRelease
+// is deliberately left minified — that variant exists to be release-like.
+androidComponents {
+    finalizeDsl { android ->
+        android.buildTypes.filter { it.name.startsWith("nonMinified") }.forEach { buildType ->
+            buildType.optimization.enable = false
+        }
+    }
+}
+
+baselineProfile {
+    // A release build must never need a device. Generation is the deliberate manual step described
+    // in :baselineprofile's BaselineProfileGenerator — run against the physical Pixel 5, with its
+    // output committed — because the arm64-only APK installs on nothing CI can offer. Leaving this
+    // at its default true would make assembleRelease try to generate, and CI would fail.
+    automaticGenerationDuringBuild = false
 }
 
 // Instrumented tests (Compose behavior tests, Room DAO, Ktor serialization) need a real device or
@@ -481,6 +508,9 @@ dependencies {
     implementation(libs.androidx.media3.ui.compose)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
+    // Installs the committed baseline profile at runtime on devices where ART does not pick it up
+    // from the APK by itself. Without it the profile ships but may never be applied.
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.work.runtime.ktx)
@@ -530,5 +560,7 @@ dependencies {
     // Renders @PreviewTest previews host-side (LayoutLib) into reference images.
     screenshotTestImplementation(libs.androidx.compose.ui.tooling)
     screenshotTestImplementation(libs.screenshot.validation.api)
+    // Where generateBaselineProfile takes its profile from; consumed, not built, by normal builds.
+    baselineProfile(project(":baselineprofile"))
     "ksp"(libs.androidx.room.compiler)
 }

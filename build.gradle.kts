@@ -1,6 +1,11 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     alias(libs.plugins.android.application) apply false
+    // Declared here, not only in :baselineprofile — AGP is already on the build classpath from the
+    // line above, so a versioned request in a submodule cannot be version-checked and fails.
+    alias(libs.plugins.android.test) apply false
+    // Applied by both :app (to consume the profile) and :baselineprofile (to generate it).
+    alias(libs.plugins.androidx.baselineprofile) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.google.devtools.ksp) apply false
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization) apply false
@@ -13,7 +18,7 @@ plugins {
 // (see app/build.gradle.kts, checkAllWarnings = true); detekt covers Kotlin style and complexity,
 // with detekt-formatting adding the ktlint rule set.
 detekt {
-    source.from(files("app/src"))
+    source.from(files("app/src", "baselineprofile/src"))
     config.from(files("config/detekt/detekt.yml"))
     // The config file holds only this project's overrides; everything else comes from detekt's
     // defaults, so a version bump brings new rules instead of freezing a 500-line copy.

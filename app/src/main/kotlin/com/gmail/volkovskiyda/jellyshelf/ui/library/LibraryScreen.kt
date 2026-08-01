@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -42,6 +43,16 @@ import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+
+/**
+ * Handles for the baseline-profile generator (`:baselineprofile`), which drives this screen through
+ * UiAutomator and so cannot match on Compose semantics the way the instrumented tests do. Named in
+ * resource-id style because that is what they become: MainActivity's root Scaffold sets
+ * `testTagsAsResourceId`, which republishes every tag below it as an Android resource id. They have
+ * no other meaning — nothing in the app or the test suite reads them.
+ */
+internal const val LIBRARY_LIST_TAG = "library_list"
+internal const val LIBRARY_ROW_TAG = "library_row"
 
 /**
  * Library tab: binds [LibraryViewModel] to the stateless [LibraryContent] below. Everything this
@@ -177,13 +188,16 @@ internal fun LibraryContent(
             }
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(LIBRARY_LIST_TAG),
             ) {
                 items(videos, key = { it.youtubeId }) { video ->
                     VideoRow(
                         video = video,
                         onClick = { onVideoClick(video) },
                         thumbnailModel = thumbnailModel(video),
+                        modifier = Modifier.testTag(LIBRARY_ROW_TAG),
                     )
                 }
             }
