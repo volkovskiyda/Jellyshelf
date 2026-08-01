@@ -40,10 +40,50 @@ jobs:
             app/build/reports/
           if-no-files-found: ignore
 
+  # The instrumented suite — the only layer that needs a real device, and the only place a release
+  # APK's R8 output ever gets exercised before testers see it. It cannot run on a GitHub runner: the
+  # APK is arm64-only by design, so an x86_64 emulator refuses it with INSTALL_FAILED_NO_MATCHING_ABIS
+  # and the arm64 macOS runners have no nested virtualisation. Test Lab has arm64 virtual devices.
+  #
+  # Main pushes only. PRs keep the host-side suite, which keeps the Spark plan's 10 virtual-device
+  # runs/day comfortable.
+  testlab:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7   # no lfs; debug.keystore is committed and signs the test APKs
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+
+      - run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+
+      # gcloud is preinstalled on ubuntu runners. LiveEndpointTest skips itself here: its .test.env
+      # instrumentation extras are absent, and its server is not reachable from Google's network
+      # anyway. BrowseCostBenchmark is @Ignore'd and costs no quota.
+      - name: Run instrumented tests on Test Lab
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          : "${FIREBASE_SERVICE_ACCOUNT:?set the FIREBASE_SERVICE_ACCOUNT repository secret (see docs/RELEASING.md)}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
+          gcloud auth activate-service-account --key-file "$RUNNER_TEMP/firebase-sa.json"
+          gcloud config set project jellyshelf-3dfc8
+          gcloud firebase test android run --type instrumentation \
+            --app app/build/outputs/apk/debug/app-debug.apk \
+            --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+            --device model=MediumPhone.arm,version=36 \
+            --timeout 15m
+
   # Every green main push reaches testers, with no manual step. PRs never get here.
   distribute:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [checks]
+    needs: [checks, testlab]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
