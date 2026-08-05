@@ -19,9 +19,9 @@ import kotlinx.coroutines.flow.map
  * — throws, deliberately: a test that reaches one of them has wandered outside what this fake
  * models, and a silent no-op would let it pass while proving nothing.
  *
- * The two exceptions are [seedDemoLibrary] and [clearLocalData], which are *counted* rather than
- * either performed or refused: whether they were called, and how often, is the assertion demo-mode
- * tests are making, and a throw would only tell them the call happened once.
+ * The exceptions are [seedDemoLibrary], [clearLocalData] and [sync], which are *counted* rather
+ * than either performed or refused: whether they were called, and how often, is the assertion
+ * demo-mode tests are making, and a throw would only tell them the call happened once.
  *
  * [videos] and [searchResults] are hot, so a test can emit a new list into a collector that is
  * already running and watch the flow assembly react.
@@ -63,7 +63,21 @@ class FakeLibraryRepository(
     override val bulkFetch: StateFlow<BulkProgress> = MutableStateFlow(BulkProgress.Idle)
     override val bulkRemove: StateFlow<BulkProgress> = MutableStateFlow(BulkProgress.Idle)
 
-    override suspend fun sync(): SyncResult = notModelled()
+    /**
+     * What [sync] returns, and how often it was called. Modelled rather than refused, unlike the
+     * rest: a demo sync doesn't go through WorkManager, so the Settings ViewModel calls this
+     * directly and reports what it returns.
+     */
+    var syncResult: SyncResult = SyncResult.Success(itemCount = 0, matched = 0, indexed = 0, categories = 0)
+    var syncs = 0
+        private set
+
+    override suspend fun sync(): SyncResult {
+        syncs++
+        writeOrder += "sync"
+        return syncResult
+    }
+
     override suspend fun fetchMetadata(youtubeId: String): FetchResult = notModelled()
     override fun startFetchMissing(): Unit = notModelled()
     override fun cancelFetchMissing(): Unit = notModelled()

@@ -12,6 +12,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_SERVER
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Session
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
@@ -269,24 +270,16 @@ class SettingsViewModel(
                         val message = if (out.keyValueMap.isEmpty()) {
                             null
                         } else {
-                            val summary = app.getString(
-                                R.string.sync_summary,
-                                out.getInt(SyncWorker.KEY_INDEXED, 0),
-                                out.getInt(SyncWorker.KEY_MATCHED, 0),
-                                out.getInt(SyncWorker.KEY_CATEGORIES, 0),
-                            )
-                            // The sync succeeded, but without the metadata index its counts are
-                            // the reason "nothing new gets categorized" — say so rather than
-                            // reporting an unqualified success.
-                            val qualified = if (out.getBoolean(SyncWorker.KEY_INDEX_DEGRADED, false)) {
-                                app.getString(R.string.sync_index_unavailable, summary)
-                            } else {
-                                summary
-                            }
-                            appendAutoFill(
-                                qualified,
-                                filled = out.getInt(SyncWorker.KEY_AUTO_FILLED, 0),
-                                failed = out.getInt(SyncWorker.KEY_AUTO_FILL_FAILED, 0),
+                            syncSummary(
+                                SyncResult.Success(
+                                    itemCount = 0, // not carried in the output — nothing shows it
+                                    matched = out.getInt(SyncWorker.KEY_MATCHED, 0),
+                                    indexed = out.getInt(SyncWorker.KEY_INDEXED, 0),
+                                    categories = out.getInt(SyncWorker.KEY_CATEGORIES, 0),
+                                    indexDegraded = out.getBoolean(SyncWorker.KEY_INDEX_DEGRADED, false),
+                                    autoFilled = out.getInt(SyncWorker.KEY_AUTO_FILLED, 0),
+                                    autoFillFailed = out.getInt(SyncWorker.KEY_AUTO_FILL_FAILED, 0),
+                                ),
                             )
                         }
                         _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
@@ -309,6 +302,28 @@ class SettingsViewModel(
                 }
             }
             .launchIn(viewModelScope)
+    }
+
+    /**
+     * The status line for a successful sync. Shared by the worker's output data and by the demo
+     * sync, which reports the same [SyncResult] without going through WorkManager at all — one
+     * wording for both, so a demo sync reads exactly like a real one.
+     */
+    private fun syncSummary(result: SyncResult.Success): String {
+        val summary = app.getString(
+            R.string.sync_summary,
+            result.indexed,
+            result.matched,
+            result.categories,
+        )
+        // The sync succeeded, but without the metadata index its counts are the reason "nothing
+        // new gets categorized" — say so rather than reporting an unqualified success.
+        val qualified = if (result.indexDegraded) {
+            app.getString(R.string.sync_index_unavailable, summary)
+        } else {
+            summary
+        }
+        return appendAutoFill(qualified, result.autoFilled, result.autoFillFailed)
     }
 
     /**
@@ -817,6 +832,10 @@ class SettingsViewModel(
     fun syncNow() {
         val indexUrl = _state.value.indexUrl
         viewModelScope.launch {
+            if (settingsRepo.snapshot().demoMode) {
+                demoSync()
+                return@launch
+            }
             if (shouldNudgeScope()) {
                 settingsRepo.setSyncScopeNudged(true)
                 _state.value = _state.value.copy(
@@ -835,6 +854,28 @@ class SettingsViewModel(
                 settingsRepo.setIndexUrl(indexUrl)
                 syncScheduler.syncNow()
             }
+        }
+    }
+
+    /**
+     * A demo sync runs here rather than through [SyncScheduler], and reports into [_sync] itself.
+     *
+     * Two reasons, both about the worker rather than the sync: it is constrained to
+     * `NetworkType.CONNECTED`, so on the offline device a demo is most likely to be shown on it
+     * would sit enqueued and leave the screen saying "Syncing…" forever — and `syncNow` also
+     * (re)creates the *periodic* worker, which a demo install has no business scheduling for a
+     * server it does not have. What the sync itself does is the repository's business, and is the
+     * same [LibraryRepository.sync] call the worker would have made.
+     */
+    private suspend fun demoSync() {
+        _sync.value = SyncUi(running = true, message = app.getString(R.string.syncing), isError = false)
+        // NonCancellable so a tab switch mid-sync can't abandon a half-applied one: this ViewModel
+        // is cleared on every tab change, unlike the worker that normally owns this work.
+        val result = withContext(NonCancellable) { libraryRepo.sync() }
+        _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
+        _sync.value = when (result) {
+            is SyncResult.Success -> SyncUi(false, syncSummary(result), isError = false)
+            is SyncResult.Error -> SyncUi(false, result.message, isError = true)
         }
     }
 

@@ -69,6 +69,7 @@ fun CategoryVideosScreen(
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
     val bulkRemove by viewModel.bulkRemove.collectAsStateWithLifecycle()
     val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
+    val demoMode by viewModel.demoMode.collectAsStateWithLifecycle()
 
     // Dialog visibility lives here, not in the content: a finished playlist creation reports via
     // [message], and that same signal is what closes the dialog.
@@ -86,6 +87,7 @@ fun CategoryVideosScreen(
         bulkFetch = bulkFetch,
         bulkRemove = bulkRemove,
         creating = creating,
+        demoMode = demoMode,
         isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
         isWatched = categoryId == VIRTUAL_CATEGORY_WATCHED,
         scrollKey = "category.$categoryId",
@@ -118,6 +120,7 @@ internal fun CategoryVideosContent(
     bulkFetch: BulkProgress,
     bulkRemove: BulkProgress,
     creating: Boolean,
+    demoMode: Boolean,
     isUncategorized: Boolean,
     isWatched: Boolean,
     scrollKey: String,
@@ -193,6 +196,7 @@ internal fun CategoryVideosContent(
     if (showRemoveDialog) {
         RemoveWatchedDialog(
             videoCount = videos.size,
+            demoMode = demoMode,
             onDismiss = onDismissRemoveDialog,
             onConfirm = onConfirmRemoveWatched,
         )
@@ -350,10 +354,14 @@ private fun BulkStartButton(label: String, enabled: Boolean, destructive: Boolea
 /**
  * Confirms the bulk removal. Spelled out rather than a plain "are you sure": this deletes the
  * media on the server, which no re-sync can bring back.
+ *
+ * A demo says what a demo can honestly say instead. The removal is just as real there — the rows
+ * go — but there is no server and no media file, and re-entering the demo restores the dataset.
  */
 @Composable
 private fun RemoveWatchedDialog(
     videoCount: Int,
+    demoMode: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
@@ -363,7 +371,11 @@ private fun RemoveWatchedDialog(
         text = {
             Text(
                 stringResource(
-                    R.string.remove_watched_dialog_text,
+                    if (demoMode) {
+                        R.string.remove_watched_dialog_text_demo
+                    } else {
+                        R.string.remove_watched_dialog_text
+                    },
                     pluralStringResource(R.plurals.video_count, videoCount, videoCount),
                 ),
             )

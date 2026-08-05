@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
@@ -14,6 +15,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -21,12 +23,22 @@ import kotlinx.coroutines.withContext
 class CategoryVideosViewModel(
     private val app: Application,
     private val repo: LibraryRepository,
+    settingsState: AppSettingsState,
     private val categoryId: String,
 ) : ViewModel() {
 
     /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
     val videos: StateFlow<List<Video>?> = repo.observeVideosByCategory(categoryId)
         .stateIn(viewModelScope, WhileUiSubscribed, null)
+
+    /**
+     * Only the removal confirmation reads this, to stop promising a server delete an install with
+     * no server cannot perform. The action itself needs no branch — the repository simulates the
+     * deletes, and they drop the rows either way.
+     */
+    val demoMode: StateFlow<Boolean> = settingsState.settings
+        .map { it?.demoMode == true }
+        .stateIn(viewModelScope, WhileUiSubscribed, false)
 
     // Both bulk runs live on the repository, so their progress survives leaving this screen —
     // and outlives this ViewModel, which is scoped to one category at a time.

@@ -75,6 +75,8 @@
     <string name="remove">Remove</string>
     <string name="remove_watched_dialog_title">Remove watched videos?</string>
     <string name="remove_watched_dialog_text">This deletes %1$s from the Jellyfin server, media files included. It cannot be undone.</string>
+    <!-- Same action in demo mode, where there is no server and the dataset can be seeded again. -->
+    <string name="remove_watched_dialog_text_demo">This removes %1$s from the demo library. Reset local data and start the demo again to bring them back.</string>
 
     <!-- Detail -->
     <string name="video_fallback_title">Video</string>

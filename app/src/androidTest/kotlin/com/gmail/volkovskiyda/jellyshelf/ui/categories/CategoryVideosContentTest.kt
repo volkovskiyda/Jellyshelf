@@ -74,6 +74,7 @@ class CategoryVideosContentTest {
         isWatched: Boolean = false,
         bulkFetch: BulkProgress = BulkProgress.Idle,
         bulkRemove: BulkProgress = BulkProgress.Idle,
+        demoMode: Boolean = false,
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
@@ -83,6 +84,7 @@ class CategoryVideosContentTest {
                     bulkFetch = bulkFetch,
                     bulkRemove = bulkRemove,
                     creating = false,
+                    demoMode = demoMode,
                     isUncategorized = isUncategorized,
                     isWatched = isWatched,
                     scrollKey = "category-test",
