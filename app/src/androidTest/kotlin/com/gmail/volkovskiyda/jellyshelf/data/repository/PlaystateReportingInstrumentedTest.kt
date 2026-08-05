@@ -235,11 +235,13 @@ class PlaystateReportingInstrumentedTest {
         // Played=false over a mark the server's own threshold may have just made.
         assertNull(sent.map { it.first }.firstOrNull { it.endsWith("/UserData") })
 
-        // And the server's verdict comes back into the row rather than waiting for a sync.
+        // And the server's verdict comes back into the row rather than waiting for a sync — the
+        // play count with it, since the stamp this write leaves makes the next sync keep all three.
         assertNotNull("expected the mirror fetch, got $sent", awaitRequest("/Items/jf-1"))
         val row = db.videoDao().get("aaaaaaaaaaa")
         assertEquals(true, row?.played)
         assertEquals(0L, row?.playbackPositionTicks)
+        assertEquals(1, row?.playCount)
     }
 
     @Test

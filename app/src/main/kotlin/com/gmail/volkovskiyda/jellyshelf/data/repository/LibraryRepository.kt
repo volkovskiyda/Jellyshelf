@@ -1333,10 +1333,14 @@ class DefaultLibraryRepository(
      * default), and short items outright. Without this the library would keep offering the video
      * under "Continue watching" — for hours, until the next sync corrected it.
      *
-     * The stamp is what makes the write safe against a sync already in flight: that sync's server
-     * snapshot predates this write, and the merge keeps local values stamped after its fetch began
-     * ([localWatchWrites]). `playCount` is deliberately not mirrored — the DAO's `updateWatchState`
-     * doesn't carry it, and the next sync brings it along.
+     * The play count comes along with it, which matters more than freshness: the stamp below makes
+     * the next sync keep this row's watch state wholesale ([localWatchWrites], and
+     * `VideoMerge.resolveWatchState` retains the triple together), so a count left behind here
+     * would be preserved as though it were the truth rather than corrected.
+     *
+     * That stamp is also what makes the write safe against a sync already in flight: that sync's
+     * server snapshot predates this write, and the merge keeps local values stamped after its
+     * fetch began.
      */
     private suspend fun mirrorServerWatchState(
         youtubeId: String,
@@ -1356,11 +1360,17 @@ class DefaultLibraryRepository(
                 ) {
                     return@withLock
                 }
-                videoDao.updateWatchState(youtubeId, userData.played, userData.playbackPositionTicks)
+                videoDao.updateServerWatchState(
+                    youtubeId = youtubeId,
+                    played = userData.played,
+                    positionTicks = userData.playbackPositionTicks,
+                    playCount = userData.playCount,
+                )
                 localWatchWrites[youtubeId] = System.currentTimeMillis()
                 Timber.tag(PLAYBACK_TAG).d(
                     "onPlaybackStopped: mirrored the server's verdict for itemId=$itemId " +
-                        "played=${userData.played} positionTicks=${userData.playbackPositionTicks}",
+                        "played=${userData.played} positionTicks=${userData.playbackPositionTicks} " +
+                        "playCount=${userData.playCount}",
                 )
             }
         }.onFailure { e ->

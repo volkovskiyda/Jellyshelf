@@ -88,6 +88,23 @@ class VideoDaoInstrumentedTest {
     }
 
     @Test
+    fun updateServerWatchState_carriesThePlayCountToo() = runTest {
+        dao.upsert(video("v1"))
+
+        dao.updateWatchState("v1", played = true, positionTicks = 42L)
+        // The local write leaves the count alone — nothing on the device counts plays…
+        assertEquals(0, dao.get("v1")?.playCount)
+
+        // …and the server's own snapshot is the only thing that sets it.
+        dao.updateServerWatchState("v1", played = true, positionTicks = 0L, playCount = 3)
+
+        val got = dao.get("v1")
+        assertEquals(true, got?.played)
+        assertEquals(0L, got?.playbackPositionTicks)
+        assertEquals(3, got?.playCount)
+    }
+
+    @Test
     fun deleteNotSyncedAt_removesStaleRows() = runTest {
         dao.upsert(listOf(video("keep", syncedAt = 100L), video("stale", syncedAt = 99L)))
 

@@ -97,6 +97,25 @@ interface VideoDao {
     suspend fun updateWatchState(youtubeId: String, played: Boolean, positionTicks: Long)
 
     /**
+     * Watch state as the *server* reports it, its play count included — for mirroring one
+     * authoritative snapshot into the row after playback stops.
+     *
+     * The write above deliberately has no play count to carry: nothing local counts plays, so a
+     * local decision can only leave that number where it is. Only the server increments it, and
+     * only this write brings it back.
+     */
+    @Query(
+        "UPDATE videos SET played = :played, playbackPositionTicks = :positionTicks, playCount = :playCount " +
+            "WHERE youtubeId = :youtubeId",
+    )
+    suspend fun updateServerWatchState(
+        youtubeId: String,
+        played: Boolean,
+        positionTicks: Long,
+        playCount: Int,
+    )
+
+    /**
      * Position-only write for the in-app player's periodic saves. The `played = 0` guard is the
      * point: a save racing a completion report must neither flip watch state nor resurrect the
      * cleared position of a row just marked played.
