@@ -9,7 +9,6 @@ import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
-import org.junit.Assume.assumeTrue
 import org.junit.FixMethodOrder
 import org.junit.Rule
 import org.junit.Test
@@ -18,8 +17,8 @@ import org.junit.runners.MethodSorters
 
 /**
  * Writes the baseline profile that ships in the release APK, by driving the real app through the
- * paths a user hits first: launch, the library list and its scroll, a video's detail screen, and
- * playback.
+ * paths a user hits first: connecting to a server, the first sync, the library list and its scroll,
+ * a video's detail screen, and playback.
  *
  * Run it by hand with the Pixel 5 attached, awake and unlocked — it is not part of any build:
  *
@@ -34,63 +33,118 @@ import org.junit.runners.MethodSorters
  * which no x86_64 runner or managed device can install, and `automaticGenerationDuringBuild` stays
  * false so `assembleRelease` never needs a device.
  *
- * The journey runs against **demo mode**, not a real Jellyfin server: "Try demo" seeds ~60 videos
- * from a bundled asset and every video plays a bundled clip, so the run needs no network, no
- * account and no server, and two profiles differ because the *app* changed rather than because the
- * library did. It deliberately mirrors `DemoModeFlowTest.theDemoJourney_seedsBrowsesAndResets`,
- * which the instrumented suite runs on every device build — that test is what keeps this click path
- * honest.
+ * **It profiles a real server when one is configured.** With `.test.env` filled — the same file the
+ * live-endpoint tests read — the journey signs in, syncs a real library and streams a real video, so
+ * the profile carries what a real first launch actually loads: `AuthenticateByName`, Ktor over TLS,
+ * kotlinx.serialization against live responses, sync writing into Room, Coil fetching thumbnails
+ * over the network, and ExoPlayer's streaming path. Demo mode reaches none of that — its videos are
+ * a bundled asset and its clip is a local file.
  *
- * A third test, [generateSyncJourney], additionally covers what demo mode cannot: the real-server
- * first-use path — sign-in, the first sync, and network image loads. It runs only when `.test.env`
- * is filled (the same file the live-endpoint tests read) and skips otherwise, so serverless
- * generation still produces the two demo-driven profiles above unchanged.
+ * Without `.test.env` it falls back to demo mode, so a checkout with no server can still regenerate
+ * a profile. That fallback is the second-best profile, not the reference one: it costs the release
+ * APK every class the network and streaming paths need. The trade the real path makes is
+ * determinism — two profiles now differ when the *library* changes as well as when the app does,
+ * which is accepted deliberately, because a profile is only worth what it compiles for real use.
  *
- * The two selectors that carry the run — the list and its rows — are resource ids published by
- * `testTagsAsResourceId` on the root Scaffold, because UiAutomator cannot see Compose test tags
- * otherwise and copy is not a contract. The rest match visible text, on controls with no tag of
- * their own. Every lookup that matters goes through [await], which throws rather than returning
- * null: a selector that quietly stopped matching would otherwise yield a profile covering the
- * launch and nothing else, with nothing to show for it.
+ * The run inherits whatever state the installed app is in: the tests below detect it from the
+ * screen rather than assuming a fresh install (see [generate1Connect]), and a run against an
+ * already-synced install simply profiles less of the connect path. For a true first-use profile,
+ * clear the app's data before generating — the runbook says how.
+ *
+ * The selectors that carry the run are resource ids published by `testTagsAsResourceId` on the root
+ * Scaffold, because UiAutomator cannot see Compose test tags otherwise and copy is not a contract.
+ * The rest match visible text or content descriptions, on controls with no tag of their own. Every
+ * lookup that matters goes through [await] or [check], which throw rather than returning null: a
+ * selector that quietly stopped matching would otherwise yield a profile covering the launch and
+ * nothing else, with nothing to show for it.
  */
 @RunWith(AndroidJUnit4::class)
-// [generateJourney] must run before [generateStartup] — see the latter. J sorts before S.
+// The three tests are one sequence — connect, then use, then measure a launch into what that left
+// behind — so they are numbered rather than named in a way that happens to sort right.
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
+// Three tests over eleven named steps. Inlining the steps into the tests is the only way to reduce
+// the count, and it would bury the click path this file exists to document — the same trade
+// JellyfinApi makes for its endpoints.
+@Suppress("TooManyFunctions")
 class BaselineProfileGenerator {
 
     @get:Rule
     val rule = BaselineProfileRule()
 
     /**
-     * The full journey, and the bulk of the profile. Deliberately **not** in the startup profile:
-     * that one is stored in the primary dex to be read on every cold start, so putting a video
-     * player and two list screens in it would cost startup rather than buy it.
+     * Live-server config, from the instrumentation runner arguments that Gradle's
+     * `loadEnv(".test.env")` feeds in. Blank when the file is absent, which is what selects the
+     * demo fallback.
+     */
+    private val args = InstrumentationRegistry.getArguments()
+    private val serverUrl = args.getString("jellyfinServerUrl").orEmpty()
+    private val username = args.getString("jellyfinUsername").orEmpty()
+    private val password = args.getString("jellyfinPassword").orEmpty()
+    private val indexUrl = args.getString("jellyfinIndexUrl").orEmpty()
+    private val syncFolder = args.getString("jellyfinSyncFolder").orEmpty()
+
+    /** Whether to drive a real server. Release builds refuse plain http, so the URL must be https. */
+    private val liveServer: Boolean
+        get() = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+
+    /**
+     * Getting a library on screen: sign in and sync a real one, or seed the demo. Everything the
+     * app does once rather than on every launch lives here — the sign-in exchange, the first sync,
+     * the folder browser — and none of it belongs in the startup profile.
+     *
+     * The state of the install decides how much of this runs. A signed-out app shows the password
+     * field; a demo-loaded one offers no **Try demo** button because the demo is already in. So each
+     * step is guarded by what is actually on screen, which also makes iterations 2+ cheap: the
+     * session and the synced library survive the process kill between them, and this test then does
+     * little more than confirm the library is still there.
      */
     @Test
-    fun generateJourney() = rule.collect(packageName = PACKAGE) {
+    fun generate1Connect() = rule.collect(packageName = PACKAGE) {
         pressHome()
         startActivityAndWait()
-
-        // The app restores its navigation stack across the process kill between iterations, and
-        // the detail and player screens hide the bottom bar — so a run that ended on one of them
-        // leaves the next iteration with nothing this generator can steer by. Back out first.
+        // A run that ended on the player or a detail screen leaves the next iteration somewhere
+        // with no bottom bar to steer by.
         returnToTopLevel()
 
-        // Only the first iteration lands here: a fresh install opens on Settings, and "Try demo"
-        // seeds the library and navigates to it by itself. Afterwards the demo flag lives in
-        // DataStore and outlives the process, so the button is simply absent and the tab is how we
-        // get to the library.
-        val demoEntry = device.wait(Until.findObject(By.text(TRY_DEMO)), TIMEOUT_MS)
-        if (demoEntry != null) {
-            demoEntry.click()
+        openTab(TAB_SETTINGS)
+        if (liveServer) {
+            // The password field exists only while signed out, so it is the signed-out marker: the
+            // sign-in button itself is below the fold and cannot be probed cheaply. Signing in also
+            // clears any demo library that an earlier run left, which is what keeps a configured
+            // run from quietly profiling demo data.
+            if (device.wait(Until.hasObject(By.res(PASSWORD_FIELD)), TIMEOUT_MS)) {
+                signIn()
+                configureIndexAndScope()
+            }
+            syncIfLibraryEmpty()
         } else {
-            device.wait(Until.findObject(By.text(TAB_LIBRARY)), TIMEOUT_MS)?.click()
+            // Absent once the demo is loaded — then the library is already seeded and this is a no-op.
+            device.wait(Until.findObject(By.text(TRY_DEMO)), TIMEOUT_MS)?.click()
         }
 
-        val list = await(By.res(LIBRARY_LIST), SEED_TIMEOUT_MS) {
-            "Library list never appeared. Either the demo seed did not finish, or the resource-id " +
-                "bridge is gone — check testTagsAsResourceId on MainActivity's root Scaffold."
-        }
+        openTab(TAB_LIBRARY)
+        awaitLibrary()
+    }
+
+    /**
+     * The journey, and the bulk of the profile: the library list and its scroll, a video's detail
+     * screen, and playback. Deliberately **not** in the startup profile — that one is stored in the
+     * primary dex to be read on every cold start, so putting a video player and two list screens in
+     * it would cost startup rather than buy it.
+     *
+     * Relies on [generate1Connect] having left a populated library, which `@FixMethodOrder`
+     * guarantees.
+     */
+    @Test
+    fun generate2Journey() = rule.collect(packageName = PACKAGE) {
+        // Before anything can open the player — see the note on the grant itself.
+        grantMediaNotificationPermission()
+        pressHome()
+        startActivityAndWait()
+        returnToTopLevel()
+        openTab(TAB_LIBRARY)
+
+        val list = awaitLibrary()
         // Keep the gesture off the display edges, which the system back gesture owns.
         list.setGestureMargin(device.displayWidth / GESTURE_MARGIN_FRACTION)
         repeat(SCROLLS) {
@@ -100,26 +154,25 @@ class BaselineProfileGenerator {
         list.fling(Direction.UP)
         device.waitForIdle()
 
-        // A row's text opens the detail screen: image loading and the metadata section.
-        openDetails()
+        // The first video every time, so successive profiles cover the same item rather than
+        // whichever row a scroll happened to leave under the selector.
+        openFirstVideoDetails()
 
         // Playback pulls in Media3/ExoPlayer, a large slice of first-use class loading the launch
-        // path alone would miss. In demo mode this is a bundled ten-second clip, so it costs the
-        // generation run almost nothing.
-        await(By.text(PLAY), TIMEOUT_MS) {
-            "The detail screen never offered playback."
-        }.click()
-        device.waitForIdle()
+        // path alone would miss — and against a real server it is the streaming path (HTTP data
+        // source, container parsing, codec setup) rather than a bundled file read.
+        await(By.text(PLAY), TIMEOUT_MS) { "The detail screen never offered playback." }.click()
+        awaitPlaybackUnderway()
 
         // Out of the player and the detail screen — however many steps that takes — then across to
         // Categories, a different Compose surface.
         returnToTopLevel()
-        device.wait(Until.findObject(By.text(TAB_CATEGORIES)), TIMEOUT_MS)?.click()
+        openTab(TAB_CATEGORIES)
         device.waitForIdle()
 
         // Finish on the library. The next iteration inherits this as its restored screen, and a
         // top-level tab is the one state it can start from without backing out of anything.
-        device.wait(Until.findObject(By.text(TAB_LIBRARY)), TIMEOUT_MS)?.click()
+        openTab(TAB_LIBRARY)
         device.waitForIdle()
     }
 
@@ -127,105 +180,28 @@ class BaselineProfileGenerator {
      * Cold launch and nothing else — the part ART's dexopt gap hurts most, and the only part worth
      * carrying in the primary dex.
      *
-     * It relies on [generateJourney] having run first, which `@FixMethodOrder` guarantees: that
-     * leaves the demo library seeded and the app resting on the Library tab, so this measures a
-     * launch into a populated list — what a real user gets — rather than into the first-run
-     * Settings screen. Seeding here instead would put the whole seed path into the startup profile.
+     * It relies on the two tests above having run first: that leaves the app signed in, its library
+     * synced and resting on the Library tab, so this measures a launch into a populated list — what
+     * a returning user gets — rather than into the first-run Settings screen. Connecting here
+     * instead would put the whole sign-in and sync path into the startup profile.
      */
     @Test
-    fun generateStartup() = rule.collect(
+    fun generate3Startup() = rule.collect(
         packageName = PACKAGE,
         includeInStartupProfile = true,
     ) {
         pressHome()
         startActivityAndWait()
         await(By.res(LIBRARY_LIST), TIMEOUT_MS) {
-            "Cold launch did not land on the library. generateJourney must run first — check that " +
-                "@FixMethodOrder(NAME_ASCENDING) still puts it before this test."
+            "Cold launch did not land on the library. generate1Connect and generate2Journey must " +
+                "run first — check that @FixMethodOrder(NAME_ASCENDING) still orders them."
         }
     }
 
-    /**
-     * The real-server first-use path — everything demo mode cannot reach: `AuthenticateByName`,
-     * the Ktor/OkHttp/TLS stack, kotlinx.serialization over live responses, sync writing a real
-     * library into Room, and Coil fetching thumbnails over the network. Journey profile only,
-     * never the startup one, and named to sort *after* [generateStartup] so the two demo-driven
-     * profiles above keep their no-server determinism.
-     *
-     * Opt-in via `.test.env` exactly like the live-endpoint tests ([assumeTrue] skips the test
-     * when the credentials are blank). Release builds refuse plain-http URLs, and this variant is
-     * the release configuration — the server URL must be `https://`.
-     *
-     * Only the first iteration signs in, sets the scope and syncs; the session and the synced
-     * library outlive the process kill between iterations, so later iterations go straight to
-     * browsing. Playback is deliberately absent: a real stream exercises the same Media3 surface
-     * the demo journey already profiles, at the mercy of the server's transcoding and timing.
-     */
-    @Test
-    fun generateSyncJourney() {
-        val args = InstrumentationRegistry.getArguments()
-        val serverUrl = args.getString("jellyfinServerUrl").orEmpty()
-        val username = args.getString("jellyfinUsername").orEmpty()
-        val password = args.getString("jellyfinPassword").orEmpty()
-        val indexUrl = args.getString("jellyfinIndexUrl").orEmpty()
-        val syncFolder = args.getString("jellyfinSyncFolder").orEmpty()
-        assumeTrue(
-            "no .test.env credentials — skipping the real-server journey",
-            serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
-        )
+    // --- The connect steps ------------------------------------------------------------------
 
-        rule.collect(packageName = PACKAGE) {
-            pressHome()
-            startActivityAndWait()
-            returnToTopLevel()
-            device.wait(Until.findObject(By.text(TAB_SETTINGS)), TIMEOUT_MS)?.click()
-            device.waitForIdle()
-
-            // The password field only exists while signed out, so it is the signed-out marker —
-            // the sign-in/sign-out button sits below the fold and cannot be probed cheaply.
-            if (device.wait(Until.hasObject(By.res(PASSWORD_FIELD)), TIMEOUT_MS)) {
-                signInAndFirstSync(serverUrl, username, password, indexUrl, syncFolder)
-            }
-
-            device.wait(Until.findObject(By.text(TAB_LIBRARY)), TIMEOUT_MS)?.click()
-            // The first iteration waits out the real network sync here; later ones find the
-            // library already populated from Room.
-            await(By.res(LIBRARY_ROW), SYNC_TIMEOUT_MS) {
-                "The library never filled after Sync now — server down mid-run, or the scope in " +
-                    "JELLYFIN_SYNC_FOLDER holds no videos."
-            }
-            val list = await(By.res(LIBRARY_LIST), TIMEOUT_MS) {
-                "Library rows exist but the list container does not — the resource-id bridge broke."
-            }
-            list.setGestureMargin(device.displayWidth / GESTURE_MARGIN_FRACTION)
-            repeat(SCROLLS) {
-                list.fling(Direction.DOWN)
-                device.waitForIdle()
-            }
-            list.fling(Direction.UP)
-            device.waitForIdle()
-
-            // Detail over a real item: Coil decodes a network image instead of a bundled asset.
-            openDetails()
-            device.waitForIdle()
-
-            returnToTopLevel()
-        }
-    }
-
-    /**
-     * First-iteration setup on the Settings screen: fill the form, sign in (which clears the demo
-     * data the earlier tests seeded — the screen announces exactly that), point the index at
-     * `.test.env`'s URL or the app's own fill-from-server default, scope the sync when
-     * `JELLYFIN_SYNC_FOLDER` names a folder, and start the first sync.
-     */
-    private fun MacrobenchmarkScope.signInAndFirstSync(
-        serverUrl: String,
-        username: String,
-        password: String,
-        indexUrl: String,
-        syncFolder: String,
-    ) {
+    /** Fills the sign-in form from `.test.env` and waits for the server to accept it. */
+    private fun MacrobenchmarkScope.signIn() {
         setText(SERVER_URL_FIELD, serverUrl)
         setText(USERNAME_FIELD, username)
         setText(PASSWORD_FIELD, password)
@@ -234,30 +210,46 @@ class BaselineProfileGenerator {
             "Sign in never completed — server down, wrong credentials in .test.env, or a " +
                 "plain-http server URL, which this release-configured variant refuses."
         }
+    }
 
-        // Signing in over the demo library wiped it, which also zeroed the last-sync marker — so
-        // the index field is unlocked and blank, offering Fill. Tapping it applies the same
-        // <server>/jellyshelf-index.json convention .test.env leaves implicit; an explicit
-        // JELLYFIN_INDEX_URL is typed instead.
+    /**
+     * The optional fields, in the order the screen offers them once a sign-in lands: the metadata
+     * index URL, then the sync scope.
+     *
+     * The index field appears only after sign-in and offers **Fill**, which writes
+     * `<server>/jellyshelf-index.json` — the same convention `.test.env` leaves implicit when
+     * `JELLYFIN_INDEX_URL` is blank. An explicit URL is typed instead.
+     */
+    private fun MacrobenchmarkScope.configureIndexAndScope() {
         if (indexUrl.isNotBlank()) {
-            scrollTo(By.res(INDEX_URL_FIELD)) { "The index URL field never scrolled into view." }
+            scrollTo(By.res(INDEX_URL_FIELD)) { "The index URL field never appeared after sign-in." }
             setText(INDEX_URL_FIELD, indexUrl)
         } else {
             scrollTo(By.text(FILL)) { "The index Fill button never appeared after sign-in." }.click()
         }
 
-        if (syncFolder.isNotBlank()) {
-            scrollTo(By.text(CHANGE_FOLDER)) { "The sync-scope section never appeared." }.click()
-            // Walk the picker one browse level at a time, the way a user reaches the folder.
-            for (segment in syncFolder.split("/").map { it.trim() }.filter { it.isNotEmpty() }) {
-                scrollTo(By.text(segment)) {
-                    "Folder \"$segment\" of JELLYFIN_SYNC_FOLDER never appeared in the browser."
-                }.click()
-                device.waitForIdle()
-            }
-            scrollTo(By.text(USE_THIS_FOLDER)) { "The Use this folder button never appeared." }.click()
+        if (syncFolder.isBlank()) return
+        scrollTo(By.text(CHANGE_FOLDER)) { "The sync-scope section never appeared." }.click()
+        // Walk the picker one browse level at a time, the way a user reaches the folder.
+        for (segment in syncFolder.split("/").map { it.trim() }.filter { it.isNotEmpty() }) {
+            scrollTo(By.text(segment)) {
+                "Folder \"$segment\" of JELLYFIN_SYNC_FOLDER never appeared in the browser."
+            }.click()
+            device.waitForIdle()
         }
+        scrollTo(By.text(USE_THIS_FOLDER)) { "The Use this folder button never appeared." }.click()
+    }
 
+    /**
+     * Runs the first sync, unless a previous run's library is already there — the rows survive the
+     * process kill between iterations, and re-syncing each time would spend the run on the network
+     * rather than on the paths being profiled.
+     */
+    private fun MacrobenchmarkScope.syncIfLibraryEmpty() {
+        openTab(TAB_LIBRARY)
+        if (device.wait(Until.hasObject(By.res(LIBRARY_ROW)), TIMEOUT_MS)) return
+
+        openTab(TAB_SETTINGS)
         scrollTo(By.text(SYNC_NOW)) { "The Sync now button never scrolled into view." }.click()
         if (syncFolder.isBlank()) {
             // With the scope still at the root, the first tap only nudges "Check the sync scope
@@ -267,17 +259,106 @@ class BaselineProfileGenerator {
         }
     }
 
+    // --- Shared steps -----------------------------------------------------------------------
+
+    /** The library list, once it has rows. Allows for a real first sync over the network. */
+    private fun MacrobenchmarkScope.awaitLibrary(): UiObject2 {
+        await(By.res(LIBRARY_ROW), SYNC_TIMEOUT_MS) {
+            if (liveServer) {
+                "The library never filled. The server may be unreachable, or the scope in " +
+                    "JELLYFIN_SYNC_FOLDER may hold no videos."
+            } else {
+                "The demo library never seeded, or the resource-id bridge is gone — check " +
+                    "testTagsAsResourceId on MainActivity's root Scaffold."
+            }
+        }
+        return await(By.res(LIBRARY_LIST), TIMEOUT_MS) {
+            "Library rows exist but the list container does not — the resource-id bridge broke."
+        }
+    }
+
     /**
-     * Opens some video's detail screen. A row is two targets — the thumbnail plays, the text
-     * beside it opens the details — so this clicks a details zone, and specifically the *tallest*
-     * visible one: findObject's first match can be the top-clipped sliver of a half-scrolled row,
-     * whose centre falls above both targets and lands on nothing.
+     * Opens the first video's detail screen.
+     *
+     * A row is two targets — the thumbnail plays, the text beside it opens the details — so this
+     * clicks a details zone. The *topmost* one, by position rather than by match order: after a
+     * scroll the first match can be a row clipped by the top bar, whose centre falls outside both
+     * targets and lands on nothing.
      */
-    private fun MacrobenchmarkScope.openDetails() {
+    private fun MacrobenchmarkScope.openFirstVideoDetails() {
         await(By.res(ROW_DETAILS), TIMEOUT_MS) {
             "No details zone to open — the rows rendered but carry no $ROW_DETAILS tag."
         }
-        device.findObjects(By.res(ROW_DETAILS)).maxBy { it.visibleBounds.height() }.click()
+        val first = device.findObjects(By.res(ROW_DETAILS))
+            .filter { it.visibleBounds.height() >= MIN_TAPPABLE_PX }
+            .minByOrNull { it.visibleBounds.top }
+        checkNotNull(first) { "Every library row was clipped — nothing safe to tap." }.click()
+        device.waitForIdle()
+    }
+
+    /**
+     * Grants `POST_NOTIFICATIONS` before the player can ask for it.
+     *
+     * `PlayerScreen` requests it the first time it opens — the media notification is the only way
+     * back into a playing video — and on the freshly installed APK a generation run uses, that puts
+     * a system dialog *over* the player. Playback carries on behind it, so nothing fails except this
+     * journey's own check, which then waits out its timeout looking at a dialog. The dialog belongs
+     * to another process and profiling it would buy the app nothing, so the deterministic answer is
+     * to grant it up front. Idempotent, and a no-op once granted.
+     */
+    private fun MacrobenchmarkScope.grantMediaNotificationPermission() {
+        device.executeShellCommand("pm grant $PACKAGE android.permission.POST_NOTIFICATIONS")
+    }
+
+    /**
+     * Waits for playback to actually start, rather than for the player screen to appear: the point
+     * of this step is the streaming path, and a player sitting on a failed load would profile none
+     * of it.
+     *
+     * The pause button is the signal — the same control reads "Play" until the video rolls.
+     */
+    private fun MacrobenchmarkScope.awaitPlaybackUnderway() {
+        if (playing(PLAYBACK_TIMEOUT_MS)) return
+
+        // Two things hide a playing video's controls, and they need opposite handling: a permission
+        // dialog sits *over* them, so dismissing it reveals controls that were there all along,
+        // while the player's own auto-hide needs a tap to bring them back. Tapping blind would
+        // switch the controls off in the first case, so try the dialog first and re-check between.
+        device.findObject(By.res(ALLOW_PERMISSION_BUTTON))?.let { allow ->
+            allow.click()
+            if (playing(TIMEOUT_MS)) return
+        }
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
+        check(playing(TIMEOUT_MS)) {
+            if (liveServer) {
+                "Playback never started. The server may be refusing to stream this item, or the " +
+                    "playback mode may have been left on an external player."
+            } else {
+                "The bundled demo clip never played."
+            }
+        }
+    }
+
+    /** Whether the player is showing a pause button, i.e. a video is rolling. */
+    private fun MacrobenchmarkScope.playing(timeoutMs: Long): Boolean =
+        device.wait(Until.hasObject(By.desc(PAUSE)), timeoutMs)
+
+    /** Taps a bottom-navigation tab, waiting for it rather than assuming it is already there. */
+    private fun MacrobenchmarkScope.openTab(label: String) {
+        await(By.text(label), TIMEOUT_MS) { "The $label tab is not on screen." }.click()
+        device.waitForIdle()
+    }
+
+    /**
+     * Presses back until the bottom navigation bar is on screen, i.e. until some top-level tab is
+     * showing. Bounded, and a no-op when one already is.
+     */
+    private fun MacrobenchmarkScope.returnToTopLevel() {
+        repeat(MAX_BACK_PRESSES) {
+            if (device.hasObject(By.text(TAB_LIBRARY))) return
+            device.pressBack()
+            device.waitForIdle()
+        }
     }
 
     /** Sets a text field found by its published test tag, without opening the IME. */
@@ -303,18 +384,6 @@ class BaselineProfileGenerator {
             device.waitForIdle()
         }
         return await(selector, TIMEOUT_MS, describe)
-    }
-
-    /**
-     * Presses back until the bottom navigation bar is on screen, i.e. until some top-level tab is
-     * showing. Bounded, and a no-op when one already is.
-     */
-    private fun MacrobenchmarkScope.returnToTopLevel() {
-        repeat(MAX_BACK_PRESSES) {
-            if (device.hasObject(By.text(TAB_LIBRARY))) return
-            device.pressBack()
-            device.waitForIdle()
-        }
     }
 
     /**
@@ -348,26 +417,38 @@ class BaselineProfileGenerator {
         const val TAB_SETTINGS = "Settings"
         const val SIGN_IN = "Sign in"
         const val SIGN_OUT = "Sign out"
+        const val FILL = "Fill"
         const val CHANGE_FOLDER = "Change folder…"
         const val USE_THIS_FOLDER = "Use this folder"
         const val SYNC_NOW = "Sync now"
-        const val FILL = "Fill"
+
+        /** Content description of the player's pause button — on screen only while playing. */
+        const val PAUSE = "Pause"
+
+        /** The system permission dialog's grant button, by id so it does not depend on locale. */
+        const val ALLOW_PERMISSION_BUTTON = "com.android.permissioncontroller:id/permission_allow_button"
 
         const val TIMEOUT_MS = 5_000L
 
-        /** Generous: seeding writes ~60 videos and their categories to a real database. */
-        const val SEED_TIMEOUT_MS = 30_000L
-
-        /** A real network round trip to AuthenticateByName, not a local seed. */
+        /** A real network round trip to AuthenticateByName, not a local check. */
         const val SIGN_IN_TIMEOUT_MS = 15_000L
 
-        /** The first sync fetches the scoped library, the index and thumbnails over the network. */
+        /**
+         * A real first sync fetches the scoped library, the index and thumbnails over the network;
+         * a demo seed writes ~60 videos and their categories to a real database.
+         */
         const val SYNC_TIMEOUT_MS = 120_000L
+
+        /** A real stream may transcode before the first frame arrives. */
+        const val PLAYBACK_TIMEOUT_MS = 30_000L
 
         const val SCROLLS = 3
         const val GESTURE_MARGIN_FRACTION = 5
         const val SCROLL_STEP = 0.6f
         const val MAX_SCROLLS = 6
+
+        /** Below this a row is clipped enough that its centre may miss both click targets. */
+        const val MIN_TAPPABLE_PX = 100
 
         /** Deep enough for player → detail → library, with room to spare. */
         const val MAX_BACK_PRESSES = 5

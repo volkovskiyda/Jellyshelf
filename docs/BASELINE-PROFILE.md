@@ -11,7 +11,7 @@ Two files ship, both under `app/src/release/generated/baselineProfiles/` and bot
 
 | File | Covers | Cost |
 |------|--------|------|
-| `baseline-prof.txt` | the whole journey: launch, library list and its scroll, a video's detail screen, playback — plus, when `.test.env` is filled, the real-server first-use path: sign-in, the first sync, network image loads | compiled at install time |
+| `baseline-prof.txt` | the whole journey: connecting to a server, the first sync, the library list and its scroll, a video's detail screen, playback | compiled at install time |
 | `startup-prof.txt` | cold launch into a populated library, and nothing else | also laid out in the primary dex, read on **every** cold start |
 
 The split matters: the startup profile is read on every launch, so putting the player in it would
@@ -42,18 +42,41 @@ stays `false` so `assembleRelease` never asks for a device.
   a profile — that path is the backup, not the normal one. Signing cannot reach a profile either
   way: it is a list of classes and methods.
 - **`git lfs install`** in the clone, so the committed profile is stored as an LFS object.
-- **No Jellyfin server, account or network — by default.** The first two tests drive
-  [demo mode](../README.md#demo-mode--try-it-without-a-server): **Try demo** seeds ~60 videos from
-  a bundled asset, and every video plays a bundled clip. That is deliberate — two profiles then
-  differ because the *app* changed, not because the library did.
-- **Optionally, `.test.env` filled** (the same file the live-endpoint tests read — see the
-  [README](../README.md#environment-config)). Then a third test, `generateSyncJourney`, signs into
-  the real server and runs the first sync, adding the whole network stack — `AuthenticateByName`,
-  Ktor/TLS, kotlinx.serialization over live responses, sync into Room, Coil's network fetcher — to
-  the journey profile, which demo mode never loads. It skips when the file is absent. The server
-  URL must be `https://`: this variant is the release configuration, which refuses plain HTTP. It
-  runs last on purpose, so the two demo-driven profiles keep their determinism; the entries it
-  adds do vary a little with the library behind the account.
+- **`.test.env` filled, and the server reachable** — the same file the live-endpoint tests read (see
+  the [README](../README.md#environment-config)). The reference profile is generated against a **real
+  Jellyfin**: the run signs in, syncs a real library, and streams a real video, so the profile
+  carries what a first launch actually loads — `AuthenticateByName`, Ktor over TLS,
+  kotlinx.serialization against live responses, sync writing into Room, Coil's network fetcher, and
+  ExoPlayer's streaming path. The server URL must be `https://`: this variant is the release
+  configuration, which refuses plain HTTP.
+- **Or nothing at all**, and the run falls back to
+  [demo mode](../README.md#demo-mode--try-it-without-a-server) — **Try demo** seeds ~60 videos from
+  a bundled asset and plays a bundled clip — so a checkout with no server can still regenerate a
+  profile. That fallback is the second-best profile, not the one to commit if you can avoid it: none
+  of the network or streaming classes above appear in it, and those are exactly the ones a real
+  first launch pays for.
+
+  The real path costs two things, both accepted deliberately. **Determinism**: two profiles now
+  differ when the *library* changes as well as when the app does. And **demo coverage**: a profile
+  generated against a server contains no demo seed or bundled-clip paths, so a first-run **Try demo**
+  tap is interpreted rather than AOT-compiled. The measured price of the second is small — the demo
+  seed reads one bundled asset through the same Room and Compose code the real path already
+  covers — but if it ever matters, the fix is to add a fourth ordered test that seeds the demo and
+  browses it: the profile is a union, so it would carry both at the cost of a longer run.
+- **Optionally, a clean slate.** The run inherits whatever state the installed app is in, detecting
+  it from the screen: an app that is already signed in and synced skips most of the connect path,
+  so that part goes unprofiled. For a true first-use profile, clear the app's data first:
+  ```sh
+  adb shell pm clear com.gmail.volkovskiyda.jellyshelf   # the release id — NOT .debug
+  ```
+  > [!warning]
+  > That wipes the credentials of the **release** install on the device, which on a phone you
+  > actually use is your real account rather than the test one. The generator signs back in from
+  > `.test.env`, so the install ends up on the test user either way — decide that is what you want
+  > before running it.
+
+  Worth doing when the sign-in or sync path is what changed; not worth it otherwise, since it costs
+  the run a full sync.
 
 The run installs under the release application id (no `.debug` suffix), so it replaces an installed
 release build of the app — cleanly, since both carry the release certificate. Only in the debug-signed
@@ -75,10 +98,12 @@ That is the whole command. It chains, in order:
 :app:copyReleaseBaselineProfileIntoSrc                     # writes app/src/release/generated/baselineProfiles/
 ```
 
-It is a real device run: three tests (the third skipping itself without `.test.env`), each
-repeating its journey across several iterations with a process kill between them, until the
-profile stabilises. The task is on `:app`, not on `:baselineprofile` — that module exposes only
-the `collect…` and `connected…` halves.
+It is a real device run: three ordered tests — `generate1Connect` (sign in and sync, or seed the
+demo), `generate2Journey` (browse, scroll, open the first video, play it) and `generate3Startup`
+(cold launch into what those left behind) — each repeating across several iterations with a process
+kill between them, until the profile stabilises. Only the third contributes to `startup-prof.txt`.
+Expect it to take a while: a real first sync and a real stream are in there. The task is on `:app`,
+not on `:baselineprofile` — that module exposes only the `collect…` and `connected…` halves.
 
 The variant it profiles is `nonMinifiedRelease`: the release build type with R8 switched off, and
 nothing else changed. Application id, `BuildConfig.DEBUG`, manifest, resources and — when
@@ -106,14 +131,17 @@ replaces:
 
 ```
 Comparison with previous baseline profile:
-  40438 Old rules
-  40277 New rules
-  22 Added rules (0.05%)
-  183 Removed rules (0.45%)
+  49037 Old rules
+  47204 New rules
+  417 Added rules (0.84%)
+  2250 Removed rules (4.55%)
 ```
 
 Fractions of a percent are ordinary run-to-run drift. A near-total replacement means something
-structural changed, and the obfuscation trap below is the first thing to suspect.
+structural changed, and the obfuscation trap below is the first thing to suspect. A few percent, as
+above, is what a *different library* looks like: the figures shown are the run that moved the journey
+from demo data to a real server, which dropped the demo seed and bundled-clip paths and added the
+real ones.
 
 ```sh
 cd app/src/release/generated/baselineProfiles
@@ -122,17 +150,18 @@ cd app/src/release/generated/baselineProfiles
 | Check | Command | Expected |
 |-------|---------|----------|
 | Not obfuscated | `head -3 baseline-prof.txt` | readable names (`PLandroidx/activity/ActivityFlags;-><clinit>()V`) — **not** `La0;` / `Lzz0;` |
-| App code is in it | `grep -c Lcom/gmail/volkovskiyda baseline-prof.txt` | thousands (3,353) |
-| …and in the startup profile | `grep -c Lcom/gmail/volkovskiyda startup-prof.txt` | hundreds to low thousands (1,098) |
-| The two differ | `cmp -s baseline-prof.txt startup-prof.txt && echo IDENTICAL` | prints nothing (49,037 vs 29,454 lines) |
+| App code is in it | `grep -c Lcom/gmail/volkovskiyda baseline-prof.txt` | thousands (2,960) |
+| …and in the startup profile | `grep -c Lcom/gmail/volkovskiyda startup-prof.txt` | hundreds to low thousands (1,097) |
+| The two differ | `cmp -s baseline-prof.txt startup-prof.txt && echo IDENTICAL` | prints nothing (47,203 vs 31,525 lines) |
 | Startup is startup-shaped | `grep -c ui/library startup-prof.txt` then `ui/player` | the library dominates (140) and the player is absent (1) |
-| Real-server path is in it — only with `.test.env` | `grep -c Lio/ktor baseline-prof.txt` | thousands (2,031) after the sync journey ran; a few hundred incidental entries when it skipped |
+| Playback was profiled | `grep -c Landroidx/media3 baseline-prof.txt` | thousands (5,346), with `grep -c MediaCodec` in the hundreds (386) |
+| The real network path landed | `grep -c Lokhttp3 startup-prof.txt` | **over a thousand** (1,402) — a *demo* run leaves this around 110, and that gap is the whole reason the reference profile wants a live server |
 | LFS-tracked | `git check-attr filter -- baseline-prof.txt startup-prof.txt` | `filter: lfs` on both |
 | Release still builds device-free | `./gradlew :app:assembleRelease` (device unplugged) | succeeds |
 
-The reference figures above come from a run *with* the sync journey; the first run that adds it
-over a demo-only profile jumps ~18% in added rules, which is the network stack arriving rather
-than something structural to suspect.
+The last row is the one that tells a live-server profile from a demo one at a glance. Launching into
+a *real* library loads the HTTP stack and Coil's network fetcher on the cold-start path; launching
+into a bundled asset barely touches them, and the startup profile is read on every launch.
 
 Then commit both files. They are regenerated wholesale rather than edited, which is why
 `.gitattributes` sends them to LFS.
@@ -158,15 +187,43 @@ clears it back off for `nonMinified*` build types. The chain's own
 `checkTestedAppObfuscationNonMinifiedRelease` task did not catch this when it happened, so check the
 file by hand.
 
-**`startup-prof.txt` is identical to `baseline-prof.txt`.** The two tests collapsed into one, or ran
-out of order. `generateJourney` must run before `generateStartup` — `@FixMethodOrder(NAME_ASCENDING)`
-is what guarantees it — and only the second passes `includeInStartupProfile = true`.
+**`startup-prof.txt` is identical to `baseline-prof.txt`.** The tests collapsed into one, or ran out
+of order. They must run in their numbered order, `generate1Connect` → `generate2Journey` →
+`generate3Startup` — `@FixMethodOrder(NAME_ASCENDING)` is what guarantees it — and only the last
+passes `includeInStartupProfile = true`.
 
 **The run fails with a `checkNotNull` message naming a selector.** Working as designed: the generator
 throws rather than quietly producing a launch-only profile. The message says which handle went
 missing. The usual cause is the resource-id bridge — `testTagsAsResourceId` on `MainActivity`'s root
-Scaffold, and the `library_list` / `library_row` tags in `LibraryScreen` — since UiAutomator cannot
-see Compose test tags without it.
+Scaffold, and the tags it publishes (`library_list`, `library_row` and `video_row_details` in
+`LibraryScreen`/`VideoRow`, the four field tags in `SettingsScreen`) — since UiAutomator cannot see
+Compose test tags without it.
+
+**Sign in never completed.** With `.test.env` filled, the credentials in it have to work against a
+reachable server over `https://` — a plain-http URL is refused by this release-configured variant
+before it reaches the network. `./gradlew :app:connectedDebugAndroidTest --tests '*LiveEndpointTest*'`
+checks the same credentials in isolation.
+
+**Playback never started.** The generator waits for the pause button, not just the player screen, so
+the video really did not roll — or its controls were hidden from UiAutomator. In order of likelihood:
+
+1. **A permission dialog over the player.** `PlayerScreen` requests `POST_NOTIFICATIONS` the first
+   time it opens, and on the freshly installed APK a run uses, that dialog covers the controls while
+   playback continues behind it — so logcat shows ExoPlayer and MediaCodec starting normally and the
+   check still times out. The generator grants the permission up front and dismisses the dialog if
+   the grant did not take; if this reappears, check that
+   `pm grant com.gmail.volkovskiyda.jellyshelf android.permission.POST_NOTIFICATIONS` succeeds on the
+   device.
+2. **The playback mode is not in-app.** It is persisted, so an earlier session left on **External
+   player** or **Open in web** sends the tap elsewhere — see the split Play button in the
+   [README](../README.md#watching-a-video). Set it back to *Play in app*.
+3. **The server is refusing to stream that item.** Confirm by playing the library's first video by
+   hand.
+
+Logcat from the run tells these apart: it is kept per test under
+`baselineprofile/build/outputs/androidTest-results/connected/nonMinifiedRelease/<device>/`, and
+`ExoPlayerImpl: Init` followed by a `MediaCodec` adapter means the video played and only the check
+went wrong.
 
 **`INSTALL_FAILED_UPDATE_INCOMPATIBLE` before any test runs.** Specific to the no-keystore fallback:
 the APK is debug-signed, while the release build already on the device carries the release
@@ -174,8 +231,10 @@ certificate under the same application id. `adb uninstall com.gmail.volkovskiyda
 re-run — the `.debug` build is a different package and can stay where it is. With
 `keystore.properties` in place both are release-signed and the update just works.
 
-**The library never fills.** The demo seed writes ~60 videos and their categories to a real database;
-the generator allows 30 s for it. A device that is throttling or unusually busy can miss that.
+**The library never fills.** The generator allows two minutes, which covers a real first sync as well
+as a demo seed (~60 videos and their categories into a real database). Against a real server, check
+that the scope in `JELLYFIN_SYNC_FOLDER` actually holds videos — an empty folder syncs successfully
+and leaves the list empty.
 
 **Firebase errors in logcat during the run.** The no-keystore fallback again, and harmless. The
 variant is not debuggable, so `JellyshelfApplication` switches Crashlytics collection on, while the
