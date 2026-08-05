@@ -108,7 +108,15 @@ class FakeLibraryRepository(
     }
     override suspend fun removeVideo(youtubeId: String): Unit = notModelled()
     override suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean = notModelled()
-    override fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean): Unit =
+    override fun reportPlaybackStopped(
+        youtubeId: String,
+        positionMs: Long,
+        completed: Boolean,
+        liveSession: Boolean,
+    ): Unit = notModelled()
+
+    override fun reportPlaybackStarted(youtubeId: String, positionMs: Long): Unit = notModelled()
+    override fun reportPlaybackProgress(youtubeId: String, positionMs: Long, isPaused: Boolean): Unit =
         notModelled()
 
     override fun savePlaybackPosition(youtubeId: String, positionMs: Long): Unit = notModelled()

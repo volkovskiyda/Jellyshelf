@@ -94,9 +94,6 @@ internal fun isPermanentFailure(e: Throwable): Boolean {
  *  the data layer so it doesn't depend on the Android-heavy `util.Playback`. */
 private const val PLAYBACK_TAG = "Playback"
 
-/** Stopping within this many seconds of the end counts as a finished watch, not a resume point. */
-private const val COMPLETION_THRESHOLD_SECONDS = 5L
-
 /**
  * How many consecutive syncs may miss a video before it is deleted locally. At the sync worker's
  * 3h cadence that is roughly 9h of continuous absence — long enough to ride out a Jellyfin library
@@ -144,6 +141,67 @@ private const val MILLIS_PER_SECOND = 1_000L
 private class DemoWatchState(val played: Boolean, val positionTicks: Long, val playCount: Int)
 
 /**
+ * One demo entry → one row, mapped exactly as [mergeVideo]'s index branch maps a real one, so
+ * a demo library exercises the same fields the app reads everywhere else.
+ *
+ * Entries carrying no index metadata at all (a bare title, as an unmatched file on a real
+ * server produces) are stored as Jellyfin-sourced rather than index-sourced: that is what they
+ * would be after a real sync, and it gives the "Uncategorized" filter genuine members instead
+ * of an empty row on the Others tab.
+ */
+private fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
+    val title = entry.title ?: entry.id
+    val indexed = entry.hasIndexMetadata
+    val durationSeconds = entry.duration ?: 0L
+    val watch = demoWatchState(index, durationSeconds)
+    return VideoEntity(
+        youtubeId = entry.id,
+        jellyfinItemId = DEMO_ITEM_ID,
+        // Real rows take the file name from the server path; demo rows have no server, and the
+        // title is what that file would have been called. It drives the universal browse order.
+        fileName = "$title.mp4",
+        title = title,
+        channel = entry.channel,
+        channelId = entry.channelId,
+        durationSeconds = durationSeconds,
+        uploadDate = entry.uploadDate,
+        description = entry.description,
+        chapters = entry.chapters.toChapters(),
+        tags = entry.tags.orEmpty(),
+        youtubeCategories = entry.categories.orEmpty(),
+        thumbnailUrl = entry.thumbnail,
+        played = watch.played,
+        playbackPositionTicks = watch.positionTicks,
+        playCount = watch.playCount,
+        lastSyncedAt = now,
+        metadataSource = if (indexed) METADATA_SOURCE_INDEX else METADATA_SOURCE_JELLYFIN,
+        metadataUpdatedAt = if (indexed) (entry.updatedAtMillis ?: now) else 0L,
+    )
+}
+
+/**
+ * Watch state by position in the dataset rather than authored in the JSON: the mix is then
+ * guaranteed — Watched, Continue watching and Unwatched all have members however the content
+ * is later edited — and the asset stays pure content.
+ *
+ * Played wins where the two cycles coincide, and a video of unknown length can't be
+ * mid-watched (the progress bar divides by its duration).
+ */
+private fun demoWatchState(index: Int, durationSeconds: Long): DemoWatchState = when {
+    index % DEMO_PLAYED_EVERY == DEMO_PLAYED_EVERY - 1 ->
+        DemoWatchState(played = true, positionTicks = 0L, playCount = 1)
+    index % DEMO_IN_PROGRESS_EVERY == DEMO_IN_PROGRESS_EVERY - 1 && durationSeconds > 0 ->
+        DemoWatchState(
+            played = false,
+            positionTicks = millisToTicks(
+                durationSeconds * MILLIS_PER_SECOND * DEMO_RESUME_PERCENT / PERCENT,
+            ),
+            playCount = 0,
+        )
+    else -> DemoWatchState(played = false, positionTicks = 0L, playCount = 0)
+}
+
+/**
  * Whether a demo entry carries any of the metadata an index match supplies. Entries with none are
  * seeded as Jellyfin-sourced — see [DefaultLibraryRepository.demoVideo].
  */
@@ -177,6 +235,72 @@ internal fun prunePolicy(scopeChanged: Boolean, storedCount: Int, seenCount: Int
     scopeChanged -> Prune.IMMEDIATE
     seenCount >= storedCount * MIN_TRUSTED_LISTING_RATIO -> Prune.GRACE
     else -> Prune.NOTHING
+}
+
+/**
+ * Rows this listing missed that [prune] will keep: they stay fully intact, auto-categories
+ * included, so a video riding out its grace period doesn't drop out of its
+ * channel/year/duration categories only to reappear in them a few hours later.
+ */
+private fun retainedRows(
+    prune: Prune,
+    existingById: Map<String, VideoEntity>,
+    videos: List<VideoEntity>,
+): List<VideoEntity> {
+    if (prune == Prune.NOTHING) {
+        Timber.w(
+            "Sync saw only ${videos.size} of ${existingById.size} stored videos — " +
+                "the server is likely mid-rescan; keeping every stored video this round."
+        )
+    }
+    val seenIds = videos.mapTo(HashSet(videos.size)) { it.youtubeId }
+    return when (prune) {
+        Prune.IMMEDIATE -> emptyList()
+        Prune.NOTHING -> existingById.values.filter { it.youtubeId !in seenIds }
+        Prune.GRACE -> existingById.values.filter {
+            it.youtubeId !in seenIds && it.missedSyncs + 1 < MAX_MISSED_SYNCS
+        }
+    }
+}
+
+/**
+ * Auto-categorizes each row along several dimensions: channel, upload year, upload month,
+ * duration band and YouTube category. Categories are deduped by id; every membership becomes a
+ * cross-ref. Videos with no metadata simply produce no auto-categories (they surface under the
+ * "Others" tab's Uncategorized filter instead).
+ */
+private fun autoAssignments(
+    rows: List<VideoEntity>,
+    now: Long,
+): Pair<Map<String, CategoryEntity>, List<VideoCategoryCrossRef>> {
+    val autoCategories = LinkedHashMap<String, CategoryEntity>()
+    val crossRefs = mutableListOf<VideoCategoryCrossRef>()
+    for (video in rows) {
+        for (a in autoAssignmentsOf(video)) {
+            autoCategories.getOrPut(a.id) { CategoryEntity(a.id, a.name, a.type, now) }
+            crossRefs += VideoCategoryCrossRef(video.youtubeId, a.id)
+        }
+    }
+    return autoCategories to crossRefs
+}
+
+private data class AutoAssignment(val id: String, val name: String, val type: String)
+
+/** The auto-categories a single [video] belongs to, along every dimension. */
+private fun autoAssignmentsOf(video: VideoEntity): List<AutoAssignment> = buildList {
+    video.channel?.takeIf { it.isNotBlank() }?.let { channel ->
+        val id = "channel:" + (video.channelId?.takeIf { it.isNotBlank() } ?: channel)
+        add(AutoAssignment(id, channel, CATEGORY_TYPE_AUTO_CHANNEL))
+    }
+    yearOf(video.uploadDate)?.let { add(AutoAssignment("year:$it", it, CATEGORY_TYPE_AUTO_YEAR)) }
+    yearMonthOf(video.uploadDate)?.let { add(AutoAssignment("month:$it", it, CATEGORY_TYPE_AUTO_MONTH)) }
+    DurationBucket.of(video.durationSeconds)?.let {
+        add(AutoAssignment("duration:${it.id}", it.label, CATEGORY_TYPE_AUTO_DURATION))
+    }
+    for (raw in video.youtubeCategories) {
+        val name = raw.trim()
+        if (name.isNotBlank()) add(AutoAssignment("ytcat:$name", name, CATEGORY_TYPE_AUTO_YT_CATEGORY))
+    }
 }
 
 /**
@@ -533,53 +657,6 @@ class DefaultLibraryRepository(
         )
     }.distinctBy { it.youtubeId }
 
-    /**
-     * Rows this listing missed that [prune] will keep: they stay fully intact, auto-categories
-     * included, so a video riding out its grace period doesn't drop out of its
-     * channel/year/duration categories only to reappear in them a few hours later.
-     */
-    private fun retainedRows(
-        prune: Prune,
-        existingById: Map<String, VideoEntity>,
-        videos: List<VideoEntity>,
-    ): List<VideoEntity> {
-        if (prune == Prune.NOTHING) {
-            Timber.w(
-                "Sync saw only ${videos.size} of ${existingById.size} stored videos — " +
-                    "the server is likely mid-rescan; keeping every stored video this round."
-            )
-        }
-        val seenIds = videos.mapTo(HashSet(videos.size)) { it.youtubeId }
-        return when (prune) {
-            Prune.IMMEDIATE -> emptyList()
-            Prune.NOTHING -> existingById.values.filter { it.youtubeId !in seenIds }
-            Prune.GRACE -> existingById.values.filter {
-                it.youtubeId !in seenIds && it.missedSyncs + 1 < MAX_MISSED_SYNCS
-            }
-        }
-    }
-
-    /**
-     * Auto-categorizes each row along several dimensions: channel, upload year, upload month,
-     * duration band and YouTube category. Categories are deduped by id; every membership becomes a
-     * cross-ref. Videos with no metadata simply produce no auto-categories (they surface under the
-     * "Others" tab's Uncategorized filter instead).
-     */
-    private fun autoAssignments(
-        rows: List<VideoEntity>,
-        now: Long,
-    ): Pair<Map<String, CategoryEntity>, List<VideoCategoryCrossRef>> {
-        val autoCategories = LinkedHashMap<String, CategoryEntity>()
-        val crossRefs = mutableListOf<VideoCategoryCrossRef>()
-        for (video in rows) {
-            for (a in autoAssignmentsOf(video)) {
-                autoCategories.getOrPut(a.id) { CategoryEntity(a.id, a.name, a.type, now) }
-                crossRefs += VideoCategoryCrossRef(video.youtubeId, a.id)
-            }
-        }
-        return autoCategories to crossRefs
-    }
-
     /** Commits one sync pass: the merged rows, the prune the policy chose, and auto memberships. */
     private suspend fun persistSync(
         prune: Prune,
@@ -656,25 +733,6 @@ class DefaultLibraryRepository(
             }
         } ?: Timber.w("Sync auto-fill hit its $AUTO_FILL_BUDGET budget after $filled/${targets.size}")
         return filled to failed
-    }
-
-    private data class AutoAssignment(val id: String, val name: String, val type: String)
-
-    /** The auto-categories a single [video] belongs to, along every dimension. */
-    private fun autoAssignmentsOf(video: VideoEntity): List<AutoAssignment> = buildList {
-        video.channel?.takeIf { it.isNotBlank() }?.let { channel ->
-            val id = "channel:" + (video.channelId?.takeIf { it.isNotBlank() } ?: channel)
-            add(AutoAssignment(id, channel, CATEGORY_TYPE_AUTO_CHANNEL))
-        }
-        yearOf(video.uploadDate)?.let { add(AutoAssignment("year:$it", it, CATEGORY_TYPE_AUTO_YEAR)) }
-        yearMonthOf(video.uploadDate)?.let { add(AutoAssignment("month:$it", it, CATEGORY_TYPE_AUTO_MONTH)) }
-        DurationBucket.of(video.durationSeconds)?.let {
-            add(AutoAssignment("duration:${it.id}", it.label, CATEGORY_TYPE_AUTO_DURATION))
-        }
-        for (raw in video.youtubeCategories) {
-            val name = raw.trim()
-            if (name.isNotBlank()) add(AutoAssignment("ytcat:$name", name, CATEGORY_TYPE_AUTO_YT_CATEGORY))
-        }
     }
 
     /**
@@ -917,67 +975,6 @@ class DefaultLibraryRepository(
     }
 
     /**
-     * One demo entry → one row, mapped exactly as [mergeVideo]'s index branch maps a real one, so
-     * a demo library exercises the same fields the app reads everywhere else.
-     *
-     * Entries carrying no index metadata at all (a bare title, as an unmatched file on a real
-     * server produces) are stored as Jellyfin-sourced rather than index-sourced: that is what they
-     * would be after a real sync, and it gives the "Uncategorized" filter genuine members instead
-     * of an empty row on the Others tab.
-     */
-    private fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
-        val title = entry.title ?: entry.id
-        val indexed = entry.hasIndexMetadata
-        val durationSeconds = entry.duration ?: 0L
-        val watch = demoWatchState(index, durationSeconds)
-        return VideoEntity(
-            youtubeId = entry.id,
-            jellyfinItemId = DEMO_ITEM_ID,
-            // Real rows take the file name from the server path; demo rows have no server, and the
-            // title is what that file would have been called. It drives the universal browse order.
-            fileName = "$title.mp4",
-            title = title,
-            channel = entry.channel,
-            channelId = entry.channelId,
-            durationSeconds = durationSeconds,
-            uploadDate = entry.uploadDate,
-            description = entry.description,
-            chapters = entry.chapters.toChapters(),
-            tags = entry.tags.orEmpty(),
-            youtubeCategories = entry.categories.orEmpty(),
-            thumbnailUrl = entry.thumbnail,
-            played = watch.played,
-            playbackPositionTicks = watch.positionTicks,
-            playCount = watch.playCount,
-            lastSyncedAt = now,
-            metadataSource = if (indexed) METADATA_SOURCE_INDEX else METADATA_SOURCE_JELLYFIN,
-            metadataUpdatedAt = if (indexed) (entry.updatedAtMillis ?: now) else 0L,
-        )
-    }
-
-    /**
-     * Watch state by position in the dataset rather than authored in the JSON: the mix is then
-     * guaranteed — Watched, Continue watching and Unwatched all have members however the content
-     * is later edited — and the asset stays pure content.
-     *
-     * Played wins where the two cycles coincide, and a video of unknown length can't be
-     * mid-watched (the progress bar divides by its duration).
-     */
-    private fun demoWatchState(index: Int, durationSeconds: Long): DemoWatchState = when {
-        index % DEMO_PLAYED_EVERY == DEMO_PLAYED_EVERY - 1 ->
-            DemoWatchState(played = true, positionTicks = 0L, playCount = 1)
-        index % DEMO_IN_PROGRESS_EVERY == DEMO_IN_PROGRESS_EVERY - 1 && durationSeconds > 0 ->
-            DemoWatchState(
-                played = false,
-                positionTicks = millisToTicks(
-                    durationSeconds * MILLIS_PER_SECOND * DEMO_RESUME_PERCENT / PERCENT,
-                ),
-                playCount = 0,
-            )
-        else -> DemoWatchState(played = false, positionTicks = 0L, playCount = 0)
-    }
-
-    /**
      * Wipe all locally cached library data (videos, categories, their links) and
      * reset the last-sync marker. Connection settings — server URL, API key, user,
      * folder scope — are left untouched, so a subsequent sync rebuilds from scratch.
@@ -1052,24 +1049,88 @@ class DefaultLibraryRepository(
     }
 
     /**
-     * Record where an external player stopped: persist the resume position locally and mirror the
-     * result to Jellyfin.
+     * Record where playback stopped: persist the resume position locally and mirror the result to
+     * Jellyfin.
      *
      * - Finished (played to the end, or stopped within a few seconds of it): mark played through
      *   the dedicated /PlayedItems endpoint — the same one the manual "watched" toggle uses. That
      *   is what increments PlayCount, stamps LastPlayedDate and lands the item in the server's
      *   watch history. Writing UserData with Played=true does *not* reliably register a play.
-     * - Stopped partway: write the resume position to the user's item data, which is what surfaces
-     *   the item in "Continue Watching" (the /Sessions endpoints only commit for a live,
-     *   progress-tracked session, which an external-player handoff can't sustain).
+     * - Stopped partway from the in-app player ([liveSession]): close the Jellyfin session with the
+     *   final position and let the server threshold it, like every progress report before it. A
+     *   direct UserData write here would carry `Played=false` over a mark the server made itself
+     *   moments earlier — un-watching the video the user just watched.
+     * - Stopped partway from an external player: write the resume position to the user's item data,
+     *   which is what surfaces the item in "Continue Watching". A handed-off player reports nothing
+     *   while it runs, so there is no session for the server to threshold — only this one result.
      *
      * Best-effort — network failures are swallowed so local state still updates.
      */
-    override fun reportPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
+    override fun reportPlaybackStopped(
+        youtubeId: String,
+        positionMs: Long,
+        completed: Boolean,
+        liveSession: Boolean,
+    ) {
         // Fire-and-forget on the repository's own scope: the screen that launched the external
         // player may be gone (back press, rotation) before the local write and the network
         // report finish, and losing the resume position is not acceptable.
-        repoScope.launch { onPlaybackStopped(youtubeId, positionMs, completed) }
+        repoScope.launch { onPlaybackStopped(youtubeId, positionMs, completed, liveSession) }
+    }
+
+    override fun reportPlaybackStarted(youtubeId: String, positionMs: Long) {
+        reportSession(youtubeId, what = "start") { s, itemId ->
+            jellyfin.reportPlaybackStart(
+                serverUrl = s.serverUrl,
+                credential = s.credential,
+                itemId = itemId,
+                positionTicks = millisToTicks(positionMs),
+            )
+        }
+    }
+
+    override fun reportPlaybackProgress(youtubeId: String, positionMs: Long, isPaused: Boolean) {
+        reportSession(youtubeId, what = "progress") { s, itemId ->
+            jellyfin.reportPlaybackProgress(
+                serverUrl = s.serverUrl,
+                credential = s.credential,
+                itemId = itemId,
+                positionTicks = millisToTicks(positionMs),
+                isPaused = isPaused,
+            )
+        }
+    }
+
+    /**
+     * The shell both in-flight session reports share: fire-and-forget on [repoScope], serialized
+     * behind [playstateMutex] so a report can't overtake the stop report or a manual toggle, and
+     * best-effort — a dropped start or progress report costs at most one interval of server-side
+     * accuracy, so failures are logged and swallowed like every other playstate write.
+     *
+     * Nothing is written locally: [savePlaybackPosition] owns the local position, and the server
+     * owns the watched verdict these reports feed.
+     */
+    private fun reportSession(
+        youtubeId: String,
+        what: String,
+        send: suspend (Settings, String) -> Unit,
+    ) {
+        repoScope.launch {
+            val s = settings.snapshot()
+            if (!s.isConnected) return@launch
+            runCatchingCancellable {
+                playstateMutex.withLock {
+                    // Re-read under the lock, as every playstate send does. Demo rows are skipped by
+                    // their sentinel item id rather than the demoMode flag: a row can outlive the
+                    // flag (see PlaybackService.resolve), and a demo video has no server behind it.
+                    val itemId = videoDao.get(youtubeId)?.jellyfinItemId ?: return@withLock
+                    if (itemId == DEMO_ITEM_ID) return@withLock
+                    send(s, itemId)
+                }
+            }.onFailure { e ->
+                Timber.tag(PLAYBACK_TAG).w(e, "session $what report failed for youtubeId=$youtubeId")
+            }
+        }
     }
 
     override fun savePlaybackPosition(youtubeId: String, positionMs: Long) {
@@ -1092,7 +1153,12 @@ class DefaultLibraryRepository(
         }
     }
 
-    private suspend fun onPlaybackStopped(youtubeId: String, positionMs: Long, completed: Boolean) {
+    private suspend fun onPlaybackStopped(
+        youtubeId: String,
+        positionMs: Long,
+        completed: Boolean,
+        liveSession: Boolean,
+    ) {
         val positionTicks = millisToTicks(positionMs)
         Timber.tag(PLAYBACK_TAG).d(
             "onPlaybackStopped: youtubeId=$youtubeId positionMs=$positionMs " +
@@ -1106,9 +1172,7 @@ class DefaultLibraryRepository(
                 )
                 return
             }
-            finished = completed ||
-                v.durationSeconds > 0 &&
-                ticksToSeconds(positionTicks) >= v.durationSeconds - COMPLETION_THRESHOLD_SECONDS
+            finished = isFinishedStop(completed, positionTicks, v.durationSeconds)
             // Barely into it and not finished — stepping past this video rather than watching it.
             // Nothing is written at all, locally or to the server: the position it already holds
             // is a better answer than the one this stop would replace it with.
@@ -1139,22 +1203,55 @@ class DefaultLibraryRepository(
         }
         // Best-effort: the local resume position is already saved, so a failed server
         // write is swallowed.
-        reportPlaybackToServer(youtubeId, itemId, s)
+        reportPlaybackToServer(youtubeId, itemId, s, liveSession)
     }
 
-    private suspend fun reportPlaybackToServer(youtubeId: String, itemId: String, s: Settings) {
+    private suspend fun reportPlaybackToServer(
+        youtubeId: String,
+        itemId: String,
+        s: Settings,
+        liveSession: Boolean,
+    ) {
         runCatchingCancellable {
             playstateMutex.withLock {
                 // Re-read at send time (see setPlayed): a toggle that landed while this
                 // report waited for the lock must not be overwritten with older state.
                 val latest = videoDao.get(youtubeId) ?: return
+                // The in-app player reported this session all along, so it ends the way it ran:
+                // one more position for the server to threshold, exactly as it thresholded every
+                // progress report. That catches the case no progress report can — seeking past the
+                // watched mark and closing between two ticks — and, unlike the direct write below,
+                // it can never say Played=false over a verdict the server reached mid-play.
+                //
+                // A finished stop carries position 0 (the local write cleared it just above), which
+                // is how the server records a play that ran to the end rather than a resume point.
+                // The one case with nothing to say is an unplayed row sitting at 0 — only reachable
+                // if an "unwatched" toggle landed while this report waited for the lock, and a
+                // zero-position stop would mark it played right back.
+                if (liveSession && (latest.played || latest.playbackPositionTicks > 0)) {
+                    Timber.tag(PLAYBACK_TAG).d(
+                        "onPlaybackStopped: closing the Jellyfin session for itemId=$itemId " +
+                            "positionTicks=${latest.playbackPositionTicks} played=${latest.played}",
+                    )
+                    jellyfin.reportPlaybackSessionStopped(
+                        serverUrl = s.serverUrl,
+                        credential = s.credential,
+                        itemId = itemId,
+                        positionTicks = latest.playbackPositionTicks,
+                    )
+                }
                 if (latest.played) {
                     // Finished — record the play in Jellyfin's watch history via the endpoint
                     // that actually marks items played (PlayCount++, LastPlayedDate, resume cleared).
+                    // Kept for the session path too: the stop report above marks the item played,
+                    // but only this endpoint guarantees the history entry however odd the runtime
+                    // metadata is — the same belt and braces the official Android client uses.
                     Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: marking played on Jellyfin itemId=$itemId")
                     jellyfin.setPlayed(s.serverUrl, s.credential, s.userId, itemId, played = true)
-                } else {
-                    // Stopped partway — persist the resume position for "Continue Watching".
+                } else if (!liveSession) {
+                    // An external player stopped partway — persist the resume position for
+                    // "Continue Watching". It reported nothing while it ran, so this result is all
+                    // the server ever hears about the playback: there is no session to threshold.
                     Timber.tag(PLAYBACK_TAG).d(
                         "onPlaybackStopped: writing resume position to Jellyfin itemId=$itemId " +
                             "positionTicks=${latest.playbackPositionTicks}",
