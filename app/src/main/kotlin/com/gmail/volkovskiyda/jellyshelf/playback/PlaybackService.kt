@@ -28,6 +28,8 @@ import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.firebase.perf.FirebasePerformance
+import com.google.firebase.perf.metrics.Trace
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -91,6 +93,13 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val watch = WatchStateTracker()
     private var saveJob: Job? = null
 
+    /**
+     * The user-perceived startup being timed: set when a controller hands the session a queue,
+     * consumed by [StartupTraceListener] at the first rendered frame. A trace that is replaced
+     * or abandoned is deliberately never stopped — an unstopped trace is never reported.
+     */
+    private var startupTrace: Trace? = null
+
     override fun onCreate() {
         super.onCreate()
         // A source per stream, reading the credential at creation time so a re-login between
@@ -121,6 +130,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
             .build()
         player.addListener(WatchStateListener())
+        player.addListener(StartupTraceListener())
         player.addListener(TranscodeFallbackListener())
         // Last, so a transition has already been reported and re-tracked before this seeks.
         player.addListener(ResumeSeedingListener())
@@ -164,26 +174,36 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             mediaItems: MutableList<MediaItem>,
             startIndex: Int,
             startPositionMs: Long,
-        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
-            val resolved = mediaItems.map { resolve(it) }
-            if (startPositionMs != C.TIME_UNSET || resolved.isEmpty()) {
-                // A controller that wants a specific position passes one — the transcode
-                // fallback, which must land exactly where the failed decode left off.
-                return@future MediaSession.MediaItemsWithStartPosition(
-                    resolved,
-                    startIndex,
-                    startPositionMs,
-                )
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            // The closest observable moment to the user's tap: startup includes resolving the
+            // queue below, preparing, and possibly the transcode fallback — everything between
+            // here and the first rendered frame. Names are API (the console keys off them):
+            // trace "player_startup", attribute "source" (direct|hls). Replacing a still-pending
+            // trace abandons it: the user gave up on that startup and began another.
+            startupTrace = FirebasePerformance.getInstance().newTrace("player_startup")
+                .apply { start() }
+            return scope.future {
+                val resolved = mediaItems.map { resolve(it) }
+                if (startPositionMs != C.TIME_UNSET || resolved.isEmpty()) {
+                    // A controller that wants a specific position passes one — the transcode
+                    // fallback, which must land exactly where the failed decode left off.
+                    return@future MediaSession.MediaItemsWithStartPosition(
+                        resolved,
+                        startIndex,
+                        startPositionMs,
+                    )
+                }
+                // The resume path: no position asked for, so the item being started begins where
+                // it was last left. The index matters as much as the position — a queue names the
+                // video it opens on, and reading the resume ticks of item 0 instead would restore
+                // a position from a different video (or, before this branch covered an explicit
+                // index at all, start every queued video at 0).
+                val index =
+                    if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.indices)
+                val resumeTicks =
+                    repo.observeVideo(resolved[index].mediaId).first()?.playbackPositionTicks ?: 0L
+                MediaSession.MediaItemsWithStartPosition(resolved, index, ticksToMillis(resumeTicks))
             }
-            // The resume path: no position asked for, so the item being started begins where it
-            // was last left. The index matters as much as the position — a queue names the video
-            // it opens on, and reading the resume ticks of item 0 instead would restore a
-            // position from a different video (or, before this branch covered an explicit index
-            // at all, start every queued video at 0).
-            val index = if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.indices)
-            val resumeTicks =
-                repo.observeVideo(resolved[index].mediaId).first()?.playbackPositionTicks ?: 0L
-            MediaSession.MediaItemsWithStartPosition(resolved, index, ticksToMillis(resumeTicks))
         }
     }
 
@@ -303,6 +323,38 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 Timber.tag(Playback.TAG).d("resuming $mediaId at ${seekMs}ms")
                 p.seekTo(seekMs)
             }
+        }
+    }
+
+    /**
+     * Closes [startupTrace] at the moment the startup it measures becomes visible — the first
+     * rendered frame — tagging its `source` as `direct` or `hls` (a startup that went through the
+     * transcode fallback, whose durations will naturally run worse). A demo startup is abandoned
+     * instead: the bundled asset plays locally and would only pollute the duration distribution
+     * (the same reason demo syncs are untraced). A terminal error abandons the pending trace too,
+     * so a much-later manual retry can't report the idle time in between as a minutes-long
+     * "startup" — but a decode failure the transcode fallback is about to retry keeps it pending
+     * on purpose, because that retry is part of what the user waits through.
+     */
+    private inner class StartupTraceListener : Player.Listener {
+        override fun onRenderedFirstFrame() {
+            val trace = startupTrace ?: return
+            startupTrace = null
+            val uri = player?.currentMediaItem?.localConfiguration?.uri
+            if (uri?.scheme == DEMO_SAMPLE_SCHEME) return
+            trace.putAttribute(
+                "source",
+                if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) "hls" else "direct",
+            )
+            trace.stop()
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            // Mirrors [TranscodeFallbackListener]'s retry decision; keep the two in step.
+            val uri = player?.currentMediaItem?.localConfiguration?.uri
+            val retrying = error.isDecodeFailure() && uri != null &&
+                uri.scheme != DEMO_SAMPLE_SCHEME && uri.lastPathSegment != Playback.HLS_PLAYLIST
+            if (!retrying) startupTrace = null
         }
     }
 
