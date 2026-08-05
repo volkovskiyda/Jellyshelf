@@ -1,8 +1,11 @@
 package com.gmail.volkovskiyda.jellyshelf.live
 
+import com.gmail.volkovskiyda.jellyshelf.data.remote.AuthenticationResult
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
+import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -11,6 +14,7 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -25,6 +29,11 @@ import org.koin.test.inject
  * deserialize live. Opt-in and tolerant of a down server: each test skips (never fails) when
  * `.test.env` is absent/blank ([JellyfinTestConfig.isConfigured]) or the server is unreachable.
  *
+ * Authenticates the way the app does — username + password through `AuthenticateByName` with the
+ * `MediaBrowser` header — and drives everything after with the returned user-scoped token. No
+ * admin-only endpoint is touched (`GET /Users` needs admin), so the credentials can and should be
+ * a dedicated non-admin test user.
+ *
  * Uses the real [JellyfinClient]/[JellyfinDataSource] from `appModule` (tuned base Ktor client +
  * ContentNegotiation + kotlinx `Json` + timeouts), so it exercises the actual migrated stack.
  *
@@ -38,6 +47,7 @@ class LiveEndpointTest : KoinTest {
     private val jellyfinClient by inject<JellyfinClient>()
     private val dataSource by inject<JellyfinDataSource>()
     private val indexSource by inject<IndexSource>()
+    private val deviceInfo by inject<DeviceInfo>()
 
     @Before
     fun setUp() {
@@ -49,41 +59,86 @@ class LiveEndpointTest : KoinTest {
     @After
     fun tearDown() = unloadKoinModules(liveTestModule)
 
+    /**
+     * The app's sign-in exchange, verbatim: a fixed DeviceId keeps Jellyfin's dashboard showing
+     * one stable "device" for every live run instead of one per test.
+     */
+    private suspend fun signIn(): AuthenticationResult = dataSource.authenticate(
+        serverUrl = config.serverUrl,
+        username = config.username,
+        password = config.password,
+        authorization = mediaBrowserAuthHeader(deviceInfo, deviceId = "jellyshelf-live-test"),
+    )
+
     @Test
-    fun getUsers_returnsAtLeastOneUser() = runTest {
-        val api = jellyfinClient.create(config.serverUrl, config.apiKey)
-        assertTrue(api.getUsers().isNotEmpty())
+    fun authenticateByName_returnsTokenForUser() = runTest {
+        val auth = signIn()
+        assertTrue(auth.accessToken.isNotBlank())
+        assertTrue(auth.user.id.isNotBlank())
     }
 
     @Test
-    fun getViews_forFirstUser_deserializes() = runTest {
-        val api = jellyfinClient.create(config.serverUrl, config.apiKey)
-        val userId = api.getUsers().first().id
+    fun getViews_forSignedInUser_deserializes() = runTest {
+        val auth = signIn()
+        val api = jellyfinClient.create(config.serverUrl, auth.accessToken)
         // Round-tripping without throwing is the assertion: proves ItemsResponse/BaseItemDto decode.
-        val views = api.getViews(userId)
+        val views = api.getViews(auth.user.id)
         assertTrue(views.items.size >= 0)
     }
 
     @Test
-    fun getItems_forFirstUser_deserializes() = runTest {
-        val api = jellyfinClient.create(config.serverUrl, config.apiKey)
-        val userId = api.getUsers().first().id
-        val resp = api.getItems(userId = userId, limit = 5)
+    fun getItems_forSignedInUser_deserializes() = runTest {
+        val auth = signIn()
+        val api = jellyfinClient.create(config.serverUrl, auth.accessToken)
+        val resp = api.getItems(userId = auth.user.id, limit = 5)
         assertTrue(resp.items.size >= 0)
     }
 
     @Test
     fun getChildFolders_topLevelViews_deserialize() = runTest {
-        val userId = jellyfinClient.create(config.serverUrl, config.apiKey).getUsers().first().id
+        val auth = signIn()
         // A blank parentId returns the user's top-level collections (views); the point is that the
         // paged BaseItemDto list deserializes without throwing.
-        val folders = dataSource.getChildFolders(config.serverUrl, config.apiKey, userId, parentId = null)
+        val folders = dataSource.getChildFolders(config.serverUrl, auth.accessToken, auth.user.id, parentId = null)
         assertTrue(folders.size >= 0)
     }
 
     @Test
-    fun fetchIndex_whenIndexUrlConfigured_deserializes() = runTest {
-        assumeTrue("no JELLYFIN_INDEX_URL — skipping index fetch", config.indexUrl.isNotBlank())
+    fun syncFolder_resolvesByPathAndListsItems() = runTest {
+        assumeTrue("no JELLYFIN_SYNC_FOLDER — skipping sync-scope test", config.syncFolder.isNotBlank())
+        val auth = signIn()
+
+        // Walk the picker's path ("Home Videos/YouTube") one browse level at a time, exactly the
+        // way the in-app folder browser reaches it.
+        var parentId: String? = null
+        var folderId = ""
+        for (segment in config.syncFolder.split("/").map { it.trim() }.filter { it.isNotEmpty() }) {
+            val children = dataSource.getChildFolders(config.serverUrl, auth.accessToken, auth.user.id, parentId)
+            val match = children.firstOrNull { it.name.equals(segment, ignoreCase = true) }
+            assertTrue("folder \"$segment\" of JELLYFIN_SYNC_FOLDER not found on server", match != null)
+            folderId = match!!.id
+            parentId = folderId
+        }
+
+        // When the id is also pinned in .test.env (for UI tests), the resolved folder must be it.
+        if (config.syncFolderId.isNotBlank()) {
+            assertEquals(
+                "JELLYFIN_SYNC_FOLDER_ID does not match the folder JELLYFIN_SYNC_FOLDER resolves to",
+                config.syncFolderId,
+                folderId,
+            )
+        }
+
+        // A scoped item listing — what a scoped sync issues — deserializes.
+        val api = jellyfinClient.create(config.serverUrl, auth.accessToken)
+        val scoped = api.getItems(userId = auth.user.id, parentId = folderId, limit = 5)
+        assertTrue(scoped.items.size >= 0)
+    }
+
+    @Test
+    fun fetchIndex_atConfiguredOrDefaultUrl_deserializes() = runTest {
+        // config.indexUrl falls back to <server>/jellyshelf-index.json when JELLYFIN_INDEX_URL
+        // is unset — the same convention the app's "fill from server" affordance applies.
         val entries = indexSource.fetchIndex(config.indexUrl)
         assertTrue(entries.size >= 0)
     }

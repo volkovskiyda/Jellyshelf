@@ -353,9 +353,13 @@ The layers can also be run individually:
   With no device attached these layers **skip** rather than fail, in Gradle and in the script
   both.
 - **Live-endpoint tests** (`LiveEndpointTest`) hit a real Jellyfin and are **opt-in via `.test.env`**:
-  copy `.example.test.env` → `.test.env` and fill in the server URL / API key / index URL. They
-  **skip automatically** (never fail) when `.test.env` is absent/blank or the server is unreachable,
-  so a plain `connectedDebugAndroidTest` on a fresh checkout stays green.
+  copy `.example.test.env` → `.test.env` and fill in the server URL and a username + password —
+  ideally a dedicated non-admin test user. The tests sign in the way the app does
+  (`AuthenticateByName`) and drive everything with the returned user-scoped token; no admin API key
+  is involved. They **skip automatically** (never fail) when `.test.env` is absent/blank or the
+  server is unreachable, so a plain `connectedDebugAndroidTest` on a fresh checkout stays green.
+  The same file is the reference sheet for smoke-testing a release build by hand — see
+  [docs/RELEASING.md](docs/RELEASING.md); day-to-day debug work needs no server at all (demo mode).
 
 CI (`.github/workflows/ci.yml`) runs `scripts/run-tests.sh --host-only` plus `assembleDebug` on
 every push to `main` and every PR, and uploads the summary and reports as artifacts.
@@ -367,7 +371,7 @@ Both are optional; copy the committed `.example.*` template and fill it in when 
 
 | File | Committed? | Purpose |
 |------|-----------|---------|
-| `.test.env` | git-ignored | Live-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_API_KEY`, `JELLYFIN_INDEX_URL`. Absent → the live tests skip. |
+| `.test.env` | git-ignored | Live-test + release smoke-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_USERNAME`, `JELLYFIN_PASSWORD`, plus optional `JELLYFIN_INDEX_URL` (defaults to `<server>/jellyshelf-index.json`), `JELLYFIN_SYNC_FOLDER`, `JELLYFIN_SYNC_FOLDER_ID`. Absent → the live tests skip. |
 | `.example.test.env` | committed | Template for `.test.env`. |
 | `keystore.properties` | git-ignored | Release signing: `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Absent → release builds are unsigned. |
 | `.example.keystore.properties` | committed | Template for `keystore.properties`. |

@@ -54,8 +54,11 @@ android {
         // the file is absent, so the live tests skip.
         testInstrumentationRunnerArguments += mapOf(
             "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"].orEmpty(),
-            "jellyfinApiKey" to testEnv["JELLYFIN_API_KEY"].orEmpty(),
+            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"].orEmpty(),
+            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"].orEmpty(),
             "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"].orEmpty(),
+            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"].orEmpty(),
+            "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"].orEmpty(),
         )
 
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers

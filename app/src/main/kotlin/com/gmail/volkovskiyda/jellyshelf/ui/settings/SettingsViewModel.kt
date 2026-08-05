@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 /** Sentinel for the "all collections" (root) scope. */
 const val ROOT_SCOPE_ID = ""
@@ -749,6 +750,16 @@ class SettingsViewModel(
     fun useCurrentFolder() {
         val id = _state.value.currentParentId
         val path = _state.value.currentPath
+        // Ready-to-paste .test.env lines (see .example.test.env): picking a scope is the one
+        // moment the folder's Jellyfin id is in hand, and logging beats fishing it out of the
+        // web UI's URL. Not sensitive — a folder name and item id, no credential — and debug-only
+        // anyway: release plants no Timber tree and R8 strips the call. The .test.env convention
+        // joins nesting with "/", not the picker's " › ".
+        Timber.tag("SyncScope").i(
+            "JELLYFIN_SYNC_FOLDER=%s\nJELLYFIN_SYNC_FOLDER_ID=%s",
+            _state.value.breadcrumb.joinToString("/") { it.name },
+            id,
+        )
         _state.value = _state.value.copy(
             selectedScopeId = id,
             selectedScopePath = path,

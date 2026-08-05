@@ -29,6 +29,34 @@ Distribution channel, which is what lets a mapping file be matched to a crash by
 
 Plain `git tag v<version> && git push origin v<version>` does the same thing.
 
+## Testing a release build
+
+Release builds are smoke-tested by signing in as a real (dedicated, non-admin) Jellyfin user — the
+path every real install takes — not with an admin API key. The values to type live in the
+git-ignored **`.test.env`** at the repo root (template: `.example.test.env`); the live-endpoint
+instrumentation tests read the same file, so there is exactly one place to keep them.
+
+Debug builds never need any of this: day-to-day work runs on **demo mode** (or mocks/fakes in
+tests), with no server at all.
+
+1. Install a release build: an App Distribution build, a Releases-page APK, or a local
+   `./gradlew :app:installRelease` (needs `keystore.properties`). It installs alongside debug —
+   the bare `com.gmail.volkovskiyda.jellyshelf` id, unbadged icon.
+2. Open `.test.env` and sign in with `JELLYFIN_SERVER_URL` + `JELLYFIN_USERNAME` +
+   `JELLYFIN_PASSWORD`. Release builds accept **`https://` only** — for server and index URL both;
+   a plain-HTTP LAN server can only be exercised from a debug build, by design.
+3. Metadata index URL: leave the app's field to its **fill-from-server** default
+   (`<server>/jellyshelf-index.json`) unless `.test.env` sets `JELLYFIN_INDEX_URL` to somewhere
+   else.
+4. Sync scope: if `JELLYFIN_SYNC_FOLDER` is set, pick that folder in the sync-scope browser
+   (`JELLYFIN_SYNC_FOLDER_ID` is the same folder's item id, for tests that need it directly).
+   Otherwise leave the scope at "all collections".
+5. **Sync now**, then check the library populates and a video plays.
+
+After editing `.test.env`, refresh the local secrets snapshot so its `verify` stays green:
+`./internal/backup-secrets.sh backup` (maintainer-local — the script lives in the git-ignored
+`internal/`).
+
 **Keep the mapping file.** Release builds are R8-obfuscated, so a stack trace from a released APK is
 unreadable without the `mapping-<version>.<versionCode>.txt` from that exact build. Firebase
 Crashlytics gets its own copy automatically; the release asset is for anyone reading a trace pasted
