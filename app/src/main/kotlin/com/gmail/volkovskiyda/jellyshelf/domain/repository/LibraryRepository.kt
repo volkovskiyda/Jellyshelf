@@ -119,7 +119,9 @@ interface LibraryRepository {
      * A stop barely into a video records **nothing at all**, keeping whatever position the video
      * already held. Stepping through a queue with previous/next passes over videos without
      * watching them, and a resume point a few seconds in is worse than none — it would also
-     * overwrite a real one. Fire-and-forget.
+     * overwrite a real one. An open session is still closed, so the server stops calling the video
+     * "now playing"; that report carries where playback stopped and changes no stored position.
+     * Fire-and-forget.
      */
     fun reportPlaybackStopped(
         youtubeId: String,

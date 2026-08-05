@@ -1122,6 +1122,25 @@ class DefaultLibraryRepository(
     }
 
     /**
+     * Closes an open server session and nothing else — for the stop that decided the video was
+     * barely touched and left every stored position, local and remote, exactly as it found it.
+     *
+     * It goes through the same gates as the reports that opened the session ([reportSession]),
+     * which is what keeps a demo row from ever reaching the network.
+     */
+    private fun closeSession(youtubeId: String, positionMs: Long, playSessionId: String) {
+        reportSession(youtubeId, what = "stop (below the resume bar)") { s, itemId ->
+            jellyfin.reportPlaybackSessionStopped(
+                serverUrl = s.serverUrl,
+                credential = s.credential,
+                itemId = itemId,
+                positionTicks = millisToTicks(positionMs),
+                playSessionId = playSessionId,
+            )
+        }
+    }
+
+    /**
      * The shell both in-flight session reports share: fire-and-forget on [repoScope], serialized
      * behind [playstateMutex] so a report can't overtake the stop report or a manual toggle, and
      * best-effort — a dropped start or progress report costs at most one interval of server-side
@@ -1201,6 +1220,11 @@ class DefaultLibraryRepository(
                     "onPlaybackStopped: only ${ticksToSeconds(positionTicks)}s into " +
                         "${v.durationSeconds}s; leaving the stored position alone",
                 )
+                // Nothing is recorded — but a session the periodic ticks opened still has to be
+                // closed, or the server shows this video as playing until it times the session out.
+                // The position it carries is where playback really stopped, which is the same low
+                // value the progress reports were already sending; the stored one stays untouched.
+                playSessionId?.let { closeSession(youtubeId, positionMs, it) }
                 return
             }
             Timber.tag(PLAYBACK_TAG).d(
