@@ -453,9 +453,13 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     }
 
     /**
-     * Keeps a paused session from ageing out of the server's dashboard. Deliberately slower than
-     * the playing tick: the server only needs to hear from a session every few minutes to keep it,
-     * while a paused video can sit for hours, and nothing about it is changing in between.
+     * Keeps a paused session alive. Left unheard from, the server does not merely drop the row from
+     * its dashboard — it files a stop against the session at the position it last knew, which lands
+     * on the app as a watch it never reported (and, past the server's own threshold, as watched).
+     *
+     * Deliberately much slower than the playing tick: a paused video can sit for hours with nothing
+     * about it changing, so the only job here is to beat the server's window — see
+     * [PAUSED_REPORT_INTERVAL_MS] for what that window actually is.
      *
      * The tracker answers with nothing at all when no session is open, so a video paused before it
      * was ever reported stays as silent as it is today.
@@ -510,10 +514,21 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         private const val POSITION_SAVE_INTERVAL_MS = 10_000L
 
         /**
-         * How often a paused session tells the server it is still there. Jellyfin drops idle
-         * sessions after minutes, not seconds, so this trades dashboard precision — which is all a
-         * paused row carries — for the battery and traffic of a video left paused overnight.
+         * How often a paused session tells the server it is still there.
+         *
+         * The deadline it has to beat is Jellyfin's `CheckForIdlePlayback`: every 5 minutes the
+         * server stops playback on any session whose `LastPlaybackCheckIn` is more than 5 minutes
+         * old. That threshold is hardcoded, not a server setting, and a paused progress report is
+         * what refreshes the check-in — which is the whole reason this keep-alive exists.
+         *
+         * Two minutes leaves a whole report's worth of slack: one dropped send still checks in at
+         * four minutes, inside the window. Anything faster only buys slack that is already there,
+         * at four times the traffic for a video left paused overnight.
+         *
+         * It does *not* address the server's other timer, the one behind the `InactiveSessionThreshold`
+         * setting — that one measures from the moment a session *entered* pause and no report while
+         * paused moves it, so nothing sent from here can. It is off by default anyway.
          */
-        private const val PAUSED_REPORT_INTERVAL_MS = 30_000L
+        private const val PAUSED_REPORT_INTERVAL_MS = 120_000L
     }
 }
