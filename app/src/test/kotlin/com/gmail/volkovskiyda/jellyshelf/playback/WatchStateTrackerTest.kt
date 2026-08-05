@@ -316,6 +316,33 @@ class WatchStateTrackerTest {
     }
 
     @Test
+    fun `a paused session is kept alive at the position it is paused on`() {
+        playing("a", positionMs = 60_000L)
+        tracker.onPaused(60_000L, ready = true)
+
+        assertEquals(
+            WatchAction.Progress("a", 60_000L, isPaused = true, playSessionId = "s1"),
+            tracker.onPausedKeepAlive(60_000L),
+        )
+        // Seeking while paused moves it, and the keep-alive is the only thing reporting until
+        // playback resumes — so it carries the position, not a memory of where the pause was.
+        assertEquals(
+            WatchAction.Progress("a", 90_000L, isPaused = true, playSessionId = "s1"),
+            tracker.onPausedKeepAlive(90_000L),
+        )
+    }
+
+    @Test
+    fun `there is nothing to keep alive without a session`() {
+        // Paused before the first tick, and paused with nothing playing at all.
+        playing("a")
+        assertNull(tracker.onPausedKeepAlive(5_000L))
+
+        tracker.onItemChanged(null, autoAdvance = false)
+        assertNull(tracker.onPausedKeepAlive(5_000L))
+    }
+
+    @Test
     fun `one id runs from a session's start to its stop`() {
         // What the id is for: the server ties start, progress and stop together by it, so the
         // three reports of one watch must all carry the same one.

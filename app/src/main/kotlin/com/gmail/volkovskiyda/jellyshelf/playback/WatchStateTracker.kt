@@ -155,6 +155,21 @@ internal class WatchStateTracker(
     }
 
     /**
+     * The periodic tick while *paused*: the same position again, so the server's session doesn't
+     * age out of its dashboard while a video sits paused. Nothing local — the position has not
+     * moved since [onPaused] saved it — and nothing at all unless a session is actually open.
+     *
+     * A seek while paused does move it, and the current position is what gets reported, so the
+     * keep-alive doubles as the only way the server hears about that until playback resumes.
+     */
+    fun onPausedKeepAlive(positionMs: Long): WatchAction.Progress? {
+        val id = activeMediaId ?: return null
+        val session = playSessionId ?: return null
+        lastPositionMs = positionMs
+        return WatchAction.Progress(id, positionMs, isPaused = true, playSessionId = session)
+    }
+
+    /**
      * The periodic tick while playing: remember the position, persist it locally, and tell the
      * server — the first tick opens the playback session, every later one reports progress into it.
      *

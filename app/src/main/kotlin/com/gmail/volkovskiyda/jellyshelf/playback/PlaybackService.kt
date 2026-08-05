@@ -98,6 +98,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val watch = WatchStateTracker()
     private var saveJob: Job? = null
 
+    /** The slow keep-alive that runs only while playback sits paused; see [startPausedKeepAlive]. */
+    private var pausedJob: Job? = null
+
     /**
      * The user-perceived startup being timed: set when a controller hands the session a queue,
      * consumed by [StartupTraceListener] at the first rendered frame. A trace that is replaced
@@ -261,6 +264,8 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             // phase — otherwise a tick due in the next few milliseconds could save it at position
             // zero, beating [ResumeSeedingListener] to the row it is about to resume from.
             if (player?.isPlaying == true) startPeriodicSave()
+            // Whatever was paused is gone; the new item has no session to keep alive yet.
+            pausedJob?.cancel()
             // A notification tap should reopen the player on whatever is playing now.
             session?.setSessionActivity(sessionActivity(mediaItem?.mediaId))
         }
@@ -282,13 +287,16 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             if (isPlaying) {
                 watch.onPlaying()
                 startPeriodicSave()
+                pausedJob?.cancel()
             } else {
                 saveJob?.cancel()
                 val p = player
-                watch.onPaused(
-                    positionMs = p?.currentPosition ?: 0L,
-                    ready = p?.playbackState == Player.STATE_READY,
-                ).perform()
+                val ready = p?.playbackState == Player.STATE_READY
+                watch.onPaused(positionMs = p?.currentPosition ?: 0L, ready = ready).perform()
+                // Only a genuine pause is worth keeping alive. Buffering resolves itself, and an
+                // ended video has already been reported — telling the server it is still sitting
+                // there would leave a finished video "now playing" for as long as the app lives.
+                if (ready) startPausedKeepAlive()
             }
         }
 
@@ -441,6 +449,24 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         }
     }
 
+    /**
+     * Keeps a paused session from ageing out of the server's dashboard. Deliberately slower than
+     * the playing tick: the server only needs to hear from a session every few minutes to keep it,
+     * while a paused video can sit for hours, and nothing about it is changing in between.
+     *
+     * The tracker answers with nothing at all when no session is open, so a video paused before it
+     * was ever reported stays as silent as it is today.
+     */
+    private fun startPausedKeepAlive() {
+        pausedJob?.cancel()
+        pausedJob = scope.launch {
+            while (isActive) {
+                delay(PAUSED_REPORT_INTERVAL_MS)
+                player?.currentPosition?.let { watch.onPausedKeepAlive(it).perform() }
+            }
+        }
+    }
+
     private fun sessionActivity(youtubeId: String?): PendingIntent {
         val intent = Intent(this, MainActivity::class.java).apply {
             if (youtubeId != null) putExtra(EXTRA_OPEN_PLAYER, youtubeId)
@@ -479,5 +505,12 @@ class PlaybackService : MediaSessionService(), KoinComponent {
 
         // Unrelated to the seek increments despite matching one of them today.
         private const val POSITION_SAVE_INTERVAL_MS = 10_000L
+
+        /**
+         * How often a paused session tells the server it is still there. Jellyfin drops idle
+         * sessions after minutes, not seconds, so this trades dashboard precision — which is all a
+         * paused row carries — for the battery and traffic of a video left paused overnight.
+         */
+        private const val PAUSED_REPORT_INTERVAL_MS = 30_000L
     }
 }
