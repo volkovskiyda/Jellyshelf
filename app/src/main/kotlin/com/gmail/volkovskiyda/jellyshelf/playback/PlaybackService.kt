@@ -23,6 +23,7 @@ import androidx.media3.session.MediaSessionService
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
@@ -304,10 +305,27 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             is WatchAction.Report ->
                 repo.reportPlaybackStopped(youtubeId, positionMs, completed, playSessionId)
             is WatchAction.SessionStart ->
-                repo.reportPlaybackStarted(youtubeId, positionMs, playSessionId)
+                repo.reportPlaybackStarted(youtubeId, positionMs, playSessionId, currentPlayMethod())
             is WatchAction.Progress ->
-                repo.reportPlaybackProgress(youtubeId, positionMs, isPaused, playSessionId)
+                repo.reportPlaybackProgress(youtubeId, positionMs, isPaused, playSessionId, currentPlayMethod())
             is WatchAction.Save -> repo.savePlaybackPosition(youtubeId, positionMs)
+        }
+    }
+
+    /**
+     * How the server is delivering what is loaded right now, resolved at send time rather than
+     * carried through the tracker: it can change mid-video, and only the player knows.
+     *
+     * The same URI check [StartupTraceListener] makes — an item playing the HLS playlist is one the
+     * transcode fallback swapped in; everything else is the direct stream this app asks for first.
+     * A demo clip is neither, but it never reaches a report: those are gated out in the repository.
+     */
+    private fun currentPlayMethod(): PlayMethod {
+        val uri = player?.currentMediaItem?.localConfiguration?.uri
+        return if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) {
+            PlayMethod.Transcode
+        } else {
+            PlayMethod.DirectPlay
         }
     }
 

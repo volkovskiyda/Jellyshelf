@@ -4,6 +4,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
@@ -119,6 +120,7 @@ class FakeLibraryRepository(
         youtubeId: String,
         positionMs: Long,
         playSessionId: String?,
+        playMethod: PlayMethod,
     ): Unit = notModelled()
 
     override fun reportPlaybackProgress(
@@ -126,6 +128,7 @@ class FakeLibraryRepository(
         positionMs: Long,
         isPaused: Boolean,
         playSessionId: String?,
+        playMethod: PlayMethod,
     ): Unit = notModelled()
 
     override fun savePlaybackPosition(youtubeId: String, positionMs: Long): Unit = notModelled()

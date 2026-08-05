@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.data.remote
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -84,7 +85,7 @@ data class CreatePlaylistBody(
 data class PlaybackStartBody(
     @SerialName("ItemId") val itemId: String,
     @SerialName("PositionTicks") val positionTicks: Long,
-    @SerialName("PlayMethod") val playMethod: String = "DirectPlay",
+    @SerialName("PlayMethod") val playMethod: String = PlayMethod.DirectPlay.name,
     @SerialName("CanSeek") val canSeek: Boolean = true,
     @SerialName("PlaySessionId") val playSessionId: String? = null,
 )
@@ -95,7 +96,7 @@ data class ProgressBody(
     @SerialName("ItemId") val itemId: String,
     @SerialName("PositionTicks") val positionTicks: Long,
     @SerialName("IsPaused") val isPaused: Boolean = false,
-    @SerialName("PlayMethod") val playMethod: String = "DirectPlay",
+    @SerialName("PlayMethod") val playMethod: String = PlayMethod.DirectPlay.name,
     @SerialName("PlaySessionId") val playSessionId: String? = null,
 )
 

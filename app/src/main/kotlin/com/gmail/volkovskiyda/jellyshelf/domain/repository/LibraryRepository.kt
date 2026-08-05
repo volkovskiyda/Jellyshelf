@@ -4,6 +4,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
@@ -68,9 +69,17 @@ interface LibraryRepository {
      * the caller mints one per session, since the /PlaybackInfo call official clients take theirs
      * from is not part of direct play.
      *
+     * [playMethod] describes how the server is delivering the stream right now — the app asks for
+     * direct play and only reports a transcode when the decode fallback put it on one.
+     *
      * Server-only and fire-and-forget: no local write, nothing to wait for.
      */
-    fun reportPlaybackStarted(youtubeId: String, positionMs: Long, playSessionId: String?)
+    fun reportPlaybackStarted(
+        youtubeId: String,
+        positionMs: Long,
+        playSessionId: String?,
+        playMethod: PlayMethod,
+    )
 
     /**
      * Reports an in-flight position for the session [reportPlaybackStarted] opened — every few
@@ -85,6 +94,7 @@ interface LibraryRepository {
         positionMs: Long,
         isPaused: Boolean,
         playSessionId: String?,
+        playMethod: PlayMethod,
     )
 
     /**

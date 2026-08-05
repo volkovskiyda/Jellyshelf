@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.data.remote
 
 import com.gmail.volkovskiyda.jellyshelf.data.repository.isPermanentFailure
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -97,6 +98,14 @@ class JellyfinApiTest {
         assertEquals(0L, start["PositionTicks"]?.jsonPrimitive?.long)
         assertEquals("DirectPlay", start["PlayMethod"]?.jsonPrimitive?.content)
         assertEquals(true, start["CanSeek"]?.jsonPrimitive?.boolean)
+
+        // The enum's names are the wire values, so a transcoding report needs no mapping.
+        val (transcodeApi, transcodeCap) = mockApi()
+        transcodeApi.reportPlaybackStart(
+            PlaybackStartBody("vid1", positionTicks = 0L, playMethod = PlayMethod.Transcode.name),
+        )
+        val transcode = parser.parseToJsonElement(transcodeCap.body).jsonObject
+        assertEquals("Transcode", transcode["PlayMethod"]?.jsonPrimitive?.content)
 
         val (stopApi, stopCap) = mockApi()
         stopApi.reportPlaybackStopped(PlaybackStopBody(itemId = "vid1", positionTicks = 900L))

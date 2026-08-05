@@ -11,6 +11,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.PlaybackStopBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.ProgressBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import kotlinx.coroutines.flow.MutableStateFlow
 import timber.log.Timber
 
@@ -193,23 +194,26 @@ class JellyfinDataSource(
      * through the server's resume thresholds, so the server decides resume-vs-watched; the start
      * report also clears `Played` and bumps `PlayCount`, Jellyfin's own rewatch semantics.
      */
+    @Suppress("LongParameterList") // as below: one parameter per field of the report body
     suspend fun reportPlaybackStart(
         serverUrl: String,
         credential: String,
         itemId: String,
         positionTicks: Long,
         playSessionId: String?,
+        playMethod: PlayMethod,
     ) {
         val response = api(serverUrl, credential).reportPlaybackStart(
             PlaybackStartBody(
                 itemId = itemId,
                 positionTicks = positionTicks,
+                playMethod = playMethod.name,
                 playSessionId = playSessionId,
             ),
         )
         Timber.tag(PLAYBACK_TAG).d(
             "reportPlaybackStart itemId=$itemId positionTicks=$positionTicks " +
-                "playSessionId=$playSessionId -> HTTP ${response.status.value}",
+                "playSessionId=$playSessionId playMethod=$playMethod -> HTTP ${response.status.value}",
         )
     }
 
@@ -223,18 +227,20 @@ class JellyfinDataSource(
         positionTicks: Long,
         isPaused: Boolean,
         playSessionId: String?,
+        playMethod: PlayMethod,
     ) {
         val response = api(serverUrl, credential).reportProgress(
             ProgressBody(
                 itemId = itemId,
                 positionTicks = positionTicks,
                 isPaused = isPaused,
+                playMethod = playMethod.name,
                 playSessionId = playSessionId,
             ),
         )
         Timber.tag(PLAYBACK_TAG).d(
             "reportPlaybackProgress itemId=$itemId positionTicks=$positionTicks isPaused=$isPaused " +
-                "playSessionId=$playSessionId -> HTTP ${response.status.value}",
+                "playSessionId=$playSessionId playMethod=$playMethod -> HTTP ${response.status.value}",
         )
     }
 

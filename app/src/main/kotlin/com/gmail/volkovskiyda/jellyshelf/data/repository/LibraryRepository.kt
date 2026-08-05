@@ -27,6 +27,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
@@ -1082,7 +1083,12 @@ class DefaultLibraryRepository(
         repoScope.launch { onPlaybackStopped(youtubeId, positionMs, completed, playSessionId) }
     }
 
-    override fun reportPlaybackStarted(youtubeId: String, positionMs: Long, playSessionId: String?) {
+    override fun reportPlaybackStarted(
+        youtubeId: String,
+        positionMs: Long,
+        playSessionId: String?,
+        playMethod: PlayMethod,
+    ) {
         reportSession(youtubeId, what = "start") { s, itemId ->
             jellyfin.reportPlaybackStart(
                 serverUrl = s.serverUrl,
@@ -1090,6 +1096,7 @@ class DefaultLibraryRepository(
                 itemId = itemId,
                 positionTicks = millisToTicks(positionMs),
                 playSessionId = playSessionId,
+                playMethod = playMethod,
             )
         }
     }
@@ -1099,6 +1106,7 @@ class DefaultLibraryRepository(
         positionMs: Long,
         isPaused: Boolean,
         playSessionId: String?,
+        playMethod: PlayMethod,
     ) {
         reportSession(youtubeId, what = "progress") { s, itemId ->
             jellyfin.reportPlaybackProgress(
@@ -1108,6 +1116,7 @@ class DefaultLibraryRepository(
                 positionTicks = millisToTicks(positionMs),
                 isPaused = isPaused,
                 playSessionId = playSessionId,
+                playMethod = playMethod,
             )
         }
     }
