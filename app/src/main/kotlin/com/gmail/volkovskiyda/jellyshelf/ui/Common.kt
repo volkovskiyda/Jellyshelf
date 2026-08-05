@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -244,6 +245,14 @@ private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> Stri
 }
 
 /**
+ * Handle for the baseline-profile generator (`:baselineprofile`), which opens a detail screen
+ * through UiAutomator: the row split into two click targets, so the row-level tag alone no longer
+ * names anything clickable. Published as a resource id by `testTagsAsResourceId`, same as the
+ * library tags; nothing else reads it.
+ */
+internal const val VIDEO_ROW_DETAILS_TAG = "video_row_details"
+
+/**
  * One video in a list — and two targets rather than one: the thumbnail plays it, the text beside
  * it opens the detail screen. That is what the picture and the title respectively promise, and it
  * spares the common case (watch this) the detour through a screen it was only passing through.
@@ -311,7 +320,8 @@ fun VideoRow(
                 // the user. The thumbnail beside it is taller than that either way, so the minimum
                 // costs no height; centring keeps the short case where it already sat.
                 .heightIn(min = 48.dp)
-                .clickable(onClick = onOpenDetails),
+                .clickable(onClick = onOpenDetails)
+                .testTag(VIDEO_ROW_DETAILS_TAG),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(

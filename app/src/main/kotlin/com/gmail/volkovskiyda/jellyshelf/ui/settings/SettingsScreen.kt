@@ -53,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -71,6 +72,18 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import org.koin.androidx.compose.koinViewModel
 import kotlin.math.roundToInt
+
+/**
+ * Handles for the baseline-profile generator (`:baselineprofile`), which fills the sign-in form
+ * through UiAutomator and so cannot match on Compose semantics the way the instrumented tests do.
+ * Named in resource-id style because that is what they become: MainActivity's root Scaffold sets
+ * `testTagsAsResourceId`, which republishes every tag below it as an Android resource id. They have
+ * no other meaning — nothing in the app or the test suite reads them.
+ */
+internal const val SERVER_URL_FIELD_TAG = "server_url_field"
+internal const val USERNAME_FIELD_TAG = "username_field"
+internal const val PASSWORD_FIELD_TAG = "password_field"
+internal const val INDEX_URL_FIELD_TAG = "index_url_field"
 
 /**
  * Settings tab: binds [SettingsViewModel] to the stateless [SettingsContent] below, which
@@ -183,7 +196,9 @@ internal fun SettingsContent(
                 label = { Text(stringResource(R.string.server_url)) },
                 placeholder = { Text(stringResource(R.string.server_url_hint)) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(SERVER_URL_FIELD_TAG),
             )
             // The default auth path: a user-scoped token, so nothing the app holds or hands to an
             // external player is a full-server credential.
@@ -193,7 +208,9 @@ internal fun SettingsContent(
                 label = { Text(stringResource(R.string.username)) },
                 singleLine = true,
                 enabled = !state.signedIn,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(USERNAME_FIELD_TAG),
             )
             if (!state.signedIn) {
                 OutlinedTextField(
@@ -207,7 +224,9 @@ internal fun SettingsContent(
                         imeAction = ImeAction.Done,
                     ),
                     keyboardActions = KeyboardActions(onDone = { actions.signIn() }),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(PASSWORD_FIELD_TAG),
                 )
             }
             Button(
@@ -476,7 +495,9 @@ private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
                 ) { Text(stringResource(R.string.fill)) }
             }
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(INDEX_URL_FIELD_TAG),
     )
 }
 
