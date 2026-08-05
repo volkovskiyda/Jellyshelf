@@ -23,9 +23,11 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -126,11 +128,19 @@ class PlaystateReportingInstrumentedTest {
         )
     }
 
-    private fun repository(settings: Settings = connected): DefaultLibraryRepository {
+    /**
+     * [beforeResponse] runs after the request is recorded but before it is answered, so a test that
+     * cares about what happens *during* a request can hold one open and act while it is in flight.
+     */
+    private fun repository(
+        settings: Settings = connected,
+        beforeResponse: suspend (String) -> Unit = {},
+    ): DefaultLibraryRepository {
         val json = provideJson()
         val engine = MockEngine { request ->
             val path = request.url.encodedPath
             sent += path to request.body.toByteArray().decodeToString()
+            beforeResponse(path)
             when {
                 // The mirror fetch after a partway in-app stop.
                 path.startsWith("/Items/") -> respond(
@@ -261,6 +271,94 @@ class PlaystateReportingInstrumentedTest {
         assertNotNull("the server's verdict never reached the row", row)
         assertEquals(0L, row?.playbackPositionTicks)
         assertEquals(1, row?.playCount)
+    }
+
+    /**
+     * The mirror fetch is the one server read the app makes off the back of its own write, and it
+     * runs holding no playstate lock — so a hand toggle can land in the middle of it. When it does,
+     * the row has moved past the report the server was asked about, and the answer is stale before
+     * it arrives: the toggle is what the user just said, the verdict is what the server made of a
+     * stop it hadn't heard about yet.
+     *
+     * Both halves of that are checked here, because both are load-bearing and neither is visible in
+     * the types: that the toggle can complete at all while the fetch is open (it would deadlock
+     * behind the fetch if the mirror still held `playstateMutex`), and that the verdict is then
+     * declined rather than written over it.
+     */
+    @Test
+    fun aToggleDuringTheMirrorFetch_keepsTheToggleAndDropsTheServersVerdict() = runBlocking {
+        seedVideo(positionTicks = 0L)
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        val repo = repository { path ->
+            if (path.startsWith("/Items/")) {
+                fetchStarted.complete(Unit)
+                releaseFetch.await()
+            }
+        }
+
+        // A partway in-app stop: played=false, position 5:00 written locally, then the read-back
+        // that asks the server what it made of it. That fetch is what this test freezes.
+        repo.reportPlaybackStopped(
+            youtubeId = "aaaaaaaaaaa",
+            positionMs = 300_000L,
+            completed = false,
+            playSessionId = "ps-1",
+        )
+        assertNotNull(
+            "the mirror fetch never started, got $sent",
+            withTimeoutOrNull(WAIT_MS) { fetchStarted.await() },
+        )
+
+        // Marked watched by hand with the fetch still open. A null here is the deadlock case, not a
+        // slow machine: nothing else in this test can release the toggle.
+        val toggled = withTimeoutOrNull(WAIT_MS) { repo.setPlayed("aaaaaaaaaaa", played = true) }
+        assertEquals("the toggle blocked behind the mirror fetch", true, toggled)
+        assertEquals(true, db.videoDao().get("aaaaaaaaaaa")?.played)
+
+        releaseFetch.complete(Unit)
+        letReportsSettle()
+
+        // The server answered played, position 0, count 1 — all of it dropped. Played matching is
+        // a coincidence of this scenario; the position and the count are what tell the two apart.
+        val row = db.videoDao().get("aaaaaaaaaaa")
+        assertEquals(true, row?.played)
+        assertEquals("the toggle's position must survive", FIVE_MINUTES_TICKS, row?.playbackPositionTicks)
+        assertEquals("the server's play count must not land", 0, row?.playCount)
+    }
+
+    /**
+     * The ordering the guard above rests on: a toggle reaches disk before its server write leaves.
+     *
+     * That is what makes "the row still matches what I reported" a sound test of "nothing has
+     * happened since" — a toggle that sent first would be able to move the server's answer while
+     * the row still looked untouched, and the mirror would accept a verdict formed through a write
+     * it can't see. Nothing in the types says so today; it is the order of two statements in
+     * [PlaystateWriter.setPlayed], which is exactly the kind of thing a later edit reorders.
+     */
+    @Test
+    fun aToggleIsOnDiskBeforeItsServerWriteGoesOut() = runBlocking {
+        seedVideo()
+        val sendStarted = CompletableDeferred<Unit>()
+        val releaseSend = CompletableDeferred<Unit>()
+        val repo = repository { path ->
+            if (path.endsWith("/PlayedItems/jf-1")) {
+                sendStarted.complete(Unit)
+                releaseSend.await()
+            }
+        }
+
+        val toggle = async { repo.setPlayed("aaaaaaaaaaa", played = true) }
+        assertNotNull(
+            "the played-items write never went out, got $sent",
+            withTimeoutOrNull(WAIT_MS) { sendStarted.await() },
+        )
+
+        // Frozen mid-send: the local row already carries the toggle.
+        assertEquals(true, db.videoDao().get("aaaaaaaaaaa")?.played)
+
+        releaseSend.complete(Unit)
+        assertTrue(toggle.await())
     }
 
     @Test

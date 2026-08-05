@@ -52,6 +52,10 @@ internal class PlaystateWriter(
      * server's value, so callers should tell the user.
      */
     override suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean {
+        // Local first, then the server. That order is what [mirrorServerWatchState]'s guard reads
+        // as "nothing has happened since I reported": a send that went out ahead of its own local
+        // write could move the server's answer while the row still looked untouched. Pinned by
+        // `PlaystateReportingInstrumentedTest.aToggleIsOnDiskBeforeItsServerWriteGoesOut`.
         writes.mutex.withLock {
             val v = videoDao.get(youtubeId) ?: return false
             videoDao.updateWatchState(youtubeId, played, if (played) v.playbackPositionTicks else 0L)
@@ -289,7 +293,10 @@ internal class PlaystateWriter(
         // Having a session id *is* what makes this an in-app stop: it is minted when the in-app
         // player opens the server session, and an external handoff never has one.
         val liveSession = playSessionId != null
-        runCatchingCancellable {
+        // Non-null only for the one stop that needs the server's verdict read back afterwards: a
+        // partway one that closed a live session. It carries the state the report was made from,
+        // which is what the read-back checks the row against — see [mirrorServerWatchState].
+        val reported = runCatchingCancellable {
             playstateMutex.withLock {
                 // Re-read at send time (see setPlayed): a toggle that landed while this
                 // report waited for the lock must not be overwritten with older state.
@@ -345,14 +352,23 @@ internal class PlaystateWriter(
                         lastPlayedDate = Instant.now().toString(),
                     )
                 }
+                Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: server report succeeded for itemId=$itemId")
                 // Only a partway stop needs asking: a finished one already wrote played, position 0
                 // locally, which is exactly what the server made of it.
-                if (sessionClosed && !latest.played) mirrorServerWatchState(youtubeId, itemId, s, latest)
+                if (sessionClosed && !latest.played) latest else null
             }
-            Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: server report succeeded for itemId=$itemId")
         }.onFailure { e ->
             Timber.tag(PLAYBACK_TAG).w(e, "onPlaybackStopped: server report failed for itemId=$itemId")
-        }
+        }.getOrNull()
+
+        // Deliberately outside the lock: the mirror takes [LibraryWrites.mutex] itself, and holding
+        // [playstateMutex] across that was the one place in the app that waited on a second lock
+        // while holding a first. That chained a sync — which holds the row mutex for a whole merge —
+        // to the next toggle's server write, and left a lock order for a later edit to get wrong for
+        // no gain: a read-back is not a send, so none of the ordering [playstateMutex] exists to
+        // guarantee depends on holding it here. What keeps it safe out here is the mirror's own
+        // guard, which re-reads the row and declines if it moved on since [reported].
+        reported?.let { mirrorServerWatchState(youtubeId, itemId, s, it) }
     }
 
     /**
@@ -371,6 +387,16 @@ internal class PlaystateWriter(
      * That stamp is also what makes the write safe against a sync already in flight: that sync's
      * server snapshot predates this write, and the merge keeps local values stamped after its
      * fetch began.
+     *
+     * Runs with no playstate lock held — it takes [LibraryWrites.mutex] itself, and nesting that
+     * inside `playstateMutex` would be the app's only acquisition of one lock while holding
+     * another. Nothing is lost by dropping it: every writer that could move the server's answer
+     * under us writes locally *before* it sends ([setPlayed] does), so a server state this fetch
+     * read through someone else's write always comes back to a row that no longer matches
+     * [reported], and the guard below declines it. That write-then-send ordering is what the guard
+     * rests on, so `PlaystateReportingInstrumentedTest` pins down both halves rather than leaving
+     * either to statement order. The one ordering this gives up is against a *later* session report
+     * for the same item, which replays the position this stop just wrote and so answers the same.
      */
     private suspend fun mirrorServerWatchState(
         youtubeId: String,
