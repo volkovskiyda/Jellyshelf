@@ -383,17 +383,19 @@ internal class PlaystateWriter(
                 ) {
                     return@withLock
                 }
+                val played = userData.played
+                val positionTicks = userData.playbackPositionTicks
+                val playCount = userData.playCount
                 videoDao.updateServerWatchState(
                     youtubeId = youtubeId,
-                    played = userData.played,
-                    positionTicks = userData.playbackPositionTicks,
-                    playCount = userData.playCount,
+                    played = played,
+                    positionTicks = positionTicks,
+                    playCount = playCount,
                 )
                 writes.watchStamps[youtubeId] = System.currentTimeMillis()
                 Timber.tag(PLAYBACK_TAG).d(
                     "onPlaybackStopped: mirrored the server's verdict for itemId=$itemId " +
-                        "played=${userData.played} positionTicks=${userData.playbackPositionTicks} " +
-                        "playCount=${userData.playCount}",
+                        "played=$played positionTicks=$positionTicks playCount=$playCount",
                 )
             }
         }.onFailure { e ->

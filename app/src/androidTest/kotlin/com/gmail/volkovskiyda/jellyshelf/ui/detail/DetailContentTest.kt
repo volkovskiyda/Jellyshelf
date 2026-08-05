@@ -172,7 +172,7 @@ class DetailContentTest {
     fun `a never-synced video shows no sync line`() {
         setContent(video.copy(lastSyncedAt = 0L))
 
-        composeRule.onNodeWithText("Synced", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Last synced", substring = true).assertDoesNotExist()
     }
 
     @Test

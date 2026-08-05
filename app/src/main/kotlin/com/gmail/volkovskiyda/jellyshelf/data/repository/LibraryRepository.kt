@@ -143,7 +143,7 @@ private class DemoWatchState(val played: Boolean, val positionTicks: Long, val p
  * would be after a real sync, and it gives the "Uncategorized" filter genuine members instead
  * of an empty row on the Others tab.
  */
-private fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
+internal fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
     val title = entry.title ?: entry.id
     val indexed = entry.hasIndexMetadata
     val durationSeconds = entry.duration ?: 0L
@@ -236,7 +236,7 @@ internal fun prunePolicy(scopeChanged: Boolean, storedCount: Int, seenCount: Int
  * included, so a video riding out its grace period doesn't drop out of its
  * channel/year/duration categories only to reappear in them a few hours later.
  */
-private fun retainedRows(
+internal fun retainedRows(
     prune: Prune,
     existingById: Map<String, VideoEntity>,
     videos: List<VideoEntity>,
@@ -263,7 +263,7 @@ private fun retainedRows(
  * cross-ref. Videos with no metadata simply produce no auto-categories (they surface under the
  * "Others" tab's Uncategorized filter instead).
  */
-private fun autoAssignments(
+internal fun autoAssignments(
     rows: List<VideoEntity>,
     now: Long,
 ): Pair<Map<String, CategoryEntity>, List<VideoCategoryCrossRef>> {
@@ -278,10 +278,10 @@ private fun autoAssignments(
     return autoCategories to crossRefs
 }
 
-private data class AutoAssignment(val id: String, val name: String, val type: String)
+internal data class AutoAssignment(val id: String, val name: String, val type: String)
 
 /** The auto-categories a single [video] belongs to, along every dimension. */
-private fun autoAssignmentsOf(video: VideoEntity): List<AutoAssignment> = buildList {
+internal fun autoAssignmentsOf(video: VideoEntity): List<AutoAssignment> = buildList {
     video.channel?.takeIf { it.isNotBlank() }?.let { channel ->
         val id = "channel:" + (video.channelId?.takeIf { it.isNotBlank() } ?: channel)
         add(AutoAssignment(id, channel, CATEGORY_TYPE_AUTO_CHANNEL))
@@ -370,7 +370,7 @@ private class BulkRunner(private val scope: CoroutineScope) {
  * non-local `return` works and the trace adds almost nothing to [DefaultLibraryRepository], which
  * stays close to detekt's LargeClass ceiling even with the playstate slice split out.
  */
-private inline fun <T> tracedSync(block: (Trace) -> T): T {
+internal inline fun <T> tracedSync(block: (Trace) -> T): T {
     val trace = FirebasePerformance.getInstance().newTrace("library_sync")
     trace.start()
     trace.putAttribute("result", "error")

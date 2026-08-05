@@ -103,7 +103,10 @@
     <string name="source_ytdlp">In-app · yt-dlp</string>
     <string name="source_index">Script · index</string>
     <string name="source_jellyfin">Jellyfin only</string>
-    <string name="last_synced">Synced %1$s</string>
+    <!-- Detail's own line, so it leads. Settings says the same thing mid-sentence with its own
+         lowercase synced_at; keeping the wording distinct is also what stops the two reading as
+         one duplicated string. -->
+    <string name="last_synced">Last synced %1$s</string>
     <!-- The relative halves of a sync time; past three hours it becomes an exact stamp. -->
     <string name="synced_just_now">just now</string>
     <plurals name="synced_minutes_ago">
