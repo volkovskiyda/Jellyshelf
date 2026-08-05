@@ -26,7 +26,7 @@ class WatchStateTrackerTest {
      */
     private fun playing(id: String, positionMs: Long = 0L) {
         tracker.onItemChanged(newMediaId = id, autoAdvance = false)
-        tracker.onPlaying()
+        tracker.onPlaying(0L)
         if (positionMs > 0L) tracker.onPeriodicTick(positionMs)
     }
 
@@ -180,7 +180,7 @@ class WatchStateTrackerTest {
         playing("a", positionMs = 700_000L)
         tracker.onEnded(durationMs = 754_000L)
 
-        tracker.onPlaying()
+        tracker.onPlaying(0L)
 
         assertEquals(
             WatchAction.Report("a", 10_000L, completed = false, playSessionId = "s1"),
@@ -246,7 +246,7 @@ class WatchStateTrackerTest {
     @Test
     fun `the first tick opens the session and every later one reports progress`() {
         tracker.onItemChanged("a", autoAdvance = false)
-        tracker.onPlaying()
+        tracker.onPlaying(0L)
 
         assertEquals(
             listOf(
@@ -274,7 +274,7 @@ class WatchStateTrackerTest {
     @Test
     fun `stepping past a video opens no session`() {
         tracker.onItemChanged("a", autoAdvance = false)
-        tracker.onPlaying()
+        tracker.onPlaying(0L)
 
         assertEquals(
             WatchAction.Report("a", 0L, completed = false, playSessionId = null),
@@ -303,7 +303,7 @@ class WatchStateTrackerTest {
         playing("a")
         assertEquals(listOf(WatchAction.Save("a", 5_000L)), tracker.onPaused(5_000L, ready = true))
 
-        tracker.onPlaying()
+        tracker.onPlaying(5_000L)
         tracker.onPeriodicTick(15_000L)
 
         assertEquals(
@@ -333,6 +333,44 @@ class WatchStateTrackerTest {
     }
 
     @Test
+    fun `resuming tells the server straight away, not at the next tick`() {
+        // The other half of the pause report. Without this the server sits on "paused" for up to a
+        // full save interval while the video is visibly playing again.
+        playing("a", positionMs = 60_000L)
+        tracker.onPaused(60_000L, ready = true)
+
+        assertEquals(
+            WatchAction.Progress("a", 60_000L, isPaused = false, playSessionId = "s1"),
+            tracker.onPlaying(60_000L),
+        )
+    }
+
+    @Test
+    fun `resuming reports the position it resumes from`() {
+        // Seeking while paused and then playing: the resume carries where playback actually goes on
+        // from, so the server is never told the old spot is current.
+        playing("a", positionMs = 60_000L)
+        tracker.onPaused(60_000L, ready = true)
+
+        assertEquals(
+            WatchAction.Progress("a", 200_000L, isPaused = false, playSessionId = "s1"),
+            tracker.onPlaying(200_000L),
+        )
+        assertEquals(200_000L, tracker.lastPositionMs)
+    }
+
+    @Test
+    fun `playing opens no session by itself`() {
+        // Why this is a report and not a start: pressing play must not be what opens the session,
+        // or the video the user skipped past after a single tap comes back unwatched with a play to
+        // its name. Only the first periodic tick opens one.
+        tracker.onItemChanged("a", autoAdvance = false)
+
+        assertNull(tracker.onPlaying(0L))
+        assertNull(tracker.playSessionId)
+    }
+
+    @Test
     fun `there is nothing to keep alive without a session`() {
         // Paused before the first tick, and paused with nothing playing at all.
         playing("a")
@@ -347,7 +385,7 @@ class WatchStateTrackerTest {
         // What the id is for: the server ties start, progress and stop together by it, so the
         // three reports of one watch must all carry the same one.
         tracker.onItemChanged("a", autoAdvance = false)
-        tracker.onPlaying()
+        tracker.onPlaying(0L)
 
         val start = tracker.onPeriodicTick(10_000L).filterIsInstance<WatchAction.SessionStart>().single()
         val progress = tracker.onPeriodicTick(20_000L).filterIsInstance<WatchAction.Progress>().single()
@@ -363,7 +401,7 @@ class WatchStateTrackerTest {
         // second start report would clear the played flag the server had just set on it.
         playing("a", positionMs = 700_000L)
         tracker.onEnded(durationMs = 754_000L)
-        tracker.onPlaying()
+        tracker.onPlaying(0L)
 
         assertEquals(
             listOf(

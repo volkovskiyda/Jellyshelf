@@ -285,9 +285,12 @@ class PlaybackService : MediaSessionService(), KoinComponent {
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
-                watch.onPlaying()
-                startPeriodicSave()
+                // Cancelled before the resume is reported, not after: both run on this thread, so
+                // stopping the keep-alive here is what guarantees a stale "is paused" tick cannot
+                // land behind the report that supersedes it.
                 pausedJob?.cancel()
+                watch.onPlaying(player?.currentPosition ?: 0L).perform()
+                startPeriodicSave()
             } else {
                 saveJob?.cancel()
                 val p = player

@@ -131,9 +131,24 @@ internal class WatchStateTracker(
         }
     }
 
-    /** Playback started or resumed; any earlier completion no longer stands. */
-    fun onPlaying() {
+    /**
+     * Playback started or resumed; any earlier completion no longer stands.
+     *
+     * A resume the server knows about is passed on as a playing progress report — the mirror of the
+     * paused one [onPaused] sends. Without it the server keeps calling a video paused until the next
+     * periodic tick, a whole save interval after it visibly started moving again, and a resume the
+     * user immediately leaves is never corrected at all.
+     *
+     * Silent when no session is open: pressing play must not be what opens one, or the video tapped
+     * past a moment later comes back unwatched with a play counted against it. Opening stays the
+     * first periodic tick's job alone ([onPeriodicTick]).
+     */
+    fun onPlaying(positionMs: Long): WatchAction.Progress? {
         completionReported = false
+        val id = activeMediaId ?: return null
+        val session = playSessionId ?: return null
+        lastPositionMs = positionMs
+        return WatchAction.Progress(id, positionMs, isPaused = false, playSessionId = session)
     }
 
     /**
