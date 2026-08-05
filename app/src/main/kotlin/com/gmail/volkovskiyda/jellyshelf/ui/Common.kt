@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,6 +51,9 @@ import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -239,10 +243,20 @@ private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> Stri
     return result
 }
 
+/**
+ * One video in a list — and two targets rather than one: the thumbnail plays it, the text beside
+ * it opens the detail screen. That is what the picture and the title respectively promise, and it
+ * spares the common case (watch this) the detour through a screen it was only passing through.
+ *
+ * A row with nothing playable behind it (no Jellyfin item) sends its thumbnail to the details as
+ * well, where Play is disabled and the reason is on screen, rather than into a player that could
+ * only fail.
+ */
 @Composable
 fun VideoRow(
     video: Video,
-    onClick: () -> Unit,
+    onPlay: () -> Unit,
+    onOpenDetails: () -> Unit,
     // Required, deliberately: a default that resolved the model here would put a Koin lookup and a
     // settings subscription in every visible row. Callers hoist that to one per screen with
     // [rememberVideoThumbnailResolver]; host-side rendering passes null.
@@ -252,16 +266,25 @@ fun VideoRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        val playable = video.jellyfinItemId != null
+        // Names the video rather than saying a bare "Play": TalkBack reads a screenful of these in
+        // a row, and clickables that all speak the same words are indistinguishable from one
+        // another (which is also what the duplicate-speakable-text check flags).
+        val thumbnailLabel = stringResource(
+            if (playable) R.string.play_video else R.string.open_video_details,
+            video.title,
+        )
         Box(
             modifier = Modifier
                 .width(120.dp)
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(role = Role.Button, onClick = if (playable) onPlay else onOpenDetails)
+                .semantics { contentDescription = thumbnailLabel },
             contentAlignment = Alignment.BottomCenter,
         ) {
             AsyncImage(
@@ -281,7 +304,16 @@ fun VideoRow(
             }
         }
 
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                // A row with nothing but a title has less text than the 48 dp a touch target owes
+                // the user. The thumbnail beside it is taller than that either way, so the minimum
+                // costs no height; centring keeps the short case where it already sat.
+                .heightIn(min = 48.dp)
+                .clickable(onClick = onOpenDetails),
+            verticalArrangement = Arrangement.Center,
+        ) {
             Text(
                 text = video.title,
                 style = MaterialTheme.typography.bodyLarge,

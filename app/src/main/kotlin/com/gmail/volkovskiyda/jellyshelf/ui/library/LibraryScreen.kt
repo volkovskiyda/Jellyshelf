@@ -61,7 +61,8 @@ internal const val LIBRARY_ROW_TAG = "library_row"
  */
 @Composable
 fun LibraryScreen(
-    onVideoClick: (Video) -> Unit,
+    onPlayVideo: (Video) -> Unit,
+    onOpenDetails: (Video) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = koinViewModel(),
 ) {
@@ -77,7 +78,8 @@ fun LibraryScreen(
         totalCount = totalCount,
         onQueryChange = viewModel::onQueryChange,
         onDurationFilterChange = viewModel::onDurationFilterChange,
-        onVideoClick = onVideoClick,
+        onPlayVideo = onPlayVideo,
+        onOpenDetails = onOpenDetails,
         modifier = modifier,
     )
 }
@@ -91,7 +93,8 @@ internal fun LibraryContent(
     totalCount: Int,
     onQueryChange: (String) -> Unit,
     onDurationFilterChange: (DurationBucket?) -> Unit,
-    onVideoClick: (Video) -> Unit,
+    onPlayVideo: (Video) -> Unit,
+    onOpenDetails: (Video) -> Unit,
     modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
@@ -195,7 +198,8 @@ internal fun LibraryContent(
                 items(videos, key = { it.youtubeId }) { video ->
                     VideoRow(
                         video = video,
-                        onClick = { onVideoClick(video) },
+                        onPlay = { onPlayVideo(video) },
+                        onOpenDetails = { onOpenDetails(video) },
                         thumbnailModel = thumbnailModel(video),
                         modifier = Modifier.testTag(LIBRARY_ROW_TAG),
                     )

@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -15,6 +16,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -74,7 +76,8 @@ class LibraryContentTest {
         query: String = "",
         durationFilter: DurationBucket? = null,
         totalCount: Int = 0,
-        onVideoClick: (Video) -> Unit = {},
+        onPlayVideo: (Video) -> Unit = {},
+        onOpenDetails: (Video) -> Unit = {},
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
@@ -85,7 +88,8 @@ class LibraryContentTest {
                     totalCount = totalCount,
                     onQueryChange = {},
                     onDurationFilterChange = {},
-                    onVideoClick = onVideoClick,
+                    onPlayVideo = onPlayVideo,
+                    onOpenDetails = onOpenDetails,
                     // The two seams the screen exposes for exactly this: no Koin container here.
                     scrollStore = FakeScrollPositionRepository(),
                     thumbnailModel = { null },
@@ -108,17 +112,60 @@ class LibraryContentTest {
     }
 
     @Test
-    fun tappingAVideo_reportsThatVideo() {
-        var clicked: Video? = null
+    fun tappingAVideosTitle_opensItsDetails() {
+        var played: Video? = null
+        var opened: Video? = null
         setContent(
             LibraryVideos(listOf(video("a", "First video")), "", null),
             totalCount = 1,
-            onVideoClick = { clicked = it },
+            onPlayVideo = { played = it },
+            onOpenDetails = { opened = it },
         )
 
         composeRule.onNodeWithText("First video").performClick()
 
-        assertEquals("a", clicked?.youtubeId)
+        assertEquals("a", opened?.youtubeId)
+        assertNull(played)
+    }
+
+    @Test
+    fun tappingAVideosThumbnail_playsThatVideo() {
+        var played: Video? = null
+        var opened: Video? = null
+        setContent(
+            LibraryVideos(listOf(video("a", "First video"), video("b", "Second video")), "", null),
+            totalCount = 2,
+            onPlayVideo = { played = it },
+            onOpenDetails = { opened = it },
+        )
+
+        composeRule
+            .onNodeWithContentDescription(string(R.string.play_video, "Second video"))
+            .performClick()
+
+        assertEquals("b", played?.youtubeId)
+        assertNull(opened)
+    }
+
+    @Test
+    fun theThumbnailOfAnUnplayableVideo_opensItsDetailsInstead() {
+        // No Jellyfin item behind the row: there is nothing for the player to stream, so the
+        // thumbnail sends the user where the state is explained rather than into a doomed player.
+        var played: Video? = null
+        var opened: Video? = null
+        setContent(
+            LibraryVideos(listOf(video("a", "First video").copy(jellyfinItemId = null)), "", null),
+            totalCount = 1,
+            onPlayVideo = { played = it },
+            onOpenDetails = { opened = it },
+        )
+
+        composeRule
+            .onNodeWithContentDescription(string(R.string.open_video_details, "First video"))
+            .performClick()
+
+        assertEquals("a", opened?.youtubeId)
+        assertNull(played)
     }
 
     @Test

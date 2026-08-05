@@ -4,7 +4,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
@@ -13,6 +15,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -75,6 +78,8 @@ class CategoryVideosContentTest {
         bulkFetch: BulkProgress = BulkProgress.Idle,
         bulkRemove: BulkProgress = BulkProgress.Idle,
         demoMode: Boolean = false,
+        onPlayVideo: (Video) -> Unit = {},
+        onOpenDetails: (Video) -> Unit = {},
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
@@ -94,7 +99,8 @@ class CategoryVideosContentTest {
                     showRemoveDialog = false,
                     onShowRemoveDialog = {},
                     onDismissRemoveDialog = {},
-                    onVideoClick = {},
+                    onPlayVideo = onPlayVideo,
+                    onOpenDetails = onOpenDetails,
                     onBack = {},
                     onStartFetchMissing = {},
                     onCancelFetchMissing = {},
@@ -166,6 +172,25 @@ class CategoryVideosContentTest {
         setContent(videosOrNull = null)
 
         composeRule.onNodeWithText(string(R.string.empty_category)).assertDoesNotExist()
+    }
+
+    /**
+     * The row's two targets, here as well as in the library: a category list is the other way into
+     * a video, and it queues the category rather than the library once one starts playing.
+     */
+    @Test
+    fun aRowsThumbnailPlays_whileItsTitleOpensTheDetails() {
+        var played: Video? = null
+        var opened: Video? = null
+        setContent(videos, onPlayVideo = { played = it }, onOpenDetails = { opened = it })
+
+        composeRule
+            .onNodeWithContentDescription(string(R.string.play_video, "First video"))
+            .performClick()
+        composeRule.onNodeWithText("Second video").performClick()
+
+        assertEquals("a", played?.youtubeId)
+        assertEquals("b", opened?.youtubeId)
     }
 
     private fun removeWatchedLabel(count: Int) =

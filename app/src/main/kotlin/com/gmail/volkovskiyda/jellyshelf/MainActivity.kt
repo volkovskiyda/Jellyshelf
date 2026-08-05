@@ -313,7 +313,13 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             when (key) {
                 is AppNavKey.Library -> NavEntry(key) {
                     LibraryScreen(
-                        onVideoClick = {
+                        // A thumbnail tap goes straight to the player, carrying the same origin the
+                        // detour through Detail would have handed it: the queue is the library as
+                        // the user has it narrowed, either way in.
+                        onPlayVideo = {
+                            navThrottle { push(AppNavKey.Player(it.youtubeId, PlayerOrigin.Library)) }
+                        },
+                        onOpenDetails = {
                             // The origin rides on Detail so that Play, one screen later, still
                             // knows which list the user was in — Detail itself never reads it.
                             navThrottle { push(AppNavKey.Detail(it.youtubeId, PlayerOrigin.Library)) }
@@ -337,11 +343,14 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 }
 
                 is AppNavKey.CategoryVideos -> NavEntry(key) {
+                    val origin = PlayerOrigin.Category(key.categoryId)
                     CategoryVideosScreen(
                         categoryId = key.categoryId,
                         title = key.title,
-                        onVideoClick = {
-                            val origin = PlayerOrigin.Category(key.categoryId)
+                        onPlayVideo = {
+                            navThrottle { push(AppNavKey.Player(it.youtubeId, origin)) }
+                        },
+                        onOpenDetails = {
                             navThrottle { push(AppNavKey.Detail(it.youtubeId, origin)) }
                         },
                         onBack = { navThrottle { pop() } },

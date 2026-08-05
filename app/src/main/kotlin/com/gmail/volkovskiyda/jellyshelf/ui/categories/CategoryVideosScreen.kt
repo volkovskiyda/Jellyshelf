@@ -60,7 +60,8 @@ import org.koin.core.parameter.parametersOf
 fun CategoryVideosScreen(
     categoryId: String,
     title: String,
-    onVideoClick: (Video) -> Unit,
+    onPlayVideo: (Video) -> Unit,
+    onOpenDetails: (Video) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -97,7 +98,8 @@ fun CategoryVideosScreen(
         showRemoveDialog = showRemoveDialog,
         onShowRemoveDialog = { showRemoveDialog = true },
         onDismissRemoveDialog = { showRemoveDialog = false },
-        onVideoClick = onVideoClick,
+        onPlayVideo = onPlayVideo,
+        onOpenDetails = onOpenDetails,
         onBack = onBack,
         onStartFetchMissing = viewModel::startFetchMissing,
         onCancelFetchMissing = viewModel::cancelFetchMissing,
@@ -130,7 +132,8 @@ internal fun CategoryVideosContent(
     showRemoveDialog: Boolean,
     onShowRemoveDialog: () -> Unit,
     onDismissRemoveDialog: () -> Unit,
-    onVideoClick: (Video) -> Unit,
+    onPlayVideo: (Video) -> Unit,
+    onOpenDetails: (Video) -> Unit,
     onBack: () -> Unit,
     onStartFetchMissing: () -> Unit,
     onCancelFetchMissing: () -> Unit,
@@ -180,7 +183,15 @@ internal fun CategoryVideosContent(
             )
         }
 
-        CategoryVideoList(videosOrNull, isUncategorized, scrollKey, onVideoClick, scrollStore, thumbnailModel)
+        CategoryVideoList(
+            videosOrNull = videosOrNull,
+            isUncategorized = isUncategorized,
+            scrollKey = scrollKey,
+            onPlayVideo = onPlayVideo,
+            onOpenDetails = onOpenDetails,
+            scrollStore = scrollStore,
+            thumbnailModel = thumbnailModel,
+        )
     }
 
     if (showDialog) {
@@ -229,11 +240,13 @@ private fun CategoryTopBar(title: String, videoCount: Int, onBack: () -> Unit, o
 }
 
 @Composable
+@Suppress("LongParameterList") // the list and its two per-row targets; every parameter is state
 private fun CategoryVideoList(
     videosOrNull: List<Video>?,
     isUncategorized: Boolean,
     scrollKey: String,
-    onVideoClick: (Video) -> Unit,
+    onPlayVideo: (Video) -> Unit,
+    onOpenDetails: (Video) -> Unit,
     scrollStore: ScrollPositionRepository,
     thumbnailModel: (Video) -> String?,
 ) {
@@ -255,7 +268,8 @@ private fun CategoryVideoList(
             items(videos, key = { it.youtubeId }) { video ->
                 VideoRow(
                     video = video,
-                    onClick = { onVideoClick(video) },
+                    onPlay = { onPlayVideo(video) },
+                    onOpenDetails = { onOpenDetails(video) },
                     thumbnailModel = thumbnailModel(video),
                 )
             }

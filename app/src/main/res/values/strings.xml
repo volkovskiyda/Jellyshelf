@@ -11,6 +11,11 @@
     <string name="cancel">Cancel</string>
     <string name="dismiss">Dismiss</string>
     <string name="watched">Watched</string>
+    <!-- A list row's thumbnail: it plays the video, so it is labelled as the button it is. Names
+         the video because a list of identically-labelled buttons is unusable with TalkBack. -->
+    <string name="play_video">Play %1$s</string>
+    <!-- The same thumbnail on a row with nothing playable behind it, which opens the details. -->
+    <string name="open_video_details">Open details for %1$s</string>
     <plurals name="video_count">
         <item quantity="one">%d video</item>
         <item quantity="other">%d videos</item>

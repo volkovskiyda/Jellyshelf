@@ -12,28 +12,28 @@ import com.android.tools.screenshot.PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowDefault() {
-    PreviewTheme { VideoRow(video = sampleVideo, onClick = {}, thumbnailModel = null) }
+    PreviewTheme { VideoRow(video = sampleVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
 }
 
 @PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowWatched() {
-    PreviewTheme { VideoRow(video = watchedVideo, onClick = {}, thumbnailModel = null) }
+    PreviewTheme { VideoRow(video = watchedVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
 }
 
 @PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowPartWatched() {
-    PreviewTheme { VideoRow(video = partWatchedVideo, onClick = {}, thumbnailModel = null) }
+    PreviewTheme { VideoRow(video = partWatchedVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
 }
 
 @PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowMissingFromServer() {
-    PreviewTheme { VideoRow(video = missingVideo, onClick = {}, thumbnailModel = null) }
+    PreviewTheme { VideoRow(video = missingVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
 }
 
 @PreviewTest
@@ -41,7 +41,7 @@ private fun VideoRowMissingFromServer() {
 @Composable
 private fun VideoRowDefaultDark() {
     PreviewTheme(darkTheme = true) {
-        VideoRow(video = sampleVideo, onClick = {}, thumbnailModel = null)
+        VideoRow(video = sampleVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null)
     }
 }
 
@@ -50,6 +50,6 @@ private fun VideoRowDefaultDark() {
 @Composable
 private fun VideoRowMissingFromServerDark() {
     PreviewTheme(darkTheme = true) {
-        VideoRow(video = missingVideo, onClick = {}, thumbnailModel = null)
+        VideoRow(video = missingVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null)
     }
 }

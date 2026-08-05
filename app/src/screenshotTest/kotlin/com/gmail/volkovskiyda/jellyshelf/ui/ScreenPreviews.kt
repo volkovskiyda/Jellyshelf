@@ -57,7 +57,8 @@ private fun LibraryLoading() {
             totalCount = 0,
             onQueryChange = {},
             onDurationFilterChange = {},
-            onVideoClick = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
             thumbnailModel = { null },
         )
@@ -76,7 +77,8 @@ private fun LibraryEmpty() {
             totalCount = 0,
             onQueryChange = {},
             onDurationFilterChange = {},
-            onVideoClick = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
             thumbnailModel = { null },
         )
@@ -95,7 +97,8 @@ private fun LibraryPopulated() {
             totalCount = librarySample.size,
             onQueryChange = {},
             onDurationFilterChange = {},
-            onVideoClick = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
             thumbnailModel = { null },
         )
@@ -115,7 +118,8 @@ private fun LibraryNoMatch() {
             totalCount = 879,
             onQueryChange = {},
             onDurationFilterChange = {},
-            onVideoClick = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
             thumbnailModel = { null },
         )
@@ -134,7 +138,8 @@ private fun LibraryPopulatedDark() {
             totalCount = librarySample.size,
             onQueryChange = {},
             onDurationFilterChange = {},
-            onVideoClick = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
             thumbnailModel = { null },
         )
