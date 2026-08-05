@@ -167,6 +167,25 @@ class PlaystateReportingInstrumentedTest {
         sent.first { it.first == path }
     }
 
+    /**
+     * Waits for the row to satisfy [predicate], the same way [awaitRequest] waits for a request.
+     *
+     * A request landing is not the write landing: what follows the response is a JSON parse and two
+     * Room queries on Room's own executor, so asserting the row the instant the request is recorded
+     * is a race the test would lose under load rather than a fact it checks.
+     */
+    private suspend fun awaitRow(
+        youtubeId: String = "aaaaaaaaaaa",
+        predicate: (VideoEntity) -> Boolean,
+    ): VideoEntity? = withTimeoutOrNull(WAIT_MS) {
+        var row = db.videoDao().get(youtubeId)
+        while (row == null || !predicate(row)) {
+            delay(POLL_MS)
+            row = db.videoDao().get(youtubeId)
+        }
+        row
+    }
+
     /** Long enough for a report that was going to be sent to have been sent. */
     private suspend fun letReportsSettle() = delay(SETTLE_MS)
 
@@ -238,8 +257,8 @@ class PlaystateReportingInstrumentedTest {
         // And the server's verdict comes back into the row rather than waiting for a sync — the
         // play count with it, since the stamp this write leaves makes the next sync keep all three.
         assertNotNull("expected the mirror fetch, got $sent", awaitRequest("/Items/jf-1"))
-        val row = db.videoDao().get("aaaaaaaaaaa")
-        assertEquals(true, row?.played)
+        val row = awaitRow { it.played }
+        assertNotNull("the server's verdict never reached the row", row)
         assertEquals(0L, row?.playbackPositionTicks)
         assertEquals(1, row?.playCount)
     }
