@@ -65,7 +65,10 @@ internal class PlaystateWriter(
                 // value regardless of how the calls interleaved.
                 val latest = videoDao.get(youtubeId) ?: return false
                 val itemId = latest.jellyfinItemId
-                if (s.isConnected && itemId != null) {
+                // Demo rows are gated on the sentinel here too — see [onPlaybackStopped]. Toggling
+                // one still reports success: the local state is what the demo library is, and there
+                // was never a server write for the user to be warned about.
+                if (s.isConnected && itemId != null && itemId != DEMO_ITEM_ID) {
                     jellyfin.setPlayed(s.serverUrl, s.credential, s.userId, itemId, latest.played)
                 }
             }
@@ -261,7 +264,11 @@ internal class PlaystateWriter(
 
         val s = settings.snapshot()
         val itemId = video.jellyfinItemId
-        if (!s.isConnected || itemId == null) {
+        // The demo sentinel is gated here for the reason [reportSession] gates it too: a demo row
+        // has no server behind it, and "a demo install has no credentials" is only the first line
+        // of defence (see [DEMO_ITEM_ID]). This one check covers every carrier below — the session
+        // stop, the played-items mark, the resume-position write and the mirror fetch.
+        if (!s.isConnected || itemId == null || itemId == DEMO_ITEM_ID) {
             Timber.tag(PLAYBACK_TAG).d(
                 "onPlaybackStopped: skipping server report (connected=${s.isConnected} " +
                     "itemId=$itemId)",

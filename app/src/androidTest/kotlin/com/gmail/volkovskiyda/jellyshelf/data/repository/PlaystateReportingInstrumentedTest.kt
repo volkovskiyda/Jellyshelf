@@ -260,6 +260,61 @@ class PlaystateReportingInstrumentedTest {
         assertTrue("a demo row has no server behind it, got $sent", sent.isEmpty())
     }
 
+    /**
+     * The same for the stop that actually records something. `DEMO_ITEM_ID` is documented as the
+     * second line of defence behind "a demo install has no credentials" — so it has to hold on the
+     * branch that reaches the server carriers, not only on the one that closes a session.
+     */
+    @Test
+    fun aDemoRowThatRecordsAResumePointStillNeverReachesTheServer() = runBlocking {
+        seedVideo(jellyfinItemId = "demo", positionTicks = 0L)
+        val repo = repository()
+
+        repo.reportPlaybackStopped(
+            youtubeId = "aaaaaaaaaaa",
+            positionMs = 300_000L,
+            completed = false,
+            playSessionId = "ps-1",
+        )
+
+        letReportsSettle()
+        assertTrue("a demo row has no server behind it, got $sent", sent.isEmpty())
+        // The local resume point is still recorded — the demo library resumes like any other.
+        assertEquals(FIVE_MINUTES_TICKS, db.videoDao().get("aaaaaaaaaaa")?.playbackPositionTicks)
+    }
+
+    /** And for the manual toggle, the one watch-state write that isn't a playback report at all. */
+    @Test
+    fun aDemoRowMarkedWatchedByHandStillNeverReachesTheServer() = runBlocking {
+        seedVideo(jellyfinItemId = "demo")
+        val repo = repository()
+
+        // True: nothing failed. There was no server write to warn the user about.
+        assertTrue(repo.setPlayed("aaaaaaaaaaa", played = true))
+
+        letReportsSettle()
+        assertTrue("a demo row has no server behind it, got $sent", sent.isEmpty())
+        assertEquals(true, db.videoDao().get("aaaaaaaaaaa")?.played)
+    }
+
+    /** And for a demo video watched to the end, whose carrier is the played-items endpoint. */
+    @Test
+    fun aFinishedDemoRowStillNeverReachesTheServer() = runBlocking {
+        seedVideo(jellyfinItemId = "demo")
+        val repo = repository()
+
+        repo.reportPlaybackStopped(
+            youtubeId = "aaaaaaaaaaa",
+            positionMs = 600_000L,
+            completed = true,
+            playSessionId = null,
+        )
+
+        letReportsSettle()
+        assertTrue("a demo row has no server behind it, got $sent", sent.isEmpty())
+        assertEquals(true, db.videoDao().get("aaaaaaaaaaa")?.played)
+    }
+
     private companion object {
         const val SESSIONS_STOPPED = "/Sessions/Playing/Stopped"
         const val TICKS_PER_SECOND = 10_000_000L
