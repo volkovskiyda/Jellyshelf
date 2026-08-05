@@ -80,10 +80,30 @@ class JellyfinApiTest {
         assertEquals("vid1", body["ItemId"]?.jsonPrimitive?.content)
         assertEquals(100L, body["PositionTicks"]?.jsonPrimitive?.long)
         // encodeDefaults=true: Moshi always serialised these non-null defaults, so Ktor must too.
+        // `false` is the default because progress is reported while playing; a pause passes it explicitly.
         assertTrue(body.containsKey("IsPaused"))
-        assertEquals(true, body["IsPaused"]?.jsonPrimitive?.boolean)
+        assertEquals(false, body["IsPaused"]?.jsonPrimitive?.boolean)
         assertTrue(body.containsKey("PlayMethod"))
         assertEquals("DirectPlay", body["PlayMethod"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun sessionStartAndStop_writePascalCaseFieldsAndDefaults() = runTest {
+        val (startApi, startCap) = mockApi()
+        startApi.reportPlaybackStart(PlaybackStartBody(itemId = "vid1", positionTicks = 0L))
+
+        val start = parser.parseToJsonElement(startCap.body).jsonObject
+        assertEquals("vid1", start["ItemId"]?.jsonPrimitive?.content)
+        assertEquals(0L, start["PositionTicks"]?.jsonPrimitive?.long)
+        assertEquals("DirectPlay", start["PlayMethod"]?.jsonPrimitive?.content)
+        assertEquals(true, start["CanSeek"]?.jsonPrimitive?.boolean)
+
+        val (stopApi, stopCap) = mockApi()
+        stopApi.reportPlaybackStopped(PlaybackStopBody(itemId = "vid1", positionTicks = 900L))
+
+        val stop = parser.parseToJsonElement(stopCap.body).jsonObject
+        assertEquals("vid1", stop["ItemId"]?.jsonPrimitive?.content)
+        assertEquals(900L, stop["PositionTicks"]?.jsonPrimitive?.long)
     }
 
     @Test
@@ -123,6 +143,18 @@ class JellyfinApiTest {
         assertEquals("http://server:8096/Users", cap.request.url.toString())
         assertEquals("APIKEY", cap.request.headers["X-Emby-Token"])
         assertEquals("application/json", cap.request.headers[HttpHeaders.Accept])
+    }
+
+    @Test
+    fun getItem_putsIdInThePathAndUserIdInTheQuery() = runTest {
+        val item = """{"Id":"vid1","Name":"A","UserData":{"Played":true,"PlaybackPositionTicks":0}}"""
+        val (api, cap) = mockApi(responseBody = item)
+
+        val decoded = api.getItem(userId = "u1", itemId = "vid1")
+
+        assertEquals("http://server:8096/Items/vid1?userId=u1", cap.request.url.toString())
+        assertEquals(true, decoded.userData?.played)
+        assertEquals(0L, decoded.userData?.playbackPositionTicks)
     }
 
     @Test

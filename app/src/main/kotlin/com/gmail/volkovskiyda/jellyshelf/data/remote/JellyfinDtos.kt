@@ -71,20 +71,45 @@ data class CreatePlaylistBody(
     @SerialName("MediaType") val mediaType: String = "Video",
 )
 
+/**
+ * Body for POST /Sessions/Playing — a minimal PlaybackStartInfo. Opening the session lets the
+ * server apply its own playstate rules to everything reported afterwards; it also clears `Played`
+ * and bumps `PlayCount` for a resumable item, which is the official rewatch semantics.
+ */
+@Serializable
+data class PlaybackStartBody(
+    @SerialName("ItemId") val itemId: String,
+    @SerialName("PositionTicks") val positionTicks: Long,
+    @SerialName("PlayMethod") val playMethod: String = "DirectPlay",
+    @SerialName("CanSeek") val canSeek: Boolean = true,
+)
+
 /** Body for POST /Sessions/Playing/Progress — a minimal PlaybackProgressInfo. */
 @Serializable
 data class ProgressBody(
     @SerialName("ItemId") val itemId: String,
     @SerialName("PositionTicks") val positionTicks: Long,
-    @SerialName("IsPaused") val isPaused: Boolean = true,
+    @SerialName("IsPaused") val isPaused: Boolean = false,
     @SerialName("PlayMethod") val playMethod: String = "DirectPlay",
 )
 
 /**
+ * Body for POST /Sessions/Playing/Stopped — a minimal PlaybackStopInfo. The server thresholds the
+ * final position (below MinResumePct it is discarded, above MaxResumePct the item is marked played
+ * with no resume point), so a stop report is how the in-app player lets the server decide watched.
+ */
+@Serializable
+data class PlaybackStopBody(
+    @SerialName("ItemId") val itemId: String,
+    @SerialName("PositionTicks") val positionTicks: Long,
+)
+
+/**
  * Body for POST /Users/{userId}/Items/{itemId}/UserData — a minimal UpdateUserItemDataDto.
- * Writing the resume position here persists it directly (and surfaces the item in "Continue
- * Watching"), unlike /Sessions/Playing/Stopped which only commits playstate for a live,
- * progress-tracked session — impossible to sustain once playback is handed to an external player.
+ * Writing the resume position here persists it verbatim, thresholds bypassed (and surfaces the item
+ * in "Continue Watching"). That is the carrier for the external-player handoff, which cannot sustain
+ * the /Sessions reporting the in-app player uses: its only playstate signal is the result the player
+ * returns once it is already over.
  */
 @Serializable
 data class UserItemDataBody(

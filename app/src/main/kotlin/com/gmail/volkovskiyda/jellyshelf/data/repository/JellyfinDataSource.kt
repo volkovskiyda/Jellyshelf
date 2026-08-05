@@ -6,6 +6,9 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.CreatePlaylistBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinApi
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.data.remote.PlaybackStartBody
+import com.gmail.volkovskiyda.jellyshelf.data.remote.PlaybackStopBody
+import com.gmail.volkovskiyda.jellyshelf.data.remote.ProgressBody
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserItemDataBody
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +32,7 @@ private const val PLAYBACK_TAG = "Playback"
  * classes. The UI-facing subset lives behind the domain [com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository]
  * interface (see [DefaultJellyfinRepository]).
  */
+@Suppress("TooManyFunctions") // one wrapper per endpoint the app calls — mirrors [JellyfinApi]'s surface
 class JellyfinDataSource(
     private val client: JellyfinClient,
 ) {
@@ -183,6 +187,70 @@ class JellyfinDataSource(
         )
         // A non-2xx already threw (expectSuccess = true) inside updateUserData; reaching here is success.
     }
+
+    /**
+     * Opens a playback session for [itemId]. Unlike [updatePlaybackState] the position travels
+     * through the server's resume thresholds, so the server decides resume-vs-watched; the start
+     * report also clears `Played` and bumps `PlayCount`, Jellyfin's own rewatch semantics.
+     */
+    suspend fun reportPlaybackStart(
+        serverUrl: String,
+        credential: String,
+        itemId: String,
+        positionTicks: Long,
+    ) {
+        val response = api(serverUrl, credential).reportPlaybackStart(
+            PlaybackStartBody(itemId = itemId, positionTicks = positionTicks),
+        )
+        Timber.tag(PLAYBACK_TAG).d(
+            "reportPlaybackStart itemId=$itemId positionTicks=$positionTicks -> HTTP ${response.status.value}",
+        )
+    }
+
+    /** Reports an in-flight position for a session opened by [reportPlaybackStart]. */
+    suspend fun reportPlaybackProgress(
+        serverUrl: String,
+        credential: String,
+        itemId: String,
+        positionTicks: Long,
+        isPaused: Boolean,
+    ) {
+        val response = api(serverUrl, credential).reportProgress(
+            ProgressBody(itemId = itemId, positionTicks = positionTicks, isPaused = isPaused),
+        )
+        Timber.tag(PLAYBACK_TAG).d(
+            "reportPlaybackProgress itemId=$itemId positionTicks=$positionTicks isPaused=$isPaused -> " +
+                "HTTP ${response.status.value}",
+        )
+    }
+
+    /**
+     * Closes the playback session with a final position. Named for the session (not just "stopped")
+     * because the repository's own stop concept spans both carriers — this one and the direct
+     * [updatePlaybackState] write the external player falls back to.
+     */
+    suspend fun reportPlaybackSessionStopped(
+        serverUrl: String,
+        credential: String,
+        itemId: String,
+        positionTicks: Long,
+    ) {
+        val response = api(serverUrl, credential).reportPlaybackStopped(
+            PlaybackStopBody(itemId = itemId, positionTicks = positionTicks),
+        )
+        Timber.tag(PLAYBACK_TAG).d(
+            "reportPlaybackSessionStopped itemId=$itemId positionTicks=$positionTicks -> " +
+                "HTTP ${response.status.value}",
+        )
+    }
+
+    /** Reads a single item back with its user-scoped playstate — the server's verdict after a stop. */
+    suspend fun getItem(
+        serverUrl: String,
+        credential: String,
+        userId: String,
+        itemId: String,
+    ): BaseItemDto = api(serverUrl, credential).getItem(userId = userId, itemId = itemId)
 
     /** Creates a Jellyfin playlist from ordered [itemIds]; returns the new playlist id. */
     suspend fun createPlaylist(

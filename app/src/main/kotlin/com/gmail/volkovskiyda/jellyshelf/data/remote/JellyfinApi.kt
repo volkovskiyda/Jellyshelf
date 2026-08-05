@@ -20,6 +20,7 @@ import io.ktor.http.contentType
  * omits its query param. The playstate writes return Ktor's [HttpResponse]; with the base client's
  * `expectSuccess = true`, a non-2xx already threw before the caller sees it.
  */
+@Suppress("TooManyFunctions") // one function per Jellyfin endpoint — the count is the API surface, not complexity
 class JellyfinApi(private val client: HttpClient) {
 
     /**
@@ -104,11 +105,35 @@ class JellyfinApi(private val client: HttpClient) {
     suspend fun deleteItem(itemId: String): HttpResponse =
         client.delete("Items/$itemId")
 
+    /**
+     * Opens a playback session. The trio below (start → progress → stopped) is what every official
+     * client sends; each report runs through the server's resume thresholds, so reporting raw
+     * positions is what makes the server — not this app — decide when an item counts as watched.
+     */
+    suspend fun reportPlaybackStart(body: PlaybackStartBody): HttpResponse =
+        client.post("Sessions/Playing") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+
     suspend fun reportProgress(body: ProgressBody): HttpResponse =
         client.post("Sessions/Playing/Progress") {
             contentType(ContentType.Application.Json)
             setBody(body)
         }
+
+    /** Closes the playback session with a final position — thresholded like a progress report. */
+    suspend fun reportPlaybackStopped(body: PlaybackStopBody): HttpResponse =
+        client.post("Sessions/Playing/Stopped") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+
+    /** A single item with its user-scoped `UserData` — how the app reads back the server's verdict. */
+    suspend fun getItem(userId: String, itemId: String): BaseItemDto =
+        client.get("Items/$itemId") {
+            parameter("userId", userId)
+        }.body()
 
     /** Writes user-scoped playstate (resume position / played flag) directly to the item. */
     suspend fun updateUserData(userId: String, itemId: String, body: UserItemDataBody): HttpResponse =

@@ -16,6 +16,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -66,8 +67,43 @@ class KtorSerializationInstrumentedTest {
 
         val obj = Json.Default.parseToJsonElement(body).jsonObject
         assertTrue(obj.containsKey("IsPaused"))
-        assertEquals(true, obj["IsPaused"]?.jsonPrimitive?.boolean)
+        assertEquals(false, obj["IsPaused"]?.jsonPrimitive?.boolean)
         assertEquals("DirectPlay", obj["PlayMethod"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun progressBodyCarriesAnExplicitPausedFlagOnDevice() = runTest {
+        var body = ""
+        api(responseBody = "", captureBody = { body = it })
+            .reportProgress(ProgressBody(itemId = "vid1", positionTicks = 3L, isPaused = true))
+
+        val obj = Json.Default.parseToJsonElement(body).jsonObject
+        assertEquals(true, obj["IsPaused"]?.jsonPrimitive?.boolean)
+    }
+
+    @Test
+    fun playbackStartBodyKeepsDefaultsOnDevice() = runTest {
+        var body = ""
+        api(responseBody = "", captureBody = { body = it })
+            .reportPlaybackStart(PlaybackStartBody(itemId = "vid1", positionTicks = 10_000_000L))
+
+        val obj = Json.Default.parseToJsonElement(body).jsonObject
+        assertEquals("vid1", obj["ItemId"]?.jsonPrimitive?.content)
+        assertEquals(10_000_000L, obj["PositionTicks"]?.jsonPrimitive?.long)
+        assertEquals("DirectPlay", obj["PlayMethod"]?.jsonPrimitive?.content)
+        assertTrue(obj.containsKey("CanSeek"))
+        assertEquals(true, obj["CanSeek"]?.jsonPrimitive?.boolean)
+    }
+
+    @Test
+    fun playbackStopBodyWritesPascalCaseOnDevice() = runTest {
+        var body = ""
+        api(responseBody = "", captureBody = { body = it })
+            .reportPlaybackStopped(PlaybackStopBody(itemId = "vid1", positionTicks = 42L))
+
+        val obj = Json.Default.parseToJsonElement(body).jsonObject
+        assertEquals("vid1", obj["ItemId"]?.jsonPrimitive?.content)
+        assertEquals(42L, obj["PositionTicks"]?.jsonPrimitive?.long)
     }
 
     @Test
