@@ -49,6 +49,8 @@ import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
+import com.google.firebase.perf.FirebasePerformance
+import com.google.firebase.perf.metrics.Trace
 import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -240,6 +242,27 @@ private class BulkRunner(private val scope: CoroutineScope) {
     }
 }
 
+/**
+ * Wraps a real (non-demo) sync in the Firebase Performance `library_sync` trace. The names are
+ * API — the console keys off trace `library_sync`, attribute `result` (`success`|`error`), metric
+ * `items` — so don't rename them. `result` starts as `error` so every exit other than the explicit
+ * success flip — early error returns, thrown or cancelled syncs, all closed by the finally —
+ * reports as one. Debug builds create a no-op trace (collection is disabled in
+ * [com.gmail.volkovskiyda.jellyshelf.JellyshelfApplication]). Top-level and inline so the block's
+ * non-local `return` works and the trace adds almost nothing to [DefaultLibraryRepository], which
+ * sits at detekt's LargeClass ceiling.
+ */
+private inline fun <T> tracedSync(block: (Trace) -> T): T {
+    val trace = FirebasePerformance.getInstance().newTrace("library_sync")
+    trace.start()
+    trace.putAttribute("result", "error")
+    return try {
+        block(trace)
+    } finally {
+        trace.stop()
+    }
+}
+
 @Suppress("TooManyFunctions") // the app's single library-domain facade
 class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
@@ -370,62 +393,66 @@ class DefaultLibraryRepository(
             )
         }
 
-        val fetchStartedAt = System.currentTimeMillis()
-        val items = runCatchingCancellable {
-            jellyfin.fetchAllItems(s.serverUrl, s.credential, s.userId, s.libraryId)
-        }.getOrElse { e ->
-            // A rejected user token can't self-heal, and must not quietly fall back to the
-            // advanced API key — that would silently restore the full-server access the user
-            // moved away from. Drop the session so the UI asks for a fresh sign-in instead.
-            val sessionExpired = isUnauthorized(e) && s.isSignedIn
-            if (sessionExpired) settings.clearSession()
-            val message = when {
-                isCleartextBlocked(e) -> CLEARTEXT_BLOCKED_MESSAGE
-                sessionExpired -> SESSION_EXPIRED_MESSAGE
-                else -> "Failed to load library: ${e.message}"
+        return tracedSync { trace ->
+            val fetchStartedAt = System.currentTimeMillis()
+            val items = runCatchingCancellable {
+                jellyfin.fetchAllItems(s.serverUrl, s.credential, s.userId, s.libraryId)
+            }.getOrElse { e ->
+                // A rejected user token can't self-heal, and must not quietly fall back to the
+                // advanced API key — that would silently restore the full-server access the user
+                // moved away from. Drop the session so the UI asks for a fresh sign-in instead.
+                val sessionExpired = isUnauthorized(e) && s.isSignedIn
+                if (sessionExpired) settings.clearSession()
+                val message = when {
+                    isCleartextBlocked(e) -> CLEARTEXT_BLOCKED_MESSAGE
+                    sessionExpired -> SESSION_EXPIRED_MESSAGE
+                    else -> "Failed to load library: ${e.message}"
+                }
+                return SyncResult.Error(message, retryable = !isPermanentFailure(e))
             }
-            return SyncResult.Error(message, retryable = !isPermanentFailure(e))
+
+            val (index, indexAvailable) = fetchIndex(s)
+
+            val now = System.currentTimeMillis()
+            val serverBase = s.serverUrl.trim().removeSuffix("/")
+            val mergeContext = SyncMergeContext(serverBase, now, indexAvailable)
+
+            val synced = writeMutex.withLock {
+                // Existing rows, to honour newest-wins: a manual in-app yt-dlp fetch is kept over
+                // an index entry unless the index entry is genuinely newer. Read inside the lock
+                // so no other writer can slip between this snapshot and the upsert below.
+                val existingById = videoDao.getAll().associateBy { it.youtubeId }
+                val videos = mergedVideos(items, existingById, index, mergeContext, fetchStartedAt)
+
+                val prune = prunePolicy(
+                    scopeChanged = s.libraryId != s.lastSyncLibraryId,
+                    storedCount = existingById.size,
+                    seenCount = videos.size,
+                )
+                val retained = retainedRows(prune, existingById, videos)
+                val (autoCategories, crossRefs) = autoAssignments(videos + retained, now)
+
+                persistSync(prune, now, videos, autoCategories.values, crossRefs)
+
+                settings.setLastSync(now, s.libraryId)
+                SyncResult.Success(
+                    itemCount = items.size,
+                    matched = videos.size,
+                    indexed = videos.count { it.metadataSource != METADATA_SOURCE_JELLYFIN },
+                    categories = autoCategories.size,
+                    indexDegraded = s.indexUrl.isNotBlank() && !indexAvailable,
+                )
+            }
+            trace.putAttribute("result", "success")
+            trace.putMetric("items", items.size.toLong())
+
+            // Strictly *outside* the lock: the sync above is committed and has already succeeded,
+            // and every write the auto-fill makes takes [writeMutex] per video for itself. Running
+            // it inside would deadlock on the non-reentrant mutex — a whole sync's worth of
+            // fetches silently doing nothing until the pass's own budget expired.
+            val (autoFilled, autoFillFailed) = autoFillMissingMetadata(demoMode = false)
+            synced.copy(autoFilled = autoFilled, autoFillFailed = autoFillFailed)
         }
-
-        val (index, indexAvailable) = fetchIndex(s)
-
-        val now = System.currentTimeMillis()
-        val serverBase = s.serverUrl.trim().removeSuffix("/")
-        val mergeContext = SyncMergeContext(serverBase, now, indexAvailable)
-
-        val synced = writeMutex.withLock {
-            // Existing rows, to honour newest-wins: a manual in-app yt-dlp fetch is kept over an
-            // index entry unless the index entry is genuinely newer. Read inside the lock so no
-            // other writer can slip between this snapshot and the upsert below.
-            val existingById = videoDao.getAll().associateBy { it.youtubeId }
-            val videos = mergedVideos(items, existingById, index, mergeContext, fetchStartedAt)
-
-            val prune = prunePolicy(
-                scopeChanged = s.libraryId != s.lastSyncLibraryId,
-                storedCount = existingById.size,
-                seenCount = videos.size,
-            )
-            val retained = retainedRows(prune, existingById, videos)
-            val (autoCategories, crossRefs) = autoAssignments(videos + retained, now)
-
-            persistSync(prune, now, videos, autoCategories.values, crossRefs)
-
-            settings.setLastSync(now, s.libraryId)
-            SyncResult.Success(
-                itemCount = items.size,
-                matched = videos.size,
-                indexed = videos.count { it.metadataSource != METADATA_SOURCE_JELLYFIN },
-                categories = autoCategories.size,
-                indexDegraded = s.indexUrl.isNotBlank() && !indexAvailable,
-            )
-        }
-
-        // Strictly *outside* the lock: the sync above is committed and has already succeeded, and
-        // every write the auto-fill makes takes [writeMutex] per video for itself. Running it
-        // inside would deadlock on the non-reentrant mutex — a whole sync's worth of fetches
-        // silently doing nothing until the pass's own budget expired.
-        val (autoFilled, autoFillFailed) = autoFillMissingMetadata(demoMode = false)
-        return synced.copy(autoFilled = autoFilled, autoFillFailed = autoFillFailed)
     }
 
     /**
