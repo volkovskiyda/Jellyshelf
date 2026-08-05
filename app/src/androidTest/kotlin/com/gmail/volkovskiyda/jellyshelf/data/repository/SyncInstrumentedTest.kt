@@ -8,6 +8,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
@@ -174,12 +175,11 @@ class SyncInstrumentedTest {
         val indexSource =
             IndexSource(ApplicationProvider.getApplicationContext(), httpClient, dispatchers, json)
         return DefaultLibraryRepository(
-            db,
-            dataSource,
-            indexSource,
-            settings,
-            ytDlp,
-            dispatchers,
+            db = db,
+            settings = settings,
+            dispatchers = dispatchers,
+            // The demo backend is never consulted: none of these syncs is a demo.
+            sources = LibrarySources(dataSource, indexSource, ytDlp, TestDemoBackend(indexSource)),
         )
     }
 

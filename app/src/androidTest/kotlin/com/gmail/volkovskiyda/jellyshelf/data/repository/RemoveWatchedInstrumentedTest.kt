@@ -8,6 +8,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
@@ -161,12 +162,12 @@ class RemoveWatchedInstrumentedTest {
             IndexSource(ApplicationProvider.getApplicationContext(), httpClient, dispatchers, json)
         val ytDlp = UnusedYtDlp(ApplicationProvider.getApplicationContext(), dispatchers)
         return DefaultLibraryRepository(
-            db,
-            dataSource,
-            indexSource,
-            settings,
-            ytDlp,
-            dispatchers,
+            db = db,
+            settings = settings,
+            dispatchers = dispatchers,
+            // Not a demo install, so every removal here goes to the MockEngine rather than the
+            // demo backend — [DemoActionsInstrumentedTest] covers the other side.
+            sources = LibrarySources(dataSource, indexSource, ytDlp, TestDemoBackend(indexSource)),
         )
     }
 

@@ -8,6 +8,7 @@ import coil.ImageLoader
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
@@ -16,6 +17,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultLibraryRepositor
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
+import com.gmail.volkovskiyda.jellyshelf.data.repository.LibrarySources
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
@@ -93,6 +95,8 @@ val appModule = module {
     singleOf(::IndexSource)
     singleOf(::DefaultJellyfinRepository) { bind<JellyfinRepository>() }
     singleOf(::YtDlpMetadataSource)
+    singleOf(::DemoBackend)
+    singleOf(::LibrarySources)
     singleOf(::DefaultLibraryRepository) { bind<LibraryRepository>() }
     singleOf(::SyncScheduler)
 

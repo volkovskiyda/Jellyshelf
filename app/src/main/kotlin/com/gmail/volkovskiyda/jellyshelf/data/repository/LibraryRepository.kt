@@ -7,9 +7,8 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.VideoCategoryCrossRef
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.mapper.toDomain
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
+import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
-import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
-import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.toChapters
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
@@ -244,14 +243,19 @@ private class BulkRunner(private val scope: CoroutineScope) {
 @Suppress("TooManyFunctions") // the app's single library-domain facade
 class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
-    private val jellyfin: JellyfinDataSource,
-    private val indexSource: IndexSource,
     private val settings: SettingsRepository,
-    private val ytDlp: YtDlpMetadataSource,
     private val dispatchers: DispatcherProvider,
+    sources: LibrarySources,
 ) : LibraryRepository {
     private val videoDao = db.videoDao()
     private val categoryDao = db.categoryDao()
+
+    // Unpacked once. The four are grouped for the constructor's sake (see [LibrarySources]); every
+    // call below still names the source it actually reaches for.
+    private val jellyfin = sources.jellyfin
+    private val indexSource = sources.index
+    private val ytDlp = sources.ytDlp
+    private val demo = sources.demo
 
     /**
      * Serializes every read-modify-write of library rows — sync (manual or from the periodic
@@ -358,6 +362,7 @@ class DefaultLibraryRepository(
     /** Full sync: pull Jellyfin items + metadata index, merge, persist, auto-categorize. */
     override suspend fun sync(): SyncResult {
         val s = settings.snapshot()
+        if (s.demoMode) return demoSync()
         if (!s.isConnected) {
             return SyncResult.Error(
                 "Not connected. Set server URL, API key and user in Settings.",
@@ -419,7 +424,43 @@ class DefaultLibraryRepository(
         // every write the auto-fill makes takes [writeMutex] per video for itself. Running it
         // inside would deadlock on the non-reentrant mutex — a whole sync's worth of fetches
         // silently doing nothing until the pass's own budget expired.
-        val (autoFilled, autoFillFailed) = autoFillMissingMetadata()
+        val (autoFilled, autoFillFailed) = autoFillMissingMetadata(demoMode = false)
+        return synced.copy(autoFilled = autoFilled, autoFillFailed = autoFillFailed)
+    }
+
+    /**
+     * What a sync means with no server behind it: the rows already stored *are* the library, so
+     * this re-derives from them everything a real sync derives from a listing — auto-categories,
+     * the sync stamp — and then runs the same auto-fill pass, which in demo mode extracts from
+     * [DemoBackend]. Pressing Sync on a demo install therefore fills in a little more of the
+     * missing metadata each time, which is exactly what it does against a real library.
+     *
+     * Nothing is re-added: videos the bulk removal deleted are gone from the fake server too, and a
+     * sync that resurrected them would contradict the run that removed them. Re-entering the demo
+     * is what restores the full dataset ([seedDemoLibrary] is idempotent).
+     *
+     * Never fails. A demo sync has no network to lose, and the failure realism the demo needs is
+     * already supplied per video by the auto-fill pass.
+     */
+    private suspend fun demoSync(): SyncResult {
+        demo.sync()
+        val now = System.currentTimeMillis()
+        val synced = writeMutex.withLock {
+            // missedSyncs reset with the stamp: this listing "saw" every stored row, so a row part
+            // way through its grace period from an earlier real library must not keep that count.
+            val rows = videoDao.getAll().map { it.copy(lastSyncedAt = now, missedSyncs = 0) }
+            val (autoCategories, crossRefs) = autoAssignments(rows, now)
+            persistSync(Prune.NOTHING, now, rows, autoCategories.values, crossRefs)
+            settings.setLastSync(now, "")
+            SyncResult.Success(
+                itemCount = rows.size,
+                matched = rows.size,
+                indexed = rows.count { it.metadataSource != METADATA_SOURCE_JELLYFIN },
+                categories = autoCategories.size,
+            )
+        }
+        // Outside the lock for the same reason the real sync's pass is — see above.
+        val (autoFilled, autoFillFailed) = autoFillMissingMetadata(demoMode = true)
         return synced.copy(autoFilled = autoFilled, autoFillFailed = autoFillFailed)
     }
 
@@ -566,7 +607,7 @@ class DefaultLibraryRepository(
      * Returns (filled, failed). Never throws: a sync that already committed must not be reported
      * as failed because YouTube refused an extraction.
      */
-    private suspend fun autoFillMissingMetadata(): Pair<Int, Int> {
+    private suspend fun autoFillMissingMetadata(demoMode: Boolean): Pair<Int, Int> {
         // A manual bulk fetch is already walking exactly this set — leave it alone rather than
         // racing it for the same rows, and don't even query for them.
         val targets =
@@ -581,7 +622,7 @@ class DefaultLibraryRepository(
         // each fetch commits on its own — and the next sync retries the rest.
         withTimeoutOrNull(AUTO_FILL_BUDGET) {
             for (video in targets) {
-                when (fetchAndApply(video.youtubeId)) {
+                when (fetchAndApply(video.youtubeId, demoMode = demoMode)) {
                     is FetchResult.Success -> filled++
                     is FetchResult.Error -> failed++
                 }
@@ -615,19 +656,35 @@ class DefaultLibraryRepository(
      */
     override suspend fun fetchMetadata(youtubeId: String): FetchResult {
         val existing = videoDao.get(youtubeId) ?: return FetchResult.Error(VIDEO_NOT_FOUND_ERROR)
-        return fetchAndApply(youtubeId, fallbackTitle = existing.title)
+        return fetchAndApply(
+            youtubeId,
+            fallbackTitle = existing.title,
+            demoMode = settings.snapshot().demoMode,
+        )
     }
 
     /**
      * One yt-dlp fetch and its write, shared by every path that fetches metadata: the single-video
      * action, the manual bulk run and the sync auto-fill.
      *
+     * [demoMode] swaps the real extraction for [DemoBackend]'s — resolved once per run by the
+     * caller rather than read here, so a bulk pass over hundreds of videos doesn't re-read
+     * DataStore for each of them. Everything downstream is identical: the demo backend throws the
+     * same way and returns the same [IndexEntry], so the write, the failure record and the
+     * auto-category refresh are literally the same code.
+     *
      * A failure is recorded on the row ([recordFetchFailure]) as well as returned, so a video that
      * keeps failing can explain itself on the detail screen instead of sitting in Uncategorized
      * with no reason given.
      */
-    private suspend fun fetchAndApply(youtubeId: String, fallbackTitle: String? = null): FetchResult {
-        val entry = runCatchingCancellable { ytDlp.fetch(youtubeId) }.getOrElse { e ->
+    private suspend fun fetchAndApply(
+        youtubeId: String,
+        fallbackTitle: String? = null,
+        demoMode: Boolean,
+    ): FetchResult {
+        val entry = runCatchingCancellable {
+            if (demoMode) demo.fetchMetadata(youtubeId) else ytDlp.fetch(youtubeId)
+        }.getOrElse { e ->
             val message = e.message ?: FETCH_FAILED_ERROR
             recordFetchFailure(youtubeId, message)
             return FetchResult.Error(message)
@@ -700,6 +757,7 @@ class DefaultLibraryRepository(
      * progress via [bulkFetch]. No-op if already running.
      */
     override fun startFetchMissing() = fetchRunner.start { publish ->
+        val demoMode = settings.snapshot().demoMode
         val targets = videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
         if (targets.isEmpty()) {
             publish(BulkProgress.Done(0, 0))
@@ -712,7 +770,7 @@ class DefaultLibraryRepository(
             // can't kill the process or strand the Running state. A per-video timeout inside
             // YtDlpMetadataSource keeps one hung extraction from stalling the whole run.
             val ok = runCatchingCancellable {
-                fetchAndApply(video.youtubeId) is FetchResult.Success
+                fetchAndApply(video.youtubeId, demoMode = demoMode) is FetchResult.Success
             }.getOrDefault(false)
             if (!ok) failed++
             publish(BulkProgress.Running(i + 1, targets.size, failed))
@@ -732,6 +790,9 @@ class DefaultLibraryRepository(
      * failed and the run moves on, so one bad item never strands the rest; the summary reports how
      * many were left behind. Retrying is just a matter of pressing the button again — a successful
      * delete has already left the watched set.
+     *
+     * In demo mode the deletes go to [DemoBackend] instead, and are just as real from the library's
+     * point of view: a confirmed one drops the row. Only re-entering the demo brings it back.
      */
     override fun startRemoveWatched() = removeRunner.start { publish ->
         val s = settings.snapshot()
@@ -743,8 +804,8 @@ class DefaultLibraryRepository(
             }
             // Nothing can be deleted without a server to delete it on. Reported as all-failed
             // rather than as a clean run, which would read as "the videos are gone" when they
-            // are all still there.
-            !s.isConnected -> {
+            // are all still there. A demo has a stand-in server, so it doesn't come through here.
+            !s.isConnected && !s.demoMode -> {
                 publish(BulkProgress.Done(targets.size, targets.size))
                 return@start
             }
@@ -782,7 +843,10 @@ class DefaultLibraryRepository(
      */
     private suspend fun removeFromServer(s: Settings, video: VideoEntity): Boolean {
         val itemId = video.jellyfinItemId ?: return false
-        jellyfin.deleteItem(s.serverUrl, s.credential, itemId)
+        // Demo rows all carry the sentinel item id, so the guard above passes and the delete is
+        // simulated rather than sent — a demo install has no server, and the sentinel must never
+        // reach one anyway.
+        if (s.demoMode) demo.deleteItem() else jellyfin.deleteItem(s.serverUrl, s.credential, itemId)
         // NonCancellable: a cancel landing between the server delete and the local one would leave
         // a row for a video that no longer exists, which only the next sync would clear.
         withContext(NonCancellable) {
@@ -1091,7 +1155,9 @@ class DefaultLibraryRepository(
      */
     override suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult {
         val s = settings.snapshot()
-        if (!s.isConnected) return PlaylistResult.Error("Not connected. Configure Jellyfin in Settings.")
+        if (!s.isConnected && !s.demoMode) {
+            return PlaylistResult.Error("Not connected. Configure Jellyfin in Settings.")
+        }
 
         val playlistName = name.trim()
         if (playlistName.isBlank()) return PlaylistResult.Error("Playlist name can't be empty.")
@@ -1100,7 +1166,13 @@ class DefaultLibraryRepository(
         if (itemIds.isEmpty()) return PlaylistResult.Error("No playable videos in this category.")
 
         return runCatchingCancellable {
-            jellyfin.createPlaylist(s.serverUrl, s.credential, s.userId, playlistName, itemIds)
+            // The demo's playlist is write-only, exactly like the real one from this app's side:
+            // nothing here ever reads a playlist back, so there is nothing to keep.
+            if (s.demoMode) {
+                demo.createPlaylist()
+            } else {
+                jellyfin.createPlaylist(s.serverUrl, s.credential, s.userId, playlistName, itemIds)
+            }
             PlaylistResult.Success(playlistName, itemIds.size)
         }.getOrElse { e ->
             PlaylistResult.Error("Failed to create playlist: ${e.message}")

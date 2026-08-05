@@ -18,10 +18,13 @@ import java.io.InputStream
 /** The bundled demo dataset, packaged into the APK — see [IndexSource.demoEntries]. */
 private const val DEMO_LIBRARY_ASSET = "demo/library.json"
 
+/** What a demo metadata fetch "extracts" — see [IndexSource.demoFetchedEntries]. */
+private const val DEMO_FETCHED_ASSET = "demo/fetched.json"
+
 /**
  * Every [IndexEntry] list the app reads: the aggregated yt-dlp metadata index fetched from wherever
- * the user hosts it ([fetchIndex]), and the bundled demo dataset ([demoEntries]). One document
- * format, one decoder, two origins.
+ * the user hosts it ([fetchIndex]), and the bundled demo dataset ([demoEntries],
+ * [demoFetchedEntries]). One document format, one decoder, two origins.
  *
  * Separate from [JellyfinDataSource][com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource]
  * on purpose: the index does not live on the Jellyfin server, so this talks plain HTTP with no
@@ -54,6 +57,18 @@ class IndexSource(
      */
     suspend fun demoEntries(): List<IndexEntry> = withContext(dispatchers.io) {
         decode(context.assets.open(DEMO_LIBRARY_ASSET))
+    }
+
+    /**
+     * The metadata a demo "yt-dlp extraction" produces for the entries [demoEntries] deliberately
+     * leaves bare — the unmatched files a real library always has a few of. Same format again, kept
+     * out of the seed document precisely because those rows must *start* without it: filling them
+     * in is what the Uncategorized filter's bulk fetch is there to demonstrate.
+     *
+     * Throws like [demoEntries], and for the same reason.
+     */
+    suspend fun demoFetchedEntries(): List<IndexEntry> = withContext(dispatchers.io) {
+        decode(context.assets.open(DEMO_FETCHED_ASSET))
     }
 
     /**

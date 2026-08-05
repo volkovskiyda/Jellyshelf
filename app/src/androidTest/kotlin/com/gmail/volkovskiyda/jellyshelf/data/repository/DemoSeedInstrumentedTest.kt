@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
@@ -77,13 +78,19 @@ class DemoSeedInstrumentedTest {
         val json = provideJson()
         val engine = MockEngine { error("the demo seeder must not make network requests") }
         val httpClient = HttpClient(engine) { expectSuccess = true }
+        val indexSource = IndexSource(context, httpClient, dispatchers, json)
         return DefaultLibraryRepository(
-            db,
-            JellyfinDataSource(JellyfinClient(httpClient)),
-            IndexSource(context, httpClient, dispatchers, json),
-            settings,
-            YtDlpMetadataSource(context, dispatchers, json),
-            dispatchers,
+            db = db,
+            settings = settings,
+            dispatchers = dispatchers,
+            // Seeding never asks the demo backend for anything — the dataset comes straight off
+            // the asset — but it is what every action *after* the seed goes through.
+            sources = LibrarySources(
+                JellyfinDataSource(JellyfinClient(httpClient)),
+                indexSource,
+                YtDlpMetadataSource(context, dispatchers, json),
+                TestDemoBackend(indexSource),
+            ),
         )
     }
 
