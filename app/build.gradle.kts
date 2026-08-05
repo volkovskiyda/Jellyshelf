@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.compose.screenshot)
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.firebase.perf)
     alias(libs.plugins.androidx.baselineprofile)
 }
 
@@ -100,6 +101,11 @@ android {
             // cost build time and demand credentials on every assembleDebug, including CI's.
             configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
                 mappingFileUploadEnabled = false
+            }
+            // Debug never reports perf data (JellyshelfApplication gates collection to release),
+            // so the perf plugin's bytecode weaving would only slow every debug build.
+            configure<com.google.firebase.perf.plugin.FirebasePerfExtension> {
+                setInstrumentationEnabled(false)
             }
         }
         release {
@@ -536,6 +542,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.perf)
     implementation(platform(libs.ktor.bom))
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

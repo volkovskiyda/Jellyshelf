@@ -47,12 +47,15 @@ detekt = "1.23.8"
 # choice, not ours, and both move only when it publishes — forcing them means re-rendering every
 # LFS-tracked golden, or running an alpha compiled against JUnit Platform 1.x on 6.x.
 composeScreenshot = "0.0.1-alpha16"
-# Firebase. The BoM pins every SDK member, so firebase-crashlytics carries no version of its own.
-# The two Gradle plugins version independently of the BoM and of each other: google-services reads
-# app/google-services.json, firebase-crashlytics uploads the R8 mapping file.
+# Firebase. The BoM pins every SDK member, so firebase-crashlytics and firebase-perf carry no
+# versions of their own. The three Gradle plugins version independently of the BoM and of each
+# other: google-services reads app/google-services.json, firebase-crashlytics uploads the R8
+# mapping file, perf-plugin weaves network/@AddTrace instrumentation into release bytecode
+# (2.0.1 is the first release compatible with AGP 9).
 googleServices = "4.5.0"
 firebaseBom = "34.17.0"
 firebaseCrashlyticsPlugin = "3.0.7"
+firebasePerfPlugin = "2.0.2"
 # Baseline profile. The benchmark family (the plugin and macro-junit4) ships as a set and shares one
 # ref. This is a pre-release on purpose: 1.4.1 is the latest stable, but it refuses to apply to an
 # AGP 9 application module ("Module `:app` is not a supported android module"), and 1.5.0-beta01 is
@@ -130,6 +133,7 @@ androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profi
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
+firebase-perf = { group = "com.google.firebase", name = "firebase-perf" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -142,3 +146,4 @@ compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "com
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlyticsPlugin" }
+firebase-perf = { id = "com.google.firebase.firebase-perf", version.ref = "firebasePerfPlugin" }

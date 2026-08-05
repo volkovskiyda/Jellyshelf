@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.perf.FirebasePerformance
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.koin.workManagerFactory
@@ -33,11 +34,13 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
         if (isDebug) {
             Timber.plant(Timber.DebugTree())
         }
-        // The inverse gate: only release builds report crashes, so the dashboard describes real
-        // usage and development crashes never dilute the crash-free-users metric. Crashlytics
-        // persists this flag, so setting it on every start is what keeps a build that changes type
-        // from inheriting the previous answer.
+        // The inverse gate: only release builds report crashes and perf traces, so the dashboards
+        // describe real usage — development crashes never dilute the crash-free-users metric and
+        // dev/emulator runs never pollute the performance trends. Both SDKs persist this flag, so
+        // setting it on every start is what keeps a build that changes type from inheriting the
+        // previous answer.
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!isDebug)
+        FirebasePerformance.getInstance().isPerformanceCollectionEnabled = !isDebug
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
         // launches, and re-scheduling on every start would undo "Reset local data", which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).
