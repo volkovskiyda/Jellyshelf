@@ -66,9 +66,13 @@ import timber.log.Timber
  * transcode ([Playback.hlsUrl]) at the same position — once; a failure of the transcode itself
  * surfaces, and the player screen's toast points at the External playback mode.
  *
- * Server reporting reuses [LibraryRepository.reportPlaybackStopped] — one report per stop,
- * exactly like the external-player flow — plus periodic local-only saves
- * ([LibraryRepository.savePlaybackPosition]) so process death can't lose the position.
+ * Server reporting follows Jellyfin's own session flow while a video plays here: a start report
+ * once it is genuinely under way, progress every [POSITION_SAVE_INTERVAL_MS] (and once more on a
+ * pause), and a stop report with the final position ([LibraryRepository.reportPlaybackStopped]) —
+ * so the server's resume thresholds, not this app, decide when a video counts as watched. The
+ * external-player flow keeps its single stop report and its direct playstate write. Periodic
+ * local-only saves ([LibraryRepository.savePlaybackPosition]) run alongside either way, so process
+ * death can't lose the position.
  */
 // The session callback and player listener are inner classes by design — they are this
 // service's behavior and share its single-threaded state; the synthetic accessors that
@@ -297,10 +301,16 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private fun WatchAction?.perform() {
         when (this) {
             null -> Unit
-            is WatchAction.Report -> repo.reportPlaybackStopped(youtubeId, positionMs, completed)
+            is WatchAction.Report ->
+                repo.reportPlaybackStopped(youtubeId, positionMs, completed, liveSession)
+            is WatchAction.SessionStart -> repo.reportPlaybackStarted(youtubeId, positionMs)
+            is WatchAction.Progress -> repo.reportPlaybackProgress(youtubeId, positionMs, isPaused)
             is WatchAction.Save -> repo.savePlaybackPosition(youtubeId, positionMs)
         }
     }
+
+    /** The same for a moment that decided several things at once, in the order the tracker chose. */
+    private fun List<WatchAction>.perform() = forEach { it.perform() }
 
     /**
      * Starts each video the queue moves to where the user last left it — see [resumeSeekMs] for
@@ -406,7 +416,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         saveJob = scope.launch {
             while (isActive) {
                 delay(POSITION_SAVE_INTERVAL_MS)
-                player?.currentPosition?.let { watch.onPeriodicSave(it).perform() }
+                player?.currentPosition?.let { watch.onPeriodicTick(it).perform() }
             }
         }
     }

@@ -1,9 +1,24 @@
 package com.gmail.volkovskiyda.jellyshelf.playback
 
-/** What the service should do about watch state; null wherever the answer is "nothing". */
+/** What the service should do about watch state; null (or an empty list) wherever it is "nothing". */
 internal sealed interface WatchAction {
-    /** A full stop report to the server: this video is finished with, for now or for good. */
-    data class Report(val youtubeId: String, val positionMs: Long, val completed: Boolean) : WatchAction
+    /**
+     * A full stop report to the server: this video is finished with, for now or for good.
+     * [liveSession] says whether a server session was open behind it, which decides how the
+     * position is sent — see [com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository].
+     */
+    data class Report(
+        val youtubeId: String,
+        val positionMs: Long,
+        val completed: Boolean,
+        val liveSession: Boolean,
+    ) : WatchAction
+
+    /** Opens the server's playback session, once this video is genuinely being watched. */
+    data class SessionStart(val youtubeId: String, val positionMs: Long) : WatchAction
+
+    /** An in-flight position for the open session — the server's chance to mark it watched mid-play. */
+    data class Progress(val youtubeId: String, val positionMs: Long, val isPaused: Boolean) : WatchAction
 
     /** A local-only position save, so process death cannot lose where the user got to. */
     data class Save(val youtubeId: String, val positionMs: Long) : WatchAction
@@ -11,13 +26,14 @@ internal sealed interface WatchAction {
 
 /**
  * The rules behind [PlaybackService]'s watch-state reporting, separated from the media3 plumbing
- * that feeds them: which video is active, where it had got to, and whether its completion has
- * already been reported.
+ * that feeds them: which video is active, where it had got to, whether its completion has already
+ * been reported, and what the server's playback session has been told.
  *
  * Pulled out of the listener so the rules can be tested without standing up a
- * `MediaSessionService` — they are the part with decisions in it, and two of those decisions
- * (report exactly once, never let another item's position clobber the active one) are the kind
- * that fail silently by writing a wrong number rather than by crashing.
+ * `MediaSessionService` — they are the part with decisions in it, and those decisions (report
+ * exactly once, open the session once and only for a video actually being watched, never let
+ * another item's position clobber the active one) are the kind that fail silently by writing a
+ * wrong number rather than by crashing.
  *
  * Single-threaded by design: the service's player runs on its main thread and every call arrives
  * from there, which is what makes plain vars safe here.
@@ -39,6 +55,15 @@ internal class WatchStateTracker {
         private set
 
     /**
+     * Whether the server has been told the active video is playing. Set by its first periodic tick
+     * and cleared only when the active item changes: a pause, a replay or an ended-then-resumed
+     * video is the same session continuing, and a second start report would clear the server's
+     * played flag and count another play.
+     */
+    var sessionStarted: Boolean = false
+        private set
+
+    /**
      * The active item changed. Reports the outgoing one — as *completed* only on an auto-advance,
      * since any other reason is a replacement mid-way (a new video picked from Detail).
      *
@@ -49,14 +74,17 @@ internal class WatchStateTracker {
      */
     fun onItemChanged(newMediaId: String?, autoAdvance: Boolean): WatchAction.Report? {
         val previous = activeMediaId
+        // Read before the reset below: the report belongs to the video being left, so it carries
+        // that video's session flag, not the incoming one's.
         val report = if (previous != null && previous != newMediaId && !completionReported) {
-            WatchAction.Report(previous, lastPositionMs, completed = autoAdvance)
+            WatchAction.Report(previous, lastPositionMs, completed = autoAdvance, liveSession = sessionStarted)
         } else {
             null
         }
         activeMediaId = newMediaId
         lastPositionMs = 0L
         completionReported = false
+        sessionStarted = false
         return report
     }
 
@@ -93,19 +121,43 @@ internal class WatchStateTracker {
      * Playback stopped being active. Saves only on a genuine pause — [ready] is the player being
      * `STATE_READY` — so that a swipe-away straight afterwards loses nothing. Buffering is not a
      * pause, and an ended video has its own full report.
+     *
+     * A pause the server knows about is passed on as a paused progress report, so its dashboard
+     * stops advancing. Nothing periodic follows: reporting is for playback that is playing.
      */
-    fun onPaused(positionMs: Long, ready: Boolean): WatchAction.Save? {
+    fun onPaused(positionMs: Long, ready: Boolean): List<WatchAction> {
         val id = activeMediaId
-        if (!ready || id == null) return null
+        if (!ready || id == null) return emptyList()
         lastPositionMs = positionMs
-        return WatchAction.Save(id, positionMs)
+        return buildList {
+            add(WatchAction.Save(id, positionMs))
+            if (sessionStarted) add(WatchAction.Progress(id, positionMs, isPaused = true))
+        }
     }
 
-    /** The periodic tick while playing: remember the position and persist it locally. */
-    fun onPeriodicSave(positionMs: Long): WatchAction.Save? {
-        val id = activeMediaId ?: return null
+    /**
+     * The periodic tick while playing: remember the position, persist it locally, and tell the
+     * server — the first tick opens the playback session, every later one reports progress into it.
+     *
+     * Opening on the first tick rather than the moment the queue reaches a video is what keeps
+     * stepping through a queue silent. The server clears the played flag and counts a play when a
+     * session opens, so a video passed over in a second would come back unwatched with a play to
+     * its name.
+     *
+     * Exactly one session action per tick, never a start and a progress together: the two are
+     * dispatched as separate fire-and-forget sends, and a progress report overtaking the start it
+     * belongs to would be reported against no session at all.
+     */
+    fun onPeriodicTick(positionMs: Long): List<WatchAction> {
+        val id = activeMediaId ?: return emptyList()
         lastPositionMs = positionMs
-        return WatchAction.Save(id, positionMs)
+        val session = if (sessionStarted) {
+            WatchAction.Progress(id, positionMs, isPaused = false)
+        } else {
+            sessionStarted = true
+            WatchAction.SessionStart(id, positionMs)
+        }
+        return listOf(session, WatchAction.Save(id, positionMs))
     }
 
     /**
@@ -115,7 +167,12 @@ internal class WatchStateTracker {
     fun onEnded(durationMs: Long?): WatchAction.Report? {
         val id = activeMediaId ?: return null
         completionReported = true
-        return WatchAction.Report(id, durationMs ?: lastPositionMs, completed = true)
+        return WatchAction.Report(
+            id,
+            durationMs ?: lastPositionMs,
+            completed = true,
+            liveSession = sessionStarted,
+        )
     }
 
     /**
@@ -125,6 +182,6 @@ internal class WatchStateTracker {
     fun onDestroy(currentPositionMs: Long): WatchAction.Report? {
         val id = activeMediaId
         if (id == null || completionReported) return null
-        return WatchAction.Report(id, currentPositionMs, completed = false)
+        return WatchAction.Report(id, currentPositionMs, completed = false, liveSession = sessionStarted)
     }
 }

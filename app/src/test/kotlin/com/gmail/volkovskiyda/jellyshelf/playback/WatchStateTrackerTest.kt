@@ -6,22 +6,26 @@ import org.junit.Test
 
 /**
  * The reporting rules the player screen and the server both depend on: one report per video,
- * `completed` only when it really finished, and a position that belongs to the video it is
- * reported against.
+ * `completed` only when it really finished, a position that belongs to the video it is reported
+ * against, and one server session per video actually watched.
  *
- * These fail quietly rather than loudly — a wrong position is a resume spot silently moved, and a
- * duplicate report is a watch history that contradicts itself — which is exactly why they are
- * worth pinning here rather than leaving to a device session.
+ * These fail quietly rather than loudly — a wrong position is a resume spot silently moved, a
+ * duplicate report is a watch history that contradicts itself, and a stray session start clears
+ * the played flag of a video nobody watched — which is exactly why they are worth pinning here
+ * rather than leaving to a device session.
  */
 class WatchStateTrackerTest {
 
     private val tracker = WatchStateTracker()
 
-    /** Playing [id] with [positionMs] on the clock, the state every case below starts from. */
+    /**
+     * Playing [id] with [positionMs] on the clock, the state every case below starts from. A
+     * position means a periodic tick has run, so the server session is open — exactly as on device.
+     */
     private fun playing(id: String, positionMs: Long = 0L) {
         tracker.onItemChanged(newMediaId = id, autoAdvance = false)
         tracker.onPlaying()
-        if (positionMs > 0L) tracker.onPeriodicSave(positionMs)
+        if (positionMs > 0L) tracker.onPeriodicTick(positionMs)
     }
 
     @Test
@@ -36,7 +40,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onItemChanged("b", autoAdvance = true)
 
-        assertEquals(WatchAction.Report("a", 700_000L, completed = true), report)
+        assertEquals(WatchAction.Report("a", 700_000L, completed = true, liveSession = true), report)
     }
 
     /**
@@ -55,7 +59,7 @@ class WatchStateTrackerTest {
         tracker.onPositionDiscontinuity("a", 108_400L, "b", 0L)
 
         assertEquals(
-            WatchAction.Report("a", 108_400L, completed = false),
+            WatchAction.Report("a", 108_400L, completed = false, liveSession = true),
             tracker.onItemChanged("b", autoAdvance = false),
         )
     }
@@ -66,7 +70,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onItemChanged("b", autoAdvance = false)
 
-        assertEquals(WatchAction.Report("a", 120_000L, completed = false), report)
+        assertEquals(WatchAction.Report("a", 120_000L, completed = false, liveSession = true), report)
     }
 
     @Test
@@ -77,7 +81,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onItemChanged(null, autoAdvance = false)
 
-        assertEquals(WatchAction.Report("a", 95_000L, completed = false), report)
+        assertEquals(WatchAction.Report("a", 95_000L, completed = false, liveSession = true), report)
         assertNull(tracker.activeMediaId)
     }
 
@@ -94,21 +98,21 @@ class WatchStateTrackerTest {
         tracker.onItemChanged("b", autoAdvance = true)
 
         // Nothing has been observed about "b" yet, so a stop now is at its start.
-        assertEquals(WatchAction.Report("b", 0L, completed = false), tracker.onDestroy(0L))
+        assertEquals(WatchAction.Report("b", 0L, completed = false, liveSession = false), tracker.onDestroy(0L))
     }
 
     @Test
     fun `a pause while ready saves the position`() {
         playing("a")
 
-        assertEquals(WatchAction.Save("a", 45_000L), tracker.onPaused(45_000L, ready = true))
+        assertEquals(listOf(WatchAction.Save("a", 45_000L)), tracker.onPaused(45_000L, ready = true))
     }
 
     @Test
     fun `buffering is not a pause and saves nothing`() {
         playing("a", positionMs = 45_000L)
 
-        assertNull(tracker.onPaused(0L, ready = false))
+        assertEquals(emptyList<WatchAction>(), tracker.onPaused(0L, ready = false))
         // And the buffering position did not overwrite what was known.
         assertEquals(45_000L, tracker.lastPositionMs)
     }
@@ -119,7 +123,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onEnded(durationMs = 754_000L)
 
-        assertEquals(WatchAction.Report("a", 754_000L, completed = true), report)
+        assertEquals(WatchAction.Report("a", 754_000L, completed = true, liveSession = true), report)
     }
 
     @Test
@@ -127,7 +131,7 @@ class WatchStateTrackerTest {
         playing("a", positionMs = 700_000L)
 
         assertEquals(
-            WatchAction.Report("a", 700_000L, completed = true),
+            WatchAction.Report("a", 700_000L, completed = true, liveSession = true),
             tracker.onEnded(durationMs = null),
         )
     }
@@ -177,7 +181,7 @@ class WatchStateTrackerTest {
         tracker.onPlaying()
 
         assertEquals(
-            WatchAction.Report("a", 10_000L, completed = false),
+            WatchAction.Report("a", 10_000L, completed = false, liveSession = true),
             tracker.onDestroy(10_000L),
         )
     }
@@ -187,7 +191,7 @@ class WatchStateTrackerTest {
         playing("a", positionMs = 120_000L)
 
         assertEquals(
-            WatchAction.Report("a", 125_000L, completed = false),
+            WatchAction.Report("a", 125_000L, completed = false, liveSession = true),
             tracker.onDestroy(125_000L),
         )
     }
@@ -196,8 +200,8 @@ class WatchStateTrackerTest {
     fun `with nothing playing there is nothing to report`() {
         assertNull(tracker.onDestroy(10_000L))
         assertNull(tracker.onEnded(754_000L))
-        assertNull(tracker.onPeriodicSave(10_000L))
-        assertNull(tracker.onPaused(10_000L, ready = true))
+        assertEquals(emptyList<WatchAction>(), tracker.onPeriodicTick(10_000L))
+        assertEquals(emptyList<WatchAction>(), tracker.onPaused(10_000L, ready = true))
     }
 
     @Test
@@ -230,8 +234,93 @@ class WatchStateTrackerTest {
 
         assertEquals(300_000L, tracker.lastPositionMs)
         assertEquals(
-            WatchAction.Report("a", 300_000L, completed = false),
+            WatchAction.Report("a", 300_000L, completed = false, liveSession = true),
             tracker.onItemChanged("b", autoAdvance = false),
+        )
+    }
+
+    // --- The server session: opened once, and only by a video actually being watched ---
+
+    @Test
+    fun `the first tick opens the session and every later one reports progress`() {
+        tracker.onItemChanged("a", autoAdvance = false)
+        tracker.onPlaying()
+
+        assertEquals(
+            listOf(WatchAction.SessionStart("a", 10_000L), WatchAction.Save("a", 10_000L)),
+            tracker.onPeriodicTick(10_000L),
+        )
+        // Never a start and a progress in the same tick: they are sent as separate fire-and-forget
+        // calls, and a progress overtaking its own start would report against no session at all.
+        assertEquals(
+            listOf(
+                WatchAction.Progress("a", 20_000L, isPaused = false),
+                WatchAction.Save("a", 20_000L),
+            ),
+            tracker.onPeriodicTick(20_000L),
+        )
+    }
+
+    /**
+     * Why the session waits for a tick instead of opening at the transition: the server clears the
+     * played flag and counts a play the moment one opens, so stepping through a queue with next
+     * would leave every video it passed unwatched with a play to its name.
+     */
+    @Test
+    fun `stepping past a video opens no session`() {
+        tracker.onItemChanged("a", autoAdvance = false)
+        tracker.onPlaying()
+
+        assertEquals(
+            WatchAction.Report("a", 0L, completed = false, liveSession = false),
+            tracker.onItemChanged("b", autoAdvance = false),
+        )
+    }
+
+    @Test
+    fun `a new video opens a session of its own`() {
+        playing("a", positionMs = 300_000L)
+
+        tracker.onItemChanged("b", autoAdvance = true)
+
+        assertEquals(
+            listOf(WatchAction.SessionStart("b", 10_000L), WatchAction.Save("b", 10_000L)),
+            tracker.onPeriodicTick(10_000L),
+        )
+    }
+
+    @Test
+    fun `a pause is reported to the server only once it knows the video is playing`() {
+        // Paused before the first tick: there is no session to pause, so the save goes alone.
+        playing("a")
+        assertEquals(listOf(WatchAction.Save("a", 5_000L)), tracker.onPaused(5_000L, ready = true))
+
+        tracker.onPlaying()
+        tracker.onPeriodicTick(15_000L)
+
+        assertEquals(
+            listOf(
+                WatchAction.Save("a", 20_000L),
+                WatchAction.Progress("a", 20_000L, isPaused = true),
+            ),
+            tracker.onPaused(20_000L, ready = true),
+        )
+    }
+
+    @Test
+    fun `replaying an ended video does not open a second session`() {
+        // The flag survives everything but a change of item. A replay is the same video, and a
+        // second start report would clear the played flag the server had just set on it.
+        playing("a", positionMs = 700_000L)
+        tracker.onEnded(durationMs = 754_000L)
+        tracker.onPlaying()
+
+        assertEquals(
+            listOf(
+                WatchAction.Progress("a", 10_000L, isPaused = false),
+                WatchAction.Save("a", 10_000L),
+            ),
+            tracker.onPeriodicTick(10_000L),
         )
     }
 }
