@@ -3,6 +3,18 @@ plugins {
     alias(libs.plugins.androidx.baselineprofile)
 }
 
+// Same loadEnv as :app (see app/build.gradle.kts): the generator's real-server journey reads the
+// live-test credentials from the git-ignored .test.env and skips itself when they are absent.
+fun loadEnv(file: java.io.File): Map<String, String> =
+    file.takeIf { it.exists() }?.readLines()
+        ?.mapNotNull { line ->
+            line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
+                ?.split("=", limit = 2)?.takeIf { it.size == 2 }
+                ?.let { (k, v) -> k.trim() to v.trim() }
+        }?.toMap().orEmpty()
+
+val testEnv = loadEnv(rootProject.file(".test.env"))
+
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf.baselineprofile"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -10,6 +22,16 @@ android {
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Runtime `am instrument -e` extras, exactly like :app's live-endpoint tests — never baked
+        // into any BuildConfig, so changing .test.env needs no rebuild. Blank when the file is
+        // absent, which is what makes the real-server journey skip.
+        testInstrumentationRunnerArguments += mapOf(
+            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"].orEmpty(),
+            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"].orEmpty(),
+            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"].orEmpty(),
+            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"].orEmpty(),
+            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"].orEmpty(),
+        )
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

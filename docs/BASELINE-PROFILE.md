@@ -11,7 +11,7 @@ Two files ship, both under `app/src/release/generated/baselineProfiles/` and bot
 
 | File | Covers | Cost |
 |------|--------|------|
-| `baseline-prof.txt` | the whole journey: launch, library list and its scroll, a video's detail screen, playback | compiled at install time |
+| `baseline-prof.txt` | the whole journey: launch, library list and its scroll, a video's detail screen, playback — plus, when `.test.env` is filled, the real-server first-use path: sign-in, the first sync, network image loads | compiled at install time |
 | `startup-prof.txt` | cold launch into a populated library, and nothing else | also laid out in the primary dex, read on **every** cold start |
 
 The split matters: the startup profile is read on every launch, so putting the player in it would
@@ -42,10 +42,18 @@ stays `false` so `assembleRelease` never asks for a device.
   a profile — that path is the backup, not the normal one. Signing cannot reach a profile either
   way: it is a list of classes and methods.
 - **`git lfs install`** in the clone, so the committed profile is stored as an LFS object.
-- **No Jellyfin server, account or network.** The run drives [demo mode](../README.md#demo-mode--try-it-without-a-server):
-  it taps **Try demo**, which seeds ~60 videos from a bundled asset, and every video plays a bundled
-  clip. That is deliberate — two profiles then differ because the *app* changed, not because the
-  library did.
+- **No Jellyfin server, account or network — by default.** The first two tests drive
+  [demo mode](../README.md#demo-mode--try-it-without-a-server): **Try demo** seeds ~60 videos from
+  a bundled asset, and every video plays a bundled clip. That is deliberate — two profiles then
+  differ because the *app* changed, not because the library did.
+- **Optionally, `.test.env` filled** (the same file the live-endpoint tests read — see the
+  [README](../README.md#environment-config)). Then a third test, `generateSyncJourney`, signs into
+  the real server and runs the first sync, adding the whole network stack — `AuthenticateByName`,
+  Ktor/TLS, kotlinx.serialization over live responses, sync into Room, Coil's network fetcher — to
+  the journey profile, which demo mode never loads. It skips when the file is absent. The server
+  URL must be `https://`: this variant is the release configuration, which refuses plain HTTP. It
+  runs last on purpose, so the two demo-driven profiles keep their determinism; the entries it
+  adds do vary a little with the library behind the account.
 
 The run installs under the release application id (no `.debug` suffix), so it replaces an installed
 release build of the app — cleanly, since both carry the release certificate. Only in the debug-signed
@@ -67,9 +75,10 @@ That is the whole command. It chains, in order:
 :app:copyReleaseBaselineProfileIntoSrc                     # writes app/src/release/generated/baselineProfiles/
 ```
 
-It is a real device run: two tests, each repeating its journey across several iterations with a
-process kill between them, until the profile stabilises. The task is on `:app`, not on
-`:baselineprofile` — that module exposes only the `collect…` and `connected…` halves.
+It is a real device run: three tests (the third skipping itself without `.test.env`), each
+repeating its journey across several iterations with a process kill between them, until the
+profile stabilises. The task is on `:app`, not on `:baselineprofile` — that module exposes only
+the `collect…` and `connected…` halves.
 
 The variant it profiles is `nonMinifiedRelease`: the release build type with R8 switched off, and
 nothing else changed. Application id, `BuildConfig.DEBUG`, manifest, resources and — when
@@ -113,12 +122,17 @@ cd app/src/release/generated/baselineProfiles
 | Check | Command | Expected |
 |-------|---------|----------|
 | Not obfuscated | `head -3 baseline-prof.txt` | readable names (`PLandroidx/activity/ActivityFlags;-><clinit>()V`) — **not** `La0;` / `Lzz0;` |
-| App code is in it | `grep -c Lcom/gmail/volkovskiyda baseline-prof.txt` | thousands (2,484) |
-| …and in the startup profile | `grep -c Lcom/gmail/volkovskiyda startup-prof.txt` | hundreds to low thousands (1,054) |
-| The two differ | `cmp -s baseline-prof.txt startup-prof.txt && echo IDENTICAL` | prints nothing (4.3 MB vs 2.8 MB; 40,290 vs 27,974 lines) |
-| Startup is startup-shaped | `grep -c ui/library startup-prof.txt` then `ui/player` | the library dominates (138) and the player is absent (1) |
+| App code is in it | `grep -c Lcom/gmail/volkovskiyda baseline-prof.txt` | thousands (3,353) |
+| …and in the startup profile | `grep -c Lcom/gmail/volkovskiyda startup-prof.txt` | hundreds to low thousands (1,098) |
+| The two differ | `cmp -s baseline-prof.txt startup-prof.txt && echo IDENTICAL` | prints nothing (49,037 vs 29,454 lines) |
+| Startup is startup-shaped | `grep -c ui/library startup-prof.txt` then `ui/player` | the library dominates (140) and the player is absent (1) |
+| Real-server path is in it — only with `.test.env` | `grep -c Lio/ktor baseline-prof.txt` | thousands (2,031) after the sync journey ran; a few hundred incidental entries when it skipped |
 | LFS-tracked | `git check-attr filter -- baseline-prof.txt startup-prof.txt` | `filter: lfs` on both |
 | Release still builds device-free | `./gradlew :app:assembleRelease` (device unplugged) | succeeds |
+
+The reference figures above come from a run *with* the sync journey; the first run that adds it
+over a demo-only profile jumps ~18% in added rules, which is the network stack arriving rather
+than something structural to suspect.
 
 Then commit both files. They are regenerated wholesale rather than edited, which is why
 `.gitattributes` sends them to LFS.
