@@ -495,6 +495,11 @@ class SettingsViewModel(
             selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else form.selectedScopePath,
             // The user picker is an API-key-mode affordance; a token identifies its user.
             users = emptyList(),
+            // Re-read, don't keep: clearDemoLibrary just zeroed the persisted marker when this
+            // sign-in replaced a demo library, and the stale demo timestamp would otherwise leave
+            // the index field locked (indexProtected) with nothing ever synced against this
+            // server. A re-sign-in over an intact library reads its real value back unchanged.
+            lastSyncAt = settingsRepo.snapshot().lastSyncAt,
             status = app.getString(R.string.signed_in_as, session.user.name),
             statusIsError = false,
         )

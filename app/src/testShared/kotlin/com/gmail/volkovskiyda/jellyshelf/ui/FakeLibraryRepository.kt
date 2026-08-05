@@ -30,6 +30,11 @@ import kotlinx.coroutines.flow.map
 @Suppress("TooManyFunctions") // mirrors the interface it fakes
 class FakeLibraryRepository(
     initial: List<Video> = emptyList(),
+    /**
+     * Runs inside [clearLocalData], for tests that need the real repository's side contract —
+     * zeroing the persisted sync marker and the demo flag — to hold across the fake boundary.
+     */
+    private val onClear: suspend () -> Unit = {},
 ) : LibraryRepository {
 
     /** What the unfiltered browse flow emits. */
@@ -106,6 +111,7 @@ class FakeLibraryRepository(
     override suspend fun clearLocalData() {
         clears++
         writeOrder += "clear"
+        onClear()
     }
     override suspend fun removeVideo(youtubeId: String): Unit = notModelled()
     override suspend fun setPlayed(youtubeId: String, played: Boolean): Boolean = notModelled()

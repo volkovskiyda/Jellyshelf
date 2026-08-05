@@ -228,6 +228,63 @@ class DemoSignInInstrumentedTest {
         assertEquals(listOf("clear"), library.writeOrder)
     }
 
+    /**
+     * A *successful* demo→real sign-in must leave the index field editable: the demo wipe zeroes
+     * the persisted last-sync marker, and the state has to re-read it rather than keep the demo
+     * seed's timestamp — a stale value keeps `indexProtected` true with nothing ever synced
+     * against the server, which hides the Fill affordance behind a lock.
+     */
+    @Test
+    fun signIn_toARealServerWhileInDemo_unlocksTheIndexField() = runTest {
+        val settings = FakeSettingsRepository(
+            emptySettings.copy(demoMode = true, lastSyncAt = 1_722_800_000_000L),
+        )
+        // The fake mirrors the real clearLocalData contract (LibraryRepository.clearLocalData):
+        // the wipe is what zeroes the marker this test asserts got re-read.
+        val library = FakeLibraryRepository(onClear = {
+            settings.setLastSync(0L, "")
+            settings.setDemoMode(false)
+        })
+        val jellyfin = object : JellyfinRepository {
+            override suspend fun signIn(serverUrl: String, username: String, password: String) =
+                Session(accessToken = "token", user = User(id = "user-1", name = "alice"))
+
+            override suspend fun getUsers(serverUrl: String, credential: String): List<User> =
+                error("not used here")
+
+            override suspend fun getChildFolders(
+                serverUrl: String,
+                credential: String,
+                userId: String,
+                parentId: String?,
+            ): List<MediaFolder> = error("not used here")
+        }
+        val viewModel = SettingsViewModel(
+            app,
+            settings,
+            library,
+            jellyfin,
+            SettingsCache(),
+            SyncScheduler(WorkManager.getInstance(app)),
+        ).also {
+            store.put("settings-unlock", it)
+            backgroundScope.launch { it.state.collect { } }
+        }
+        advanceUntilIdle() // the init collection lands the persisted demo state first
+
+        viewModel.onServerUrlChange("https://example.org")
+        viewModel.onUsernameChange("alice")
+        viewModel.onPasswordChange("hunter2")
+        viewModel.signIn()
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertTrue(state.signedIn)
+        assertEquals(1, library.clears)
+        assertEquals("the wiped demo's sync timestamp must not linger", 0L, state.lastSyncAt)
+        assertFalse("the index field must offer Fill after a demo→real sign-in", state.indexProtected)
+    }
+
     /** Without a demo loaded there is nothing to clear, and a real connect must not wipe anything. */
     @Test
     fun signIn_toARealServerWithoutADemo_clearsNothing() = runTest {
