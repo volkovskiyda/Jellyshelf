@@ -1228,7 +1228,8 @@ class DefaultLibraryRepository(
                 // The one case with nothing to say is an unplayed row sitting at 0 — only reachable
                 // if an "unwatched" toggle landed while this report waited for the lock, and a
                 // zero-position stop would mark it played right back.
-                if (liveSession && (latest.played || latest.playbackPositionTicks > 0)) {
+                val sessionClosed = liveSession && (latest.played || latest.playbackPositionTicks > 0)
+                if (sessionClosed) {
                     Timber.tag(PLAYBACK_TAG).d(
                         "onPlaybackStopped: closing the Jellyfin session for itemId=$itemId " +
                             "positionTicks=${latest.playbackPositionTicks} played=${latest.played}",
@@ -1266,10 +1267,56 @@ class DefaultLibraryRepository(
                         lastPlayedDate = Instant.now().toString(),
                     )
                 }
+                // Only a partway stop needs asking: a finished one already wrote played, position 0
+                // locally, which is exactly what the server made of it.
+                if (sessionClosed && !latest.played) mirrorServerWatchState(youtubeId, itemId, s, latest)
             }
             Timber.tag(PLAYBACK_TAG).d("onPlaybackStopped: server report succeeded for itemId=$itemId")
         }.onFailure { e ->
             Timber.tag(PLAYBACK_TAG).w(e, "onPlaybackStopped: server report failed for itemId=$itemId")
+        }
+    }
+
+    /**
+     * Reads the server's verdict back after an in-app stop and mirrors it into the local row.
+     *
+     * The app's own rule only calls a stop finished within seconds of the end, so after a partway
+     * stop the server routinely knows better: it marks anything past its watched threshold (90% by
+     * default), and short items outright. Without this the library would keep offering the video
+     * under "Continue watching" — for hours, until the next sync corrected it.
+     *
+     * The stamp is what makes the write safe against a sync already in flight: that sync's server
+     * snapshot predates this write, and the merge keeps local values stamped after its fetch began
+     * ([localWatchWrites]). `playCount` is deliberately not mirrored — the DAO's `updateWatchState`
+     * doesn't carry it, and the next sync brings it along.
+     */
+    private suspend fun mirrorServerWatchState(
+        youtubeId: String,
+        itemId: String,
+        s: Settings,
+        reported: VideoEntity,
+    ) {
+        runCatchingCancellable {
+            val userData = jellyfin.getItem(s.serverUrl, s.credential, s.userId, itemId).userData ?: return
+            writeMutex.withLock {
+                val current = videoDao.get(youtubeId) ?: return@withLock
+                // Mirror only onto the state this report was made from. Anything else means the row
+                // moved on while the fetch was in flight — a manual toggle, most likely — and that
+                // is newer than a verdict the server reached before it heard about it.
+                if (current.played != reported.played ||
+                    current.playbackPositionTicks != reported.playbackPositionTicks
+                ) {
+                    return@withLock
+                }
+                videoDao.updateWatchState(youtubeId, userData.played, userData.playbackPositionTicks)
+                localWatchWrites[youtubeId] = System.currentTimeMillis()
+                Timber.tag(PLAYBACK_TAG).d(
+                    "onPlaybackStopped: mirrored the server's verdict for itemId=$itemId " +
+                        "played=${userData.played} positionTicks=${userData.playbackPositionTicks}",
+                )
+            }
+        }.onFailure { e ->
+            Timber.tag(PLAYBACK_TAG).w(e, "onPlaybackStopped: mirror fetch failed for itemId=$itemId")
         }
     }
 
