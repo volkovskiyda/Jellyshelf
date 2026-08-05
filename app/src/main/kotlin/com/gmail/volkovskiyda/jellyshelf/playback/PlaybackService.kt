@@ -302,9 +302,11 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         when (this) {
             null -> Unit
             is WatchAction.Report ->
-                repo.reportPlaybackStopped(youtubeId, positionMs, completed, liveSession)
-            is WatchAction.SessionStart -> repo.reportPlaybackStarted(youtubeId, positionMs)
-            is WatchAction.Progress -> repo.reportPlaybackProgress(youtubeId, positionMs, isPaused)
+                repo.reportPlaybackStopped(youtubeId, positionMs, completed, playSessionId)
+            is WatchAction.SessionStart ->
+                repo.reportPlaybackStarted(youtubeId, positionMs, playSessionId)
+            is WatchAction.Progress ->
+                repo.reportPlaybackProgress(youtubeId, positionMs, isPaused, playSessionId)
             is WatchAction.Save -> repo.savePlaybackPosition(youtubeId, positionMs)
         }
     }

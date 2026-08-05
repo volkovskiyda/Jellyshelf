@@ -104,6 +104,18 @@ class KtorSerializationInstrumentedTest {
         val obj = Json.Default.parseToJsonElement(body).jsonObject
         assertEquals("vid1", obj["ItemId"]?.jsonPrimitive?.content)
         assertEquals(42L, obj["PositionTicks"]?.jsonPrimitive?.long)
+        // explicitNulls=false on device too: no session id, no field.
+        assertFalse(obj.containsKey("PlaySessionId"))
+    }
+
+    @Test
+    fun playSessionIdSurvivesOnDevice() = runTest {
+        var body = ""
+        api(responseBody = "", captureBody = { body = it })
+            .reportProgress(ProgressBody(itemId = "vid1", positionTicks = 3L, playSessionId = "ps-1"))
+
+        val obj = Json.Default.parseToJsonElement(body).jsonObject
+        assertEquals("ps-1", obj["PlaySessionId"]?.jsonPrimitive?.content)
     }
 
     @Test

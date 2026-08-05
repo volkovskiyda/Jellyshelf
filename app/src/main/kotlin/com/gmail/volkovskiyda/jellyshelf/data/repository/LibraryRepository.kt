@@ -387,7 +387,11 @@ private inline fun <T> tracedSync(block: (Trace) -> T): T {
     }
 }
 
-@Suppress("TooManyFunctions") // the app's single library-domain facade
+// TooManyFunctions: the app's single library-domain facade.
+// LargeClass: splitting this into sub-repositories composed by Kotlin interface delegation —
+// playstate first, then sync, metadata and categories — is planned as its own piece of work.
+// Suppressed at the declaration rather than baselined, so both findings stay visible where they apply.
+@Suppress("TooManyFunctions", "LargeClass")
 class DefaultLibraryRepository(
     private val db: JellyshelfDatabase,
     private val settings: SettingsRepository,
@@ -1070,26 +1074,32 @@ class DefaultLibraryRepository(
         youtubeId: String,
         positionMs: Long,
         completed: Boolean,
-        liveSession: Boolean,
+        playSessionId: String?,
     ) {
         // Fire-and-forget on the repository's own scope: the screen that launched the external
         // player may be gone (back press, rotation) before the local write and the network
         // report finish, and losing the resume position is not acceptable.
-        repoScope.launch { onPlaybackStopped(youtubeId, positionMs, completed, liveSession) }
+        repoScope.launch { onPlaybackStopped(youtubeId, positionMs, completed, playSessionId) }
     }
 
-    override fun reportPlaybackStarted(youtubeId: String, positionMs: Long) {
+    override fun reportPlaybackStarted(youtubeId: String, positionMs: Long, playSessionId: String?) {
         reportSession(youtubeId, what = "start") { s, itemId ->
             jellyfin.reportPlaybackStart(
                 serverUrl = s.serverUrl,
                 credential = s.credential,
                 itemId = itemId,
                 positionTicks = millisToTicks(positionMs),
+                playSessionId = playSessionId,
             )
         }
     }
 
-    override fun reportPlaybackProgress(youtubeId: String, positionMs: Long, isPaused: Boolean) {
+    override fun reportPlaybackProgress(
+        youtubeId: String,
+        positionMs: Long,
+        isPaused: Boolean,
+        playSessionId: String?,
+    ) {
         reportSession(youtubeId, what = "progress") { s, itemId ->
             jellyfin.reportPlaybackProgress(
                 serverUrl = s.serverUrl,
@@ -1097,6 +1107,7 @@ class DefaultLibraryRepository(
                 itemId = itemId,
                 positionTicks = millisToTicks(positionMs),
                 isPaused = isPaused,
+                playSessionId = playSessionId,
             )
         }
     }
@@ -1157,7 +1168,7 @@ class DefaultLibraryRepository(
         youtubeId: String,
         positionMs: Long,
         completed: Boolean,
-        liveSession: Boolean,
+        playSessionId: String?,
     ) {
         val positionTicks = millisToTicks(positionMs)
         Timber.tag(PLAYBACK_TAG).d(
@@ -1203,15 +1214,18 @@ class DefaultLibraryRepository(
         }
         // Best-effort: the local resume position is already saved, so a failed server
         // write is swallowed.
-        reportPlaybackToServer(youtubeId, itemId, s, liveSession)
+        reportPlaybackToServer(youtubeId, itemId, s, playSessionId)
     }
 
     private suspend fun reportPlaybackToServer(
         youtubeId: String,
         itemId: String,
         s: Settings,
-        liveSession: Boolean,
+        playSessionId: String?,
     ) {
+        // Having a session id *is* what makes this an in-app stop: it is minted when the in-app
+        // player opens the server session, and an external handoff never has one.
+        val liveSession = playSessionId != null
         runCatchingCancellable {
             playstateMutex.withLock {
                 // Re-read at send time (see setPlayed): a toggle that landed while this
@@ -1239,6 +1253,7 @@ class DefaultLibraryRepository(
                         credential = s.credential,
                         itemId = itemId,
                         positionTicks = latest.playbackPositionTicks,
+                        playSessionId = playSessionId,
                     )
                 }
                 if (latest.played) {

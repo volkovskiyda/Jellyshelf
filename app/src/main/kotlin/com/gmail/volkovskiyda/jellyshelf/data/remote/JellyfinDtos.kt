@@ -75,6 +75,10 @@ data class CreatePlaylistBody(
  * Body for POST /Sessions/Playing — a minimal PlaybackStartInfo. Opening the session lets the
  * server apply its own playstate rules to everything reported afterwards; it also clears `Played`
  * and bumps `PlayCount` for a resumable item, which is the official rewatch semantics.
+ *
+ * `PlaySessionId` ties this report to the progress and stop reports that follow it. Official
+ * clients take theirs from /PlaybackInfo, which direct play never calls, so the app mints its own —
+ * any stable string will do, the server only correlates by it.
  */
 @Serializable
 data class PlaybackStartBody(
@@ -82,6 +86,7 @@ data class PlaybackStartBody(
     @SerialName("PositionTicks") val positionTicks: Long,
     @SerialName("PlayMethod") val playMethod: String = "DirectPlay",
     @SerialName("CanSeek") val canSeek: Boolean = true,
+    @SerialName("PlaySessionId") val playSessionId: String? = null,
 )
 
 /** Body for POST /Sessions/Playing/Progress — a minimal PlaybackProgressInfo. */
@@ -91,6 +96,7 @@ data class ProgressBody(
     @SerialName("PositionTicks") val positionTicks: Long,
     @SerialName("IsPaused") val isPaused: Boolean = false,
     @SerialName("PlayMethod") val playMethod: String = "DirectPlay",
+    @SerialName("PlaySessionId") val playSessionId: String? = null,
 )
 
 /**
@@ -102,6 +108,7 @@ data class ProgressBody(
 data class PlaybackStopBody(
     @SerialName("ItemId") val itemId: String,
     @SerialName("PositionTicks") val positionTicks: Long,
+    @SerialName("PlaySessionId") val playSessionId: String? = null,
 )
 
 /**

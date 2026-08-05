@@ -1,24 +1,36 @@
 package com.gmail.volkovskiyda.jellyshelf.playback
 
+import java.util.UUID
+
 /** What the service should do about watch state; null (or an empty list) wherever it is "nothing". */
 internal sealed interface WatchAction {
     /**
      * A full stop report to the server: this video is finished with, for now or for good.
-     * [liveSession] says whether a server session was open behind it, which decides how the
-     * position is sent — see [com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository].
+     * [playSessionId] is non-null exactly when a server session was open behind it, which is what
+     * decides how the position is sent — see
+     * [com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository].
      */
     data class Report(
         val youtubeId: String,
         val positionMs: Long,
         val completed: Boolean,
-        val liveSession: Boolean,
+        val playSessionId: String?,
     ) : WatchAction
 
     /** Opens the server's playback session, once this video is genuinely being watched. */
-    data class SessionStart(val youtubeId: String, val positionMs: Long) : WatchAction
+    data class SessionStart(
+        val youtubeId: String,
+        val positionMs: Long,
+        val playSessionId: String,
+    ) : WatchAction
 
     /** An in-flight position for the open session — the server's chance to mark it watched mid-play. */
-    data class Progress(val youtubeId: String, val positionMs: Long, val isPaused: Boolean) : WatchAction
+    data class Progress(
+        val youtubeId: String,
+        val positionMs: Long,
+        val isPaused: Boolean,
+        val playSessionId: String,
+    ) : WatchAction
 
     /** A local-only position save, so process death cannot lose where the user got to. */
     data class Save(val youtubeId: String, val positionMs: Long) : WatchAction
@@ -37,8 +49,13 @@ internal sealed interface WatchAction {
  *
  * Single-threaded by design: the service's player runs on its main thread and every call arrives
  * from there, which is what makes plain vars safe here.
+ *
+ * [newSessionId] mints the id each server session is reported under; it is a parameter purely so
+ * tests can pin what is otherwise a random UUID.
  */
-internal class WatchStateTracker {
+internal class WatchStateTracker(
+    private val newSessionId: () -> String = { UUID.randomUUID().toString() },
+) {
 
     var activeMediaId: String? = null
         private set
@@ -55,12 +72,14 @@ internal class WatchStateTracker {
         private set
 
     /**
-     * Whether the server has been told the active video is playing. Set by its first periodic tick
-     * and cleared only when the active item changes: a pause, a replay or an ended-then-resumed
-     * video is the same session continuing, and a second start report would clear the server's
-     * played flag and count another play.
+     * The id every report about the active video's server session carries, or null while it has
+     * none — which doubles as "has the server been told this video is playing?".
+     *
+     * Minted by the video's first periodic tick and cleared only when the active item changes: a
+     * pause, a replay or an ended-then-resumed video is the same session continuing, and a second
+     * start report would clear the server's played flag and count another play.
      */
-    var sessionStarted: Boolean = false
+    var playSessionId: String? = null
         private set
 
     /**
@@ -77,14 +96,14 @@ internal class WatchStateTracker {
         // Read before the reset below: the report belongs to the video being left, so it carries
         // that video's session flag, not the incoming one's.
         val report = if (previous != null && previous != newMediaId && !completionReported) {
-            WatchAction.Report(previous, lastPositionMs, completed = autoAdvance, liveSession = sessionStarted)
+            WatchAction.Report(previous, lastPositionMs, completed = autoAdvance, playSessionId = playSessionId)
         } else {
             null
         }
         activeMediaId = newMediaId
         lastPositionMs = 0L
         completionReported = false
-        sessionStarted = false
+        playSessionId = null
         return report
     }
 
@@ -131,7 +150,7 @@ internal class WatchStateTracker {
         lastPositionMs = positionMs
         return buildList {
             add(WatchAction.Save(id, positionMs))
-            if (sessionStarted) add(WatchAction.Progress(id, positionMs, isPaused = true))
+            playSessionId?.let { add(WatchAction.Progress(id, positionMs, isPaused = true, playSessionId = it)) }
         }
     }
 
@@ -151,11 +170,13 @@ internal class WatchStateTracker {
     fun onPeriodicTick(positionMs: Long): List<WatchAction> {
         val id = activeMediaId ?: return emptyList()
         lastPositionMs = positionMs
-        val session = if (sessionStarted) {
-            WatchAction.Progress(id, positionMs, isPaused = false)
+        val open = playSessionId
+        val session = if (open != null) {
+            WatchAction.Progress(id, positionMs, isPaused = false, playSessionId = open)
         } else {
-            sessionStarted = true
-            WatchAction.SessionStart(id, positionMs)
+            val opened = newSessionId()
+            playSessionId = opened
+            WatchAction.SessionStart(id, positionMs, playSessionId = opened)
         }
         return listOf(session, WatchAction.Save(id, positionMs))
     }
@@ -171,7 +192,7 @@ internal class WatchStateTracker {
             id,
             durationMs ?: lastPositionMs,
             completed = true,
-            liveSession = sessionStarted,
+            playSessionId = playSessionId,
         )
     }
 
@@ -182,6 +203,6 @@ internal class WatchStateTracker {
     fun onDestroy(currentPositionMs: Long): WatchAction.Report? {
         val id = activeMediaId
         if (id == null || completionReported) return null
-        return WatchAction.Report(id, currentPositionMs, completed = false, liveSession = sessionStarted)
+        return WatchAction.Report(id, currentPositionMs, completed = false, playSessionId = playSessionId)
     }
 }

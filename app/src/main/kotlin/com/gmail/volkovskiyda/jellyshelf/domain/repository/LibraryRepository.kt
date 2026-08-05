@@ -64,9 +64,13 @@ interface LibraryRepository {
      * server clears `Played` and bumps `PlayCount` at start — its rewatch semantics — which
      * stepping through a queue would otherwise apply to every video passed over.
      *
+     * [playSessionId] is what ties this report to the progress and stop reports that follow it —
+     * the caller mints one per session, since the /PlaybackInfo call official clients take theirs
+     * from is not part of direct play.
+     *
      * Server-only and fire-and-forget: no local write, nothing to wait for.
      */
-    fun reportPlaybackStarted(youtubeId: String, positionMs: Long)
+    fun reportPlaybackStarted(youtubeId: String, positionMs: Long, playSessionId: String?)
 
     /**
      * Reports an in-flight position for the session [reportPlaybackStarted] opened — every few
@@ -76,21 +80,28 @@ interface LibraryRepository {
      * Server-only and fire-and-forget: [savePlaybackPosition] stays the one path that writes a
      * position locally.
      */
-    fun reportPlaybackProgress(youtubeId: String, positionMs: Long, isPaused: Boolean)
+    fun reportPlaybackProgress(
+        youtubeId: String,
+        positionMs: Long,
+        isPaused: Boolean,
+        playSessionId: String?,
+    )
 
     /**
      * One report per stop, from either player: the position is stored locally and mirrored to
      * Jellyfin — as a finished watch when [completed] (or within a few seconds of the end),
      * otherwise as a resume point.
      *
-     * Which server carrier does the mirroring depends on where playback happened:
-     * - [liveSession] — the in-app player, which has been reporting progress all along. The final
-     *   position closes the session, so the server thresholds it exactly as it thresholded every
-     *   progress report: past the threshold marks the video watched, short of it becomes a resume
-     *   point. The server is never told `Played=false` on this path — that would un-watch a video
-     *   its own threshold marked seconds earlier.
-     * - Otherwise — an external player, whose only signal is the result it hands back once playback
-     *   is already over. Its position is written to the item's user data directly, no thresholds.
+     * Which server carrier does the mirroring depends on where playback happened, which a
+     * [playSessionId] is exactly the mark of:
+     * - With one — the in-app player, which has been reporting progress into that session all
+     *   along. The final position closes it, so the server thresholds it exactly as it thresholded
+     *   every progress report: past the threshold marks the video watched, short of it becomes a
+     *   resume point. The server is never told `Played=false` on this path — that would un-watch a
+     *   video its own threshold marked seconds earlier.
+     * - Without one — an external player, whose only signal is the result it hands back once
+     *   playback is already over. Its position is written to the item's user data directly, no
+     *   thresholds.
      *
      * A finished watch additionally goes through the played-items endpoint on both paths: that is
      * what records the play in the server's watch history (PlayCount, LastPlayedDate).
@@ -104,7 +115,7 @@ interface LibraryRepository {
         youtubeId: String,
         positionMs: Long,
         completed: Boolean,
-        liveSession: Boolean = false,
+        playSessionId: String? = null,
     )
 
     /**

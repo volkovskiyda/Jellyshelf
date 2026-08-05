@@ -198,29 +198,43 @@ class JellyfinDataSource(
         credential: String,
         itemId: String,
         positionTicks: Long,
+        playSessionId: String?,
     ) {
         val response = api(serverUrl, credential).reportPlaybackStart(
-            PlaybackStartBody(itemId = itemId, positionTicks = positionTicks),
+            PlaybackStartBody(
+                itemId = itemId,
+                positionTicks = positionTicks,
+                playSessionId = playSessionId,
+            ),
         )
         Timber.tag(PLAYBACK_TAG).d(
-            "reportPlaybackStart itemId=$itemId positionTicks=$positionTicks -> HTTP ${response.status.value}",
+            "reportPlaybackStart itemId=$itemId positionTicks=$positionTicks " +
+                "playSessionId=$playSessionId -> HTTP ${response.status.value}",
         )
     }
 
     /** Reports an in-flight position for a session opened by [reportPlaybackStart]. */
+    // One parameter per field of the report; bundling them would only re-create the body built below.
+    @Suppress("LongParameterList")
     suspend fun reportPlaybackProgress(
         serverUrl: String,
         credential: String,
         itemId: String,
         positionTicks: Long,
         isPaused: Boolean,
+        playSessionId: String?,
     ) {
         val response = api(serverUrl, credential).reportProgress(
-            ProgressBody(itemId = itemId, positionTicks = positionTicks, isPaused = isPaused),
+            ProgressBody(
+                itemId = itemId,
+                positionTicks = positionTicks,
+                isPaused = isPaused,
+                playSessionId = playSessionId,
+            ),
         )
         Timber.tag(PLAYBACK_TAG).d(
-            "reportPlaybackProgress itemId=$itemId positionTicks=$positionTicks isPaused=$isPaused -> " +
-                "HTTP ${response.status.value}",
+            "reportPlaybackProgress itemId=$itemId positionTicks=$positionTicks isPaused=$isPaused " +
+                "playSessionId=$playSessionId -> HTTP ${response.status.value}",
         )
     }
 
@@ -234,13 +248,18 @@ class JellyfinDataSource(
         credential: String,
         itemId: String,
         positionTicks: Long,
+        playSessionId: String?,
     ) {
         val response = api(serverUrl, credential).reportPlaybackStopped(
-            PlaybackStopBody(itemId = itemId, positionTicks = positionTicks),
+            PlaybackStopBody(
+                itemId = itemId,
+                positionTicks = positionTicks,
+                playSessionId = playSessionId,
+            ),
         )
         Timber.tag(PLAYBACK_TAG).d(
-            "reportPlaybackSessionStopped itemId=$itemId positionTicks=$positionTicks -> " +
-                "HTTP ${response.status.value}",
+            "reportPlaybackSessionStopped itemId=$itemId positionTicks=$positionTicks " +
+                "playSessionId=$playSessionId -> HTTP ${response.status.value}",
         )
     }
 

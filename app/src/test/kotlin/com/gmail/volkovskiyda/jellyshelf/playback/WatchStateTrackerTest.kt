@@ -16,7 +16,9 @@ import org.junit.Test
  */
 class WatchStateTrackerTest {
 
-    private val tracker = WatchStateTracker()
+    /** Session ids in mint order — "s1", "s2", … — so expectations can name them. */
+    private var minted = 0
+    private val tracker = WatchStateTracker { "s${++minted}" }
 
     /**
      * Playing [id] with [positionMs] on the clock, the state every case below starts from. A
@@ -40,7 +42,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onItemChanged("b", autoAdvance = true)
 
-        assertEquals(WatchAction.Report("a", 700_000L, completed = true, liveSession = true), report)
+        assertEquals(WatchAction.Report("a", 700_000L, completed = true, playSessionId = "s1"), report)
     }
 
     /**
@@ -59,7 +61,7 @@ class WatchStateTrackerTest {
         tracker.onPositionDiscontinuity("a", 108_400L, "b", 0L)
 
         assertEquals(
-            WatchAction.Report("a", 108_400L, completed = false, liveSession = true),
+            WatchAction.Report("a", 108_400L, completed = false, playSessionId = "s1"),
             tracker.onItemChanged("b", autoAdvance = false),
         )
     }
@@ -70,7 +72,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onItemChanged("b", autoAdvance = false)
 
-        assertEquals(WatchAction.Report("a", 120_000L, completed = false, liveSession = true), report)
+        assertEquals(WatchAction.Report("a", 120_000L, completed = false, playSessionId = "s1"), report)
     }
 
     @Test
@@ -81,7 +83,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onItemChanged(null, autoAdvance = false)
 
-        assertEquals(WatchAction.Report("a", 95_000L, completed = false, liveSession = true), report)
+        assertEquals(WatchAction.Report("a", 95_000L, completed = false, playSessionId = "s1"), report)
         assertNull(tracker.activeMediaId)
     }
 
@@ -98,7 +100,7 @@ class WatchStateTrackerTest {
         tracker.onItemChanged("b", autoAdvance = true)
 
         // Nothing has been observed about "b" yet, so a stop now is at its start.
-        assertEquals(WatchAction.Report("b", 0L, completed = false, liveSession = false), tracker.onDestroy(0L))
+        assertEquals(WatchAction.Report("b", 0L, completed = false, playSessionId = null), tracker.onDestroy(0L))
     }
 
     @Test
@@ -123,7 +125,7 @@ class WatchStateTrackerTest {
 
         val report = tracker.onEnded(durationMs = 754_000L)
 
-        assertEquals(WatchAction.Report("a", 754_000L, completed = true, liveSession = true), report)
+        assertEquals(WatchAction.Report("a", 754_000L, completed = true, playSessionId = "s1"), report)
     }
 
     @Test
@@ -131,7 +133,7 @@ class WatchStateTrackerTest {
         playing("a", positionMs = 700_000L)
 
         assertEquals(
-            WatchAction.Report("a", 700_000L, completed = true, liveSession = true),
+            WatchAction.Report("a", 700_000L, completed = true, playSessionId = "s1"),
             tracker.onEnded(durationMs = null),
         )
     }
@@ -181,7 +183,7 @@ class WatchStateTrackerTest {
         tracker.onPlaying()
 
         assertEquals(
-            WatchAction.Report("a", 10_000L, completed = false, liveSession = true),
+            WatchAction.Report("a", 10_000L, completed = false, playSessionId = "s1"),
             tracker.onDestroy(10_000L),
         )
     }
@@ -191,7 +193,7 @@ class WatchStateTrackerTest {
         playing("a", positionMs = 120_000L)
 
         assertEquals(
-            WatchAction.Report("a", 125_000L, completed = false, liveSession = true),
+            WatchAction.Report("a", 125_000L, completed = false, playSessionId = "s1"),
             tracker.onDestroy(125_000L),
         )
     }
@@ -234,7 +236,7 @@ class WatchStateTrackerTest {
 
         assertEquals(300_000L, tracker.lastPositionMs)
         assertEquals(
-            WatchAction.Report("a", 300_000L, completed = false, liveSession = true),
+            WatchAction.Report("a", 300_000L, completed = false, playSessionId = "s1"),
             tracker.onItemChanged("b", autoAdvance = false),
         )
     }
@@ -247,14 +249,17 @@ class WatchStateTrackerTest {
         tracker.onPlaying()
 
         assertEquals(
-            listOf(WatchAction.SessionStart("a", 10_000L), WatchAction.Save("a", 10_000L)),
+            listOf(
+                WatchAction.SessionStart("a", 10_000L, playSessionId = "s1"),
+                WatchAction.Save("a", 10_000L),
+            ),
             tracker.onPeriodicTick(10_000L),
         )
         // Never a start and a progress in the same tick: they are sent as separate fire-and-forget
         // calls, and a progress overtaking its own start would report against no session at all.
         assertEquals(
             listOf(
-                WatchAction.Progress("a", 20_000L, isPaused = false),
+                WatchAction.Progress("a", 20_000L, isPaused = false, playSessionId = "s1"),
                 WatchAction.Save("a", 20_000L),
             ),
             tracker.onPeriodicTick(20_000L),
@@ -272,7 +277,7 @@ class WatchStateTrackerTest {
         tracker.onPlaying()
 
         assertEquals(
-            WatchAction.Report("a", 0L, completed = false, liveSession = false),
+            WatchAction.Report("a", 0L, completed = false, playSessionId = null),
             tracker.onItemChanged("b", autoAdvance = false),
         )
     }
@@ -284,7 +289,10 @@ class WatchStateTrackerTest {
         tracker.onItemChanged("b", autoAdvance = true)
 
         assertEquals(
-            listOf(WatchAction.SessionStart("b", 10_000L), WatchAction.Save("b", 10_000L)),
+            listOf(
+                WatchAction.SessionStart("b", 10_000L, playSessionId = "s2"),
+                WatchAction.Save("b", 10_000L),
+            ),
             tracker.onPeriodicTick(10_000L),
         )
     }
@@ -301,10 +309,25 @@ class WatchStateTrackerTest {
         assertEquals(
             listOf(
                 WatchAction.Save("a", 20_000L),
-                WatchAction.Progress("a", 20_000L, isPaused = true),
+                WatchAction.Progress("a", 20_000L, isPaused = true, playSessionId = "s1"),
             ),
             tracker.onPaused(20_000L, ready = true),
         )
+    }
+
+    @Test
+    fun `one id runs from a session's start to its stop`() {
+        // What the id is for: the server ties start, progress and stop together by it, so the
+        // three reports of one watch must all carry the same one.
+        tracker.onItemChanged("a", autoAdvance = false)
+        tracker.onPlaying()
+
+        val start = tracker.onPeriodicTick(10_000L).filterIsInstance<WatchAction.SessionStart>().single()
+        val progress = tracker.onPeriodicTick(20_000L).filterIsInstance<WatchAction.Progress>().single()
+        val stop = tracker.onDestroy(25_000L)
+
+        assertEquals(start.playSessionId, progress.playSessionId)
+        assertEquals(start.playSessionId, stop?.playSessionId)
     }
 
     @Test
@@ -317,7 +340,7 @@ class WatchStateTrackerTest {
 
         assertEquals(
             listOf(
-                WatchAction.Progress("a", 10_000L, isPaused = false),
+                WatchAction.Progress("a", 10_000L, isPaused = false, playSessionId = "s1"),
                 WatchAction.Save("a", 10_000L),
             ),
             tracker.onPeriodicTick(10_000L),

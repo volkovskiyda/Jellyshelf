@@ -104,6 +104,27 @@ class JellyfinApiTest {
         val stop = parser.parseToJsonElement(stopCap.body).jsonObject
         assertEquals("vid1", stop["ItemId"]?.jsonPrimitive?.content)
         assertEquals(900L, stop["PositionTicks"]?.jsonPrimitive?.long)
+
+        // explicitNulls=false: no session id means the field simply isn't sent.
+        assertFalse(start.containsKey("PlaySessionId"))
+        assertFalse(stop.containsKey("PlaySessionId"))
+    }
+
+    @Test
+    fun sessionReports_carryTheSamePlaySessionIdOnTheWire() = runTest {
+        val id = "ps-1"
+
+        val (startApi, startCap) = mockApi()
+        startApi.reportPlaybackStart(PlaybackStartBody("vid1", positionTicks = 0L, playSessionId = id))
+        val (progressApi, progressCap) = mockApi()
+        progressApi.reportProgress(ProgressBody("vid1", positionTicks = 5L, playSessionId = id))
+        val (stopApi, stopCap) = mockApi()
+        stopApi.reportPlaybackStopped(PlaybackStopBody("vid1", positionTicks = 9L, playSessionId = id))
+
+        listOf(startCap, progressCap, stopCap).forEach { cap ->
+            val body = parser.parseToJsonElement(cap.body).jsonObject
+            assertEquals(id, body["PlaySessionId"]?.jsonPrimitive?.content)
+        }
     }
 
     @Test

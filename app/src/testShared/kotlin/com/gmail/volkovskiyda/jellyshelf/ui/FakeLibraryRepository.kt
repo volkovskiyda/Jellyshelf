@@ -112,12 +112,21 @@ class FakeLibraryRepository(
         youtubeId: String,
         positionMs: Long,
         completed: Boolean,
-        liveSession: Boolean,
+        playSessionId: String?,
     ): Unit = notModelled()
 
-    override fun reportPlaybackStarted(youtubeId: String, positionMs: Long): Unit = notModelled()
-    override fun reportPlaybackProgress(youtubeId: String, positionMs: Long, isPaused: Boolean): Unit =
-        notModelled()
+    override fun reportPlaybackStarted(
+        youtubeId: String,
+        positionMs: Long,
+        playSessionId: String?,
+    ): Unit = notModelled()
+
+    override fun reportPlaybackProgress(
+        youtubeId: String,
+        positionMs: Long,
+        isPaused: Boolean,
+        playSessionId: String?,
+    ): Unit = notModelled()
 
     override fun savePlaybackPosition(youtubeId: String, positionMs: Long): Unit = notModelled()
     override suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult =
