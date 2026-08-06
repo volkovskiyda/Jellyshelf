@@ -68,6 +68,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -109,6 +110,16 @@ import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.text.NumberFormat
+
+/**
+ * The elapsed-position label, tagged so the baseline-profile generator can read it: it is the only
+ * thing on this screen that says whether the *stream* is rolling. The play/pause icon follows the
+ * play/pause intent and flips before a byte arrives, and the seek bar carries no text at all —
+ * `docs/BASELINE-PROFILE.md` has the whole story. Published as an Android resource id by
+ * `testTagsAsResourceId` on `MainActivity`'s root Scaffold, which is what makes it visible to
+ * UiAutomator.
+ */
+internal const val PLAYER_POSITION_TAG = "player_position"
 
 /**
  * In-app player: full-bleed video over black with hand-built Compose controls on the session's
@@ -546,6 +557,7 @@ internal fun PlayerControls(
                     formatPosition(shownMs),
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.testTag(PLAYER_POSITION_TAG),
                 )
                 Slider(
                     value = if (durationMs > 0) {

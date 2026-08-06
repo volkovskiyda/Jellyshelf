@@ -14,6 +14,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
+import java.util.regex.Pattern
 
 /**
  * Writes the baseline profile that ships in the release APK, by driving the real app through the
@@ -315,7 +316,12 @@ class BaselineProfileGenerator {
      * of this step is the streaming path, and a player sitting on a failed load would profile none
      * of it.
      *
-     * The pause button is the signal — the same control reads "Play" until the video rolls.
+     * The signal is the *elapsed-position label*, once it reads something other than zero. The
+     * pause button is not enough and used to be what this waited for: the icon follows the
+     * play/pause intent, so it appears the moment the tap lands — before a byte is fetched, with
+     * the seek bar still disabled for want of a duration. A run could pass this check and profile a
+     * player that never streamed, which is the one failure the whole live-server setup exists to
+     * avoid. The position only moves when frames do.
      */
     private fun MacrobenchmarkScope.awaitPlaybackUnderway() {
         if (playing(PLAYBACK_TIMEOUT_MS)) return
@@ -328,20 +334,28 @@ class BaselineProfileGenerator {
             allow.click()
             if (playing(TIMEOUT_MS)) return
         }
+        // One tap, never a loop: two in quick succession are a double tap, which seeks.
         device.click(device.displayWidth / 2, device.displayHeight / 2)
         check(playing(TIMEOUT_MS)) {
             if (liveServer) {
-                "Playback never started. The server may be refusing to stream this item, or the " +
-                    "playback mode may have been left on an external player."
+                "Playback never got past 0:00. The server may be refusing to stream this item, or " +
+                    "the playback mode may have been left on an external player."
             } else {
                 "The bundled demo clip never played."
             }
         }
     }
 
-    /** Whether the player is showing a pause button, i.e. a video is rolling. */
-    private fun MacrobenchmarkScope.playing(timeoutMs: Long): Boolean =
-        device.wait(Until.hasObject(By.desc(PAUSE)), timeoutMs)
+    /**
+     * Whether the player's position label has moved off zero, i.e. the video is really rolling.
+     *
+     * Absent while the controls are hidden — they go three seconds into playing — which is a false
+     * negative the caller answers with a tap, not with a retry loop of its own.
+     */
+    private fun MacrobenchmarkScope.playing(timeoutMs: Long): Boolean = device.wait(
+        Until.hasObject(By.res(PLAYER_POSITION).text(Pattern.compile("(?!^$ZERO_POSITION$).+"))),
+        timeoutMs,
+    )
 
     /** Taps a bottom-navigation tab, waiting for it rather than assuming it is already there. */
     private fun MacrobenchmarkScope.openTab(label: String) {
@@ -409,6 +423,10 @@ class BaselineProfileGenerator {
         const val PASSWORD_FIELD = "password_field"
         const val INDEX_URL_FIELD = "index_url_field"
 
+        /** The player's elapsed-position label, and what it reads before anything has played. */
+        const val PLAYER_POSITION = "player_position"
+        const val ZERO_POSITION = "0:00"
+
         /** Visible text, for the controls with no tag of their own. */
         const val TRY_DEMO = "Try demo"
         const val PLAY = "Play"
@@ -421,9 +439,6 @@ class BaselineProfileGenerator {
         const val CHANGE_FOLDER = "Change folder…"
         const val USE_THIS_FOLDER = "Use this folder"
         const val SYNC_NOW = "Sync now"
-
-        /** Content description of the player's pause button — on screen only while playing. */
-        const val PAUSE = "Pause"
 
         /** The system permission dialog's grant button, by id so it does not depend on locale. */
         const val ALLOW_PERMISSION_BUTTON = "com.android.permissioncontroller:id/permission_allow_button"

@@ -42,13 +42,21 @@ stays `false` so `assembleRelease` never asks for a device.
   a profile — that path is the backup, not the normal one. Signing cannot reach a profile either
   way: it is a list of classes and methods.
 - **`git lfs install`** in the clone, so the committed profile is stored as an LFS object.
-- **`.test.env` filled, and the server reachable** — the same file the live-endpoint tests read (see
-  the [README](../README.md#environment-config)). The reference profile is generated against a **real
-  Jellyfin**: the run signs in, syncs a real library, and streams a real video, so the profile
+- **`.test.env` filled, and the server reachable** — the same file the
+  [live tests](../README.md#demo-and-live-tests) read. The reference profile is generated against a
+  **real Jellyfin**: the run signs in, syncs a real library, and streams a real video, so the profile
   carries what a first launch actually loads — `AuthenticateByName`, Ktor over TLS,
   kotlinx.serialization against live responses, sync writing into Room, Coil's network fetcher, and
   ExoPlayer's streaming path. The server URL must be `https://`: this variant is the release
   configuration, which refuses plain HTTP.
+
+  `LiveUiJourneyTest` walks the same path — sign in, scope, sync, open a video, play it — against a
+  debug build in about a minute, so it is the cheap way to find out whether the config or the click
+  path is at fault before spending a profile run on it:
+  ```sh
+  ./gradlew :app:connectedDebugAndroidTest \
+    -Pandroid.testInstrumentationRunnerArguments.class=com.gmail.volkovskiyda.jellyshelf.live.LiveUiJourneyTest
+  ```
 - **Or nothing at all**, and the run falls back to
   [demo mode](../README.md#demo-mode--try-it-without-a-server) — **Try demo** seeds ~60 videos from
   a bundled asset and plays a bundled clip — so a checkout with no server can still regenerate a
@@ -196,16 +204,18 @@ passes `includeInStartupProfile = true`.
 throws rather than quietly producing a launch-only profile. The message says which handle went
 missing. The usual cause is the resource-id bridge — `testTagsAsResourceId` on `MainActivity`'s root
 Scaffold, and the tags it publishes (`library_list`, `library_row` and `video_row_details` in
-`LibraryScreen`/`VideoRow`, the four field tags in `SettingsScreen`) — since UiAutomator cannot see
-Compose test tags without it.
+`LibraryScreen`/`VideoRow`, the four field tags in `SettingsScreen`, `player_position` in
+`PlayerScreen`) — since UiAutomator cannot see Compose test tags without it.
 
 **Sign in never completed.** With `.test.env` filled, the credentials in it have to work against a
 reachable server over `https://` — a plain-http URL is refused by this release-configured variant
-before it reaches the network. `./gradlew :app:connectedDebugAndroidTest --tests '*LiveEndpointTest*'`
-checks the same credentials in isolation.
+before it reaches the network. The live tests check the same credentials in isolation — swap
+`LiveEndpointTest` into the command above for the endpoints alone, or keep `LiveUiJourneyTest` to
+check them through the same form this run fills in.
 
-**Playback never started.** The generator waits for the pause button, not just the player screen, so
-the video really did not roll — or its controls were hidden from UiAutomator. In order of likelihood:
+**Playback never got past 0:00.** The generator waits for the player's elapsed-position label to
+move, not for the player screen or the pause button, so the video really did not roll — or its
+controls were hidden from UiAutomator. In order of likelihood:
 
 1. **A permission dialog over the player.** `PlayerScreen` requests `POST_NOTIFICATIONS` the first
    time it opens, and on the freshly installed APK a run uses, that dialog covers the controls while
@@ -224,6 +234,15 @@ Logcat from the run tells these apart: it is kept per test under
 `baselineprofile/build/outputs/androidTest-results/connected/nonMinifiedRelease/<device>/`, and
 `ExoPlayerImpl: Init` followed by a `MediaCodec` adapter means the video played and only the check
 went wrong.
+
+> [!note]
+> Why the position label rather than the pause button, which this used to wait for: the icon
+> follows the play/pause *intent*, so it appears the moment the tap lands — before a byte is
+> fetched, with the seek bar still disabled for want of a duration. A run could pass that check and
+> profile a player that never streamed, and nothing in the output would say so except a thin
+> `MediaCodec` count. The position only moves when frames do. (`LiveUiJourneyTest` reads the seek
+> bar's `ProgressBarRangeInfo` for the same reason — it has Compose semantics to hand; UiAutomator
+> has only the text.)
 
 **`INSTALL_FAILED_UPDATE_INCOMPATIBLE` before any test runs.** Specific to the no-keystore fallback:
 the APK is debug-signed, while the release build already on the device carries the release
