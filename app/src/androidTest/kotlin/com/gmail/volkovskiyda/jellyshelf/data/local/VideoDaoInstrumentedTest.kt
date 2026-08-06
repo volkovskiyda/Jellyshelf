@@ -140,10 +140,24 @@ class VideoDaoInstrumentedTest {
         db.openHelper.writableDatabase.query("EXPLAIN QUERY PLAN $sql").use { cursor ->
             buildString {
                 while (cursor.moveToNext()) {
-                    appendLine(cursor.getString(cursor.getColumnIndexOrThrow("detail")))
+                    appendLine(normalizePlan(cursor.getString(cursor.getColumnIndexOrThrow("detail"))))
                 }
             }
         }
+
+    /**
+     * One wording for a plan line, whatever SQLite the platform ships.
+     *
+     * SQLite 3.36 dropped the `TABLE` keyword: what Android 12+ prints as `SCAN videos`, API 30
+     * prints as `SCAN TABLE videos`. That is a rename, not a different plan — but the assertions
+     * below match plan text, so without this the same query reads as two different outcomes. It bit
+     * in the direction that does not announce itself: [assertNoTableScan] compares a line to
+     * `"SCAN videos"` exactly, so on API 30 a real full-table scan printed `SCAN TABLE videos`,
+     * failed to match, and the guard passed while the thing it guards against was happening.
+     * Normalising here rather than in each matcher keeps that fix in one place.
+     */
+    private fun normalizePlan(detail: String): String =
+        detail.replace(PLAN_TABLE_KEYWORD, "$1 ")
 
     /**
      * The failure this whole group exists to catch: reading every row of the table.
@@ -230,5 +244,10 @@ class VideoDaoInstrumentedTest {
             assertTrue(plan, "USING COVERING INDEX" in plan)
             assertNoTableScan(plan)
         }
+    }
+
+    private companion object {
+        /** `SCAN TABLE x` / `SEARCH TABLE x` — the pre-3.36 spelling, captured to drop `TABLE`. */
+        val PLAN_TABLE_KEYWORD = Regex("""\b(SCAN|SEARCH) TABLE """)
     }
 }
