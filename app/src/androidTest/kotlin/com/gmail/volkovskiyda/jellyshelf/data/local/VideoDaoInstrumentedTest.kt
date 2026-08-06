@@ -222,6 +222,31 @@ class VideoDaoInstrumentedTest {
     }
 
     @Test
+    fun theProjectedBrowseQueries_keepTheirTwinsPlans() {
+        // @RewriteQueriesToDropUnusedColumns wraps the query in an outer SELECT of the eleven
+        // columns VideoBrowseRow declares. SQLite flattens that subquery away, so the projected
+        // twin should plan exactly like the full-row query it was copied from — but "should" is
+        // the planner's call, not the annotation's promise, and a projection that lost an index
+        // would cost more than the two columns it saves. These are the strings Room generated
+        // (app/build/generated/ksp/debug/kotlin/.../VideoDao_Impl.kt), pasted for the same reason
+        // the plans above are.
+        assertReadsInOrderFromIndex(
+            "SELECT `youtubeId`, `fileName`, `title`, `channel`, `durationSeconds`, `uploadDate`, " +
+                "`thumbnailUrl`, `played`, `playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
+                "FROM (SELECT * FROM videos ORDER BY fileName)",
+        )
+
+        val bucketPlan = explain(
+            "SELECT `youtubeId`, `fileName`, `title`, `channel`, `durationSeconds`, `uploadDate`, " +
+                "`thumbnailUrl`, `played`, `playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
+                "FROM (SELECT * FROM videos WHERE durationSeconds >= 60 AND durationSeconds < 600 " +
+                "ORDER BY fileName)",
+        )
+        assertTrue(bucketPlan, "index_videos_durationSeconds" in bucketPlan)
+        assertNoTableScan(bucketPlan)
+    }
+
+    @Test
     fun theSyncPrune_scansOnPurpose_becauseAnIndexCannotServeInequality() {
         // Deliberately *not* indexed on lastSyncedAt. `!=` is not a range, so SQLite scans even
         // when the index exists (verified by adding one and re-reading this plan) — it would be

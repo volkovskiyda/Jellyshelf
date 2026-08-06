@@ -2,9 +2,20 @@ package com.gmail.volkovskiyda.jellyshelf.data.local
 
 import androidx.room.Dao
 import androidx.room.Query
+import androidx.room.RewriteQueriesToDropUnusedColumns
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Every list query comes in two versions. The `*Browse` twin returns [VideoBrowseRow] — the columns
+ * a list row renders — and is what the browse paths use; the full-row version stays for ranked
+ * search, which scores `description`. See [VideoBrowseRow] for why that split is a type rather than
+ * a partially-selected [VideoEntity].
+ *
+ * The twins are `SELECT *` plus [RewriteQueriesToDropUnusedColumns] rather than hand-written column
+ * lists, so the projection cannot drift out of sync with [VideoBrowseRow] when a field is added or
+ * removed — Room derives the list from the return type at compile time.
+ */
 @Dao
 @Suppress("TooManyFunctions") // a Room DAO is one function per query, by design
 interface VideoDao {
@@ -17,6 +28,10 @@ interface VideoDao {
     @Query("SELECT * FROM videos ORDER BY fileName")
     fun observeAll(): Flow<List<VideoEntity>>
 
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos ORDER BY fileName")
+    fun observeAllBrowse(): Flow<List<VideoBrowseRow>>
+
     @Query("SELECT * FROM videos")
     suspend fun getAll(): List<VideoEntity>
 
@@ -25,17 +40,33 @@ interface VideoDao {
     @Query("SELECT * FROM videos WHERE metadataSource = :source ORDER BY fileName")
     fun observeBySource(source: String): Flow<List<VideoEntity>>
 
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE metadataSource = :source ORDER BY fileName")
+    fun observeBySourceBrowse(source: String): Flow<List<VideoBrowseRow>>
+
     @Query("SELECT * FROM videos WHERE metadataSource = :source ORDER BY fileName")
     suspend fun getBySource(source: String): List<VideoEntity>
 
     @Query("SELECT * FROM videos WHERE played = 1 ORDER BY fileName")
     fun observeWatched(): Flow<List<VideoEntity>>
 
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE played = 1 ORDER BY fileName")
+    fun observeWatchedBrowse(): Flow<List<VideoBrowseRow>>
+
     @Query("SELECT * FROM videos WHERE played = 0 ORDER BY fileName")
     fun observeUnwatched(): Flow<List<VideoEntity>>
 
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE played = 0 ORDER BY fileName")
+    fun observeUnwatchedBrowse(): Flow<List<VideoBrowseRow>>
+
     @Query("SELECT * FROM videos WHERE played = 0 AND playbackPositionTicks > 0 ORDER BY fileName")
     fun observeContinueWatching(): Flow<List<VideoEntity>>
+
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE played = 0 AND playbackPositionTicks > 0 ORDER BY fileName")
+    fun observeContinueWatchingBrowse(): Flow<List<VideoBrowseRow>>
 
     @Query("SELECT * FROM videos WHERE played = 1 ORDER BY fileName")
     suspend fun getWatched(): List<VideoEntity>
@@ -73,12 +104,28 @@ interface VideoDao {
     )
     fun observeByDurationRange(minSeconds: Long, maxSeconds: Long): Flow<List<VideoEntity>>
 
+    @RewriteQueriesToDropUnusedColumns
+    @Query(
+        "SELECT * FROM videos " +
+            "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
+            "ORDER BY fileName"
+    )
+    fun observeByDurationRangeBrowse(minSeconds: Long, maxSeconds: Long): Flow<List<VideoBrowseRow>>
+
     @Query(
         "SELECT v.* FROM videos v " +
             "INNER JOIN video_category vc ON vc.youtubeId = v.youtubeId " +
             "WHERE vc.categoryId = :categoryId ORDER BY v.fileName"
     )
     fun observeByCategory(categoryId: String): Flow<List<VideoEntity>>
+
+    @RewriteQueriesToDropUnusedColumns
+    @Query(
+        "SELECT v.* FROM videos v " +
+            "INNER JOIN video_category vc ON vc.youtubeId = v.youtubeId " +
+            "WHERE vc.categoryId = :categoryId ORDER BY v.fileName"
+    )
+    fun observeByCategoryBrowse(categoryId: String): Flow<List<VideoBrowseRow>>
 
     @Query(
         "SELECT v.* FROM videos v " +
