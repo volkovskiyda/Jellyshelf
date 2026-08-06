@@ -21,21 +21,32 @@ import kotlin.system.measureTimeMillis
  * What one browse emission costs on a full-sized library, measured on the device rather than
  * argued about — the input to item 12's verdict on whether the list is worth projecting.
  *
- * Three timings over the same 10,000 rows:
+ * Timings over the same 10,000 rows:
  *  1. `observeAll()` — the query plus Room's type converters (three JSON parses per row),
- *  2. the same through `VideoEntity::toDomain`, which is what the repository actually emits,
- *  3. a throwaway projected query listing only the ten columns a row renders.
+ *  2. the same through `VideoEntity::toDomain`, which is what the repository emitted *before*
+ *     `20260731-browse-projection-plan`, and still emits on the ranked-search path,
+ *  3. `observeAllBrowse()` through `VideoBrowseRow::toDomain` — what a browse emission costs now,
+ *  4. a throwaway projected query listing only the ten columns a row renders,
+ *  5. two raw-cursor reads that decompose the difference.
  *
- * (3) exists purely for the comparison and touches no production code, which is the whole point:
- * the projection is not being built here, only priced.
+ * (4) exists purely for the comparison and touches no production code — it was the floor the plan
+ * was priced against before anything was built. Keep it: (3) is the shipped path and (4) is the
+ * ceiling on what a *full* projection could still buy, and the verdict is the gap between them.
+ * Note they are not the same shape — (4) is a hand-written ten-column cursor read, (3) goes
+ * through Room and carries twelve columns (`metadataSource` and `jellyfinItemId`, both `TEXT` with
+ * no converter).
  *
  * The numbers are printed rather than asserted — this is a measurement, and a threshold assertion
  * would turn a slow CI machine into a build failure. The assertions that *are* here only confirm
  * each path returned the rows it claimed to.
  *
- * `@Ignore`d on purpose: seeding 10,000 rows and timing five paths costs ~40 s, which is a lot to
+ * `@Ignore`d on purpose: seeding 10,000 rows and timing six paths costs ~50 s, which is a lot to
  * add to every suite run for output nobody reads unless they are asking this question. Run it
- * deliberately, and re-run it to confirm whatever the verdict leads to:
+ * deliberately, and re-run it to confirm whatever the verdict leads to.
+ *
+ * **Comment out the `@Ignore` first.** Naming the class on the command line does not override it —
+ * the runner still reports the class as skipped, silently, and prints nothing. (Corrected
+ * 2026-08-06: the command below was documented without that step and looks like it worked.)
  *
  * ```
  * ./gradlew :app:connectedDebugAndroidTest \
@@ -43,6 +54,11 @@ import kotlin.system.measureTimeMillis
  * com.gmail.volkovskiyda.jellyshelf.data.local.BrowseCostBenchmark
  * adb logcat -d | grep BrowseCost:
  * ```
+ *
+ * Run it more than once. The raw-cursor rows are repeatable to within a few ms, but the two rows
+ * that allocate 10,000 domain objects have a long tail — `observeAllBrowse + toDomain` measured
+ * medians of 545/356/434 ms across three runs with minimums pinned near 325 ms, so a single median
+ * is not a number to draw a conclusion from.
  */
 @RunWith(AndroidJUnit4::class)
 @Ignore("Measurement, not a regression test — see the KDoc for how to run it")
@@ -168,6 +184,12 @@ class BrowseCostBenchmark {
         val projected = medianMillis("projected query (ten columns the row renders)") {
             readProjection().size
         }
+        // What a browse emission costs *after* the projection landed — the number the verdict
+        // turns on. The line above is a raw-cursor floor of ten hand-listed columns; this is the
+        // shipped path: Room, twelve columns, and VideoBrowseRow::toDomain on top.
+        val browse = medianMillis("observeAllBrowse + toDomain (what the repository emits now)") {
+            runBlocking { dao.observeAllBrowse().first().map(VideoBrowseRow::toDomain).size }
+        }
         // The "cheap half" the verdict weighs: keep every other column and the one Video model,
         // just stop reading the two big ones. Prices the columns separately from the mapping.
         val withoutBigColumns = medianMillis("all columns except description and chapters") {
@@ -183,8 +205,9 @@ class BrowseCostBenchmark {
 
         println(
             "BrowseCost: rows=$ROW_COUNT entities=${entities}ms domain=${domain}ms " +
-                "projected=${projected}ms cheapHalf=${withoutBigColumns}ms " +
-                "allColumnsRaw=${allColumnsRaw}ms saving=${domain - projected}ms",
+                "browse=${browse}ms projected=${projected}ms cheapHalf=${withoutBigColumns}ms " +
+                "allColumnsRaw=${allColumnsRaw}ms saving=${domain - browse}ms " +
+                "residualToFloor=${browse - projected}ms",
         )
     }
 
