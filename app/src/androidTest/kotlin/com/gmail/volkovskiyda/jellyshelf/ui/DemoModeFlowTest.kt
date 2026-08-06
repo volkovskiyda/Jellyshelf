@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.datastore.preferences.core.edit
 import androidx.test.core.app.ActivityScenario
@@ -138,7 +139,14 @@ class DemoModeFlowTest {
             // together — the button that offers the demo is back afterwards.
             composeRule.onNodeWithText(string(R.string.tab_settings)).performClick()
             awaitText(string(R.string.reset_local_data))
-            composeRule.onNodeWithText(string(R.string.reset_local_data)).performClick()
+            // Scrolled to, not just found: Settings is a scrolling column, and how much of it fits
+            // depends on the device's navigation mode — a 3-button bar costs enough height to leave
+            // this button below the fold. Off-screen it is still in the semantics tree, so a plain
+            // performClick finds the node and injects a touch nobody receives, which then fails as
+            // a missing confirm dialog rather than as the unreachable button it is.
+            composeRule.onNodeWithText(string(R.string.reset_local_data)).performScrollTo().performClick()
+            // The confirm button lives in a dialog window that composes after the tap.
+            awaitText(string(R.string.reset_dialog_title))
             composeRule.onNodeWithText(string(R.string.reset)).performClick()
 
             awaitText(string(R.string.local_data_cleared))
