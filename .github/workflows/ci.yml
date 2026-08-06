@@ -47,14 +47,18 @@ jobs:
   #
   # Main pushes only. PRs keep the host-side suite. Quota is what makes that gate worth keeping: the
   # Spark plan allows 10 virtual and 5 physical device executions per day, counted per device in the
-  # matrix, so the three below spend 2 virtual + 1 physical a run — five main pushes in a day before
-  # the physical quota is the binding one. `gcloud alpha services quota list
-  # --service=testing.googleapis.com` prints the live numbers.
+  # matrix, so the three below spend 2 virtual + 1 physical a run — five main pushes in a day, with
+  # neither bucket running out ahead of the other. The day is Pacific, not local. `gcloud alpha
+  # services quota list --service=testing.googleapis.com` prints the live numbers.
   testlab:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [checks]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Has to clear the matrix's own --timeout 25m plus the build and upload ahead of it, which run
+    # about five minutes cold. Any tighter and a test that actually reached its Test Lab bound would
+    # be killed here first: the job reads as cancelled rather than failed, the matrix carries on in
+    # the cloud unwatched, and the execution is spent with nothing to show for it.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7   # no lfs; debug.keystore is committed and signs the test APKs
       - uses: actions/setup-java@v5
@@ -77,38 +81,56 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
           gcloud auth activate-service-account --key-file "$RUNNER_TEMP/firebase-sa.json"
           gcloud config set project jellyshelf-3dfc8
-          # Three devices, spread across the axes one image cannot cover: API level, form factor,
-          # and emulated vs real silicon. They run in parallel, so the matrix costs the slowest one
-          # rather than the sum — measured at about five minutes for three.
-          #   MediumPhone.arm 36 — the everyday baseline this job has always run.
-          #   MediumTablet.arm 35 — the other form factor, and an API level between the two ends.
-          #   redfin 30 — a physical Pixel 5 at exactly minSdk, the floor the app claims to support
-          #     and the one API level nothing else exercises. Physical also means real hardware
-          #     codecs behind the playback tests. High capacity in `list-device-capacities`, so it
-          #     queues quickly, and it is the same model kept on the desk — a red matrix here
-          #     reproduces over adb in under a minute.
+          # Three devices, each carrying something none of the others do, and no two overlapping on
+          # any axis — API level, form factor, emulated vs real silicon. They run in parallel, so
+          # the matrix costs the slowest one rather than the sum, around five minutes.
+          #   MediumTablet.arm 30 — minSdk and the tablet form factor at once. Both defects this
+          #     level has caught were platform behaviour rather than layout (see below), so carrying
+          #     minSdk on the tablet rather than a phone costs nothing real and saves an execution.
+          #     What it gives up is a bug living specifically in phone layout at API 30; phone layout
+          #     is covered at 35 and 36, so that is a narrow gap and a deliberate one.
+          #   MediumPhone.arm 36 — phone layout at the level most installs actually run.
+          #   shiba 35 — a physical Pixel 8: real silicon, and so real hardware codecs behind the
+          #     playback tests, which no emulator exercises. High capacity, so it barely queues.
+          #     Pinned to 35 deliberately — see below, where API 36 on physical hardware is why this
+          #     is a Pixel 8 at 35 rather than the newest phone in the catalogue.
           #
           # Adding API 30 on 2026-08-06 turned up two test defects that no other device could see,
           # both since fixed: an assertion reading SQLite plans by text (pre-3.36 spells a scan
           # `SCAN TABLE videos`, so assertNoTableScan matched nothing and passed while a real table
           # scan went by), and a persistence wait that watched one flow collection for an update
           # DataStore on API 30 intermittently never delivers. See those two test files for the
-          # detail; both were confirmed against this exact matrix before it was committed.
+          # detail. Both fixes were confirmed at API 30 on Test Lab, virtual and physical alike.
           #
-          # MediumPhone_ps16k.arm 37 is the one to add next and cannot be added yet: it is the only
-          # image running API 37 (targetSdk) and the only one with 16 KB memory pages, which matter
-          # because the APK ships five native libraries. But every UI test fails there on
-          # `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — the test
-          # framework's input injection, not this app: its 90 failures were exactly the tests that
-          # inject touches, while every DAO, sync and serialization test passed. Revisit when
-          # androidx.test and compose-ui-test support API 37.
+          # Quota, since it decides how many devices fit: the Spark plan allows ten virtual and five
+          # physical executions a day, counted per device. Two virtual and one physical a run puts
+          # the ceiling at five pushes to main in a day, and both buckets land on five, so neither
+          # runs out ahead of the other. A fourth device costs two pushes a day whichever kind it
+          # is, which is what pairing minSdk with the tablet buys back.
+          #
+          # Why no physical device at API 36, which is where most installs are. On a physical device
+          # every UI test can fail with `NoSuchMethodException:
+          # android.hardware.input.InputManager.getInstance` — the test framework's input injection,
+          # not this app: it takes down exactly the 90 tests that inject touches and leaves every
+          # DAO, sync and serialization test passing. It is not the API level, and not one bad
+          # model. Measured 2026-08-06: frankel (Pixel 10) failed; tokay (Pixel 9) passed 205/205 and
+          # then failed the same way eight minutes later on the same APK, one run's logcat carrying
+          # 360 mentions of that method and the other none. One model at one version is not one
+          # build on Test Lab — the pool serves whichever unit is free, and some Android 16 units
+          # have already dropped the method. So a physical device at 36 is a coin flip until
+          # androidx.test catches up, while 35 and below cannot be served a build new enough to have
+          # lost it. Emulated 36 is unaffected and covers the level.
+          #
+          # MediumPhone_ps16k.arm 37 is out for the same reason and will not come back sooner: the
+          # only image running API 37 (targetSdk) and the only one with 16 KB memory pages, which
+          # matter because the APK ships five native libraries.
           gcloud firebase test android run --type instrumentation \
             --app app/build/outputs/apk/debug/app-debug.apk \
             --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+            --device model=MediumTablet.arm,version=30 \
             --device model=MediumPhone.arm,version=36 \
-            --device model=MediumTablet.arm,version=35 \
-            --device model=redfin,version=30 \
-            --timeout 15m
+            --device model=shiba,version=35 \
+            --timeout 25m
 
   # Every green main push reaches testers, with no manual step. PRs never get here.
   distribute:
