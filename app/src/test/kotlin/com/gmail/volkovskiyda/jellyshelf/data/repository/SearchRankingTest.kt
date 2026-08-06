@@ -104,6 +104,27 @@ class SearchRankingTest {
         assertEquals(listOf("titleWord", "tagOnly"), ids)
     }
 
+    /**
+     * Stands in for a repository-level test that cannot be written here: `LibraryRepository`
+     * routes a *blank* query through the browse projection, which does not load `description` at
+     * all, and a non-blank one through the full rows this ranker needs. Send the ranked path down
+     * the projection by mistake and there is no crash and no compile error — search just quietly
+     * stops finding videos whose only match is in the description.
+     *
+     * A `LibraryRepository` harness that could assert the routing directly does not exist, so this
+     * pins the half that can be pinned: that the description is genuinely load-bearing for search,
+     * and therefore that the ranked path has to keep reading it.
+     */
+    @Test
+    fun `a query that only matches the description still finds the video`() {
+        val ids = idsRanked(
+            "kandinsky",
+            video("descOnly", "Untitled session", description = "A long look at Kandinsky's circles"),
+            video("noMatch", "Something else entirely"),
+        )
+        assertEquals(listOf("descOnly"), ids)
+    }
+
     @Test
     fun `multi-word query matches non-adjacent tokens in the title`() {
         // The reported case: "android edition" is not a contiguous substring of the title.
