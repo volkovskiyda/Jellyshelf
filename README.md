@@ -180,6 +180,12 @@ draws the thumbnails, and [`scripts/make-demo-clip.sh`](scripts/make-demo-clip.s
 light → auto → dark and back, and the change animates as a circular reveal from the tap. Auto is
 the default and follows the system.
 
+**Updates** can tell you when a newer build of the app exists — off by default, and switched on in
+Settings by picking the channel you installed from (GitHub Releases or Firebase App Distribution).
+It checks at most once a day, prompts at most once a day, and "Not now" silences that build for a
+week while a *newer* one still prompts. Release builds only; the section is not there in a debug
+build. Details in [docs/RELEASING.md](docs/RELEASING.md).
+
 If the server later rejects the token (password change, session revoked), the app says
 "session expired — sign in again" and stops syncing rather than falling back to anything else.
 

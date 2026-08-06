@@ -29,6 +29,90 @@ Distribution channel, which is what lets a mapping file be matched to a crash by
 
 Plain `git tag v<version> && git push origin v<version>` does the same thing.
 
+## In-app update check
+
+The app can tell a user that a newer build exists. There is no Play listing to ask, so the user
+picks which of the two channels above they installed from, in **Settings → Updates**.
+
+**Both channels ship the same signed release APK.** GitHub Releases are tag-driven and curated;
+App Distribution gets every green `main` push. Neither is a debug channel — a point worth stating,
+because it has been assumed otherwise: `release.yml` runs `assembleRelease` with the restored
+keystore, and the R8 mapping attached to each release only exists for a minified release build.
+
+The behaviour, in full:
+
+- **Off by default.** Nothing touches the network until the user opts in — which is also what keeps
+  Test Lab, the live UI journey and the baseline-profile runs unaffected.
+- **Release builds only**, and in a debug build the Settings section is not rendered at all. A debug
+  install is a different package (`…jellyshelf.debug`) at `versionCode = 1`, so every published
+  release would read as newer. A locally assembled release without `-PbuildNumber` reports `1` too,
+  and is skipped for the same reason.
+- **At most one check a day**, on cold start, plus whatever "Check now" the user taps. The GitHub
+  check is an unauthenticated `releases/latest` GET against a 60-per-hour limit, so it needs no
+  token — do not add one.
+- **At most one dialog a day**, whatever was found and on whichever channel.
+- **"Not now" is a snooze, not a mute.** It silences *that build* for 7 days, but a **newer** build
+  prompts as soon as it is found. Install 1.0, dismiss the 1.1 prompt, and if 1.2 ships the next
+  daily check offers it; if 1.2 never ships, 1.1 comes back on day 7.
+- The dialog appears **only on the Library tab** — never over Categories, Detail, or the player.
+- A failed check reports the **actual reason** (not entitled, API blocked, sign-in cancelled), never
+  a silent "no update available".
+
+### Prerequisite for the App Distribution channel
+
+1. ~~Enable `firebaseapptesters.googleapis.com`~~ — **already enabled** on `jellyshelf-3dfc8`
+   (verified 2026-08-06). Nothing to do.
+2. **Add it to the API key's `apiTargets`.** The Android key is restricted to an explicit list, so
+   without this every call fails closed with `API_DISABLED` — which the app renders as exactly that,
+   rather than as "no update". Both `--api-target` and `--allowed-application` **replace their whole
+   lists**, so every API and every app/SHA-1 pair goes in one invocation:
+
+   ```sh
+   gcloud services api-keys update \
+     projects/967566106537/locations/global/keys/7c345f60-52f6-4530-891f-659b995fb649 \
+     --project=jellyshelf-3dfc8 \
+     --api-target=service=firebaseinstallations.googleapis.com \
+     --api-target=service=firebaseremoteconfig.googleapis.com \
+     --api-target=service=firebaseremoteconfigrealtime.googleapis.com \
+     --api-target=service=firebaseapptesters.googleapis.com \
+     --allowed-application=package_name=com.gmail.volkovskiyda.jellyshelf,sha1_fingerprint=39f33a734e0e9593059d68d843770a0d04822f7e \
+     --allowed-application=package_name=com.gmail.volkovskiyda.jellyshelf.debug,sha1_fingerprint=3fe00757a5b0241b2a59c8c552fbc8358d36852c \
+     --allowed-application=package_name=com.gmail.volkovskiyda.jellyshelf.benchmark,sha1_fingerprint=39f33a734e0e9593059d68d843770a0d04822f7e
+   ```
+
+   Only `firebaseapptesters.googleapis.com` is needed. `firebaseappdistribution.googleapis.com` is
+   the *admin* API the CI service account uses for uploads, and is never called with this key.
+3. The tester must be in the `testers` group (`ci.yml`) and have accepted the invitation.
+4. Verify on a real device, on a **release** build. The `.debug` package is a separate Firebase app
+   with no releases at all, and the Settings section is not rendered there anyway.
+
+### What the SDK adds to every release APK
+
+`firebase-appdistribution` is a `releaseImplementation`, so its merged manifest contributions land in
+**every** release build whether or not the user opts in:
+
+- `REQUEST_INSTALL_PACKAGES`, `POST_NOTIFICATIONS`, `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`
+- an **exported** `SignInResultActivity` handling `intent://appdistribution/<applicationId>`, plus an
+  `InstallActivity`, two feedback activities and a `FileProvider`
+
+This was a deliberate trade, not an oversight: the API-only artifact (`firebase-appdistribution-api`)
+is a stub that cannot detect releases at all, so the full SDK is unavoidable if the channel is to
+exist. The only way to drop the permissions is to drop the channel. Do not "clean this up" without
+re-taking that decision.
+
+The same dependencies reach `nonMinifiedRelease` and `benchmarkRelease` — those build types are
+derived from `release` and inherit it — so the profiling APKs carry the permissions too. They install
+as `.benchmark` and are never shipped.
+
+The two App Distribution artifacts are **not BoM-managed**: `firebase-bom` does not list them, so
+they pin their own version in `libs.versions.toml` and need their own bump. Upstream they are still
+**beta**.
+
+The precedent for editing the restricted key — including before/after snapshots — is
+`internal/finished/20260805-firebase-performance-plan/01-api-key-and-console.md`, and the two
+channels this reads from were set up by `internal/finished/release-ci-plan/`. Both are git-ignored
+working notes, not part of the repo.
+
 ## Testing a release build
 
 Release builds are smoke-tested by signing in as a real (dedicated, non-admin) Jellyfin user — the
