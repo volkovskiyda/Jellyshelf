@@ -28,10 +28,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -45,11 +47,14 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
+import com.gmail.volkovskiyda.jellyshelf.ui.UpdateDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
@@ -63,9 +68,12 @@ import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeReveal
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeRevealController
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.themeBackgroundArgb
+import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.compose.koinViewModel
 import org.koin.androidx.viewmodel.ext.android.viewModel
+import org.koin.compose.koinInject
 import timber.log.Timber
 
 private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: ImageVector)
@@ -246,6 +254,37 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     )
     val current = backStack.lastOrNull()
     val showBottomBar = topLevel.any { it.key == current }
+
+    // The update offer, hosted here because this is the only place that knows which tab is current.
+    // `current == AppNavKey.Library` is the whole suppression rule: the player, detail and the other
+    // tabs are excluded by construction rather than by a list of exceptions that a new screen could
+    // forget to join.
+    val updateChecker: UpdateChecker = koinInject()
+    val update by updateChecker.available.collectAsStateWithLifecycle()
+    val updateScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    update?.takeIf { current == AppNavKey.Library }?.let { info ->
+        // Stamps the once-a-day floor when the dialog is actually seen, not when the check found
+        // something: checking from Settings and never coming back to Library is not an
+        // interruption. Keyed on the version code, so a genuinely new build re-stamps while a
+        // recomposition does not.
+        LaunchedEffect(info.versionCode) { updateChecker.markDialogShown() }
+        UpdateDialog(
+            info = info,
+            onUpdate = {
+                // Not a dismissal: if the install fails or the browser download is abandoned, the
+                // prompt should return on the next check rather than be snoozed for a week.
+                updateChecker.clearAvailable()
+                if (info.source == UpdateSource.APP_DISTRIBUTION) {
+                    updateScope.launch { updateChecker.install() }
+                } else {
+                    // GitHub links out — the release asset opens in a browser.
+                    Playback.openUrl(context, info.downloadUrl)
+                }
+            },
+            onDismiss = { updateScope.launch { updateChecker.dismiss(info) } },
+        )
+    }
 
     // Library is the app's home and always the stack root: switching to any other tab rebuilds the
     // stack as [Library, tab] so Back returns to Library, and one more Back exits.

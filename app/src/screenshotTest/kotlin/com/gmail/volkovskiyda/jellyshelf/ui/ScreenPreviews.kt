@@ -10,6 +10,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesContent
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryList
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailContent
@@ -29,6 +32,9 @@ import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsUiState
 
 private const val PHONE_WIDTH = 400
 private const val PHONE_HEIGHT = 800
+
+/** Tall enough to hold the whole Updates section, which sits near the foot of the settings list. */
+private const val SETTINGS_UPDATES_HEIGHT = 1000
 
 /**
  * A pinned clock for the sync-time labels, which are relative for their first three hours. Read
@@ -525,6 +531,90 @@ private fun SettingsIndexUnavailable() {
             videoCount = 879,
             actions = SettingsActions(),
             now = PREVIEW_NOW,
+        )
+    }
+}
+
+/**
+ * The three update-channel states, each tall enough to hold the whole Updates section — at
+ * [PHONE_HEIGHT] the "Check now" button and the last-checked line fall below the fold, which is
+ * also why only four of the six [SettingsContent] goldens changed when the section landed.
+ *
+ * All three rely on `SettingsUiState.isDebugBuild` defaulting to **false**. Screenshot tests build
+ * the debug variant, so if that default ever flips these render an empty gap and the goldens
+ * silently stop covering the feature.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = SETTINGS_UPDATES_HEIGHT, showBackground = true)
+@Composable
+private fun SettingsUpdatesOff() {
+    PreviewTheme {
+        SettingsContent(
+            state = SettingsUiState(updateSource = UpdateSource.NONE),
+            videoCount = 0,
+            actions = SettingsActions(),
+            now = PREVIEW_NOW,
+        )
+    }
+}
+
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = SETTINGS_UPDATES_HEIGHT, showBackground = true)
+@Composable
+private fun SettingsUpdatesGitHub() {
+    PreviewTheme {
+        SettingsContent(
+            state = SettingsUiState(
+                updateSource = UpdateSource.GITHUB,
+                lastUpdateCheckAt = PREVIEW_SYNCED_AT,
+            ),
+            videoCount = 0,
+            actions = SettingsActions(),
+            now = PREVIEW_NOW,
+        )
+    }
+}
+
+/** The tester channel, reporting the failure a restricted API key actually produces. */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = SETTINGS_UPDATES_HEIGHT, showBackground = true)
+@Composable
+private fun SettingsUpdatesAppDistribution() {
+    PreviewTheme {
+        SettingsContent(
+            state = SettingsUiState(
+                updateSource = UpdateSource.APP_DISTRIBUTION,
+                lastUpdateCheckAt = PREVIEW_SYNCED_AT,
+                updateError = UpdateCheckError.ApiDisabled,
+            ),
+            videoCount = 0,
+            actions = SettingsActions(),
+            now = PREVIEW_NOW,
+        )
+    }
+}
+
+/** The offer itself: a version, and notes long enough to show they scroll rather than push the buttons off. */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun UpdateDialogPreview() {
+    PreviewTheme {
+        UpdateDialog(
+            info = UpdateInfo(
+                versionCode = 181,
+                versionName = "1.1",
+                releaseNotes = "• Playback speed is remembered across launches\n" +
+                    "• Faster library browsing on large collections\n" +
+                    "• The player no longer sticks at 3× when the screen leaves mid-hold\n" +
+                    "• Watched markers now match the server's 90% threshold\n" +
+                    "\n**Full Changelog**: https://github.com/volkovskiyda/Jellyshelf/commits/v1.1",
+                downloadUrl = "https://github.com/volkovskiyda/Jellyshelf/releases/download/" +
+                    "v1.1/jellyshelf-1.1.181.apk",
+                source = UpdateSource.GITHUB,
+            ),
+            onUpdate = {},
+            onDismiss = {},
         )
     }
 }

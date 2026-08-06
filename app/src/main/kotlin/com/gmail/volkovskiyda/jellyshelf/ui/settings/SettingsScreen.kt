@@ -400,7 +400,7 @@ private fun UpdatesSection(
     ) {
         Text(
             stringResource(
-                if (state.signingInTester) R.string.update_signing_in else R.string.check_for_updates,
+                if (state.signingInTester) R.string.signing_in else R.string.check_for_updates,
             ),
         )
     }

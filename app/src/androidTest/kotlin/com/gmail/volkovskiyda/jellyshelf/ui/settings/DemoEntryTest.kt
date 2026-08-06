@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
@@ -87,8 +88,11 @@ class DemoEntryTest {
 
         composeRule.onNodeWithText(label(R.string.demo_mode_active)).assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.try_demo)).assertDoesNotExist()
-        // The exit stays exactly where it always was.
-        composeRule.onNodeWithText(label(R.string.reset_local_data)).assertIsDisplayed()
+        // The exit is still there, further down the same scrolling column: the Updates section
+        // landed above it, so this scrolls rather than assuming the fold has not moved.
+        composeRule.onNodeWithText(label(R.string.reset_local_data))
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test

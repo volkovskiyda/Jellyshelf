@@ -26,6 +26,16 @@ private val DIALOG_INTERVAL_MILLIS = TimeUnit.DAYS.toMillis(1)
 private val SNOOZE_MILLIS = TimeUnit.DAYS.toMillis(7)
 
 /**
+ * Whether [window] has passed since [since].
+ *
+ * `0` means "never" for all three stored timestamps, and `now - 0` is enormous, so a fresh install
+ * passes every window rather than being muted for its first day.
+ *
+ * `internal` rather than `private` only so the class below reaches it without a synthetic accessor.
+ */
+internal fun elapsed(now: Long, since: Long, window: Long): Boolean = now - since >= window
+
+/**
  * Decides whether to offer the user a newer build, and holds the answer for the UI.
  *
  * A Koin `single` rather than a ViewModel because the check runs once per process at cold start and
@@ -117,7 +127,7 @@ class UpdateChecker(
         if (buildInfo.isDebug || buildInfo.versionCode <= 1) return
         val source = settingsRepository.updateSource.first()
         if (source == UpdateSource.NONE) return
-        if (!manual && !elapsed(settingsRepository.lastUpdateCheckAt.first(), CHECK_INTERVAL_MILLIS)) {
+        if (!manual && !elapsed(now(), settingsRepository.lastUpdateCheckAt.first(), CHECK_INTERVAL_MILLIS)) {
             return
         }
 
@@ -168,15 +178,12 @@ class UpdateChecker(
      */
     private suspend fun shouldOffer(info: UpdateInfo): Boolean {
         if (info.versionCode <= buildInfo.versionCode) return false
-        if (!elapsed(settingsRepository.lastUpdateDialogAt.first(), DIALOG_INTERVAL_MILLIS)) {
+        if (!elapsed(now(), settingsRepository.lastUpdateDialogAt.first(), DIALOG_INTERVAL_MILLIS)) {
             return false
         }
         if (info.versionCode > settingsRepository.dismissedUpdate(info.source).first()) return true
-        return elapsed(settingsRepository.dismissedUpdateAt(info.source).first(), SNOOZE_MILLIS)
+        return elapsed(now(), settingsRepository.dismissedUpdateAt(info.source).first(), SNOOZE_MILLIS)
     }
-
-    /** `0` is "never", and `now - 0` is enormous, so a fresh install passes every window. */
-    private fun elapsed(timestamp: Long, window: Long): Boolean = now() - timestamp >= window
 
     /**
      * Records a "Not now" — both halves of the dismissal in one write — and clears the offer.
@@ -202,6 +209,25 @@ class UpdateChecker(
     /** Clears the offer without recording a dismissal — the user chose to update. */
     fun clearAvailable() {
         _available.value = null
+    }
+
+    /**
+     * The in-app install, for [UpdateSource.APP_DISTRIBUTION] only — the GitHub channel links out
+     * to a browser instead, which its caller does.
+     *
+     * Suspends until the download **and** install finish, so this is not fire-and-forget. Nothing
+     * renders progress today (see the plan's backlog), but a failure still has to go somewhere the
+     * user can read it, which is why it lands in [error] rather than being logged and lost.
+     */
+    suspend fun install() {
+        try {
+            appDistributionSource.install()
+        } catch (e: UpdateCheckFailure) {
+            _error.value = e.reason ?: UpdateCheckError.Unknown
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            Timber.w(e, "In-app update install failed")
+            _error.value = UpdateCheckError.InstallFailed
+        }
     }
 
     /**

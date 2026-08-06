@@ -107,8 +107,10 @@ class UpdateCheckFailure(
  * `kotlinx-coroutines-play-services` would do this, but it is not on the classpath and one `await`
  * does not justify adding a dependency for it. Cancellation of the calling coroutine stops us
  * waiting; the SDK offers no way to cancel the underlying work, so it is not pretended.
+ *
+ * `internal` rather than `private` only so the class above reaches it without a synthetic accessor.
  */
-private suspend fun <T> Task<T>.await(): T? = suspendCancellableCoroutine { continuation ->
+internal suspend fun <T> Task<T>.await(): T? = suspendCancellableCoroutine { continuation ->
     addOnSuccessListener { continuation.resume(it) }
     addOnFailureListener { continuation.resumeWithException(it.toUpdateCheckFailure()) }
 }

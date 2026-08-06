@@ -231,9 +231,8 @@
     <string name="update_source_selected">Update channel: %1$s</string>
     <string name="update_source_off_hint">The app never checks whether a newer build exists.</string>
     <string name="update_source_github_hint">Checks the GitHub Releases page for a newer build, and opens the download in your browser.</string>
-    <string name="update_source_app_distribution_hint">Needs a Firebase tester account — you\'ll be asked to sign in, and updates install in-app.</string>
+    <string name="update_source_app_distribution_hint">Needs a Firebase tester account — you’ll be asked to sign in, and updates install in-app.</string>
     <string name="check_for_updates">Check now</string>
-    <string name="update_signing_in">Signing in…</string>
     <string name="update_last_checked">checked %1$s</string>
     <string name="update_never_checked">never checked</string>
     <string name="update_available_title">Version %1$s available</string>
@@ -241,7 +240,7 @@
     <string name="update_dismiss">Not now</string>
 
     <!-- One per UpdateCheckError case. A failed check always says why — never a silent "no update". -->
-    <string name="update_error_api_disabled">The Firebase App Testers API is not allowed for this app\'s key, so the tester channel cannot answer. See docs/RELEASING.md.</string>
+    <string name="update_error_api_disabled">The Firebase App Testers API is not allowed for this app’s key, so the tester channel cannot answer. See docs/RELEASING.md.</string>
     <string name="update_error_not_a_tester">This account is not a tester on this app, or the invitation has not been accepted yet.</string>
     <string name="update_error_sign_in_cancelled">Sign-in was cancelled, so the tester channel was left switched off.</string>
     <string name="update_error_sign_in_required">Sign in to the tester account to check — tap Check now.</string>

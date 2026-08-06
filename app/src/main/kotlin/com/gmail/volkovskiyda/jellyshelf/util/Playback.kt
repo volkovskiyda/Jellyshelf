@@ -207,6 +207,17 @@ object Playback {
         launch(context, intent)
     }
 
+    /**
+     * Opens an arbitrary URL in whatever handles it — the update dialog's "Update" for the GitHub
+     * channel, which links out to the release asset rather than installing in-app.
+     *
+     * Routed through [launch] so the "no app found" toast is the same one every other handoff on
+     * this screen shows, rather than a second copy of the same `runCatching`.
+     */
+    fun openUrl(context: Context, url: String) {
+        launch(context, Intent(Intent.ACTION_VIEW, url.toUri()))
+    }
+
     private fun launch(context: Context, intent: Intent) {
         runCatching { context.startActivity(intent) }.onFailure {
             Toast.makeText(context, context.getString(R.string.no_app_found), Toast.LENGTH_SHORT).show()
