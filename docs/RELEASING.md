@@ -39,6 +39,24 @@ instrumentation tests read the same file, so there is exactly one place to keep 
 Debug builds never need any of this: day-to-day work runs on **demo mode** (or mocks/fakes in
 tests), with no server at all.
 
+**Run the live suite first — CI never will.** The pipeline is deliberately hermetic: the `testlab`
+job uploads APKs built on a runner that has no `.test.env`, so `LiveEndpointTest` and
+`LiveUiJourneyTest` find no credentials and skip themselves there. A machine with a filled
+`.test.env` and a device attached is the only place a real server is ever exercised, and
+`scripts/run-tests.sh` is what does it — about 45 s for the whole live layer on a Pixel 5, the UI
+journey included. Do this before tagging, so the manual pass below only has to prove the *release*
+build rather than the app:
+
+```sh
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.package=com.gmail.volkovskiyda.jellyshelf.live
+```
+
+A green run means sign-in, the sync-scope picker, sync, the watched toggle, playback with a resume
+point, and every undo held up against the real server. `0 skipped` in the output is the part to
+check: a blank or unreachable `.test.env` makes both tests skip rather than fail, which is easy to
+mistake for a pass.
+
 1. Install a release build: an App Distribution build, a Releases-page APK, or a local
    `./gradlew :app:installRelease` (needs `keystore.properties`). It installs alongside debug —
    the bare `com.gmail.volkovskiyda.jellyshelf` id, unbadged icon.
