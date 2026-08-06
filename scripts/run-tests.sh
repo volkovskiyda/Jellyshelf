@@ -38,10 +38,19 @@ set -uo pipefail
 # whatever was chosen here — and overrides, rather than obeys, one already in the environment. That
 # keeps a single answer to "which device", instead of two that can disagree.
 #
+# --awake is the other end of a failure that does not look like one: a physical device whose screen
+# locks mid-run fails with `No compose hierarchies found`, which reads as a broken test rather than a
+# dark screen. The flag holds the screen on for the run and puts the three settings back when it
+# ends — on Ctrl-C and on failure too, via a trap, since a device left on stay-awake holds its screen
+# lit until someone notices. It applies to the devices the layer will actually run on, emulators
+# excepted: those do not lock, and the settings would outlive the run in the AVD's state. The
+# settings, the values restored, and why one is deleted rather than set: internal/adb-stay-awake.md.
+#
 # Usage:
 #   scripts/run-tests.sh                     run everything available
 #   scripts/run-tests.sh --device <serial>   one device, no prompt (see `adb devices`)
 #   scripts/run-tests.sh --all               every attached device, no prompt
+#   scripts/run-tests.sh --awake             hold physical screens on for the run, restore at the end
 #   scripts/run-tests.sh --host-only         skip the instrumented layer even if a device is attached
 #   scripts/run-tests.sh --no-checks         skip static analysis, run only the test layers
 #   scripts/run-tests.sh --help
@@ -54,12 +63,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 HOST_ONLY=0
 RUN_CHECKS=1
 WANT_ALL=0
+WANT_AWAKE=0
 WANT_DEVICE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host-only) HOST_ONLY=1 ;;
     --no-checks) RUN_CHECKS=0 ;;
     --all) WANT_ALL=1 ;;
+    --awake) WANT_AWAKE=1 ;;
     --device)
       # A missing value would otherwise swallow the next flag as a serial.
       [[ $# -ge 2 ]] || { echo "ERROR: --device needs a serial (see \`adb devices\`)" >&2; exit 2; }
@@ -109,6 +120,67 @@ describe_device() {
   api="$("$adb" -s "$serial" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r\n')"
   [[ -z "$model" && -z "$api" ]] && return 0
   echo "${model:-unknown}${api:+, API $api}"
+}
+
+# --awake skips these. A locally launched AVD is `emulator-5554`, but one reached over TCP carries an
+# address for a serial like any hardware device, so when the prefix says nothing the properties do.
+is_emulator() {
+  local adb="$1" serial="$2" characteristics qemu
+  [[ "$serial" == emulator-* ]] && return 0
+  characteristics="$("$adb" -s "$serial" shell getprop ro.build.characteristics 2>/dev/null)"
+  [[ "$characteristics" == *emulator* ]] && return 0
+  # Both are `1` on an emulator and unset on hardware; which one carries it depends on the image's
+  # age. Only these two are read here, so matching a bare `1` cannot collide with another value.
+  qemu="$("$adb" -s "$serial" shell 'getprop ro.kernel.qemu; getprop ro.boot.qemu' 2>/dev/null)"
+  [[ "$qemu" == *1* ]]
+}
+
+# Serials whose settings this run changed and must put back. Populated by awake_hold only.
+AWAKE_HELD=()
+
+# Values and rationale: internal/adb-stay-awake.md. Held for the whole run rather than per layer,
+# because the gap between two Gradle invocations is long enough for a screen to lock.
+awake_hold() {
+  local serial
+  for serial in ${DEVICES[@]+"${DEVICES[@]}"}; do
+    if is_emulator "$ADB" "$serial"; then
+      printf 'awake:   %-24s skipped, emulator\n' "$serial"
+      continue
+    fi
+    # Recorded before the writes, not after: a device that takes the first setting and fails the
+    # second still has to be put back, and undoing one that never landed costs nothing.
+    AWAKE_HELD+=("$serial")
+    if "$ADB" -s "$serial" shell \
+      'settings put global stay_on_while_plugged_in 7 &&
+       settings put system screen_off_timeout 1800000 &&
+       settings put secure lock_screen_lock_after_timeout 1800000' >/dev/null 2>&1; then
+      printf 'awake:   %-24s screen held on, restored when the run ends\n' "$serial"
+    else
+      printf 'awake:   %-24s could not be set — carrying on without it\n' "$serial" >&2
+    fi
+  done
+}
+
+# Runs from a trap, so it must not disturb the exit status the run had arrived at, and must survive
+# being called twice — the INT handler exits, which fires the EXIT trap on top of it.
+awake_restore() {
+  local status=$? serial
+  [[ ${#AWAKE_HELD[@]} -eq 0 ]] && return $status
+  local -a held=("${AWAKE_HELD[@]}")
+  AWAKE_HELD=()
+  for serial in "${held[@]}"; do
+    # `delete` for the secure one: it had no value before, and `put` would pin it to one it never had.
+    if "$ADB" -s "$serial" shell \
+      'settings put global stay_on_while_plugged_in 0 &&
+       settings put system screen_off_timeout 120000 &&
+       settings delete secure lock_screen_lock_after_timeout' >/dev/null 2>&1; then
+      printf 'awake:   %-24s settings restored\n' "$serial"
+    else
+      printf 'awake:   %-24s NOT restored — undo by hand, see internal/adb-stay-awake.md\n' \
+        "$serial" >&2
+    fi
+  done
+  return $status
 }
 
 # Arrow-key menu, written straight to the terminal and read from it, so it still works when the
@@ -252,6 +324,22 @@ elif [[ ${#DEVICES[@]} -eq 1 ]]; then
 fi
 # Fanning out is the one case that must not inherit a stale serial from the caller's environment.
 [[ ${#DEVICES[@]} -gt 1 ]] && unset ANDROID_SERIAL
+
+# After the choice rather than before it, so --awake reaches the devices the layer will actually run
+# on and leaves the ones the picker ruled out untouched. The traps go up before the first write, so
+# every way out of the script — summary, Ctrl-C, a layer that dies — comes back through the restore.
+if [[ "$WANT_AWAKE" -eq 1 ]]; then
+  if [[ "$HOST_ONLY" -eq 1 ]]; then
+    echo "awake:   moot under --host-only — nothing runs on a device"
+  elif [[ ${#DEVICES[@]} -eq 0 ]]; then
+    echo "awake:   no device to hold awake"
+  else
+    trap 'awake_restore' EXIT
+    trap 'awake_restore; exit 130' INT
+    trap 'awake_restore; exit 143' TERM
+    awake_hold
+  fi
+fi
 echo
 
 CHECKS_RESULT="" ; UNIT_RESULT="" ; SCREENSHOT_RESULT="" ; INSTRUMENTED_RESULT=""
