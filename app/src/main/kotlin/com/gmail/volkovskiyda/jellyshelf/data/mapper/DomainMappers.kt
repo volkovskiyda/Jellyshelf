@@ -53,7 +53,7 @@ fun VideoEntity.toDomain(): Video = Video(
  */
 fun VideoBrowseRow.toDomain(): Video = Video(
     youtubeId = youtubeId,
-    jellyfinItemId = null,
+    jellyfinItemId = jellyfinItemId,
     fileName = fileName,
     title = title,
     channel = channel,
