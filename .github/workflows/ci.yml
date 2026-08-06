@@ -45,8 +45,11 @@ jobs:
   # APK is arm64-only by design, so an x86_64 emulator refuses it with INSTALL_FAILED_NO_MATCHING_ABIS
   # and the arm64 macOS runners have no nested virtualisation. Test Lab has arm64 virtual devices.
   #
-  # Main pushes only. PRs keep the host-side suite, which keeps the Spark plan's 10 virtual-device
-  # runs/day comfortable.
+  # Main pushes only. PRs keep the host-side suite. Quota is what makes that gate worth keeping: the
+  # Spark plan allows 10 virtual and 5 physical device executions per day, counted per device in the
+  # matrix, so the three below spend 2 virtual + 1 physical a run — five main pushes in a day before
+  # the physical quota is the binding one. `gcloud alpha services quota list
+  # --service=testing.googleapis.com` prints the live numbers.
   testlab:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [checks]
@@ -74,10 +77,37 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
           gcloud auth activate-service-account --key-file "$RUNNER_TEMP/firebase-sa.json"
           gcloud config set project jellyshelf-3dfc8
+          # Three devices, spread across the axes one image cannot cover: API level, form factor,
+          # and emulated vs real silicon. They run in parallel, so the matrix costs the slowest one
+          # rather than the sum — measured at about five minutes for three.
+          #   MediumPhone.arm 36 — the everyday baseline this job has always run.
+          #   MediumTablet.arm 35 — the other form factor, and an API level between the two ends.
+          #   redfin 30 — a physical Pixel 5 at exactly minSdk, the floor the app claims to support
+          #     and the one API level nothing else exercises. Physical also means real hardware
+          #     codecs behind the playback tests. High capacity in `list-device-capacities`, so it
+          #     queues quickly, and it is the same model kept on the desk — a red matrix here
+          #     reproduces over adb in under a minute.
+          #
+          # Adding API 30 on 2026-08-06 turned up two test defects that no other device could see,
+          # both since fixed: an assertion reading SQLite plans by text (pre-3.36 spells a scan
+          # `SCAN TABLE videos`, so assertNoTableScan matched nothing and passed while a real table
+          # scan went by), and a persistence wait that watched one flow collection for an update
+          # DataStore on API 30 intermittently never delivers. See those two test files for the
+          # detail; both were confirmed against this exact matrix before it was committed.
+          #
+          # MediumPhone_ps16k.arm 37 is the one to add next and cannot be added yet: it is the only
+          # image running API 37 (targetSdk) and the only one with 16 KB memory pages, which matter
+          # because the APK ships five native libraries. But every UI test fails there on
+          # `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — the test
+          # framework's input injection, not this app: its 90 failures were exactly the tests that
+          # inject touches, while every DAO, sync and serialization test passed. Revisit when
+          # androidx.test and compose-ui-test support API 37.
           gcloud firebase test android run --type instrumentation \
             --app app/build/outputs/apk/debug/app-debug.apk \
             --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
             --device model=MediumPhone.arm,version=36 \
+            --device model=MediumTablet.arm,version=35 \
+            --device model=redfin,version=30 \
             --timeout 15m
 
   # Every green main push reaches testers, with no manual step. PRs never get here.
