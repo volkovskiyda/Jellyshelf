@@ -24,3 +24,14 @@ keystore.properties
 # Android Studio's "Generate Signed Bundle / APK" wizard writes outside build/
 /app/release/
 /app/debug/
+
+# /.firebaserc and /firebase.json are deliberately NOT ignored: together they are what tells the
+# Firebase CLI this repo targets jellyshelf-3dfc8, and they carry nothing beyond that project id,
+# which app/google-services.json and .github/workflows/ci.yml already publish. Only the CLI's local
+# deploy/emulator cache is ignored.
+/.firebase/
+
+# /.claude/settings.json is deliberately NOT ignored either — it sets CLOUDSDK_CORE_PROJECT so
+# gcloud in this repo talks to that same project without a --project flag. Its .local counterpart
+# is per-machine (permission decisions, absolute paths) and is not shareable.
+/.claude/settings.local.json
