@@ -69,7 +69,13 @@ import java.util.concurrent.TimeUnit
  * domain interfaces, so nothing above the data layer sees a `Default*` type.
  */
 val appModule = module {
-    single { BuildInfo(isDebug = BuildConfig.DEBUG, sdkInt = Build.VERSION.SDK_INT) }
+    single {
+        BuildInfo(
+            isDebug = BuildConfig.DEBUG,
+            sdkInt = Build.VERSION.SDK_INT,
+            versionCode = BuildConfig.VERSION_CODE,
+        )
+    }
     single {
         DeviceInfo(
             clientName = CLIENT_NAME,

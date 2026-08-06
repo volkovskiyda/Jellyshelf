@@ -4,9 +4,11 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 
 /** The device id [FakeSettingsRepository] always reports. */
 const val FAKE_DEVICE_ID = "test-device-id"
@@ -35,6 +37,9 @@ class FakeSettingsRepository(
     libraryDurationFilter: DurationBucket? = null,
     categoriesSearchAll: Boolean = false,
     syncScopeNudged: Boolean = false,
+    updateSource: UpdateSource = UpdateSource.NONE,
+    lastUpdateCheckAt: Long = 0L,
+    lastUpdateDialogAt: Long = 0L,
 ) : SettingsRepository {
     private val _settings = MutableStateFlow(initial)
     private val _backStackJson = MutableStateFlow(backStackJson)
@@ -43,6 +48,14 @@ class FakeSettingsRepository(
     private val _libraryDurationFilter = MutableStateFlow(libraryDurationFilter)
     private val _categoriesSearchAll = MutableStateFlow(categoriesSearchAll)
     private val _syncScopeNudged = MutableStateFlow(syncScopeNudged)
+    private val _updateSource = MutableStateFlow(updateSource)
+    private val _lastUpdateCheckAt = MutableStateFlow(lastUpdateCheckAt)
+    private val _lastUpdateDialogAt = MutableStateFlow(lastUpdateDialogAt)
+
+    // Per source, so a test can snooze GitHub without touching App Distribution — the independence
+    // the two key pairs exist for. Absent entries read as 0, matching the real store's "unset".
+    private val _dismissedUpdate = MutableStateFlow(emptyMap<UpdateSource, Int>())
+    private val _dismissedUpdateAt = MutableStateFlow(emptyMap<UpdateSource, Long>())
 
     override val settings: Flow<Settings> = _settings
     override suspend fun snapshot(): Settings = _settings.value
@@ -128,6 +141,44 @@ class FakeSettingsRepository(
         _syncScopeNudged.value = nudged
     }
 
+    override val updateSource: Flow<UpdateSource> = _updateSource
+    override suspend fun setUpdateSource(source: UpdateSource) {
+        _updateSource.value = source
+    }
+
+    override fun dismissedUpdate(source: UpdateSource): Flow<Int> =
+        _dismissedUpdate.map { it[source] ?: 0 }
+
+    override fun dismissedUpdateAt(source: UpdateSource): Flow<Long> =
+        _dismissedUpdateAt.map { it[source] ?: 0L }
+
+    /** Both halves together, like the real store — see [SettingsRepository.setDismissedUpdate]. */
+    override suspend fun setDismissedUpdate(
+        source: UpdateSource,
+        versionCode: Int,
+        timestamp: Long,
+    ) {
+        if (source == UpdateSource.NONE) return
+        _dismissedUpdate.value += source to versionCode
+        _dismissedUpdateAt.value += source to timestamp
+    }
+
+    override val lastUpdateCheckAt: Flow<Long> = _lastUpdateCheckAt
+    override suspend fun setLastUpdateCheckAt(timestamp: Long) {
+        _lastUpdateCheckAt.value = timestamp
+    }
+
+    override val lastUpdateDialogAt: Flow<Long> = _lastUpdateDialogAt
+    override suspend fun setLastUpdateDialogAt(timestamp: Long) {
+        _lastUpdateDialogAt.value = timestamp
+    }
+
     /** What [setBackStackJson] last persisted. */
     val savedBackStackJson: String? get() = _backStackJson.value
+
+    /** What [setLastUpdateCheckAt] last persisted, without collecting the flow. */
+    val savedLastUpdateCheckAt: Long get() = _lastUpdateCheckAt.value
+
+    /** What [setLastUpdateDialogAt] last persisted, without collecting the flow. */
+    val savedLastUpdateDialogAt: Long get() = _lastUpdateDialogAt.value
 }

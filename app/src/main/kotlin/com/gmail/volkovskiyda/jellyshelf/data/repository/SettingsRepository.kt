@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -15,10 +16,12 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import java.util.UUID
@@ -52,6 +55,15 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val CATEGORIES_SEARCH_ALL = booleanPreferencesKey("categories_search_all")
         val SYNC_SCOPE_NUDGED = booleanPreferencesKey("sync_scope_nudged")
         val DEMO_MODE = booleanPreferencesKey("demo_mode")
+        val UPDATE_SOURCE = stringPreferencesKey("update_source")
+        val DISMISSED_UPDATE_GITHUB = intPreferencesKey("dismissed_update_version_code_github")
+        val DISMISSED_UPDATE_APP_DISTRIBUTION =
+            intPreferencesKey("dismissed_update_version_code_app_distribution")
+        val DISMISSED_UPDATE_AT_GITHUB = longPreferencesKey("dismissed_update_at_github")
+        val DISMISSED_UPDATE_AT_APP_DISTRIBUTION =
+            longPreferencesKey("dismissed_update_at_app_distribution")
+        val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
+        val LAST_UPDATE_DIALOG_AT = longPreferencesKey("last_update_dialog_at")
     }
 
     /**
@@ -258,4 +270,74 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
     override suspend fun setSyncScopeNudged(nudged: Boolean) {
         ds.edit { it[Keys.SYNC_SCOPE_NUDGED] = nudged }
     }
+
+    /**
+     * Unreadable or unrecognized preferences degrade to [UpdateSource.NONE] — see its
+     * `fromStorage`: the direction that makes a disk failure stop checking rather than start.
+     */
+    override val updateSource: Flow<UpdateSource> = prefs
+        .map { UpdateSource.fromStorage(it[Keys.UPDATE_SOURCE]) }
+
+    override suspend fun setUpdateSource(source: UpdateSource) {
+        ds.edit { it[Keys.UPDATE_SOURCE] = source.storageValue }
+    }
+
+    /** Unset (and unreadable) reads as "nothing dismissed", so a real update is never hidden. */
+    override fun dismissedUpdate(source: UpdateSource): Flow<Int> =
+        source.dismissedCodeKey?.let { key -> prefs.map { it[key] ?: 0 } } ?: flowOf(0)
+
+    /** Unset (and unreadable) reads as "never", which every window treats as already elapsed. */
+    override fun dismissedUpdateAt(source: UpdateSource): Flow<Long> =
+        source.dismissedAtKey?.let { key -> prefs.map { it[key] ?: 0L } } ?: flowOf(0L)
+
+    override suspend fun setDismissedUpdate(
+        source: UpdateSource,
+        versionCode: Int,
+        timestamp: Long,
+    ) {
+        val codeKey = source.dismissedCodeKey ?: return
+        val atKey = source.dismissedAtKey ?: return
+        // One edit, so the code and its timestamp can never be half-written: a code without a time
+        // reads back as dismissed-at-the-epoch, i.e. already expired.
+        ds.edit {
+            it[codeKey] = versionCode
+            it[atKey] = timestamp
+        }
+    }
+
+    override val lastUpdateCheckAt: Flow<Long> = prefs
+        .map { it[Keys.LAST_UPDATE_CHECK_AT] ?: 0L }
+
+    override suspend fun setLastUpdateCheckAt(timestamp: Long) {
+        ds.edit { it[Keys.LAST_UPDATE_CHECK_AT] = timestamp }
+    }
+
+    override val lastUpdateDialogAt: Flow<Long> = prefs
+        .map { it[Keys.LAST_UPDATE_DIALOG_AT] ?: 0L }
+
+    override suspend fun setLastUpdateDialogAt(timestamp: Long) {
+        ds.edit { it[Keys.LAST_UPDATE_DIALOG_AT] = timestamp }
+    }
+
+    /**
+     * The dismissal keys, resolved per source. Exhaustive `when`s with no `else`, so a fourth
+     * source added later fails the build here instead of silently sharing another channel's key —
+     * which would make switching channels inherit the previous one's silence.
+     *
+     * [UpdateSource.NONE] maps to null rather than to a key: a channel that never checks has
+     * nothing to dismiss, and giving it storage would only create a value nothing can ever clear.
+     */
+    private val UpdateSource.dismissedCodeKey: Preferences.Key<Int>?
+        get() = when (this) {
+            UpdateSource.NONE -> null
+            UpdateSource.GITHUB -> Keys.DISMISSED_UPDATE_GITHUB
+            UpdateSource.APP_DISTRIBUTION -> Keys.DISMISSED_UPDATE_APP_DISTRIBUTION
+        }
+
+    private val UpdateSource.dismissedAtKey: Preferences.Key<Long>?
+        get() = when (this) {
+            UpdateSource.NONE -> null
+            UpdateSource.GITHUB -> Keys.DISMISSED_UPDATE_AT_GITHUB
+            UpdateSource.APP_DISTRIBUTION -> Keys.DISMISSED_UPDATE_AT_APP_DISTRIBUTION
+        }
 }

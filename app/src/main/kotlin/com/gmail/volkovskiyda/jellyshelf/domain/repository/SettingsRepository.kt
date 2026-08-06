@@ -5,6 +5,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import kotlinx.coroutines.flow.Flow
 
 /** Persistent app/connection settings. Backed by DataStore in the data layer. */
@@ -100,4 +101,48 @@ interface SettingsRepository {
      */
     val syncScopeNudged: Flow<Boolean>
     suspend fun setSyncScopeNudged(nudged: Boolean)
+
+    /**
+     * Which channel to check for a newer build of the app, defaulting to [UpdateSource.NONE] — so
+     * an install that never opts in, and an unreadable preferences file, both make no network call.
+     */
+    val updateSource: Flow<UpdateSource>
+    suspend fun setUpdateSource(source: UpdateSource)
+
+    /**
+     * Highest version code the user has dismissed for [source]; `0` when none — and `0` is also
+     * what [UpdateSource.NONE] always reads, since a channel that never checks has nothing to
+     * dismiss. Kept per source so switching channels doesn't inherit the other one's silence.
+     */
+    fun dismissedUpdate(source: UpdateSource): Flow<Int>
+
+    /**
+     * When that dismissal happened, epoch millis; `0` when never. Paired with [dismissedUpdate] —
+     * a dismissal is a snooze that expires, so the code alone doesn't say whether it still applies.
+     */
+    fun dismissedUpdateAt(source: UpdateSource): Flow<Long>
+
+    /**
+     * Records both halves at once — they must never disagree. Two setters would invite a caller
+     * that writes the code and not the time, which reads back as "dismissed at the epoch": already
+     * expired, so the dialog returns on the very next launch.
+     */
+    suspend fun setDismissedUpdate(source: UpdateSource, versionCode: Int, timestamp: Long)
+
+    /**
+     * Epoch millis of the last completed check, `0` when never. Shared across sources: it throttles
+     * how often the app *asks*, which is about network politeness rather than about any one
+     * channel. `0` means "the window has elapsed", so a fresh install checks on first launch.
+     */
+    val lastUpdateCheckAt: Flow<Long>
+    suspend fun setLastUpdateCheckAt(timestamp: Long)
+
+    /**
+     * Epoch millis the update dialog was last actually shown, `0` when never. Shared across sources
+     * too: the once-a-day floor is about not nagging, and the user does not care which channel the
+     * nag came from. Same `0` == "elapsed" convention as [lastUpdateCheckAt] — the opposite reading
+     * would mute a fresh install for a day.
+     */
+    val lastUpdateDialogAt: Flow<Long>
+    suspend fun setLastUpdateDialogAt(timestamp: Long)
 }

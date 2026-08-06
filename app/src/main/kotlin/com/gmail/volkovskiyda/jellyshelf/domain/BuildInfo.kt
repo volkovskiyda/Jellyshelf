@@ -14,6 +14,17 @@ import androidx.annotation.ChecksSdkIntAtLeast
 data class BuildInfo(
     val isDebug: Boolean,
     val sdkInt: Int,
+    /**
+     * `BuildConfig.VERSION_CODE` — the git commit count CI passes as `-PbuildNumber`
+     * (`app/build.gradle.kts:37-48`), and the same integer space both distribution channels publish
+     * into, so an update check can compare the two directly.
+     *
+     * Defaults to `1` for the same reason a locally assembled build reports `1`: neither workflow
+     * ran, so there is no commit count. Tests that don't care about versions inherit it, and since
+     * the update check treats `<= 1` as "not a published build" they inherit the inert behaviour
+     * too. The real value is wired in the Koin module beside [isDebug].
+     */
+    val versionCode: Int = 1,
 ) {
     /**
      * Whether the device runs at least API level [api]. The `@ChecksSdkIntAtLeast` annotation lets
