@@ -30,14 +30,19 @@ import kotlin.coroutines.resumeWithException
  * with [Status.NOT_IMPLEMENTED] and [isTesterSignedIn] is a hardcoded `false`. The stub **returns a
  * failed Task rather than throwing**, so the bridge below resumes with the exception like any other
  * failure and nothing crashes; no hand-check of a debug build is needed to confirm it.
+ *
+ * `open` for the same reason [DemoBackend] and [YtDlpMetadataSource] are: the Firebase singleton
+ * cannot be constructed on the JVM at all — `FirebaseException`'s constructor reaches
+ * `android.text.TextUtils` — so a checker test that needs a signed-out tester has no other way to
+ * say so.
  */
-class AppDistributionSource {
+open class AppDistributionSource {
 
     private val appDistribution: FirebaseAppDistribution
         get() = FirebaseAppDistribution.getInstance()
 
     /** Synchronous in the SDK, and a hardcoded `false` when only the stub is linked. */
-    fun isTesterSignedIn(): Boolean = appDistribution.isTesterSignedIn()
+    open fun isTesterSignedIn(): Boolean = appDistribution.isTesterSignedIn()
 
     /**
      * Opens the sign-in Custom Tab and suspends until the user finishes or backs out. Backing out
@@ -46,7 +51,7 @@ class AppDistributionSource {
      *
      * Throws [UpdateCheckFailure] on any failure, so the caller can render the reason.
      */
-    suspend fun signInTester() {
+    open suspend fun signInTester() {
         appDistribution.signInTester().await()
     }
 
@@ -57,7 +62,7 @@ class AppDistributionSource {
      *
      * Throws [UpdateCheckFailure] for everything else, including the API-key fail-closed case.
      */
-    suspend fun latestRelease(): UpdateInfo? = try {
+    open suspend fun latestRelease(): UpdateInfo? = try {
         appDistribution.checkForNewRelease().await()?.toUpdateInfo()
     } catch (e: UpdateCheckFailure) {
         if (e.reason == null) null else throw e

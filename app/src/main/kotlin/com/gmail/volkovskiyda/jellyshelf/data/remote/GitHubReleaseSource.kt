@@ -44,8 +44,11 @@ private val APK_ASSET = Regex("""^jellyshelf-.*\.(\d+)\.apk$""")
  * **Unauthenticated on purpose.** GitHub allows 60 requests/hour per IP unauthenticated, and the
  * check runs at most once a day (plus whatever "Check now" the user taps), which cannot approach
  * that. Adding a token would mean shipping one in the APK for no benefit — don't.
+ *
+ * `open` like [DemoBackend] and [YtDlpMetadataSource], so the checker's tests can stand a canned
+ * answer (or a thrown failure) in for a real fetch.
  */
-class GitHubReleaseSource(
+open class GitHubReleaseSource(
     private val httpClient: HttpClient,
     private val dispatchers: DispatcherProvider,
     private val json: Json,
@@ -58,7 +61,7 @@ class GitHubReleaseSource(
      * as a `ResponseException`. Deciding what a failure *means* to the user belongs to the checker,
      * not here — the same contract [IndexSource.fetchIndex] documents.
      */
-    suspend fun latestRelease(): UpdateInfo? = withContext(dispatchers.io) {
+    open suspend fun latestRelease(): UpdateInfo? = withContext(dispatchers.io) {
         val response = httpClient.get(LATEST_RELEASE_URL) {
             header(HttpHeaders.Accept, "application/vnd.github+json")
         }

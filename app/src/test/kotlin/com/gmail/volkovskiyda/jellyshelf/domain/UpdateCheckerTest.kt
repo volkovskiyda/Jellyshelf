@@ -1,0 +1,393 @@
+package com.gmail.volkovskiyda.jellyshelf.domain
+
+import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
+import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
+import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.TestDispatcherProvider
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respondOk
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+
+private val ONE_DAY = TimeUnit.DAYS.toMillis(1)
+
+/** A plausible "now" well past every window, so `0` timestamps read as "never" rather than "just". */
+private const val START = 1_800_000_000_000L
+
+/**
+ * [UpdateChecker]'s six gates and its three time windows, driven by a fake clock so nothing sleeps.
+ *
+ * The sources are subclassed rather than mocked: [AppDistributionSource] cannot be exercised on the
+ * JVM at all (the Firebase singleton needs an Android runtime), and both classes are `open` for
+ * exactly this, the way `DemoBackend` and `YtDlpMetadataSource` already are.
+ */
+class UpdateCheckerTest {
+
+    private var clock = START
+
+    private class FakeGitHub(
+        private val answer: () -> UpdateInfo?,
+    ) : GitHubReleaseSource(HttpClient(MockEngine { respondOk() }), TestDispatcherProvider(), Json) {
+        var calls = 0
+        override suspend fun latestRelease(): UpdateInfo? {
+            calls++
+            return answer()
+        }
+    }
+
+    private class FakeAppDistribution(
+        private val signedIn: Boolean = true,
+        private val answer: () -> UpdateInfo? = { null },
+    ) : AppDistributionSource() {
+        var calls = 0
+        var signInAttempts = 0
+        override fun isTesterSignedIn() = signedIn
+        override suspend fun signInTester() {
+            signInAttempts++
+        }
+
+        override suspend fun latestRelease(): UpdateInfo? {
+            calls++
+            return answer()
+        }
+    }
+
+    private fun update(versionCode: Int, source: UpdateSource = UpdateSource.GITHUB) = UpdateInfo(
+        versionCode = versionCode,
+        versionName = "1.0",
+        releaseNotes = "",
+        downloadUrl = "https://example.invalid/jellyshelf-1.0.$versionCode.apk",
+        source = source,
+    )
+
+    private fun checker(
+        settings: FakeSettingsRepository = FakeSettingsRepository(updateSource = UpdateSource.GITHUB),
+        gitHub: GitHubReleaseSource = FakeGitHub { update(170) },
+        appDistribution: AppDistributionSource = FakeAppDistribution(),
+        isDebug: Boolean = false,
+        versionCode: Int = 165,
+    ) = UpdateChecker(
+        settingsRepository = settings,
+        gitHubSource = gitHub,
+        appDistributionSource = appDistribution,
+        buildInfo = BuildInfo(isDebug = isDebug, sdkInt = 36, versionCode = versionCode),
+        now = { clock },
+        dispatchers = TestDispatcherProvider(),
+    )
+
+    // --- Validity gates: this build cannot compare itself to anything ---
+
+    /** A debug install is a different package at versionCode 1; every release would read as newer. */
+    @Test
+    fun aDebugBuild_asksNothing() = runTest {
+        val gitHub = FakeGitHub { update(170) }
+        checker(gitHub = gitHub, isDebug = true).checkNow()
+
+        assertEquals(0, gitHub.calls)
+    }
+
+    /** A locally assembled release without -PbuildNumber reports 1, and would do the same. */
+    @Test
+    fun aBuildWithNoVersionCode_asksNothing() = runTest {
+        val gitHub = FakeGitHub { update(170) }
+        checker(gitHub = gitHub, versionCode = 1).checkNow()
+
+        assertEquals(0, gitHub.calls)
+    }
+
+    /**
+     * The default, and the only thing keeping Test Lab, the live journey and the profiling
+     * variants off the network — none of which is a debug build.
+     */
+    @Test
+    fun noChannelSelected_asksNothing() = runTest {
+        val gitHub = FakeGitHub { update(170) }
+        checker(settings = FakeSettingsRepository(), gitHub = gitHub).checkNow()
+
+        assertEquals(0, gitHub.calls)
+    }
+
+    // --- The check interval: how often we ask ---
+
+    @Test
+    fun insideTheCheckWindow_asksNothing() = runTest {
+        val settings = FakeSettingsRepository(
+            updateSource = UpdateSource.GITHUB,
+            lastUpdateCheckAt = START - TimeUnit.HOURS.toMillis(2),
+        )
+        val gitHub = FakeGitHub { update(170) }
+        checker(settings = settings, gitHub = gitHub).checkOnStart()
+
+        assertEquals(0, gitHub.calls)
+    }
+
+    @Test
+    fun aDayAfterTheLastCheck_asksAgain() = runTest {
+        val settings = FakeSettingsRepository(
+            updateSource = UpdateSource.GITHUB,
+            lastUpdateCheckAt = START - ONE_DAY,
+        )
+        val gitHub = FakeGitHub { update(170) }
+        checker(settings = settings, gitHub = gitHub).checkOnStart()
+
+        assertEquals(1, gitHub.calls)
+    }
+
+    /** The interval is about how often we ask, so "asked, found nothing" still counts as asking. */
+    @Test
+    fun findingNothing_stillStampsTheCheck() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        checker(settings = settings, gitHub = FakeGitHub { null }).checkOnStart()
+
+        assertEquals(START, settings.savedLastUpdateCheckAt)
+    }
+
+    /** A transient outage must not buy a day of silence — nothing was actually asked. */
+    @Test
+    fun aFailedCheck_doesNotStampTheCheck() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val checker = checker(
+            settings = settings,
+            gitHub = FakeGitHub { throw IOException("no route to host") },
+        )
+        checker.checkOnStart()
+
+        assertEquals(0L, settings.savedLastUpdateCheckAt)
+        assertEquals(UpdateCheckError.Network, checker.error.value)
+        assertFalse(checker.checking.value)
+    }
+
+    // --- Offer rule 1: genuinely newer ---
+
+    @Test
+    fun theSameVersion_isNotOffered() = runTest {
+        val checker = checker(gitHub = FakeGitHub { update(165) })
+        checker.checkOnStart()
+
+        assertNull(checker.available.value)
+    }
+
+    @Test
+    fun aNewerVersion_isOffered() = runTest {
+        val checker = checker(gitHub = FakeGitHub { update(170) })
+        checker.checkOnStart()
+
+        assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    // --- Offer rule 2: the one-dialog-a-day floor ---
+
+    /** Three releases in one afternoon must produce one dialog, not three. */
+    @Test
+    fun aDialogTwoHoursAgo_suppressesEvenABrandNewVersion() = runTest {
+        val settings = FakeSettingsRepository(
+            updateSource = UpdateSource.GITHUB,
+            lastUpdateDialogAt = START - TimeUnit.HOURS.toMillis(2),
+        )
+        val checker = checker(settings = settings, gitHub = FakeGitHub { update(170) })
+        checker.checkOnStart()
+
+        assertNull(checker.available.value)
+    }
+
+    @Test
+    fun aDialogTwentyFiveHoursAgo_doesNotSuppress() = runTest {
+        val settings = FakeSettingsRepository(
+            updateSource = UpdateSource.GITHUB,
+            lastUpdateDialogAt = START - TimeUnit.HOURS.toMillis(25),
+        )
+        val checker = checker(settings = settings, gitHub = FakeGitHub { update(170) })
+        checker.checkOnStart()
+
+        assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    // --- Offer rule 3: the snooze ---
+
+    @Test
+    fun aDismissedVersion_staysQuietTheNextDay() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        checker(settings = settings, gitHub = FakeGitHub { update(170) }).dismiss(update(170))
+
+        clock = START + ONE_DAY
+        val checker = checker(settings = settings, gitHub = FakeGitHub { update(170) })
+        checker.checkOnStart()
+
+        assertNull(checker.available.value)
+    }
+
+    /** A dismissal expires. This is the deliberate reversal of "dismissing mutes it forever". */
+    @Test
+    fun aDismissedVersion_comesBackOnDayEight() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        checker(settings = settings, gitHub = FakeGitHub { update(170) }).dismiss(update(170))
+
+        clock = START + TimeUnit.DAYS.toMillis(8)
+        val checker = checker(settings = settings, gitHub = FakeGitHub { update(170) })
+        checker.checkOnStart()
+
+        assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    /**
+     * The scenario the whole re-show model exists for: install 1.0, dismiss the 1.1 prompt, and
+     * 1.2 ships. It must surface promptly rather than waiting out 1.1's seven days.
+     */
+    @Test
+    fun aNewerBuildThanTheDismissedOne_isOfferedWithoutWaiting() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        checker(settings = settings, gitHub = FakeGitHub { update(170) }).dismiss(update(170))
+
+        clock = START + ONE_DAY
+        val checker = checker(settings = settings, gitHub = FakeGitHub { update(181) })
+        checker.checkOnStart()
+
+        assertEquals(181, checker.available.value?.versionCode)
+    }
+
+    /**
+     * A tag cut from an older commit than the latest tester build produces a *lower* code. "Not
+     * newer, so wait the snooze out" is the right answer for that as much as for an equal one.
+     */
+    @Test
+    fun aVersionOlderThanTheDismissedOne_waitsOutTheSnooze() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        checker(settings = settings, gitHub = FakeGitHub { update(181) }).dismiss(update(181))
+
+        clock = START + ONE_DAY
+        val checker = checker(settings = settings, gitHub = FakeGitHub { update(170) })
+        checker.checkOnStart()
+
+        assertNull(checker.available.value)
+    }
+
+    /** Dismissing GitHub's offer must not silence App Distribution's. */
+    @Test
+    fun aDismissalOnOneChannel_doesNotSilenceTheOther() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.APP_DISTRIBUTION)
+        checker(settings = settings).dismiss(update(170, UpdateSource.GITHUB))
+
+        val checker = checker(
+            settings = settings,
+            appDistribution = FakeAppDistribution { update(170, UpdateSource.APP_DISTRIBUTION) },
+        )
+        checker.checkOnStart()
+
+        assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    // --- "Check now" skips politeness, not validity ---
+
+    @Test
+    fun checkNow_ignoresEveryWindow() = runTest {
+        val settings = FakeSettingsRepository(
+            updateSource = UpdateSource.GITHUB,
+            lastUpdateCheckAt = START,
+            lastUpdateDialogAt = START,
+        )
+        settings.setDismissedUpdate(UpdateSource.GITHUB, versionCode = 170, timestamp = START)
+
+        val gitHub = FakeGitHub { update(170) }
+        val checker = checker(settings = settings, gitHub = gitHub)
+        checker.checkNow()
+
+        assertEquals(1, gitHub.calls)
+        assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    // --- Tester sign-in ---
+
+    /**
+     * The cold-start path may never open a Custom Tab — that would throw a browser over the app on
+     * launch. It reports why instead, and Settings points the user at "Check now".
+     */
+    @Test
+    fun aSignedOutTester_isNeverSignedInByTheAutomaticCheck() = runTest {
+        val appDistribution = FakeAppDistribution(signedIn = false) { update(170) }
+        val checker = checker(
+            settings = FakeSettingsRepository(updateSource = UpdateSource.APP_DISTRIBUTION),
+            appDistribution = appDistribution,
+        )
+        checker.checkOnStart()
+
+        assertEquals(0, appDistribution.signInAttempts)
+        assertEquals(0, appDistribution.calls)
+        assertEquals(UpdateCheckError.SignInRequired, checker.error.value)
+        assertNull(checker.available.value)
+    }
+
+    /** "Check now" is the one path allowed to ask, because the user just asked. */
+    @Test
+    fun checkNow_maySignATesterIn() = runTest {
+        val appDistribution = FakeAppDistribution(signedIn = false) {
+            update(170, UpdateSource.APP_DISTRIBUTION)
+        }
+        val checker = checker(
+            settings = FakeSettingsRepository(updateSource = UpdateSource.APP_DISTRIBUTION),
+            appDistribution = appDistribution,
+        )
+        checker.checkNow()
+
+        assertEquals(1, appDistribution.signInAttempts)
+        assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    // --- Bookkeeping ---
+
+    /** Both halves of the dismissal, in one write — a code without a time reads as expired. */
+    @Test
+    fun dismissing_recordsTheCodeAndTheTimeAndClearsTheOffer() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val checker = checker(settings = settings)
+        checker.checkOnStart()
+        assertTrue(checker.available.value != null)
+
+        checker.dismiss(update(170))
+
+        assertNull(checker.available.value)
+        assertEquals(170, settings.dismissedUpdate(UpdateSource.GITHUB).first())
+        assertEquals(START, settings.dismissedUpdateAt(UpdateSource.GITHUB).first())
+    }
+
+    /**
+     * The floor is stamped when the dialog is *seen*, not when the check finds something: a user
+     * who taps "Check now" and never returns to Library was not interrupted.
+     */
+    @Test
+    fun findingAnUpdate_doesNotBurnTheDialogFloor() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val checker = checker(settings = settings)
+        checker.checkOnStart()
+
+        assertEquals(0L, settings.savedLastUpdateDialogAt)
+
+        checker.markDialogShown()
+
+        assertEquals(START, settings.savedLastUpdateDialogAt)
+    }
+
+    /** Choosing to update is not a dismissal: a failed install must re-prompt, not snooze a week. */
+    @Test
+    fun clearingTheOffer_recordsNoDismissal() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val checker = checker(settings = settings)
+        checker.checkOnStart()
+
+        checker.clearAvailable()
+
+        assertNull(checker.available.value)
+        assertEquals(0, settings.dismissedUpdate(UpdateSource.GITHUB).first())
+    }
+}

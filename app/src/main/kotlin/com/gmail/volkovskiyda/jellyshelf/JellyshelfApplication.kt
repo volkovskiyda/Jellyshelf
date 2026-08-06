@@ -5,6 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.perf.FirebasePerformance
 import org.koin.android.ext.android.get
@@ -41,6 +42,12 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
         // previous answer.
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!isDebug)
         FirebasePerformance.getInstance().isPerformanceCollectionEnabled = !isDebug
+        // The cold-start update check, here rather than in a composable's LaunchedEffect(Unit):
+        // onCreate runs exactly once per process, while "once per composition" is a weaker promise
+        // than it looks under configuration changes and the theme reveal's uiMode handling. It
+        // returns immediately unless a release build has opted into a channel, and never blocks —
+        // it only launches work on the application scope. UpdateChecker documents every gate.
+        get<UpdateChecker>().checkOnStart()
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
         // launches, and re-scheduling on every start would undo "Reset local data", which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).
