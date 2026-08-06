@@ -217,4 +217,39 @@
     <string name="missing_from_server">Missing from server</string>
     <string name="missing_from_server_explained">The server no longer lists this video. It is removed from the library automatically after a few more syncs, in case it comes back.</string>
     <string name="remove_from_library">Remove from library</string>
+
+    <!--
+      The in-app update check. Nothing here is reachable in a debug build: the whole section is
+      hidden, because a debug install is a different package at versionCode 1 and every published
+      release would read as newer. Note that update_metadata (line 99) is an unrelated sync action
+      — do not reuse or shadow it.
+    -->
+    <string name="updates">Updates</string>
+    <string name="update_source_off">Off</string>
+    <string name="update_source_github">GitHub</string>
+    <string name="update_source_app_distribution">App Distribution</string>
+    <string name="update_source_selected">Update channel: %1$s</string>
+    <string name="update_source_off_hint">The app never checks whether a newer build exists.</string>
+    <string name="update_source_github_hint">Checks the GitHub Releases page for a newer build, and opens the download in your browser.</string>
+    <string name="update_source_app_distribution_hint">Needs a Firebase tester account — you\'ll be asked to sign in, and updates install in-app.</string>
+    <string name="check_for_updates">Check now</string>
+    <string name="update_signing_in">Signing in…</string>
+    <string name="update_last_checked">checked %1$s</string>
+    <string name="update_never_checked">never checked</string>
+    <string name="update_available_title">Version %1$s available</string>
+    <string name="update_install">Update</string>
+    <string name="update_dismiss">Not now</string>
+
+    <!-- One per UpdateCheckError case. A failed check always says why — never a silent "no update". -->
+    <string name="update_error_api_disabled">The Firebase App Testers API is not allowed for this app\'s key, so the tester channel cannot answer. See docs/RELEASING.md.</string>
+    <string name="update_error_not_a_tester">This account is not a tester on this app, or the invitation has not been accepted yet.</string>
+    <string name="update_error_sign_in_cancelled">Sign-in was cancelled, so the tester channel was left switched off.</string>
+    <string name="update_error_sign_in_required">Sign in to the tester account to check — tap Check now.</string>
+    <string name="update_error_network">Could not reach the update channel.</string>
+    <string name="update_error_download_failed">Downloading the update failed.</string>
+    <string name="update_error_install_failed">Installing the update failed.</string>
+    <string name="update_error_install_cancelled">The install was cancelled.</string>
+    <string name="update_error_interrupted">The update was interrupted. Try again from this screen.</string>
+    <string name="update_error_not_supported">This build cannot check the tester channel.</string>
+    <string name="update_error_unknown">The update check failed.</string>
 </resources>

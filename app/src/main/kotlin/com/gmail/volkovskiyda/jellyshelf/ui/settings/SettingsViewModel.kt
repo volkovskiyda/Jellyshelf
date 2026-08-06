@@ -7,6 +7,7 @@ import androidx.work.WorkInfo
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
+import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_BAD_PASSWORD
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_SERVER
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER
@@ -14,6 +15,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Session
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
@@ -27,6 +30,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.normalizeServerUrl
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -92,6 +96,25 @@ data class SettingsUiState(
     val syncRunning: Boolean = false,
     /** The library holds seeded demo data rather than a real server's. */
     val demoMode: Boolean = false,
+    /** Which channel the app watches for a newer build of itself; [UpdateSource.NONE] is off. */
+    val updateSource: UpdateSource = UpdateSource.NONE,
+    /** A check is in flight, from "Check now". */
+    val checkingUpdate: Boolean = false,
+    /** A tester sign-in is in flight, from selecting the App Distribution channel. */
+    val signingInTester: Boolean = false,
+    /** Why the last check or sign-in failed. Rendered as a sentence, never as a silent no-op. */
+    val updateError: UpdateCheckError? = null,
+    val lastUpdateCheckAt: Long = 0L,
+    /**
+     * Whether this is a debug build, which hides the whole Updates section (decision 16).
+     *
+     * **Defaults to `false`, and that default is load-bearing.** Previews and screenshot tests
+     * build the *debug* variant, so a `true` default would hide the section from every golden and
+     * quietly delete its coverage. `false` means they render the shape that actually ships. The
+     * real value is injected from `BuildInfo.isDebug` in the ViewModel — never read `BuildConfig`
+     * from a composable.
+     */
+    val isDebugBuild: Boolean = false,
 ) {
     /** ParentId of the folder currently being browsed ("" == root). */
     val currentParentId: String get() = breadcrumb.lastOrNull()?.id ?: ROOT_SCOPE_ID
@@ -134,7 +157,23 @@ data class SettingsUiState(
 /** Sync progress as owned by WorkManager, merged into [SettingsUiState] for display. */
 private data class SyncUi(val running: Boolean, val message: String?, val isError: Boolean)
 
-@Suppress("TooManyFunctions") // one handler per settings action — mirrors SettingsActions
+/** The update-check slice of [SettingsUiState], assembled from five independent flows. */
+private data class UpdateUi(
+    val source: UpdateSource,
+    val checking: Boolean,
+    val signingIn: Boolean,
+    val error: UpdateCheckError?,
+    val lastCheckAt: Long,
+)
+
+@Suppress(
+    "TooManyFunctions", // one handler per settings action — mirrors SettingsActions
+    // Seven collaborators because the Settings screen really does coordinate seven things:
+    // connection, library, preferences, the user cache, sync, updates and string resources.
+    // Bundling any pair would be indirection invented to satisfy a counter, and Koin builds this
+    // — there is no call site bearing the cost.
+    "LongParameterList",
+)
 class SettingsViewModel(
     private val app: Application,
     private val settingsRepo: SettingsRepository,
@@ -142,11 +181,33 @@ class SettingsViewModel(
     private val jellyfin: JellyfinRepository,
     private val settingsCache: SettingsCache,
     private val syncScheduler: SyncScheduler,
+    private val updateChecker: UpdateChecker,
 ) : ViewModel() {
 
+    /**
+     * Read off the checker rather than from `BuildConfig`, so nothing in the UI layer branches on
+     * the build type directly — previews and screenshot tests build the debug variant and would
+     * otherwise never render the Updates section at all.
+     */
+    private val isDebugBuild = updateChecker.isDebugBuild
+
     /** Local operations (connect, reset) only — sync lives in [_sync], see [state]. */
-    private val _state = MutableStateFlow(SettingsUiState())
+    private val _state = MutableStateFlow(SettingsUiState(isDebugBuild = isDebugBuild))
     private val _sync = MutableStateFlow<SyncUi?>(null)
+
+    /**
+     * The update half of the screen's state, combined separately so [state] stays a three-way
+     * merge — `combine` runs out of typed overloads at five.
+     */
+    private val updateUi: Flow<UpdateUi> = combine(
+        settingsRepo.updateSource,
+        updateChecker.checking,
+        updateChecker.signingIn,
+        updateChecker.error,
+        settingsRepo.lastUpdateCheckAt,
+    ) { source, checking, signingIn, error, lastCheckAt ->
+        UpdateUi(source, checking, signingIn, error, lastCheckAt)
+    }
 
     /**
      * "Look at the sync scope" — a one-shot event, not a state flag, because it fires and is over:
@@ -170,8 +231,8 @@ class SettingsViewModel(
      * outlives the ViewModel a tab switch clears. Merging the two here keeps the screen's
      * contract unchanged while a sync started on one visit still reports on the next.
      */
-    val state: StateFlow<SettingsUiState> = combine(_state, _sync) { local, sync ->
-        if (sync == null) {
+    val state: StateFlow<SettingsUiState> = combine(_state, _sync, updateUi) { local, sync, update ->
+        val withSync = if (sync == null) {
             local
         } else {
             local.copy(
@@ -183,7 +244,14 @@ class SettingsViewModel(
                 statusIsError = if (local.busy) local.statusIsError else sync.isError,
             )
         }
-    }.stateIn(viewModelScope, WhileUiSubscribed, SettingsUiState())
+        withSync.copy(
+            updateSource = update.source,
+            checkingUpdate = update.checking,
+            signingInTester = update.signingIn,
+            updateError = update.error,
+            lastUpdateCheckAt = update.lastCheckAt,
+        )
+    }.stateIn(viewModelScope, WhileUiSubscribed, SettingsUiState(isDebugBuild = isDebugBuild))
 
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
         .stateIn(viewModelScope, WhileUiSubscribed, 0)
@@ -871,6 +939,23 @@ class SettingsViewModel(
                 syncScheduler.syncNow()
             }
         }
+    }
+
+    /**
+     * Switches the update channel. Selecting App Distribution is gated on a successful tester
+     * sign-in, which [UpdateChecker.selectSource] owns — it is update policy, and the same place
+     * that decides when a Custom Tab may open at all.
+     *
+     * Run on the ViewModel scope because that Custom Tab is a separate task: the user can leave and
+     * come back, but they cannot leave this *screen* without the ViewModel surviving.
+     */
+    fun onUpdateSourceChange(source: UpdateSource) {
+        viewModelScope.launch { updateChecker.selectSource(source) }
+    }
+
+    /** The manual check. Skips every politeness window, and may sign a tester in — see [UpdateChecker]. */
+    fun checkForUpdates() {
+        viewModelScope.launch { updateChecker.checkNow() }
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 
 /**
@@ -28,4 +29,6 @@ internal data class SettingsActions(
     val useCurrentFolder: () -> Unit = {},
     val syncNow: () -> Unit = {},
     val resetLocalData: () -> Unit = {},
+    val onUpdateSourceChange: (UpdateSource) -> Unit = {},
+    val checkForUpdates: () -> Unit = {},
 )

@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.domain
 
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
+import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateCheckFailure
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
@@ -342,6 +343,63 @@ class UpdateCheckerTest {
 
         assertEquals(1, appDistribution.signInAttempts)
         assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    // --- Selecting a channel (the sign-in gate) ---
+
+    /** Off and GitHub need nothing from Firebase, so neither may ask for a sign-in. */
+    @Test
+    fun selectingAChannelThatNeedsNoTester_justWritesIt() = runTest {
+        val settings = FakeSettingsRepository()
+        val appDistribution = FakeAppDistribution(signedIn = false)
+        checker(settings = settings, appDistribution = appDistribution)
+            .selectSource(UpdateSource.GITHUB)
+
+        assertEquals(UpdateSource.GITHUB, settings.updateSource.first())
+        assertEquals(0, appDistribution.signInAttempts)
+    }
+
+    @Test
+    fun selectingAppDistributionWhenAlreadySignedIn_doesNotAskAgain() = runTest {
+        val settings = FakeSettingsRepository()
+        val appDistribution = FakeAppDistribution(signedIn = true)
+        checker(settings = settings, appDistribution = appDistribution)
+            .selectSource(UpdateSource.APP_DISTRIBUTION)
+
+        assertEquals(UpdateSource.APP_DISTRIBUTION, settings.updateSource.first())
+        assertEquals(0, appDistribution.signInAttempts)
+    }
+
+    @Test
+    fun selectingAppDistributionWhenSignedOut_signsInFirst() = runTest {
+        val settings = FakeSettingsRepository()
+        val appDistribution = FakeAppDistribution(signedIn = false)
+        val checker = checker(settings = settings, appDistribution = appDistribution)
+        checker.selectSource(UpdateSource.APP_DISTRIBUTION)
+
+        assertEquals(1, appDistribution.signInAttempts)
+        assertEquals(UpdateSource.APP_DISTRIBUTION, settings.updateSource.first())
+        assertFalse(checker.signingIn.value)
+    }
+
+    /**
+     * The point of the gate: a channel that provably cannot answer is never persisted, so the
+     * selection snaps back rather than leaving the user watching a dead one forever.
+     */
+    @Test
+    fun aCancelledSignIn_leavesTheChannelUnchangedAndSaysWhy() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val appDistribution = object : AppDistributionSource() {
+            override fun isTesterSignedIn() = false
+            override suspend fun signInTester() =
+                throw UpdateCheckFailure(UpdateCheckError.SignInCancelled, "cancelled", null)
+        }
+        val checker = checker(settings = settings, appDistribution = appDistribution)
+        checker.selectSource(UpdateSource.APP_DISTRIBUTION)
+
+        assertEquals(UpdateSource.GITHUB, settings.updateSource.first())
+        assertEquals(UpdateCheckError.SignInCancelled, checker.error.value)
+        assertFalse(checker.signingIn.value)
     }
 
     // --- Bookkeeping ---

@@ -86,6 +86,14 @@ class UpdateChecker(
     private val _checking = MutableStateFlow(false)
     val checking: StateFlow<Boolean> = _checking.asStateFlow()
 
+    private val _signingIn = MutableStateFlow(false)
+
+    /** A tester sign-in is in flight, from [selectSource]. The Custom Tab is a separate task. */
+    val signingIn: StateFlow<Boolean> = _signingIn.asStateFlow()
+
+    /** Whether the whole feature should be hidden from the UI — see [checkOnStart]'s first gate. */
+    val isDebugBuild: Boolean = buildInfo.isDebug
+
     /**
      * The cold-start check. Fire-and-forget on the application scope: nothing waits for it, and a
      * launch must not be delayed by a network call.
@@ -194,5 +202,43 @@ class UpdateChecker(
     /** Clears the offer without recording a dismissal — the user chose to update. */
     fun clearAvailable() {
         _available.value = null
+    }
+
+    /**
+     * Switches the channel — and for App Distribution, only if a tester sign-in succeeds.
+     *
+     * The gate is here rather than in the settings ViewModel because it is update *policy*, next to
+     * the rule about when sign-in may happen at all: this is a user gesture, so it is one of the
+     * two paths allowed to open a Custom Tab.
+     *
+     * Persisting a channel that provably cannot answer would be a silent dead end — the user picks
+     * it, nothing ever happens, and there is no way to tell "no updates" from "not entitled". So
+     * the preference is written **after** the sign-in, never before, and the caller keeps rendering
+     * the persisted channel until it lands: a cancelled sign-in visibly snaps back rather than
+     * leaving a lie on screen.
+     *
+     * Switching *away* deliberately does not sign the tester out. Re-selecting should stay one tap,
+     * and the signed-in state is Firebase-global rather than this feature's to clear.
+     */
+    suspend fun selectSource(source: UpdateSource) {
+        _error.value = null
+        if (source != UpdateSource.APP_DISTRIBUTION || appDistributionSource.isTesterSignedIn()) {
+            settingsRepository.setUpdateSource(source)
+            return
+        }
+        _signingIn.value = true
+        try {
+            appDistributionSource.signInTester()
+            settingsRepository.setUpdateSource(source)
+        } catch (e: UpdateCheckFailure) {
+            // Cancelling is the ordinary "no thanks" path, and reads as an explanation rather than
+            // a fault — see update_error_sign_in_cancelled.
+            _error.value = e.reason ?: UpdateCheckError.Unknown
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            Timber.w(e, "Tester sign-in failed")
+            _error.value = UpdateCheckError.Unknown
+        } finally {
+            _signingIn.value = false
+        }
     }
 }

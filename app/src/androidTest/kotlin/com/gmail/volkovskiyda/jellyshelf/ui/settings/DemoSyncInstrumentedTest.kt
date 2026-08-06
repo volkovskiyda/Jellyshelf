@@ -16,6 +16,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeLibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.emptySettings
+import com.gmail.volkovskiyda.jellyshelf.ui.inertUpdateChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -114,6 +115,7 @@ class DemoSyncInstrumentedTest {
         RefusingJellyfin(),
         SettingsCache(),
         SyncScheduler(workManager),
+        inertUpdateChecker(),
     ).also {
         store.put("settings", it)
         backgroundScope.launch { it.state.collect { } }

@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.ui.DestructiveButton
 import com.gmail.volkovskiyda.jellyshelf.ui.formatSyncTime
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberNow
@@ -133,6 +134,8 @@ fun SettingsScreen(
             useCurrentFolder = viewModel::useCurrentFolder,
             syncNow = viewModel::syncNow,
             resetLocalData = viewModel::resetLocalData,
+            onUpdateSourceChange = viewModel::onUpdateSourceChange,
+            checkForUpdates = viewModel::checkForUpdates,
         ),
         modifier = modifier,
         nudgeScope = viewModel.nudgeScope,
@@ -277,6 +280,18 @@ internal fun SettingsContent(
 
             HorizontalDivider()
 
+            // Hidden outright in a debug build rather than shown and inert: a debug install is a
+            // different package at versionCode 1, so there is nothing here that could work and
+            // nothing to explain. Gated on state, never on BuildConfig — previews and screenshot
+            // tests build the debug variant, and reading the flag here would blank every golden.
+            // The divider goes inside, so a debug build renders exactly the layout it did before
+            // this section existed rather than gaining a stray rule.
+            if (!state.isDebugBuild) {
+                UpdatesSection(state = state, actions = actions, now = now)
+
+                HorizontalDivider()
+            }
+
             OutlinedButton(
                 onClick = actions.syncNow,
                 enabled = !state.busy,
@@ -341,6 +356,70 @@ internal fun SettingsContent(
             dismissButton = {
                 TextButton(onClick = { showResetDialog = false }) { Text(stringResource(R.string.cancel)) }
             },
+        )
+    }
+}
+
+/**
+ * The in-app update check: which channel to watch, when it last ran, and a manual trigger.
+ *
+ * Only ever composed in a release build (its caller gates on `state.isDebugBuild`), but it reads
+ * nothing about the build itself — it is a plain function of the state it is handed, which is what
+ * keeps it renderable in previews and screenshot tests on the debug variant.
+ *
+ * "Check now" stays visible when the channel is Off, just disabled: the feature has to be
+ * discoverable before opting in, and a control that appears only after you have already found the
+ * setting explains nothing.
+ */
+@Composable
+private fun UpdatesSection(
+    state: SettingsUiState,
+    actions: SettingsActions,
+    now: Long,
+) {
+    Text(stringResource(R.string.updates), style = MaterialTheme.typography.titleMedium)
+
+    UpdateSourceSelector(
+        selected = state.updateSource,
+        onSelect = actions.onUpdateSourceChange,
+        signingIn = state.signingInTester,
+    )
+
+    Text(
+        stringResource(state.updateSource.hintRes),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    OutlinedButton(
+        onClick = actions.checkForUpdates,
+        enabled = state.updateSource != UpdateSource.NONE &&
+            !state.checkingUpdate &&
+            !state.signingInTester,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            stringResource(
+                if (state.signingInTester) R.string.update_signing_in else R.string.check_for_updates,
+            ),
+        )
+    }
+
+    // Reuses formatSyncTime so this reads like the "synced …" line below rather than inventing a
+    // second time format on the same screen.
+    Text(
+        formatSyncTime(state.lastUpdateCheckAt, now)
+            ?.let { stringResource(R.string.update_last_checked, it) }
+            ?: stringResource(R.string.update_never_checked),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    state.updateError?.let {
+        Text(
+            stringResource(it.messageRes),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
         )
     }
 }
