@@ -13,4 +13,20 @@
     <issue id="InvalidPackage">
         <ignore regexp="ktor-utils-jvm" />
     </issue>
+
+    <!--
+      The launcher rasters are PNG on purpose, and lint is right that WebP would be smaller: they
+      cost about 26 KB more this way. They are not there for the launcher, which takes the adaptive
+      icon in mipmap-anydpi and never reads them at all. They exist for Firebase App Distribution,
+      which does not parse adaptive-icon XML and falls back to a generated monogram when it cannot
+      find a flat raster it understands — see the launcher icon KDoc trail in git for what was
+      already ruled out. WebP rasters shipped in three distributed releases and the monogram stayed,
+      so the encoding is the remaining suspect and PNG is the wider-supported one.
+
+      Scoped to these files rather than disabled outright, so ConvertToWebp keeps flagging every
+      other image in the project, where the size argument does apply.
+    -->
+    <issue id="ConvertToWebp">
+        <ignore regexp="mipmap-[^/]+/ic_launcher.*\.png" />
+    </issue>
 </lint>
