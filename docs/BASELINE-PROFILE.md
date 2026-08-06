@@ -71,25 +71,40 @@ stays `false` so `assembleRelease` never asks for a device.
   seed reads one bundled asset through the same Room and Compose code the real path already
   covers — but if it ever matters, the fix is to add a fourth ordered test that seeds the demo and
   browses it: the profile is a union, so it would carry both at the cost of a longer run.
+- **A `.benchmark` client in `app/google-services.json`.** The variant installs under its own
+  application id (below), and the google-services plugin fails the build outright — *No matching
+  client found for package name* — unless the id is one of the Android apps registered in the
+  Firebase project. It is already in the committed file; a new Firebase project needs the app added
+  there too.
 - **Optionally, a clean slate.** The run inherits whatever state the installed app is in, detecting
   it from the screen: an app that is already signed in and synced skips most of the connect path,
   so that part goes unprofiled. For a true first-use profile, clear the app's data first:
   ```sh
-  adb shell pm clear com.gmail.volkovskiyda.jellyshelf   # the release id — NOT .debug
+  adb shell pm clear com.gmail.volkovskiyda.jellyshelf.benchmark   # NOT the bare id, NOT .debug
   ```
-  > [!warning]
-  > That wipes the credentials of the **release** install on the device, which on a phone you
-  > actually use is your real account rather than the test one. The generator signs back in from
-  > `.test.env`, so the install ends up on the test user either way — decide that is what you want
-  > before running it.
-
   Worth doing when the sign-in or sync path is what changed; not worth it otherwise, since it costs
   the run a full sync.
 
-The run installs under the release application id (no `.debug` suffix), so it replaces an installed
-release build of the app — cleanly, since both carry the release certificate. Only in the debug-signed
-fallback case do the certificates differ, and then the install is refused rather than performed; see
-[below](#when-it-goes-wrong). The `.debug` build is a separate package and is left alone either way.
+The run installs under **`com.gmail.volkovskiyda.jellyshelf.benchmark`** — a package of its own,
+beside the release build and `.debug` rather than over either. That is deliberate, and it is what
+the `.benchmark` application-id suffix in `:app`'s `finalizeDsl` is for: the profiling variants used
+to carry the shipped id, so a generation run replaced the release install, signed it in as the
+`.test.env` user, and then took it away entirely when AGP's connected-test teardown uninstalled the
+app under test. On a phone you actually use, that was your real account and your synced library.
+Nothing about the id reaches the profile — it is a list of classes and methods, and the namespace
+they live in is unchanged.
+
+On the device it is **Jellyshelf Bench**, with a teal "B" badge on the launcher icon — the same
+treatment `.debug` gets from its orange "D", because three installs of one app are three identical
+icons otherwise, and the one you must not tap is the one that gets wiped and re-signed-in on every
+run. The badge lives in `app/src/benchmark/res`, a directory shared by both profiling build types
+rather than a source set of either: the build types are created by the baseline-profile plugin, so
+`src/nonMinifiedRelease` and `src/benchmarkRelease` would each need their own copy. `:app`'s
+`finalizeDsl` adds the directory to both. Its version name ends in `-benchmark` too.
+
+It is a separate app as far as the device is concerned, so it starts signed out: the first run after
+a fresh install always pays for a full sign-in and sync, which is exactly the first-use path the
+profile wants.
 
 ## Generate
 
@@ -113,12 +128,14 @@ kill between them, until the profile stabilises. Only the third contributes to `
 Expect it to take a while: a real first sync and a real stream are in there. The task is on `:app`,
 not on `:baselineprofile` — that module exposes only the `collect…` and `connected…` halves.
 
-The variant it profiles is `nonMinifiedRelease`: the release build type with R8 switched off, and
-nothing else changed. Application id, `BuildConfig.DEBUG`, manifest, resources and — when
-`keystore.properties` is present — the signing certificate are all the release configuration.
-R8 is the one deliberate difference, because a profile written against obfuscated names would match
-nothing in the APK that ships; AGP maps the committed profile through R8 when it builds the real
-release APK.
+The variant it profiles is `nonMinifiedRelease`: the release build type with R8 switched off and a
+`.benchmark` application id, nothing else changed. `BuildConfig.DEBUG`, manifest, resources and —
+when `keystore.properties` is present — the signing certificate are all the release configuration.
+R8 is the one deliberate difference that could reach the profile, because a profile written against
+obfuscated names would match nothing in the APK that ships; AGP maps the committed profile through
+R8 when it builds the real release APK. The application id cannot reach it at all, which is why the
+variant is free to have its own; `BaselineProfileGenerator` reads that id from the `targetAppId`
+runner argument rather than holding a copy of it.
 
 With no device attached this **fails**, on purpose. `:app`'s `connected*AndroidTest` skip guard
 covers that project's tasks only, and this is an explicit manual command rather than something a
@@ -222,8 +239,8 @@ controls were hidden from UiAutomator. In order of likelihood:
    playback continues behind it — so logcat shows ExoPlayer and MediaCodec starting normally and the
    check still times out. The generator grants the permission up front and dismisses the dialog if
    the grant did not take; if this reappears, check that
-   `pm grant com.gmail.volkovskiyda.jellyshelf android.permission.POST_NOTIFICATIONS` succeeds on the
-   device.
+   `pm grant com.gmail.volkovskiyda.jellyshelf.benchmark android.permission.POST_NOTIFICATIONS`
+   succeeds on the device.
 2. **The playback mode is not in-app.** It is persisted, so an earlier session left on **External
    player** or **Open in web** sends the tap elsewhere — see the split Play button in the
    [README](../README.md#watching-a-video). Set it back to *Play in app*.
@@ -244,26 +261,32 @@ went wrong.
 > bar's `ProgressBarRangeInfo` for the same reason — it has Compose semantics to hand; UiAutomator
 > has only the text.)
 
-**`INSTALL_FAILED_UPDATE_INCOMPATIBLE` before any test runs.** Specific to the no-keystore fallback:
-the APK is debug-signed, while the release build already on the device carries the release
-certificate under the same application id. `adb uninstall com.gmail.volkovskiyda.jellyshelf`, then
-re-run — the `.debug` build is a different package and can stay where it is. With
-`keystore.properties` in place both are release-signed and the update just works.
+**`INSTALL_FAILED_UPDATE_INCOMPATIBLE` before any test runs.** Two certificates under
+`…jellyshelf.benchmark`: a previous run installed it debug-signed (the no-keystore fallback) and
+this one is release-signed, or the other way round. `adb uninstall
+com.gmail.volkovskiyda.jellyshelf.benchmark`, then re-run. Since that package belongs to the
+generator alone, uninstalling it costs a sign-in and a sync and nothing else — the release and
+`.debug` builds are separate packages and are never involved.
 
 **The library never fills.** The generator allows two minutes, which covers a real first sync as well
 as a demo seed (~60 videos and their categories into a real database). Against a real server, check
 that the scope in `JELLYFIN_SYNC_FOLDER` actually holds videos — an empty folder syncs successfully
 and leaves the list empty.
 
-**Firebase errors in logcat during the run.** The no-keystore fallback again, and harmless. The
-variant is not debuggable, so `JellyshelfApplication` switches Crashlytics collection on, while the
-project's Firebase API key is restricted to the release package with the release certificate and the
-debug package with the debug one — a debug-signed release package is neither pair. Nothing in the
-journey depends on Firebase, and demo mode needs no network at all.
+**Firebase errors in logcat during the run.** Only in the no-keystore fallback, and harmless there.
+The variant is not debuggable, so `JellyshelfApplication` switches Crashlytics collection on, and
+the project's Firebase API key is restricted to package/certificate *pairs*: the release package
+with the release certificate, the debug package with the debug one, and — since 2026-08-06 —
+`…jellyshelf.benchmark` with the release certificate. A normally-generated profile is therefore a
+valid pair and Firebase behaves exactly as it does in the shipped app, which is one less way for the
+profile to differ from what it is profiling. The debug-signed fallback is not a pair, and there the
+errors are expected. Nothing in the journey depends on Firebase either way, and demo mode needs no
+network at all.
 
 ## Is it earning its place?
 
 Worth confirming once, not worth wiring into CI: a macrobenchmark startup comparison of
 `CompilationMode.None()` against `CompilationMode.Partial()`. The `:baselineprofile` module already
 has the `benchmarkRelease` variant such a benchmark would run against — deliberately left minified,
-so it stays release-like.
+so it stays release-like, and carrying the same `.benchmark` application id for the same reason the
+profiling variant does: a measurement run must not cost you the app you actually use.

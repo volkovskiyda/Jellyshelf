@@ -192,6 +192,30 @@ ksp {
 // is deliberately left minified — that variant exists to be release-like.
 androidComponents {
     finalizeDsl { android ->
+        // Neither profiling variant may share the shipped app's application id. They did once, and
+        // a generation run then installed *over* the release build on the device: it signed that
+        // install in as the .test.env user, and AGP's connected-test teardown uninstalled it
+        // afterwards, credentials and synced library with it. `.benchmark` makes them a package of
+        // their own, sitting beside both the release build and `.debug`. The id costs a client
+        // entry in app/google-services.json — the google-services plugin fails the build with
+        // "No matching client found for package name" without one — and it cannot reach the
+        // profile, which is a list of classes and methods in a namespace that does not change.
+        // BaselineProfileGenerator therefore reads the id from the `targetAppId` runner argument
+        // rather than hardcoding it; :baselineprofile's build script fills that in.
+        android.buildTypes
+            .filter { it.name.startsWith("nonMinified") || it.name.startsWith("benchmark") }
+            .forEach { buildType ->
+                buildType.applicationIdSuffix = ".benchmark"
+                buildType.versionNameSuffix = "-benchmark"
+                // A badged launcher icon and name, the way debug has one: three installs of the
+                // same app are otherwise three identical icons, and the one you must not tap is
+                // the one that gets wiped and re-signed-in on every run. src/benchmark/res is a
+                // shared directory rather than a source set of its own — the build types these
+                // variants come from are created by the baseline-profile plugin, so neither
+                // src/nonMinifiedRelease nor src/benchmarkRelease would hold it without being
+                // written out twice.
+                android.sourceSets.getByName(buildType.name).res.directories += "src/benchmark/res"
+            }
         android.buildTypes.filter { it.name.startsWith("nonMinified") }.forEach { buildType ->
             buildType.optimization.enable = false
             // Signing is left exactly as inherited from release — the generator should profile a

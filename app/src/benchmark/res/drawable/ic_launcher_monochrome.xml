@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <group android:scaleX="1.2"
+      android:scaleY="1.2"
+      android:translateX="-10.8"
+      android:translateY="-10.8">
+      <!-- Benchmark themed-icon layer. Same shapes as the release monochrome plus the "B" marker,
+           all in one opaque colour: the launcher keeps only the alpha channel and tints it. The "B"
+           is punched out of the triangle with an even-odd fill so it stays readable once the
+           triangle and the marker are the same colour — the debug layer badges its "D" the same
+           way, and at this size the counter shapes are the whole difference between them. -->
+      <!-- Shelf plank -->
+      <path
+          android:fillColor="#FF000000"
+          android:pathData="M30,66 h48 v5 h-48 z" />
+      <!-- Play triangle with the benchmark "B" cut out of it -->
+      <path
+          android:fillColor="#FF000000"
+          android:fillType="evenOdd"
+          android:pathData="M46,40 L46,62 L66,51 Z M49,47 h2.5 a2,2 0 0 1 0,4 h-2.5 z M49,51 h3 a2,2 0 0 1 0,4 h-3 z" />
+      <!-- Frame around the mark -->
+      <path
+          android:strokeColor="#FF000000"
+          android:strokeWidth="4"
+          android:fillColor="#00000000"
+          android:pathData="M38,36 h32 a4,4 0 0 1 4,4 v22 a4,4 0 0 1 -4,4 h-32 a4,4 0 0 1 -4,-4 v-22 a4,4 0 0 1 4,-4 z" />
+  </group>
+</vector>

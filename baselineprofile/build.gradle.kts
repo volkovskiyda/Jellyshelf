@@ -40,6 +40,29 @@ android {
     targetProjectPath = ":app"
 }
 
+// Which app to profile. Since :app's finalizeDsl gives the profiling variants a `.benchmark`
+// suffix, that is no longer the shipped application id, and BaselineProfileGenerator reads it from
+// this argument instead of holding a copy — the same channel the .test.env values above use.
+//
+// The id comes off the built APK's own metadata rather than from `TestVariant.testedApplicationId`,
+// which reports *this* module's id (`…jellyshelf.baselineprofile`) and would send the generator
+// looking for an app that is not installed. This is how the baseline-profile plugin itself derives
+// the `androidx.benchmark.targetPackageName` argument it passes alongside, so the two agree by
+// construction; reading that one instead would mean depending on another plugin's internals.
+androidComponents {
+    onVariants { variant ->
+        val builtArtifacts = variant.artifacts.getBuiltArtifactsLoader()
+        variant.instrumentationRunnerArguments.put(
+            "targetAppId",
+            variant.testedApks.map { apks ->
+                requireNotNull(builtArtifacts.load(apks)?.applicationId) {
+                    "No APK metadata under $apks — the app under test was not built."
+                }
+            },
+        )
+    }
+}
+
 baselineProfile {
     // A physical device, never a managed one: the app APK is arm64-only (youtubedl-android bundles
     // a Python runtime per ABI), so the x86_64 emulator images Gradle-managed devices use cannot

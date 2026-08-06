@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <group android:scaleX="1.2"
+      android:scaleY="1.2"
+      android:translateX="-10.8"
+      android:translateY="-10.8">
+      <!-- Shelf plank -->
+      <path
+          android:fillColor="#B39DDB"
+          android:pathData="M30,66 h48 v5 h-48 z" />
+      <!-- Play triangle (a video on the shelf) -->
+      <path
+          android:fillColor="#7C4DFF"
+          android:pathData="M46,40 L46,62 L66,51 Z" />
+      <!-- Benchmark marker: tiny "B" in the center of the play triangle. Teal rather than the
+           debug badge's orange, because the two are told apart at thumbnail size or not at all. -->
+      <path
+          android:strokeColor="#00BFA5"
+          android:strokeWidth="1.5"
+          android:strokeLineJoin="round"
+          android:fillColor="#00000000"
+          android:pathData="M49,47 h2.5 a2,2 0 0 1 0,4 h-2.5 z M49,51 h3 a2,2 0 0 1 0,4 h-3 z" />
+      <!-- Frame around the mark -->
+      <path
+          android:strokeColor="#B39DDB"
+          android:strokeWidth="3"
+          android:fillColor="#00000000"
+          android:pathData="M38,36 h32 a4,4 0 0 1 4,4 v22 a4,4 0 0 1 -4,4 h-32 a4,4 0 0 1 -4,-4 v-22 a4,4 0 0 1 4,-4 z" />
+  </group>
+</vector>

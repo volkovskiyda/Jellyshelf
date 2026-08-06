@@ -84,6 +84,19 @@ class BaselineProfileGenerator {
     private val indexUrl = args.getString("jellyfinIndexUrl").orEmpty()
     private val syncFolder = args.getString("jellyfinSyncFolder").orEmpty()
 
+    /**
+     * The application id of the app being profiled, from the same runner arguments — read off the
+     * tested APK's own metadata by `:baselineprofile`'s build script, rather than written down here.
+     * It is `com.gmail.volkovskiyda.jellyshelf.benchmark`: the profiling variants carry a
+     * `.benchmark` suffix (see `:app`'s `finalizeDsl`) so a run installs beside the release build
+     * on the device instead of replacing it and taking it away again on teardown. Hardcoding the
+     * id would silently profile the wrong install the next time either half moved.
+     */
+    private val targetPackage = requireNotNull(args.getString("targetAppId")) {
+        "targetAppId runner argument missing — it is set in baselineprofile/build.gradle.kts, so " +
+            "this run is not the one Gradle configures. Use ./gradlew :app:generateReleaseBaselineProfile."
+    }
+
     /** Whether to drive a real server. Release builds refuse plain http, so the URL must be https. */
     private val liveServer: Boolean
         get() = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
@@ -100,7 +113,7 @@ class BaselineProfileGenerator {
      * little more than confirm the library is still there.
      */
     @Test
-    fun generate1Connect() = rule.collect(packageName = PACKAGE) {
+    fun generate1Connect() = rule.collect(packageName = targetPackage) {
         pressHome()
         startActivityAndWait()
         // A run that ended on the player or a detail screen leaves the next iteration somewhere
@@ -137,7 +150,7 @@ class BaselineProfileGenerator {
      * guarantees.
      */
     @Test
-    fun generate2Journey() = rule.collect(packageName = PACKAGE) {
+    fun generate2Journey() = rule.collect(packageName = targetPackage) {
         // Before anything can open the player — see the note on the grant itself.
         grantMediaNotificationPermission()
         pressHome()
@@ -188,7 +201,7 @@ class BaselineProfileGenerator {
      */
     @Test
     fun generate3Startup() = rule.collect(
-        packageName = PACKAGE,
+        packageName = targetPackage,
         includeInStartupProfile = true,
     ) {
         pressHome()
@@ -308,7 +321,7 @@ class BaselineProfileGenerator {
      * to grant it up front. Idempotent, and a no-op once granted.
      */
     private fun MacrobenchmarkScope.grantMediaNotificationPermission() {
-        device.executeShellCommand("pm grant $PACKAGE android.permission.POST_NOTIFICATIONS")
+        device.executeShellCommand("pm grant $targetPackage android.permission.POST_NOTIFICATIONS")
     }
 
     /**
@@ -412,8 +425,6 @@ class BaselineProfileGenerator {
     ): UiObject2 = checkNotNull(device.wait(Until.findObject(selector), timeoutMs), describe)
 
     private companion object {
-        const val PACKAGE = "com.gmail.volkovskiyda.jellyshelf"
-
         /** Resource ids, published from Compose test tags by `testTagsAsResourceId`. */
         const val LIBRARY_LIST = "library_list"
         const val LIBRARY_ROW = "library_row"
