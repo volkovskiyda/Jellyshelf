@@ -99,6 +99,8 @@ import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
+import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
@@ -135,7 +137,7 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
     origin: PlayerOrigin = PlayerOrigin.None,
 ) {
-    val viewModel: PlayerViewModel = koinViewModel { parametersOf(youtubeId, origin) }
+    val viewModel: PlayerViewModel = koinViewModel { parametersOf(AppNavKey.Player(youtubeId, origin)) }
     val controller by viewModel.controller.collectAsStateWithLifecycle()
     val video by viewModel.video.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
@@ -165,7 +167,13 @@ fun PlayerScreen(
                 tint = Color.White,
             )
         } else {
-            PlayerWithControls(controller = c, title = video?.title, chapters = chapters, onBack = leave)
+            PlayerWithControls(
+                controller = c,
+                title = video?.title,
+                chapters = chapters,
+                onSpeedPicked = viewModel::savePlaybackSpeed,
+                onBack = leave,
+            )
         }
     }
 }
@@ -176,6 +184,7 @@ private fun PlayerWithControls(
     controller: MediaController,
     title: String?,
     chapters: List<Chapter>,
+    onSpeedPicked: (Float) -> Unit,
     onBack: () -> Unit,
 ) {
     // Snapshots the UI renders from — polled/listened, because a Player is not observable state.
@@ -399,7 +408,12 @@ private fun PlayerWithControls(
                 onPrevious = controller::seekToPreviousMediaItem,
                 onNext = controller::seekToNextMediaItem,
                 onSeek = controller::seekTo,
-                onSetSpeed = playbackSpeed::updatePlaybackSpeed,
+                onSetSpeed = { speed ->
+                    playbackSpeed.updatePlaybackSpeed(speed)
+                    // Only a menu pick is a choice worth keeping. Press-and-hold's 3× goes
+                    // straight to the controller in the gesture handler above, and is never saved.
+                    onSpeedPicked(speed)
+                },
                 onScrubbingChanged = { scrubbing = it },
                 onSpeedMenuChanged = { speedMenuOpen = it },
                 onOpenChapters = { chaptersOpen = true },
@@ -672,7 +686,7 @@ private fun SpeedMenuButton(
             Text(formatSpeed(speed), color = Color.White, style = MaterialTheme.typography.labelLarge)
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { setMenu(false) }) {
-            PLAYBACK_SPEEDS.forEach { option ->
+            PlaybackSpeed.options.forEach { option ->
                 SpeedMenuItem(
                     speed = option,
                     selected = option == speed,
@@ -852,9 +866,6 @@ private fun RequestNotificationPermissionOnce() {
 /** Position label: 0 is a real time here, unlike [formatDuration]'s "unknown" placeholder. */
 internal fun formatPosition(ms: Long): String =
     if (ms <= 0) "0:00" else formatDuration(ms / MILLIS_PER_SECOND)
-
-/** The usual video-player spread, up to 3× for skimming talk-heavy videos. */
-private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
 
 /** What press-and-hold temporarily forces the speed to, until the finger lifts. */
 private const val HOLD_SPEED = 3f

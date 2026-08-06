@@ -4,6 +4,7 @@ package com.gmail.volkovskiyda.jellyshelf.playback
 
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
@@ -24,6 +25,7 @@ import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
@@ -143,10 +145,44 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         // Last, so a transition has already been reported and re-tracked before this seeks.
         player.addListener(ResumeSeedingListener())
         this.player = player
+        restorePlaybackSpeed(player)
         session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity(youtubeId = null))
             .setCallback(SessionCallback())
             .build()
+    }
+
+    /**
+     * Starts the fresh player at the speed the user last picked from the player's speed menu.
+     *
+     * On the player rather than on a controller because the player is what owns a speed: this
+     * covers every way playback can begin — the player screen, the media notification, a system
+     * surface — and it runs once per service lifetime, before any controller can bind (a controller
+     * connecting is what creates this service). ExoPlayer carries `PlaybackParameters` across
+     * `setMediaItems`, so one restore is what makes it the default for the whole session.
+     *
+     * Normally the value is already in hand: [AppSettingsState] is eagerly started and the UI has
+     * warmed it long before playback — the same synchronous read [onCreate] already makes for the
+     * credential — so nothing plays at 1× first. Only a UI-less cold start (a notification restore)
+     * waits for the first read, and there the guard is what stops a stale disk value from undoing a
+     * speed that has moved in the meantime.
+     */
+    private fun restorePlaybackSpeed(player: ExoPlayer) {
+        val known = settingsState.settings.value
+        if (known != null) {
+            player.setPlaybackSpeed(known.playbackSpeed)
+            return
+        }
+        scope.launch {
+            val persisted = settingsState.settings.filterNotNull().first().playbackSpeed
+            // The service was torn down while the read suspended, or the speed has since moved (a
+            // menu pick, or press-and-hold) — either way the disk value is stale before it landed.
+            if (this@PlaybackService.player === player &&
+                player.playbackParameters.speed == PlaybackSpeed.DEFAULT
+            ) {
+                player.setPlaybackSpeed(persisted)
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -331,6 +367,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
      * transcode fallback swapped in; everything else is the direct stream this app asks for first.
      * A demo clip is neither, but it never reaches a report: those are gated out in the repository.
      */
+    /** The same for a moment that decided several things at once, in the order the tracker chose. */
+    private fun List<WatchAction>.perform() = forEach { it.perform() }
+
     private fun currentPlayMethod(): PlayMethod {
         val uri = player?.currentMediaItem?.localConfiguration?.uri
         return if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) {
@@ -339,9 +378,6 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             PlayMethod.DirectPlay
         }
     }
-
-    /** The same for a moment that decided several things at once, in the order the tracker chose. */
-    private fun List<WatchAction>.perform() = forEach { it.perform() }
 
     /**
      * Starts each video the queue moves to where the user last left it — see [resumeSeekMs] for
@@ -474,19 +510,6 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         }
     }
 
-    private fun sessionActivity(youtubeId: String?): PendingIntent {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            if (youtubeId != null) putExtra(EXTRA_OPEN_PLAYER, youtubeId)
-        }
-        // Fixed request code: UPDATE_CURRENT swaps the extra in place of minting new intents.
-        return PendingIntent.getActivity(
-            this,
-            0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-    }
-
     companion object {
         /**
          * Intent extra on [MainActivity]: the youtubeId whose player screen a media-notification
@@ -531,4 +554,24 @@ class PlaybackService : MediaSessionService(), KoinComponent {
          */
         private const val PAUSED_REPORT_INTERVAL_MS = 120_000L
     }
+}
+
+/**
+ * What tapping the media notification opens: [MainActivity], carrying the id of the video playing
+ * now so it lands on that player screen rather than on wherever the app was last.
+ *
+ * A plain function of a Context and an id — no service state — so it sits beside the service rather
+ * than inside it. A null id is the session's standing activity, set before anything is playing.
+ */
+private fun Context.sessionActivity(youtubeId: String?): PendingIntent {
+    val intent = Intent(this, MainActivity::class.java).apply {
+        if (youtubeId != null) putExtra(PlaybackService.EXTRA_OPEN_PLAYER, youtubeId)
+    }
+    // Fixed request code: UPDATE_CURRENT swaps the extra in place of minting new intents.
+    return PendingIntent.getActivity(
+        this,
+        0,
+        intent,
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
 }

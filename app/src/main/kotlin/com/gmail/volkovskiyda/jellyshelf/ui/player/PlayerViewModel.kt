@@ -9,9 +9,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
@@ -40,15 +43,23 @@ import timber.log.Timber
  * back paths (done watching), while merely leaving the app keeps playback and the notification
  * alive (still watching). That is why [onCleared] only releases the controller — a stop from here
  * would also fire on a configuration change, and this screen rotates freely.
+ *
+ * The two runtime arguments arrive as the one [AppNavKey.Player] they already are, rather than as
+ * a loose id and origin: it is a single value the navigation layer hands around whole, and Koin
+ * matches `parametersOf` by type, so one key is also one fewer type to keep distinct there.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel(
     app: Application,
     private val repo: LibraryRepository,
+    private val settingsRepository: SettingsRepository,
+    private val dispatchers: DispatcherProvider,
     private val libraryFilters: LibraryFilterState,
-    private val youtubeId: String,
-    private val origin: PlayerOrigin,
+    key: AppNavKey.Player,
 ) : ViewModel() {
+
+    private val youtubeId = key.youtubeId
+    private val origin = key.origin
 
     /**
      * What is playing *now*, which stops being the video the screen was opened with as soon as
@@ -145,6 +156,22 @@ class PlayerViewModel(
         val controller = _controller.value ?: return
         controller.pause()
         controller.clearMediaItems()
+    }
+
+    /**
+     * Remembers a speed picked from the speed menu as the one later playback starts at
+     * ([PlaybackService] applies it when it builds the player). Applying it to the *current*
+     * player is the caller's job — media3's speed-button state does that — so this is only the
+     * write. Press-and-hold's temporary 3× never comes through here.
+     *
+     * On [DispatcherProvider.applicationScope] rather than [viewModelScope] for the reason
+     * [LibraryFilterState.setDurationFilter] gives: picking a speed and leaving is one gesture —
+     * 2×, then Back — and a `viewModelScope` write would be cancelled by [onCleared] before it
+     * reached disk. Fire-and-forget; a failed write just means the next launch starts at the
+     * previously saved speed.
+     */
+    fun savePlaybackSpeed(speed: Float) {
+        dispatchers.applicationScope.launch { settingsRepository.setPlaybackSpeed(speed) }
     }
 
     override fun onCleared() {

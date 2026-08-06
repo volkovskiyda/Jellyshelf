@@ -5,11 +5,13 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
@@ -43,6 +45,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val BACK_STACK = stringPreferencesKey("back_stack")
         val TOKEN_IN_QUERY = booleanPreferencesKey("token_in_query")
         val PLAYBACK_MODE = stringPreferencesKey("playback_mode")
+        val PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val THEME_TOWARD_DARK = booleanPreferencesKey("theme_toward_dark")
         val LIBRARY_DURATION_FILTER = stringPreferencesKey("library_duration_filter")
@@ -81,6 +84,9 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
                 // By-name lookup so an unknown/absent stored value degrades to the default.
                 playbackMode = PlaybackMode.entries.firstOrNull { it.name == p[Keys.PLAYBACK_MODE] }
                     ?: PlaybackMode.PLAY,
+                // Validated against the menu's own list, so a speed a later build drops (or a
+                // corrupt value) starts at 1× rather than at one no menu item can tick.
+                playbackSpeed = PlaybackSpeed.fromStorage(p[Keys.PLAYBACK_SPEED]),
                 // Unset (and unreadable) reads as "not a demo" — the safe direction: a real
                 // library presented as a demo would hide server actions that genuinely work.
                 demoMode = p[Keys.DEMO_MODE] ?: false,
@@ -147,6 +153,15 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setPlaybackMode(mode: PlaybackMode) {
         ds.edit { it[Keys.PLAYBACK_MODE] = mode.name }
+    }
+
+    /**
+     * Stored as a float, not as a name like [PlaybackMode]: this is a number the player consumes
+     * directly, and every option is a binary fraction, so the round trip is exact. Validation is on
+     * the read side only, matching [setLibraryDurationFilter].
+     */
+    override suspend fun setPlaybackSpeed(speed: Float) {
+        ds.edit { it[Keys.PLAYBACK_SPEED] = speed }
     }
 
     override suspend fun setIndexUrl(url: String) {

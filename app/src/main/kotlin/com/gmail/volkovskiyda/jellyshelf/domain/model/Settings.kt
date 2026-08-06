@@ -38,6 +38,14 @@ data class Settings(
      */
     val playbackMode: PlaybackMode = PlaybackMode.PLAY,
     /**
+     * The speed the in-app player starts at, picked from the player's speed menu and applied to the
+     * ExoPlayer when the playback service builds it. Always one of [PlaybackSpeed.options] — a
+     * stored value this build no longer offers reads back as [PlaybackSpeed.DEFAULT].
+     *
+     * Press-and-hold's temporary 3× never reaches here: it is a gesture, not a choice.
+     */
+    val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
+    /**
      * Whether the library holds seeded demo data rather than a real server's. Set by the demo
      * seeder and cleared by "Reset local data" — the flag never outlives the rows it describes.
      *

@@ -44,6 +44,12 @@ interface SettingsRepository {
     /** App-wide mode the split play button acts with; its dropdown persists the pick here. */
     suspend fun setPlaybackMode(mode: PlaybackMode)
 
+    /**
+     * App-wide speed the in-app player starts at; the player's speed menu persists the pick here
+     * and it reads back off [Settings.playbackSpeed].
+     */
+    suspend fun setPlaybackSpeed(speed: Float)
+
     /** Records that a sync finished at [timestamp] against library scope [libraryId]. */
     suspend fun setLastSync(timestamp: Long, libraryId: String)
 

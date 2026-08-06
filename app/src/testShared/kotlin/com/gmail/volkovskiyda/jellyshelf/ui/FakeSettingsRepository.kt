@@ -82,6 +82,10 @@ class FakeSettingsRepository(
         _settings.value = _settings.value.copy(playbackMode = mode)
     }
 
+    override suspend fun setPlaybackSpeed(speed: Float) {
+        _settings.value = _settings.value.copy(playbackSpeed = speed)
+    }
+
     override suspend fun setIndexUrl(url: String) {
         _settings.value = _settings.value.copy(indexUrl = url)
     }
