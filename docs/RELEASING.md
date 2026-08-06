@@ -62,10 +62,11 @@ The behaviour, in full:
 
 1. ~~Enable `firebaseapptesters.googleapis.com`~~ — **already enabled** on `jellyshelf-3dfc8`
    (verified 2026-08-06). Nothing to do.
-2. **Add it to the API key's `apiTargets`.** The Android key is restricted to an explicit list, so
-   without this every call fails closed with `API_DISABLED` — which the app renders as exactly that,
-   rather than as "no update". Both `--api-target` and `--allowed-application` **replace their whole
-   lists**, so every API and every app/SHA-1 pair goes in one invocation:
+2. ~~Add it to the API key's `apiTargets`~~ — **done 2026-08-06.** Kept here because both
+   `--api-target` and `--allowed-application` **replace their whole lists**, so any future edit must
+   repeat every API and every app/SHA-1 pair in one invocation or silently drop the rest. The
+   Android key is restricted, so a missing entry makes calls fail closed with `API_DISABLED` —
+   which the app renders as exactly that, rather than as "no update".
 
    ```sh
    gcloud services api-keys update \
