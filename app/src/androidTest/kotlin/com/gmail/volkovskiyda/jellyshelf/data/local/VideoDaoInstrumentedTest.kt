@@ -114,6 +114,11 @@ class VideoDaoInstrumentedTest {
         assertNull(dao.get("stale"))
     }
 
+    /**
+     * The projected twin is the only version of this query — the full-row one had no callers left
+     * once the repository routed through the projection. The `WHERE` clause is verbatim the same
+     * and `youtubeId` is a projected column, so the case keeps its exact meaning.
+     */
     @Test
     fun observeContinueWatching_filtersUnwatchedWithProgress() = runTest {
         dao.upsert(
@@ -124,7 +129,7 @@ class VideoDaoInstrumentedTest {
             ),
         )
 
-        val continueWatching = dao.observeContinueWatching().first().map { it.youtubeId }
+        val continueWatching = dao.observeContinueWatchingBrowse().first().map { it.youtubeId }
         assertEquals(listOf("watching"), continueWatching)
     }
 
@@ -231,14 +236,16 @@ class VideoDaoInstrumentedTest {
         // (app/build/generated/ksp/debug/kotlin/.../VideoDao_Impl.kt), pasted for the same reason
         // the plans above are.
         assertReadsInOrderFromIndex(
-            "SELECT `youtubeId`, `fileName`, `title`, `channel`, `durationSeconds`, `uploadDate`, " +
-                "`thumbnailUrl`, `played`, `playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
+            "SELECT `youtubeId`, `jellyfinItemId`, `fileName`, `title`, `channel`, " +
+                "`durationSeconds`, `uploadDate`, `thumbnailUrl`, `played`, " +
+                "`playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
                 "FROM (SELECT * FROM videos ORDER BY fileName)",
         )
 
         val bucketPlan = explain(
-            "SELECT `youtubeId`, `fileName`, `title`, `channel`, `durationSeconds`, `uploadDate`, " +
-                "`thumbnailUrl`, `played`, `playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
+            "SELECT `youtubeId`, `jellyfinItemId`, `fileName`, `title`, `channel`, " +
+                "`durationSeconds`, `uploadDate`, `thumbnailUrl`, `played`, " +
+                "`playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
                 "FROM (SELECT * FROM videos WHERE durationSeconds >= 60 AND durationSeconds < 600 " +
                 "ORDER BY fileName)",
         )

@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.data.repository
 import androidx.room.withTransaction
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.local.VideoBrowseRow
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoCategoryCrossRef
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.mapper.toDomain
@@ -441,36 +442,76 @@ class DefaultLibraryRepository private constructor(
     override val bulkRemove: StateFlow<BulkProgress> = removeRunner.progress
 
     // Every list flow below ends in `flowOn(dispatchers.default)`: ViewModels collect these through
-    // `stateIn(viewModelScope)`, i.e. on Main.immediate, so without it the entity→domain mapping —
+    // `stateIn(viewModelScope)`, i.e. on Main.immediate, so without it the row→domain mapping —
     // and, worse, SearchRanking scanning the title, channel, description, tags and categories of a
-    // few thousand videos on every keystroke — would run on the main thread and jank the UI.
+    // few thousand videos on every keystroke, which is now the ranked path only — would run on the
+    // main thread and jank the UI. The browse paths below map a projected row instead, which is
+    // cheaper but still per-row, so they keep the dispatcher too.
     // Room already runs the queries themselves on its own executor; this moves the mapping too.
+
+    /**
+     * The whole library, by file name.
+     *
+     * Rows carry only what a list renders: `description`, `chapters`, `tags` and
+     * `youtubeCategories` come back empty whatever the stored row holds. Read a video through
+     * [observeVideo] for those.
+     */
     override fun observeVideos(): Flow<List<Video>> =
-        videoDao.observeAll().map { it.map(VideoEntity::toDomain) }.flowOn(dispatchers.default)
+        videoDao.observeAllBrowse().map { it.map(VideoBrowseRow::toDomain) }
+            .flowOn(dispatchers.default)
 
     /**
      * Videos filtered to [bucket] (all durations when null) and, for a non-blank [query], narrowed
      * to relevance matches sorted most-relevant first (see [SearchRanking]). A blank query just
      * returns the duration-filtered list by file name.
+     *
+     * The branch is on the *query*, not the bucket, because it decides whether anything reads
+     * `description`. A blank query is a browse read that happens to be filtered — [SearchRanking]
+     * returns the list untouched when the query tokenizes to nothing — so it must not pay to read a
+     * column it throws away; it is also where a user with a sticky duration filter permanently
+     * lives, not an edge case. A non-blank query keeps full rows because
+     * [SearchRanking.rankVideos] scores `description`, `tags` and `youtubeCategories`, and
+     * projecting that path would silently narrow what search matches.
+     *
+     * On the blank branch, rows carry only what a list renders: `description`, `chapters`, `tags`
+     * and `youtubeCategories` come back empty whatever the stored row holds. Read a video through
+     * [observeVideo] for those.
      */
-    override fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>> {
-        val source = if (bucket == null) {
+    override fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>> =
+        if (query.isBlank()) {
+            browseSource(bucket).map { it.map(VideoBrowseRow::toDomain) }
+        } else {
+            rankedSource(bucket).map { SearchRanking.rankVideos(query, it).map(VideoEntity::toDomain) }
+        }.flowOn(dispatchers.default)
+
+    private fun browseSource(bucket: DurationBucket?): Flow<List<VideoBrowseRow>> =
+        if (bucket == null) {
+            videoDao.observeAllBrowse()
+        } else {
+            videoDao.observeByDurationRangeBrowse(bucket.minSeconds, bucket.maxSeconds)
+        }
+
+    private fun rankedSource(bucket: DurationBucket?): Flow<List<VideoEntity>> =
+        if (bucket == null) {
             videoDao.observeAll()
         } else {
             videoDao.observeByDurationRange(bucket.minSeconds, bucket.maxSeconds)
         }
-        return source.map { SearchRanking.rankVideos(query, it).map(VideoEntity::toDomain) }
-            .flowOn(dispatchers.default)
-    }
 
-    /** Videos in [categoryId], routing the "Others" virtual filters to live queries. */
+    /**
+     * Videos in [categoryId], routing the "Others" virtual filters to live queries.
+     *
+     * Rows carry only what a list renders: `description`, `chapters`, `tags` and
+     * `youtubeCategories` come back empty whatever the stored row holds. Read a video through
+     * [observeVideo] for those.
+     */
     override fun observeVideosByCategory(categoryId: String): Flow<List<Video>> = when (categoryId) {
-        VIRTUAL_CATEGORY_UNCATEGORIZED -> videoDao.observeBySource(METADATA_SOURCE_JELLYFIN)
-        VIRTUAL_CATEGORY_CONTINUE -> videoDao.observeContinueWatching()
-        VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatched()
-        VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatched()
-        else -> videoDao.observeByCategory(categoryId)
-    }.map { it.map(VideoEntity::toDomain) }.flowOn(dispatchers.default)
+        VIRTUAL_CATEGORY_UNCATEGORIZED -> videoDao.observeBySourceBrowse(METADATA_SOURCE_JELLYFIN)
+        VIRTUAL_CATEGORY_CONTINUE -> videoDao.observeContinueWatchingBrowse()
+        VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatchedBrowse()
+        VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatchedBrowse()
+        else -> videoDao.observeByCategoryBrowse(categoryId)
+    }.map { it.map(VideoBrowseRow::toDomain) }.flowOn(dispatchers.default)
 
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }
