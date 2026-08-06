@@ -334,6 +334,14 @@ private fun PlayerWithControls(
     // Press-and-hold forces 3× until the finger lifts. The speed to go back to is read off the
     // controller at press time, not assumed to be 1× — a hold started at 1.5× returns to 1.5×.
     var speedBeforeHold by remember { mutableStateOf<Float?>(null) }
+    // The release half runs in the pointer handler below, which only exists while this composition
+    // does — so a hold interrupted by the composable going away (rotating with the finger still
+    // down recreates the activity) would leave the *session* at 3× with nothing holding it there.
+    // The player outlives this screen, so undoing the hold has to be tied to the screen's lifetime
+    // as well as to the finger's.
+    DisposableEffect(controller) {
+        onDispose { speedBeforeHold?.let(controller::setPlaybackSpeed) }
+    }
 
     Box(
         Modifier
