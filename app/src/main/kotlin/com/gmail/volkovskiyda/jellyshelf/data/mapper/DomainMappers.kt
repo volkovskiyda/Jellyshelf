@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.data.mapper
 
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
+import com.gmail.volkovskiyda.jellyshelf.data.local.VideoBrowseRow
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
@@ -37,6 +38,42 @@ fun VideoEntity.toDomain(): Video = Video(
     missedSyncs = missedSyncs,
     lastFetchError = lastFetchError,
     lastFetchErrorAt = lastFetchErrorAt,
+)
+
+/**
+ * Maps a projected browse row onto the same [Video] the full-row mapper produces, so a list and a
+ * detail screen keep talking about one model.
+ *
+ * The fields a list row does not need come back empty regardless of what the stored row holds —
+ * [Video.description], [Video.chapters], [Video.tags] and [Video.youtubeCategories] are *not
+ * loaded*, not *absent*. Anything that needs them must read the video through `observeVideo`.
+ *
+ * The remaining unprojected fields are filled with their zero values for the same reason, and are
+ * equally not to be trusted from a browse emission.
+ */
+fun VideoBrowseRow.toDomain(): Video = Video(
+    youtubeId = youtubeId,
+    jellyfinItemId = null,
+    fileName = fileName,
+    title = title,
+    channel = channel,
+    channelId = null,
+    durationSeconds = durationSeconds,
+    uploadDate = uploadDate,
+    description = null,
+    chapters = emptyList(),
+    tags = emptyList(),
+    youtubeCategories = emptyList(),
+    thumbnailUrl = thumbnailUrl,
+    played = played,
+    playbackPositionTicks = playbackPositionTicks,
+    playCount = 0,
+    lastSyncedAt = 0L,
+    metadataSource = metadataSource,
+    metadataUpdatedAt = 0L,
+    missedSyncs = missedSyncs,
+    lastFetchError = null,
+    lastFetchErrorAt = 0L,
 )
 
 fun CategoryEntity.toDomain(): Category = Category(
