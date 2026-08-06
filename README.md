@@ -355,14 +355,8 @@ The layers can also be run individually:
   undersized touch target or low contrast fails the suite. There is no Robolectric on purpose.
   With no device attached these layers **skip** rather than fail, in Gradle and in the script
   both.
-- **Live-endpoint tests** (`LiveEndpointTest`) hit a real Jellyfin and are **opt-in via `.test.env`**:
-  copy `.example.test.env` → `.test.env` and fill in the server URL and a username + password —
-  ideally a dedicated non-admin test user. The tests sign in the way the app does
-  (`AuthenticateByName`) and drive everything with the returned user-scoped token; no admin API key
-  is involved. They **skip automatically** (never fail) when `.test.env` is absent/blank or the
-  server is unreachable, so a plain `connectedDebugAndroidTest` on a fresh checkout stays green.
-  The same file is the reference sheet for smoke-testing a release build by hand — see
-  [docs/RELEASING.md](docs/RELEASING.md); day-to-day debug work needs no server at all (demo mode).
+- **Live tests** (`src/androidTest/…/live/`) hit a real Jellyfin and are **opt-in via `.test.env`**.
+  See [Demo and live tests](#demo-and-live-tests) below for what they cover and how to run each.
 
 **The demo library doubles as the test fixture** for anything whose behaviour depends on real
 content. Search and duration filtering are the case in point: they never reach Jellyfin — a Room
@@ -377,6 +371,61 @@ over 10k rows.
 CI (`.github/workflows/ci.yml`) runs `scripts/run-tests.sh --host-only` plus `assembleDebug` on
 every push to `main` and every PR, and uploads the summary and reports as artifacts.
 
+### Demo and live tests
+
+Almost everything runs with **no server**: demo mode is the fixture, and `scripts/run-tests.sh` on a
+fresh checkout is green with nothing configured. Two tests in `src/androidTest/…/live/` are the
+exception — they need a real Jellyfin, and they are the only ones that do.
+
+| | Needs | Touches the server |
+|---|---|---|
+| **Demo / offline tests** — everything else | nothing | no |
+| **`LiveEndpointTest`** — endpoints deserialize against a live server | `.test.env` | reads only |
+| **`LiveUiJourneyTest`** — the real app against that server, end to end | `.test.env` **with a sync scope** | writes, then undoes |
+
+All of it runs from `scripts/run-tests.sh`. To run one class on its own, filter through the
+instrumentation runner — `--tests` is a unit-test option and `connectedAndroidTest` rejects it:
+
+```bash
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.gmail.volkovskiyda.jellyshelf.live.LiveUiJourneyTest
+```
+
+To enable both: copy `.example.test.env` → `.test.env` and fill in the server URL and a username +
+password — ideally a dedicated **non-admin** test user. The tests sign in the way the app does
+(`AuthenticateByName`) and drive everything with the returned user-scoped token; no admin API key is
+involved. They **skip automatically** (never fail) when the config is missing or the server is
+unreachable, so nothing here breaks a checkout that has neither. The same file is the reference
+sheet for smoke-testing a release build by hand ([docs/RELEASING.md](docs/RELEASING.md)) and the
+config the baseline-profile generator reads
+([docs/BASELINE-PROFILE.md](docs/BASELINE-PROFILE.md)).
+
+Once `.test.env` is filled, both run as part of a plain `scripts/run-tests.sh` — deliberately, since
+a live check nobody remembers to run is a live check nobody runs. Add about a minute for the journey.
+One caveat there: `SyncSchedulerInstrumentedTest` swaps WorkManager for its test double, and that
+swap is process-wide, so in a *whole-suite* run no worker can execute afterwards. The journey detects
+that and runs the same `sync()` the worker would have called; run the class on its own (above) to
+exercise the worker path too.
+
+**What the journey does, and what it puts back.** It signs in through the real form, picks the sync
+scope, syncs, opens a video, marks it watched and unwatched again, plays it for real (paused, seeked
+15% in, left), then browses Categories. Every write is verified on the server *and* undone: the
+item's prior `UserData` is captured before anything touches it and written back afterwards, with the
+restore itself asserted. The local slate is wiped at both ends, so the device is left signed out.
+
+**It never syncs an unscoped server.** `JELLYFIN_SYNC_FOLDER` (the path the picker shows) or
+`JELLYFIN_SYNC_FOLDER_ID` (that folder's id) — either alone is enough, and with neither the journey
+skips rather than pulling a whole server through the app. The path is what gets the picker walked,
+so it is the one that covers the picker; an id on its own is written straight to settings. Set both
+and they have to name the same folder, which the test asserts.
+
+It writes to **exactly one item** — `JELLYFIN_TEST_ITEM_ID` if `.test.env` pins one, otherwise the
+library's first video, which must already be unwatched (it skips if not, saying so). That is what
+makes the undo exact rather than approximate: Jellyfin's mark-unplayed resets `PlayCount` to 0, which
+restores an item that started at 0 and cannot restore one that started at 3. Every other video is
+read-only, and the bulk **Remove watched videos** action is never touched — it deletes files from the
+server, which no test may do.
+
 ### Environment config
 
 Local config lives in git-ignored `KEY=VALUE` files at the repo root, **not** `local.properties`.
@@ -384,7 +433,7 @@ Both are optional; copy the committed `.example.*` template and fill it in when 
 
 | File | Committed? | Purpose |
 |------|-----------|---------|
-| `.test.env` | git-ignored | Live-test + release smoke-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_USERNAME`, `JELLYFIN_PASSWORD`, plus optional `JELLYFIN_INDEX_URL` (defaults to `<server>/jellyshelf-index.json`), `JELLYFIN_SYNC_FOLDER`, `JELLYFIN_SYNC_FOLDER_ID`. Absent → the live tests skip. |
+| `.test.env` | git-ignored | Live-test + release smoke-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_USERNAME`, `JELLYFIN_PASSWORD`, plus optional `JELLYFIN_INDEX_URL` (defaults to `<server>/jellyshelf-index.json`), `JELLYFIN_SYNC_FOLDER` / `JELLYFIN_SYNC_FOLDER_ID` (the sync scope — `LiveUiJourneyTest` needs one of them), `JELLYFIN_TEST_ITEM_ID` (the one item the journey may write to). Absent → the live tests skip. |
 | `.example.test.env` | committed | Template for `.test.env`. |
 | `keystore.properties` | git-ignored | Release signing: `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Absent → release builds are unsigned. |
 | `.example.keystore.properties` | committed | Template for `keystore.properties`. |

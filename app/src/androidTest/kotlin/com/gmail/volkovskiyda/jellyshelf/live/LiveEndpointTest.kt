@@ -6,12 +6,6 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.get
-import io.ktor.http.isSuccess
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -37,9 +31,10 @@ import org.koin.test.inject
  * Uses the real [JellyfinClient]/[JellyfinDataSource] from `appModule` (tuned base Ktor client +
  * ContentNegotiation + kotlinx `Json` + timeouts), so it exercises the actual migrated stack.
  *
- * Write endpoints (setPlayed/updateUserData/createPlaylist) are intentionally not driven here —
- * they mutate real watch state, and a safe run needs a designated disposable test item on the
- * configured server (a follow-up, see the plan's item 09).
+ * Read-only by design: every call here leaves the server exactly as it found it, so this class can
+ * run against any configured server without a thought. The write endpoints (setPlayed, the session
+ * reports, updateUserData) are driven by [LiveUiJourneyTest] instead — through the app's own UI,
+ * against one designated item, and undone afterwards.
  */
 class LiveEndpointTest : KoinTest {
 
@@ -53,7 +48,10 @@ class LiveEndpointTest : KoinTest {
     fun setUp() {
         loadKoinModules(liveTestModule)
         assumeTrue("no .test.env config — skipping live-endpoint test", config.isConfigured)
-        assumeTrue("Jellyfin server unreachable — skipping live-endpoint test", reachable(config.serverUrl))
+        assumeTrue(
+            "Jellyfin server unreachable — skipping live-endpoint test",
+            serverReachable(config.serverUrl),
+        )
     }
 
     @After
@@ -142,20 +140,4 @@ class LiveEndpointTest : KoinTest {
         val entries = indexSource.fetchIndex(config.indexUrl)
         assertTrue(entries.size >= 0)
     }
-
-    /** Fast reachability probe with a short timeout, so a down server skips quickly instead of hanging. */
-    private fun reachable(serverUrl: String): Boolean = runCatching {
-        runBlocking {
-            HttpClient(OkHttp) {
-                install(HttpTimeout) {
-                    requestTimeoutMillis = 3_000
-                    connectTimeoutMillis = 3_000
-                    socketTimeoutMillis = 3_000
-                }
-            }.use { probe ->
-                val base = serverUrl.trim().removeSuffix("/")
-                probe.get("$base/System/Info/Public").status.isSuccess()
-            }
-        }
-    }.getOrDefault(false)
 }

@@ -59,6 +59,7 @@ android {
             "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"].orEmpty(),
             "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"].orEmpty(),
             "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"].orEmpty(),
+            "jellyfinTestItemId" to testEnv["JELLYFIN_TEST_ITEM_ID"].orEmpty(),
         )
 
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers

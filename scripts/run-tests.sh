@@ -19,6 +19,11 @@ set -uo pipefail
 # guard (an onlyIf on connected*AndroidTest), but that one still builds both APKs before it
 # skips; deciding here saves that work and makes the reason visible.
 #
+# That layer also carries the two live tests, which hit a real Jellyfin when the repo root has a
+# filled .test.env and skip themselves when it does not — LiveEndpointTest reads, LiveUiJourneyTest
+# drives the app end to end and undoes every write. Nothing here switches them on or off; the
+# config file is the switch. See "Demo and live tests" in the README.
+#
 # Usage:
 #   scripts/run-tests.sh              run everything available
 #   scripts/run-tests.sh --host-only  skip the instrumented layer even if a device is attached

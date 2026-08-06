@@ -1,6 +1,12 @@
 package com.gmail.volkovskiyda.jellyshelf.live
 
 import androidx.test.platform.app.InstrumentationRegistry
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.get
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.runBlocking
 import org.koin.dsl.module
 
 /**
@@ -21,10 +27,28 @@ data class JellyfinTestConfig(
     val syncFolder: String,
     /** The same folder's Jellyfin item id, for tests that need it directly (UI tests). */
     val syncFolderId: String,
+    /**
+     * The one item [LiveUiJourneyTest] is allowed to write to, or blank to fall back to the
+     * library's first video. Pin a disposable item here when the first video is not one whose
+     * watch state may be toggled — that is the only choice the journey offers, and by design:
+     * nothing else in the library is ever written to.
+     */
+    val testItemId: String,
     private val explicitIndexUrl: String,
 ) {
     /** Live tests skip (assumeTrue) unless a server URL + username + password are present. */
     val isConfigured: Boolean get() = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+
+    /**
+     * Whether sync has somewhere to be scoped to — [syncFolder], [syncFolderId], or both, which
+     * must then name the same folder. Either one alone is enough, and they buy different things:
+     * the path is what the in-app picker is walked by (so it covers the picker), the id is what the
+     * app stores, and only the id can be checked against what the picker actually chose.
+     *
+     * [LiveUiJourneyTest] requires this rather than defaulting to the root: an unscoped sync pulls
+     * a whole server through the app, which is not a thing a test may start.
+     */
+    val hasSyncScope: Boolean get() = syncFolder.isNotBlank() || syncFolderId.isNotBlank()
 
     /**
      * `JELLYFIN_INDEX_URL` when set, otherwise the convention the app's own "fill from server"
@@ -52,7 +76,29 @@ val liveTestModule = module {
             password = args.getString("jellyfinPassword").orEmpty(),
             syncFolder = args.getString("jellyfinSyncFolder").orEmpty(),
             syncFolderId = args.getString("jellyfinSyncFolderId").orEmpty(),
+            testItemId = args.getString("jellyfinTestItemId").orEmpty(),
             explicitIndexUrl = args.getString("jellyfinIndexUrl").orEmpty(),
         )
     }
 }
+
+/**
+ * Fast reachability probe with a short timeout, so a down server skips the live tests quickly
+ * instead of hanging on each of them. `/System/Info/Public` needs no credentials.
+ */
+internal fun serverReachable(serverUrl: String): Boolean = runCatching {
+    runBlocking {
+        HttpClient(OkHttp) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = PROBE_TIMEOUT_MS
+                connectTimeoutMillis = PROBE_TIMEOUT_MS
+                socketTimeoutMillis = PROBE_TIMEOUT_MS
+            }
+        }.use { probe ->
+            val base = serverUrl.trim().removeSuffix("/")
+            probe.get("$base/System/Info/Public").status.isSuccess()
+        }
+    }
+}.getOrDefault(false)
+
+private const val PROBE_TIMEOUT_MS = 3_000L
