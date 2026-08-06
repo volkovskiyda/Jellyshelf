@@ -571,6 +571,25 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.perf)
+    // App Distribution ships as two artifacts, and the split is Firebase's own recommendation.
+    // The -api one is a no-op stub: every call returns a Task that fails with NOT_IMPLEMENTED and
+    // isTesterSignedIn() is a hardcoded false, so a build carrying only it compiles and runs but
+    // finds nothing. That is the right outcome off the release build type — CI uploads only to the
+    // release Firebase app id, so the .debug and .benchmark apps have no releases to find.
+    //
+    // releaseImplementation DOES reach nonMinifiedRelease and benchmarkRelease — measured from
+    // their runtime classpaths on 2026-08-06, not assumed. The baseline-profile plugin derives
+    // those build types from release (see the block above) and they inherit its dependencies with
+    // it, so the profiling variants link the full SDK and gain the permissions below too. Nothing
+    // stops them checking for updates except the update-source preference defaulting to NONE:
+    // they report isDebug = false and carry a real versionCode, so no build-type gate catches
+    // them. Those APKs install as .benchmark and are never shipped.
+    //
+    // The full SDK merges REQUEST_INSTALL_PACKAGES, POST_NOTIFICATIONS, READ_/WRITE_EXTERNAL_STORAGE
+    // and an exported SignInResultActivity into every release APK, opted in or not — an accepted
+    // trade, since the stub cannot detect releases at all. docs/RELEASING.md carries the detail.
+    implementation(libs.firebase.appdistribution.api)
+    releaseImplementation(libs.firebase.appdistribution)
     implementation(platform(libs.ktor.bom))
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

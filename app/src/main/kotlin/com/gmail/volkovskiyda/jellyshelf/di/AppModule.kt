@@ -8,6 +8,7 @@ import coil.ImageLoader
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
@@ -101,6 +102,7 @@ val appModule = module {
     singleOf(::JellyfinDataSource)
     singleOf(::IndexSource)
     singleOf(::GitHubReleaseSource)
+    singleOf(::AppDistributionSource)
     singleOf(::DefaultJellyfinRepository) { bind<JellyfinRepository>() }
     singleOf(::YtDlpMetadataSource)
     singleOf(::DemoBackend)
