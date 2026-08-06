@@ -12,6 +12,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -72,13 +73,22 @@ class FilterPersistenceInstrumentedTest {
      * The holders persist on [DispatcherProvider.applicationScope] without awaiting the result —
      * deliberately, since nothing in the UI should block on a preference write — so a test that
      * reads straight back is racing the disk rather than testing anything.
+     *
+     * Re-reads the store rather than watching one collection for the value to arrive, which is the
+     * obvious way to write this and is not sound on API 30: DataStore there intermittently does not
+     * deliver an update to an already-collecting flow. Measured on an API 30 emulator, one to two
+     * writes in every 25 were never seen by a collector that subscribed before them, while a read
+     * issued straight afterwards returned the value every time — so the write had landed and only
+     * the notification was lost. The same probe saw none in 75 polled iterations, and none at all on
+     * API 34. A poll therefore tests what this class means to test, "the value is in the store",
+     * rather than the platform's willingness to announce it.
      */
     private suspend fun <T> awaitPersisted(flow: Flow<T>, expected: T) {
         val reached = withTimeoutOrNull(WRITE_TIMEOUT_MS) {
-            flow.first { it == expected }
+            while (flow.first() != expected) delay(POLL_INTERVAL_MS)
             true
         }
-        assertTrue("write never reached disk: expected $expected", reached == true)
+        assertTrue("value never appeared in the store: expected $expected", reached == true)
     }
 
     @Test
@@ -164,6 +174,7 @@ class FilterPersistenceInstrumentedTest {
 
     private companion object {
         const val WRITE_TIMEOUT_MS = 5_000L
+        const val POLL_INTERVAL_MS = 20L
 
         /** Generous next to a preferences read, which is what the clobber would ride in on. */
         const val CLOBBER_WATCH_MS = 2_000L
