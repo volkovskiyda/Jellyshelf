@@ -18,6 +18,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.dataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
@@ -62,10 +63,25 @@ class DemoModeFlowTest {
      * "Try demo" would be tapped and ignored, and the sign-in error would be replaced by
      * "Syncing…". Both are exactly what a user would see, which is why the fix is to clear the
      * residue rather than to loosen the assertions.
+     *
+     * Cancelling is not enough on its own, and neither is wiping Room and DataStore. A **finished**
+     * sync stays in WorkManager's history, `SettingsViewModel` replays the last one onto the status
+     * line, and a real one from
+     * [com.gmail.volkovskiyda.jellyshelf.live.LiveUiJourneyTest] then sits there as "Synced 852/862
+     * videos…" over the sign-in error this test is waiting for — so the history is pruned too. And
+     * [LibraryFilterState] is a process-lifetime singleton holding the library's search query and
+     * its last emission, neither of which lives in a database: a query left by an earlier test
+     * filters this one's demo library down to "no videos match".
      */
     @Before
     fun resetAppState() {
-        WorkManager.getInstance(context).cancelAllWork().result.get()
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelAllWork().result.get()
+        workManager.pruneWork().result.get()
+        GlobalContext.get().get<LibraryFilterState>().apply {
+            query.value = ""
+            lastVideos.value = null
+        }
         runBlocking {
             GlobalContext.get().get<LibraryRepository>().clearLocalData()
             // After clearLocalData, which writes to this same store.
