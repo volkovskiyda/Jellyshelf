@@ -946,11 +946,12 @@ class SettingsViewModel(
      * sign-in, which [UpdateChecker.selectSource] owns — it is update policy, and the same place
      * that decides when a Custom Tab may open at all.
      *
-     * Run on the ViewModel scope because that Custom Tab is a separate task: the user can leave and
-     * come back, but they cannot leave this *screen* without the ViewModel surviving.
+     * Deliberately **not** wrapped in `viewModelScope.launch`: the sign-in leaves the app, and
+     * coming back recreates the activity and clears this ViewModel, which used to cancel the write
+     * mid-flight. The checker runs it on the application scope instead.
      */
     fun onUpdateSourceChange(source: UpdateSource) {
-        viewModelScope.launch { updateChecker.selectSource(source) }
+        updateChecker.selectSource(source)
     }
 
     /** The manual check. Skips every politeness window, and may sign a tester in — see [UpdateChecker]. */

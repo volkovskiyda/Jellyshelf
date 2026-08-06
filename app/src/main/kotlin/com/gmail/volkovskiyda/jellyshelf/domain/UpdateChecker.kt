@@ -245,12 +245,18 @@ class UpdateChecker(
      *
      * Switching *away* deliberately does not sign the tester out. Re-selecting should stay one tap,
      * and the signed-in state is Firebase-global rather than this feature's to clear.
+     *
+     * **Runs on the application scope, not the caller's** — this is not a style choice. The Custom
+     * Tab is a separate task, and returning from it through `SignInResultActivity` recreates the
+     * activity, which clears the settings screen's `ViewModelStore`. On `viewModelScope` the
+     * coroutine was therefore cancelled between a *successful* sign-in and the write, so the
+     * channel silently stayed Off: verified on-device 2026-08-06, twice, before this was moved.
      */
-    suspend fun selectSource(source: UpdateSource) {
+    fun selectSource(source: UpdateSource) = dispatchers.applicationScope.launch {
         _error.value = null
         if (source != UpdateSource.APP_DISTRIBUTION || appDistributionSource.isTesterSignedIn()) {
             settingsRepository.setUpdateSource(source)
-            return
+            return@launch
         }
         _signingIn.value = true
         try {

@@ -11,7 +11,13 @@ import com.gmail.volkovskiyda.jellyshelf.ui.TestDispatcherProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondOk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -380,6 +386,39 @@ class UpdateCheckerTest {
         assertEquals(1, appDistribution.signInAttempts)
         assertEquals(UpdateSource.APP_DISTRIBUTION, settings.updateSource.first())
         assertFalse(checker.signingIn.value)
+    }
+
+    /**
+     * The write must survive the screen that asked for it.
+     *
+     * `signInTester()` opens a Custom Tab, and returning through `SignInResultActivity` recreates
+     * the activity — which clears the settings screen's `ViewModelStore`. While this ran on
+     * `viewModelScope` the coroutine was cancelled between a *successful* sign-in and the write, so
+     * the channel silently stayed Off; that reproduced on-device twice on 2026-08-06.
+     *
+     * Cancelling the caller's scope here stands in for the ViewModel being cleared: the write still
+     * has to land, which it only does because [UpdateChecker.selectSource] owns its own scope.
+     */
+    @Test
+    fun selectingAChannel_survivesTheCallingScopeBeingCancelled() = runTest {
+        val settings = FakeSettingsRepository()
+        // Suspends the way a Custom Tab does: the user is off in the browser, and nothing has
+        // been written yet.
+        val inCustomTab = CompletableDeferred<Unit>()
+        val appDistribution = object : AppDistributionSource() {
+            override fun isTesterSignedIn() = false
+            override suspend fun signInTester() = inCustomTab.await()
+        }
+        val checker = checker(settings = settings, appDistribution = appDistribution)
+        val screen = CoroutineScope(Job() + Dispatchers.Unconfined)
+
+        screen.launch { checker.selectSource(UpdateSource.APP_DISTRIBUTION) }
+        // Coming back through SignInResultActivity recreates the activity, clearing the ViewModel.
+        screen.cancel()
+        // ...and only then does the sign-in report success.
+        inCustomTab.complete(Unit)
+
+        assertEquals(UpdateSource.APP_DISTRIBUTION, settings.updateSource.first())
     }
 
     /**
