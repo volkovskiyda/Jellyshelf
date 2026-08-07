@@ -45,6 +45,7 @@ internal fun NotificationPermissionPrompt(
     prompt: NotificationPrompt = koinInject(),
     updateChecker: UpdateChecker = koinInject(),
     buildInfo: BuildInfo = koinInject(),
+    readPermission: ((Activity) -> PermissionReadout)? = null,
 ) {
     // Below API 33 (minSdk is 30) notifications need no permission at all: nothing is shown and
     // nothing is requested. `POST_NOTIFICATIONS` is also a constant that does not exist on those
@@ -75,13 +76,11 @@ internal fun NotificationPermissionPrompt(
         if (visible) return@LaunchedEffect
         val state = promptState ?: return@LaunchedEffect
         if (!hasVideos || update != null) return@LaunchedEffect
+        val readout = readPermission?.invoke(activity) ?: activity.permissionReadout()
         visible = prompt.due(
             state = state,
-            granted = activity.hasNotificationPermission(),
-            shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-                activity,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ),
+            granted = readout.granted,
+            shouldShowRationale = readout.shouldShowRationale,
         )
     }
 
@@ -102,11 +101,26 @@ internal fun NotificationPermissionPrompt(
 }
 
 /**
- * Whether the permission is already held. Meaningless below API 33 — where the constant is just a
- * string the platform has never heard of — which the annotation states and the caller's guard
- * enforces.
+ * The two platform answers [NotificationPrompt.due] needs, read together so a caller cannot take
+ * one without the other — their *combination* is what tells "never asked" from "locked for good".
+ *
+ * Exists as a value (and as the `readPermission` seam above) because neither answer can be faked
+ * on a device any other way: the permission cannot be un-granted for a test — `pm revoke` kills
+ * the app's process, instrumentation included — so without the seam every gate in this file is
+ * unreachable on a device that has ever run a test that granted it.
+ */
+internal data class PermissionReadout(val granted: Boolean, val shouldShowRationale: Boolean)
+
+/**
+ * The real answers. Meaningless below API 33 — where the constant is just a string the platform
+ * has never heard of — which the annotation states and the caller's guard enforces.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-private fun Activity.hasNotificationPermission(): Boolean =
-    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-        PackageManager.PERMISSION_GRANTED
+private fun Activity.permissionReadout(): PermissionReadout = PermissionReadout(
+    granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+        PackageManager.PERMISSION_GRANTED,
+    shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+        this,
+        Manifest.permission.POST_NOTIFICATIONS,
+    ),
+)
