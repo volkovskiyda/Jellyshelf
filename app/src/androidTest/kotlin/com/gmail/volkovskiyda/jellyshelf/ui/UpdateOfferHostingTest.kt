@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -21,9 +22,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import org.junit.After
+import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.loadKoinModules
@@ -41,6 +43,17 @@ private const val OFFERED_VERSION_NAME = "1.0.200"
  * negative test below passes for having nothing to show rather than for the rule it names.
  */
 private const val NOW = 1_800_000_000_000L
+
+/**
+ * How long the offer dialog is given to arrive.
+ *
+ * It gets any at all because the dialog is a *window*: `waitForIdle` returns once the composition
+ * that asked for it has settled, which is a beat before that window is attached and laid out. The
+ * bare assertion this replaces could not tell the two apart either way — `assertIsDisplayed` fetches
+ * nodes in the plural, so a node that is missing and one that is merely not laid out yet both come
+ * back as the same "is not displayed".
+ */
+private const val OFFER_TIMEOUT_MS = 5_000L
 
 /**
  * Where an update offer is allowed to appear, through the real [MainActivity] wiring.
@@ -93,7 +106,7 @@ class UpdateOfferHostingTest {
 
     private val overrides = module { single { checker } }
 
-    /** The app's own checker, put back in [restoreTheRealChecker]. */
+    /** The app's own checker, put back by [koinOverride]. */
     private lateinit var realChecker: UpdateChecker
 
     /**
@@ -104,35 +117,46 @@ class UpdateOfferHostingTest {
     @get:Rule(order = 0)
     val notificationPermission = NotificationPermissionRule()
 
-    @get:Rule(order = 1)
-    val composeRule = createAndroidComposeRule<MainActivity>()
-
     /**
-     * Re-declares the real single rather than unloading the override.
+     * Swaps the checker in **before the compose rule launches the activity**, and puts the real one
+     * back afterwards. Both halves have to be a rule rather than test-body calls.
      *
-     * `unloadKoinModules` removes definitions *by key*, so unloading a module that declares an
-     * `UpdateChecker` takes the app's own definition with it and leaves the graph without one for
-     * the rest of the process — every later test that builds a screen then dies on
-     * `NoDefinitionFoundException`. Overwriting the binding back is the only way to undo an
-     * override without taking the original with it.
+     * `koinInject` resolves once and remembers, so whichever checker the composition sees first is
+     * the one it keeps for the life of the screen. Loading the override from the test body is a
+     * race against `startStack` resolving out of DataStore — win it and the screen watches the fake,
+     * lose it and the screen watches the app's own checker, which has nothing to offer and never
+     * shows a dialog. That is the whole of the API-30 tablet failure on Test Lab; on a device that
+     * reads DataStore a few hundred ms slower the same test passes for no better reason than luck.
+     *
+     * Restoring re-declares the real single rather than unloading the override: `unloadKoinModules`
+     * removes definitions *by key*, so unloading a module that declares an `UpdateChecker` takes the
+     * app's own definition with it and leaves the graph without one for the rest of the process —
+     * every later test that builds a screen then dies on `NoDefinitionFoundException`.
      */
-    @After
-    fun restoreTheRealChecker() {
-        loadKoinModules(module { single { realChecker } })
+    @get:Rule(order = 1)
+    val koinOverride = object : ExternalResource() {
+        override fun before() {
+            realChecker = GlobalContext.get().get()
+            loadKoinModules(overrides)
+        }
+
+        override fun after() {
+            loadKoinModules(module { single { realChecker } })
+        }
     }
+
+    @get:Rule(order = 2)
+    val composeRule = createAndroidComposeRule<MainActivity>()
 
     private fun label(resId: Int, vararg args: Any) = composeRule.activity.getString(resId, *args)
 
     private val offerTitle get() = label(R.string.update_available_title, OFFERED_VERSION_NAME)
 
-    /**
-     * Loaded before the activity is touched — the activity resolves the checker during composition,
-     * so an override installed here is the one it sees.
-     */
-    private fun installOverride() {
-        realChecker = GlobalContext.get().get()
-        loadKoinModules(overrides)
-        composeRule.waitForIdle()
+    /** See [OFFER_TIMEOUT_MS] — the dialog's window lands a frame or two after the composition. */
+    private fun awaitOffer() {
+        composeRule.waitUntil(OFFER_TIMEOUT_MS) {
+            composeRule.onNodeWithText(offerTitle).isDisplayed()
+        }
     }
 
     /**
@@ -147,12 +171,12 @@ class UpdateOfferHostingTest {
     /** What "Check now" is for: the answer arrives on the screen the question was asked from. */
     @Test
     fun aRequestedOffer_showsOnTheSettingsTab() {
-        installOverride()
         switchToTab(R.string.tab_settings)
 
         runBlocking { checker.checkNow() }
         composeRule.waitForIdle()
 
+        awaitOffer()
         composeRule.onNodeWithText(offerTitle).assertIsDisplayed()
     }
 
@@ -162,25 +186,27 @@ class UpdateOfferHostingTest {
      */
     @Test
     fun anAutomaticOffer_waitsWhileAnotherTabIsOpen() {
-        installOverride()
         switchToTab(R.string.tab_settings)
 
         checker.checkOnStart()
         composeRule.waitForIdle()
 
+        // There is an offer to suppress: without this the test passes on a checker that found
+        // nothing, which is every way the feature could break rather than the rule it names.
+        assertNotNull(checker.available.value)
         composeRule.onNodeWithText(offerTitle).assertDoesNotExist()
     }
 
     /** The same automatic offer, once the user is back where it is allowed to interrupt. */
     @Test
     fun anAutomaticOffer_arrivesOnTheLibraryTab() {
-        installOverride()
         switchToTab(R.string.tab_settings)
         checker.checkOnStart()
         composeRule.waitForIdle()
 
         switchToTab(R.string.tab_library)
 
+        awaitOffer()
         composeRule.onNodeWithText(offerTitle).assertIsDisplayed()
     }
 }

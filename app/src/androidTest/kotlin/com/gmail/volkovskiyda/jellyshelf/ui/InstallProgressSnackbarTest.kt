@@ -30,10 +30,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Comfortably past the 3 s a failure stays up, so a slow device does not fail the test that waits
- * for it — and long enough to be a real assertion in the one that waits *through* it.
+ * Past the 3 s a failure stays up, with room for the dismissal animation on the far side of it.
+ *
+ * Spent on the **test clock**, not waited out in real time. The timeout is a coroutine delay on the
+ * composition's dispatcher, which is a `TestDispatcher` sharing its scheduler with `mainClock`, so
+ * nothing retires it but a clock advance: `Thread.sleep` advances it by zero however long it
+ * sleeps, and `waitUntil` pumps a single 16 ms frame per poll — 187 frames of recomposition for
+ * these three seconds, which measured anywhere from 3.9 s to 5.3 s of wall time across repeat runs
+ * on one emulator. A real-time budget over a frame-clock wait is a coin flip on slow hardware, and
+ * it came up tails on two of three Test Lab devices.
  */
-private const val FAILURE_TIMEOUT_MS = 5_000L
+private const val PAST_THE_FAILURE_MS = 5_000L
 
 /** A swipe and its dismissal animation; nothing here is waiting on a timer. */
 private const val SWIPE_TIMEOUT_MS = 2_000L
@@ -177,7 +184,8 @@ class InstallProgressSnackbarTest {
 
     /**
      * A failure states its reason and then clears itself, rather than sitting there until dealt
-     * with. Real time, because the timeout is a coroutine delay rather than a frame-clock effect.
+     * with. Driven by [PAST_THE_FAILURE_MS] on the test clock, so the verdict is the same on every
+     * device instead of a race between a frame pump and a wall-clock budget.
      */
     @Test
     fun aFailure_clearsItselfWithoutBeingTouched() {
@@ -185,24 +193,27 @@ class InstallProgressSnackbarTest {
         val message = label(UpdateCheckError.DownloadFailed.messageRes)
         composeRule.onNodeWithText(message).assertIsDisplayed()
 
-        composeRule.waitUntil(timeoutMillis = FAILURE_TIMEOUT_MS) {
-            composeRule.onAllNodesWithText(message).fetchSemanticsNodes().isEmpty()
-        }
+        composeRule.mainClock.autoAdvance = false
+        composeRule.mainClock.advanceTimeBy(PAST_THE_FAILURE_MS)
 
-        composeRule.runOnIdle { assertEquals(1, dismissals) }
+        composeRule.onNodeWithText(message).assertDoesNotExist()
+        assertEquals(1, dismissals)
     }
 
     /**
      * Progress does *not* clear itself: it has to outlast a download, however long that takes.
      *
      * Asserted past the failure timeout, so a regression that gave both the same duration fails
-     * here rather than only showing up as a vanished progress line on a slow connection.
+     * here rather than only showing up as a vanished progress line on a slow connection — which
+     * needs the clock moved rather than the thread slept, or the timeout is never reached at all
+     * and this asserts only that a snackbar shown a moment ago is still there.
      */
     @Test
     fun progress_staysUpPastTheFailureTimeout() {
         setContent(InstallState.Running(InstallStage.INSTALLING))
 
-        Thread.sleep(FAILURE_TIMEOUT_MS)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.mainClock.advanceTimeBy(PAST_THE_FAILURE_MS)
 
         composeRule.onNodeWithText(label(R.string.update_install_installing)).assertIsDisplayed()
     }
