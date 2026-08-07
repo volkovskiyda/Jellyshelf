@@ -90,7 +90,8 @@ class UpdateCheckerTest {
         gitHubSource = gitHub,
         appDistributionSource = appDistribution,
         buildInfo = BuildInfo(isDebug = isDebug, sdkInt = 36, versionCode = versionCode),
-        now = { clock },
+        // SAM-converted, so the tests below keep moving time by assigning to `clock`.
+        time = TimeProvider { clock },
         dispatchers = TestDispatcherProvider(),
     )
 

@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
@@ -33,6 +34,6 @@ fun inertUpdateChecker(settings: SettingsRepository = FakeSettingsRepository()) 
         override suspend fun latestRelease(): UpdateInfo? = null
     },
     buildInfo = BuildInfo(isDebug = true, sdkInt = 36),
-    now = { 0L },
+    time = TimeProvider { 0L },
     dispatchers = TestDispatcherProvider(),
 )

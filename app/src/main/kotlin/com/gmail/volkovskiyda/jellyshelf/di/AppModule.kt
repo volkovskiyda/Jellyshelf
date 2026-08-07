@@ -7,6 +7,7 @@ import androidx.work.WorkManager
 import coil.ImageLoader
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
@@ -27,6 +28,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
@@ -99,8 +101,7 @@ val appModule = module {
     singleOf(::ThemeModeCache)
     singleOf(::DefaultScrollPositionRepository) { bind<ScrollPositionRepository>() }
     singleOf(::AppSettingsState)
-    // Wall clock as a value, so UpdateChecker's three time windows are testable without sleeping.
-    single<() -> Long> { { System.currentTimeMillis() } }
+    single<TimeProvider> { DefaultTimeProvider() }
     singleOf(::UpdateChecker)
     singleOf(::JellyfinClient)
     singleOf(::JellyfinDataSource)

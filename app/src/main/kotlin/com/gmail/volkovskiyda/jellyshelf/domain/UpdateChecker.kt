@@ -78,7 +78,7 @@ class UpdateChecker(
     private val gitHubSource: GitHubReleaseSource,
     private val appDistributionSource: AppDistributionSource,
     private val buildInfo: BuildInfo,
-    private val now: () -> Long,
+    private val time: TimeProvider,
     private val dispatchers: DispatcherProvider,
 ) {
     // MutableStateFlow, never @Volatile or an atomic: the project has carried zero @Volatile since
@@ -127,7 +127,9 @@ class UpdateChecker(
         if (buildInfo.isDebug || buildInfo.versionCode <= 1) return
         val source = settingsRepository.updateSource.first()
         if (source == UpdateSource.NONE) return
-        if (!manual && !elapsed(now(), settingsRepository.lastUpdateCheckAt.first(), CHECK_INTERVAL_MILLIS)) {
+        if (!manual &&
+            !elapsed(time.now(), settingsRepository.lastUpdateCheckAt.first(), CHECK_INTERVAL_MILLIS)
+        ) {
             return
         }
 
@@ -137,7 +139,7 @@ class UpdateChecker(
             val info = fetch(source, manual)
             // Stamped even when nothing was found, and *not* stamped on failure: the interval is
             // about how often we ask, so a transient outage must not buy a day of silence.
-            settingsRepository.setLastUpdateCheckAt(now())
+            settingsRepository.setLastUpdateCheckAt(time.now())
             _available.value = info?.takeIf { manual || shouldOffer(it) }
         } catch (e: UpdateCheckFailure) {
             _error.value = e.reason ?: UpdateCheckError.Unknown
@@ -178,11 +180,15 @@ class UpdateChecker(
      */
     private suspend fun shouldOffer(info: UpdateInfo): Boolean {
         if (info.versionCode <= buildInfo.versionCode) return false
-        if (!elapsed(now(), settingsRepository.lastUpdateDialogAt.first(), DIALOG_INTERVAL_MILLIS)) {
+        if (!elapsed(time.now(), settingsRepository.lastUpdateDialogAt.first(), DIALOG_INTERVAL_MILLIS)) {
             return false
         }
         if (info.versionCode > settingsRepository.dismissedUpdate(info.source).first()) return true
-        return elapsed(now(), settingsRepository.dismissedUpdateAt(info.source).first(), SNOOZE_MILLIS)
+        return elapsed(
+            time.now(),
+            settingsRepository.dismissedUpdateAt(info.source).first(),
+            SNOOZE_MILLIS,
+        )
     }
 
     /**
@@ -192,7 +198,7 @@ class UpdateChecker(
      * launch, which is the complaint the snooze exists to bound.
      */
     suspend fun dismiss(info: UpdateInfo) {
-        settingsRepository.setDismissedUpdate(info.source, info.versionCode, now())
+        settingsRepository.setDismissedUpdate(info.source, info.versionCode, time.now())
         _available.value = null
     }
 
@@ -203,7 +209,7 @@ class UpdateChecker(
      * silently swallow the first offer of every new version.
      */
     suspend fun markDialogShown() {
-        settingsRepository.setLastUpdateDialogAt(now())
+        settingsRepository.setLastUpdateDialogAt(time.now())
     }
 
     /** Clears the offer without recording a dismissal — the user chose to update. */
