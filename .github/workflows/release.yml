@@ -9,8 +9,97 @@ on:
 permissions:
   contents: write   # gh release create
 
+# One run per tag. Tags are unique, so this is not about ordinary pushes racing — it is about a tag
+# that gets deleted and re-pushed, or a re-run started while the original is still going, ending with
+# two runs calling `gh release create` on the same name. Never cancel-in-progress: a run interrupted
+# between the release being created and its assets being uploaded leaves a published release with
+# nothing attached, which is worse than waiting.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # A tag can be pushed at any commit in the repository, including one that never went through a pull
+  # request. Everything downstream assumes otherwise: the device matrix below is chosen to complement
+  # what ci.yml already ran on this commit, and skips whole API levels on that basis, so a tag off
+  # main would be tested by three devices in total rather than six. `on: push: tags` cannot express a
+  # branch filter, so the check has to be a job — and it has to come first, before the run spends
+  # Test Lab quota that a bad tag can never earn back.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # ancestry, so the whole history rather than the tagged commit alone
+      - name: Refuse a tag that is not on main
+        run: |
+          set -euo pipefail
+          # The checkout leaves the runner on a detached tag with no branch refs guaranteed, so fetch
+          # main explicitly rather than trusting one to be there.
+          git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at ${GITHUB_SHA::7}, which is not on main. Tags are cut from main only — move the tag and push it again."
+            exit 1
+          fi
+
+  # A second instrumented pass, on three devices ci.yml never runs. The tag always points at a commit
+  # that already went green on main, so repeating that matrix would tell us nothing — every device
+  # here is chosen for what the CI three do not carry:
+  #   MediumTablet.arm 35 — tablet layout at a modern API. With CI's tablet@30 and phone@36 this
+  #     completes the form-factor × API-level square, the last corner being MediumPhone.arm below.
+  #   MediumPhone.arm 30 — phone layout at minSdk, which ci.yml deliberately gives up when it pairs
+  #     API 30 with the tablet to save an execution. A release is where that gap is worth closing.
+  #   tangorpro 33 — a physical Pixel Tablet: real silicon behind a tablet layout, so hardware codecs
+  #     and a large screen at once, which no other device in either workflow has together.
+  #
+  # There is no tablet at API 36 to be had. MediumTablet.arm's images stop at 35 (`gcloud firebase
+  # test android models list` prints the supported versions), and the only API 36 tablets in the
+  # catalogue are physical, where API 36 is a coin flip — see the long note in ci.yml for the
+  # androidx.test input-injection failure that takes down every touch-injecting test on some units.
+  # That same note is why the physical tablet here is pinned to 33 rather than tangorpro's other
+  # option of 36; 33 is also its HIGH-capacity version, so it barely queues.
+  #
+  # Quota: 2 virtual + 1 physical, on top of the 2 + 1 the same commit already spent when it landed
+  # on main. The Spark plan allows 10 and 5 a Pacific day, so a tag only runs dry if it goes out on a
+  # day that already saw four pushes to main. If that happens the tag exists but nothing publishes —
+  # re-run this job the next day and the release job follows; the tag never needs to move.
+  testlab:
+    needs: [guard]   # never spend an execution on a tag that is not on main
+    runs-on: ubuntu-latest
+    # Same reasoning as ci.yml: has to clear the matrix's own --timeout 25m plus the build ahead of
+    # it, or a test that reached its Test Lab bound gets killed here first and the run reads as
+    # cancelled rather than failed.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7   # no lfs; debug.keystore is committed and signs the test APKs
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+
+      - run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+
+      - name: Run instrumented tests on Test Lab
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          : "${FIREBASE_SERVICE_ACCOUNT:?set the FIREBASE_SERVICE_ACCOUNT repository secret (see docs/RELEASING.md)}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
+          gcloud auth activate-service-account --key-file "$RUNNER_TEMP/firebase-sa.json"
+          gcloud config set project jellyshelf-3dfc8
+          gcloud firebase test android run --type instrumentation \
+            --app app/build/outputs/apk/debug/app-debug.apk \
+            --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+            --device model=MediumPhone.arm,version=30 \
+            --device model=MediumTablet.arm,version=35 \
+            --device model=tangorpro,version=33 \
+            --timeout 25m
+
   release:
+    needs: [testlab]   # nothing reaches the Releases page until the matrix above is green
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

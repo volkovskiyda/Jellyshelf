@@ -40,10 +40,16 @@ jobs:
             app/build/reports/
           if-no-files-found: ignore
 
-  # The instrumented suite — the only layer that needs a real device, and the only place a release
-  # APK's R8 output ever gets exercised before testers see it. It cannot run on a GitHub runner: the
-  # APK is arm64-only by design, so an x86_64 emulator refuses it with INSTALL_FAILED_NO_MATCHING_ABIS
-  # and the arm64 macOS runners have no nested virtualisation. Test Lab has arm64 virtual devices.
+  # The instrumented suite — the only layer that needs a real device. It cannot run on a GitHub
+  # runner: the APK is arm64-only by design, so an x86_64 emulator refuses it with
+  # INSTALL_FAILED_NO_MATCHING_ABIS and the arm64 macOS runners have no nested virtualisation. Test
+  # Lab has arm64 virtual devices.
+  #
+  # What it installs is the debug APK, and so does the second matrix in release.yml, which means R8's
+  # output is never instrumented anywhere: a keep-rule regression survives every gate and first shows
+  # up in a tester's crash report. Closing that needs testBuildType = "release" plus keep rules for
+  # the test APK itself — a change of its own, not a workflow edit. Worth knowing when reading a
+  # green run: it says nothing about the minified build.
   #
   # Main pushes only. PRs keep the host-side suite. Quota is what makes that gate worth keeping: the
   # Spark plan allows 10 virtual and 5 physical device executions per day, counted per device in the
