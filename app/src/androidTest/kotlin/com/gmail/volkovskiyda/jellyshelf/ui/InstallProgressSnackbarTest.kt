@@ -12,8 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallStage
@@ -25,6 +28,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+
+/**
+ * Comfortably past the 3 s a failure stays up, so a slow device does not fail the test that waits
+ * for it — and long enough to be a real assertion in the one that waits *through* it.
+ */
+private const val FAILURE_TIMEOUT_MS = 5_000L
+
+/** A swipe and its dismissal animation; nothing here is waiting on a timer. */
+private const val SWIPE_TIMEOUT_MS = 2_000L
 
 /**
  * What the install snackbar says, and what dismissing it does.
@@ -161,5 +173,66 @@ class InstallProgressSnackbarTest {
         composeRule.onNodeWithText(label(R.string.dismiss)).performClick()
 
         composeRule.runOnIdle { assertEquals(1, dismissals) }
+    }
+
+    /**
+     * A failure states its reason and then clears itself, rather than sitting there until dealt
+     * with. Real time, because the timeout is a coroutine delay rather than a frame-clock effect.
+     */
+    @Test
+    fun aFailure_clearsItselfWithoutBeingTouched() {
+        setContent(InstallState.Failed(UpdateCheckError.DownloadFailed))
+        val message = label(UpdateCheckError.DownloadFailed.messageRes)
+        composeRule.onNodeWithText(message).assertIsDisplayed()
+
+        composeRule.waitUntil(timeoutMillis = FAILURE_TIMEOUT_MS) {
+            composeRule.onAllNodesWithText(message).fetchSemanticsNodes().isEmpty()
+        }
+
+        composeRule.runOnIdle { assertEquals(1, dismissals) }
+    }
+
+    /**
+     * Progress does *not* clear itself: it has to outlast a download, however long that takes.
+     *
+     * Asserted past the failure timeout, so a regression that gave both the same duration fails
+     * here rather than only showing up as a vanished progress line on a slow connection.
+     */
+    @Test
+    fun progress_staysUpPastTheFailureTimeout() {
+        setContent(InstallState.Running(InstallStage.INSTALLING))
+
+        Thread.sleep(FAILURE_TIMEOUT_MS)
+
+        composeRule.onNodeWithText(label(R.string.update_install_installing)).assertIsDisplayed()
+    }
+
+    /**
+     * The way out of a progress snackbar that never resolves.
+     *
+     * An install whose `UpdateTask` neither succeeds nor fails leaves an indefinite snackbar
+     * carrying no action at all — observed on device. A swipe dismisses it like any other.
+     */
+    @Test
+    fun progress_canBeSwipedAway() {
+        setContent(InstallState.Running(InstallStage.INSTALLING))
+        val message = label(R.string.update_install_installing)
+
+        composeRule.onNodeWithText(message).performTouchInput { swipeRight() }
+
+        composeRule.waitUntil(timeoutMillis = SWIPE_TIMEOUT_MS) {
+            composeRule.onAllNodesWithText(message).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    /** Swiping a failure away counts as dismissing it, so the state clears upstream too. */
+    @Test
+    fun swipingAFailureAway_reportsIt() {
+        setContent(InstallState.Failed(UpdateCheckError.InstallCancelled))
+
+        composeRule.onNodeWithText(label(UpdateCheckError.InstallCancelled.messageRes))
+            .performTouchInput { swipeRight() }
+
+        composeRule.waitUntil(timeoutMillis = SWIPE_TIMEOUT_MS) { dismissals == 1 }
     }
 }

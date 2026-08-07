@@ -4,17 +4,31 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.ui.res.stringResource
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallStage
 import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallState
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.messageRes
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
 
 private const val PERCENT = 100
+
+/**
+ * How long a failed install states its reason before clearing itself.
+ *
+ * Long enough to read one sentence, short enough not to become litter the user has to clear. The
+ * "Dismiss" action and a swipe both still cut it short; nothing here waits on the user.
+ */
+private val FAILURE_VISIBLE_FOR = 3.seconds
 
 /**
  * Which *snackbar* an install state belongs to, as opposed to what it says.
@@ -73,14 +87,28 @@ private fun runningMessage(state: InstallState.Running): String = when (state.st
 @Composable
 fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
     SnackbarHost(hostState) { data ->
-        Snackbar(
-            action = data.visuals.actionLabel?.let { label ->
-                {
-                    TextButton(onClick = data::performAction) { Text(label) }
+        // Keyed on the data so each snackbar swipes from a fresh, settled state rather than
+        // inheriting the dismissed one its predecessor ended in.
+        key(data) {
+            val swipeState = rememberSwipeToDismissBoxState()
+            // A swipe is a dismissal like any other: it resolves showSnackbar, which is what
+            // clears a failure upstream. It is also the only way out of a progress snackbar that
+            // never resolves — an install whose UpdateTask neither succeeds nor fails leaves an
+            // indefinite snackbar with no action on it, which is exactly what happened on device.
+            LaunchedEffect(swipeState.currentValue) {
+                if (swipeState.currentValue != SwipeToDismissBoxValue.Settled) data.dismiss()
+            }
+            SwipeToDismissBox(state = swipeState, backgroundContent = {}) {
+                Snackbar(
+                    action = data.visuals.actionLabel?.let { label ->
+                        {
+                            TextButton(onClick = data::performAction) { Text(label) }
+                        }
+                    },
+                ) {
+                    Text(state?.let { installMessage(it) } ?: data.visuals.message)
                 }
-            },
-        ) {
-            Text(state?.let { installMessage(it) } ?: data.visuals.message)
+            }
         }
     }
 }
@@ -92,9 +120,15 @@ fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
  * from a dialog that closes immediately, it outlives whatever screen was open, and the user is free
  * to navigate while the APK downloads.
  *
- * [SnackbarDuration.Indefinite] throughout: progress ends when the install does, not on a timer,
- * and a failure is there to be read and dismissed. State going null cancels this effect, which
- * cancels `showSnackbar` and takes the snackbar with it — that is how a finished install clears.
+ * **Progress is [SnackbarDuration.Indefinite]** — it ends when the install does, not on a timer,
+ * and state going null cancels this effect, which cancels `showSnackbar` and takes the snackbar
+ * with it. **A failure is not**: it has been read once it has been read, so it clears itself after
+ * [FAILURE_VISIBLE_FOR] rather than sitting there until the user deals with it. The timeout wraps
+ * the call instead of using `SnackbarDuration.Short` so the interval is this file's decision and
+ * not Material's 4 seconds.
+ *
+ * Either way the failure is cleared upstream exactly once — the timeout, the action and a swipe all
+ * resolve the same `showSnackbar` call.
  */
 @Composable
 fun InstallProgressEffect(
@@ -108,15 +142,17 @@ fun InstallProgressEffect(
     val dismiss = stringResource(R.string.dismiss)
     LaunchedEffect(installSnackbarKey(state)) {
         if (message == null) return@LaunchedEffect
-        val failed = state is InstallState.Failed
-        hostState.showSnackbar(
-            message = message,
-            actionLabel = if (failed) dismiss else null,
-            duration = SnackbarDuration.Indefinite,
-        )
-        // Only a failure carries an action, so reaching here means the user dismissed one; a
-        // running install ends by the state changing under us, which cancels this before it
-        // returns.
-        if (failed) onFailureDismissed()
+        if (state !is InstallState.Failed) {
+            hostState.showSnackbar(message, duration = SnackbarDuration.Indefinite)
+            return@LaunchedEffect
+        }
+        withTimeoutOrNull(FAILURE_VISIBLE_FOR) {
+            hostState.showSnackbar(
+                message = message,
+                actionLabel = dismiss,
+                duration = SnackbarDuration.Indefinite,
+            )
+        }
+        onFailureDismissed()
     }
 }
