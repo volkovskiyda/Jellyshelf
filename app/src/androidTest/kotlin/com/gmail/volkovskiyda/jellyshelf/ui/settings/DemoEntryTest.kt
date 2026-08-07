@@ -88,8 +88,9 @@ class DemoEntryTest {
 
         composeRule.onNodeWithText(label(R.string.demo_mode_active)).assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.try_demo)).assertDoesNotExist()
-        // The exit is still there, further down the same scrolling column: the Updates section
-        // landed above it, so this scrolls rather than assuming the fold has not moved.
+        // The exit is still there, further down the same scrolling column. Scrolled to rather than
+        // asserted in place, so that moving a section above or below it stays a layout change
+        // rather than a test failure.
         composeRule.onNodeWithText(label(R.string.reset_local_data))
             .performScrollTo()
             .assertIsDisplayed()

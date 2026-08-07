@@ -280,18 +280,6 @@ internal fun SettingsContent(
 
             HorizontalDivider()
 
-            // Hidden outright in a debug build rather than shown and inert: a debug install is a
-            // different package at versionCode 1, so there is nothing here that could work and
-            // nothing to explain. Gated on state, never on BuildConfig — previews and screenshot
-            // tests build the debug variant, and reading the flag here would blank every golden.
-            // The divider goes inside, so a debug build renders exactly the layout it did before
-            // this section existed rather than gaining a stray rule.
-            if (!state.isDebugBuild) {
-                UpdatesSection(state = state, actions = actions, now = now)
-
-                HorizontalDivider()
-            }
-
             OutlinedButton(
                 onClick = actions.syncNow,
                 enabled = !state.busy,
@@ -333,6 +321,22 @@ internal fun SettingsContent(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // Last on the screen, below the library summary: updating the app is the rarest thing
+            // anyone comes to Settings to do, and it has nothing to do with the server connection
+            // and sync scope above it.
+            //
+            // Hidden outright in a debug build rather than shown and inert: a debug install is a
+            // different package at versionCode 1, so there is nothing here that could work and
+            // nothing to explain. Gated on state, never on BuildConfig — previews and screenshot
+            // tests build the debug variant, and reading the flag here would blank every golden.
+            // The divider goes inside, so a debug build ends the screen on the summary line rather
+            // than on a rule with nothing under it.
+            if (!state.isDebugBuild) {
+                HorizontalDivider()
+
+                UpdatesSection(state = state, actions = actions, now = now)
+            }
         }
     }
 

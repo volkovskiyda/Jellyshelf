@@ -54,7 +54,7 @@ class UpdatesSectionTest {
 
     private fun label(resId: Int) = composeRule.activity.getString(resId)
 
-    /** The section sits above the fold on this screen, so every assertion scrolls to it first. */
+    /** The section is last on a screen taller than the viewport, so assertions scroll to it. */
     private fun assertShows(resId: Int) =
         composeRule.onNodeWithText(label(resId)).performScrollTo().assertIsDisplayed()
 
