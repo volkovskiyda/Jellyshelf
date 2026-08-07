@@ -41,7 +41,9 @@ import kotlin.coroutines.resumeWithException
  * `android.text.TextUtils` — so a checker test that needs a signed-out tester has no other way to
  * say so.
  */
-open class AppDistributionSource {
+open class AppDistributionSource(
+    private val signInLauncher: TesterSignIn,
+) {
 
     private val appDistribution: FirebaseAppDistribution
         get() = FirebaseAppDistribution.getInstance()
@@ -50,14 +52,31 @@ open class AppDistributionSource {
     open fun isTesterSignedIn(): Boolean = appDistribution.isTesterSignedIn()
 
     /**
-     * Opens the sign-in Custom Tab and suspends until the user finishes or backs out. Backing out
-     * arrives as [Status.AUTHENTICATION_CANCELED], which maps to
-     * [UpdateCheckError.SignInCancelled] — an ordinary answer, not a fault.
+     * Opens the sign-in Custom Tab and suspends until the user finishes or backs out.
+     *
+     * Prefers [TesterSignInLauncher], which opens the same page in *this app's* task so the tab can
+     * be closed afterwards; the SDK's own sign-in hardcodes `FLAG_ACTIVITY_NEW_TASK` and leaves a
+     * browser task nothing here can reach. The launcher's KDoc has the detail, including why
+     * bypassing the SDK still registers the sign-in.
+     *
+     * Falls back to `signInTester()` whenever the launcher reports it cannot run, so a device or an
+     * SDK version where this does not work degrades to the old behaviour rather than to no sign-in.
+     *
+     * Backing out is not a fault either way: the SDK reports [Status.AUTHENTICATION_CANCELED], and
+     * the launcher path returns having never signed in — both become
+     * [UpdateCheckError.SignInCancelled].
      *
      * Throws [UpdateCheckFailure] on any failure, so the caller can render the reason.
      */
     open suspend fun signInTester() {
-        appDistribution.signInTester().await()
+        if (!signInLauncher.start()) {
+            appDistribution.signInTester().await()
+            return
+        }
+        signInLauncher.awaitReturn()
+        if (!isTesterSignedIn()) {
+            throw UpdateCheckFailure(UpdateCheckError.SignInCancelled, "Sign-in not completed", null)
+        }
     }
 
     /**

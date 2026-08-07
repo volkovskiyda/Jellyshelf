@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
+import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.perf.FirebasePerformance
 import org.koin.android.ext.android.get
@@ -26,6 +27,11 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
             workManagerFactory()
             modules(appModule)
         }
+        // Registered before anything can navigate, so the tracker never misses the first activity.
+        // The tester sign-in needs a foreground Activity to open its Custom Tab into this app's
+        // task, and needs to see the redirect land to close it again — neither is answerable from
+        // an application context. See TesterSignInLauncher.
+        registerActivityLifecycleCallbacks(get<ActivityTracker>())
         // Read after Koin starts so the flag comes from the injected BuildInfo (the single source
         // of truth), and shared by the two gates below rather than resolved from the graph twice.
         val isDebug = get<BuildInfo>().isDebug

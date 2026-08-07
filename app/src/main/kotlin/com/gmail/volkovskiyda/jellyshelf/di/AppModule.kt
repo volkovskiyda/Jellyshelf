@@ -14,6 +14,8 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.data.remote.TesterSignIn
+import com.gmail.volkovskiyda.jellyshelf.data.remote.TesterSignInLauncher
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultJellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultLibraryRepository
@@ -44,6 +46,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel
+import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -107,6 +110,8 @@ val appModule = module {
     singleOf(::JellyfinDataSource)
     singleOf(::IndexSource)
     singleOf(::GitHubReleaseSource)
+    single { ActivityTracker() }
+    single<TesterSignIn> { TesterSignInLauncher(androidContext(), get()) }
     singleOf(::AppDistributionSource)
     singleOf(::DefaultJellyfinRepository) { bind<JellyfinRepository>() }
     singleOf(::YtDlpMetadataSource)

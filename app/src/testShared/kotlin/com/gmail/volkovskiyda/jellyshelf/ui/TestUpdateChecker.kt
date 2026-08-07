@@ -29,7 +29,7 @@ fun inertUpdateChecker(settings: SettingsRepository = FakeSettingsRepository()) 
     gitHubSource = object : GitHubReleaseSource(HttpClient(OkHttp), TestDispatcherProvider(), Json) {
         override suspend fun latestRelease(): UpdateInfo? = null
     },
-    appDistributionSource = object : AppDistributionSource() {
+    appDistributionSource = object : AppDistributionSource(InertTesterSignIn) {
         override fun isTesterSignedIn() = false
         override suspend fun latestRelease(): UpdateInfo? = null
     },

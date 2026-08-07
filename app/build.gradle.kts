@@ -590,6 +590,15 @@ dependencies {
     // trade, since the stub cannot detect releases at all. docs/RELEASING.md carries the detail.
     implementation(libs.firebase.appdistribution.api)
     releaseImplementation(libs.firebase.appdistribution)
+    // Both are for TesterSignInLauncher, which opens the tester sign-in itself rather than letting
+    // the SDK do it — the SDK hardcodes FLAG_ACTIVITY_NEW_TASK, which puts the Custom Tab in the
+    // browser's own task where nothing in this app can reach or close it.
+    //
+    // Declared on every variant, not releaseImplementation: both arrive transitively through the
+    // full App Distribution SDK, which debug does not link, so the launcher would not compile.
+    // firebase-installations supplies the installation id the sign-in URL is keyed to.
+    implementation(libs.androidx.browser)
+    implementation(libs.firebase.installations)
     implementation(platform(libs.ktor.bom))
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

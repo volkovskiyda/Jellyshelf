@@ -17,6 +17,9 @@ coreKtx = "1.19.0"
 junit = "4.13.2"
 lifecycle = "2.11.0"
 activityCompose = "1.13.0"
+# Custom Tabs. Already present transitively through firebase-appdistribution, but that artifact is
+# releaseImplementation-only, so the sign-in launcher would not compile on debug without this.
+androidxBrowser = "1.10.0"
 composeBom = "2026.06.01"
 googleDevtoolsKsp = "2.3.10"
 kotlinxSerializationJson = "1.11.0"
@@ -140,6 +143,8 @@ firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashly
 firebase-perf = { group = "com.google.firebase", name = "firebase-perf" }
 firebase-appdistribution = { group = "com.google.firebase", name = "firebase-appdistribution", version.ref = "firebaseAppDistribution" }
 firebase-appdistribution-api = { group = "com.google.firebase", name = "firebase-appdistribution-api", version.ref = "firebaseAppDistribution" }
+firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
+androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "androidxBrowser" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
