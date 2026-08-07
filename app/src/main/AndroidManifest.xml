@@ -6,8 +6,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- In-app playback runs as a media foreground service (PlaybackService). Its notification
-         needs POST_NOTIFICATIONS on API 33+, requested at runtime from the player screen; when
-         denied, playback still works — the media notification just stays hidden. -->
+         needs POST_NOTIFICATIONS on API 33+, requested at runtime from the library screen once it
+         has videos in it (see NotificationPrompt); when denied, playback still works — the media
+         notification just stays hidden. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

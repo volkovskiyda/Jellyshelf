@@ -64,6 +64,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             longPreferencesKey("dismissed_update_at_app_distribution")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val LAST_UPDATE_DIALOG_AT = longPreferencesKey("last_update_dialog_at")
+        val NOTIFICATION_PROMPT_AT = longPreferencesKey("notification_prompt_at")
+        val NOTIFICATION_SYSTEM_ASKED = booleanPreferencesKey("notification_system_asked")
     }
 
     /**
@@ -317,6 +319,26 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setLastUpdateDialogAt(timestamp: Long) {
         ds.edit { it[Keys.LAST_UPDATE_DIALOG_AT] = timestamp }
+    }
+
+    override val notificationPromptAt: Flow<Long> = prefs
+        .map { it[Keys.NOTIFICATION_PROMPT_AT] ?: 0L }
+
+    /**
+     * Unreadable preferences degrade to "the system dialog has never been shown", which costs at
+     * most one prompt that Android answers by doing nothing — the direction that keeps a disk
+     * failure from permanently silencing an ask the user has not yet had.
+     */
+    override val notificationSystemAsked: Flow<Boolean> = prefs
+        .map { it[Keys.NOTIFICATION_SYSTEM_ASKED] ?: false }
+
+    override suspend fun setNotificationPrompt(timestamp: Long, systemAsked: Boolean) {
+        // One edit, both halves — and the flag is OR-ed rather than assigned, so answering a later
+        // prompt with "Not now" cannot erase the fact that Android has already had its turn.
+        ds.edit {
+            it[Keys.NOTIFICATION_PROMPT_AT] = timestamp
+            it[Keys.NOTIFICATION_SYSTEM_ASKED] = systemAsked || it[Keys.NOTIFICATION_SYSTEM_ASKED] == true
+        }
     }
 
     /**

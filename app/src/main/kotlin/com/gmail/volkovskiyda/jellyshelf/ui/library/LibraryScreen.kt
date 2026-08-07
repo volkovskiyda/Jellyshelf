@@ -82,6 +82,11 @@ fun LibraryScreen(
         onOpenDetails = onOpenDetails,
         modifier = modifier,
     )
+
+    // Hosted out here rather than inside [LibraryContent] so the content stays stateless and its
+    // screenshot goldens keep rendering a screen with nothing on top of it. Gated on the total,
+    // not on the rendered list: a search that matches nothing is still a library with videos in it.
+    NotificationPermissionPrompt(hasVideos = totalCount > 0)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -40,6 +40,8 @@ class FakeSettingsRepository(
     updateSource: UpdateSource = UpdateSource.NONE,
     lastUpdateCheckAt: Long = 0L,
     lastUpdateDialogAt: Long = 0L,
+    notificationPromptAt: Long = 0L,
+    notificationSystemAsked: Boolean = false,
 ) : SettingsRepository {
     private val _settings = MutableStateFlow(initial)
     private val _backStackJson = MutableStateFlow(backStackJson)
@@ -51,6 +53,8 @@ class FakeSettingsRepository(
     private val _updateSource = MutableStateFlow(updateSource)
     private val _lastUpdateCheckAt = MutableStateFlow(lastUpdateCheckAt)
     private val _lastUpdateDialogAt = MutableStateFlow(lastUpdateDialogAt)
+    private val _notificationPromptAt = MutableStateFlow(notificationPromptAt)
+    private val _notificationSystemAsked = MutableStateFlow(notificationSystemAsked)
 
     // Per source, so a test can snooze GitHub without touching App Distribution — the independence
     // the two key pairs exist for. Absent entries read as 0, matching the real store's "unset".
@@ -173,6 +177,15 @@ class FakeSettingsRepository(
         _lastUpdateDialogAt.value = timestamp
     }
 
+    override val notificationPromptAt: Flow<Long> = _notificationPromptAt
+    override val notificationSystemAsked: Flow<Boolean> = _notificationSystemAsked
+
+    /** Both halves together, and the flag only ever turns on — see [SettingsRepository]. */
+    override suspend fun setNotificationPrompt(timestamp: Long, systemAsked: Boolean) {
+        _notificationPromptAt.value = timestamp
+        _notificationSystemAsked.value = systemAsked || _notificationSystemAsked.value
+    }
+
     /** What [setBackStackJson] last persisted. */
     val savedBackStackJson: String? get() = _backStackJson.value
 
@@ -181,4 +194,8 @@ class FakeSettingsRepository(
 
     /** What [setLastUpdateDialogAt] last persisted, without collecting the flow. */
     val savedLastUpdateDialogAt: Long get() = _lastUpdateDialogAt.value
+
+    /** What [setNotificationPrompt] last persisted, without collecting either flow. */
+    val savedNotificationPrompt: Pair<Long, Boolean>
+        get() = _notificationPromptAt.value to _notificationSystemAsked.value
 }

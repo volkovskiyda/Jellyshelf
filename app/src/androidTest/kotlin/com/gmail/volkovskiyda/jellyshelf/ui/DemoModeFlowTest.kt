@@ -19,6 +19,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.dataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -76,6 +77,9 @@ class DemoModeFlowTest {
      */
     @Before
     fun resetAppState() {
+        // The demo library is populated by design, so the library screen would ask for
+        // POST_NOTIFICATIONS mid-journey and put its dialog over the rows this test clicks.
+        grantNotificationPermission()
         val workManager = WorkManager.getInstance(context)
         workManager.cancelAllWork().result.get()
         workManager.pruneWork().result.get()

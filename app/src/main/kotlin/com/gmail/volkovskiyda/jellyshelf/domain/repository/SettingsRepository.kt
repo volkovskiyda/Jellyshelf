@@ -145,4 +145,32 @@ interface SettingsRepository {
      */
     val lastUpdateDialogAt: Flow<Long>
     suspend fun setLastUpdateDialogAt(timestamp: Long)
+
+    /**
+     * Epoch millis the notification-permission prompt was last answered, `0` when never — the same
+     * "0 == never == the window has elapsed" convention as the three update timestamps, so a fresh
+     * install is asked as soon as it has a library rather than being muted for a week.
+     */
+    val notificationPromptAt: Flow<Long>
+
+    /**
+     * Whether the *system* permission dialog has ever been launched — i.e. whether the user got as
+     * far as Android's own dialog rather than answering ours with "Not now".
+     *
+     * Stored because `shouldShowRequestPermissionRationale` reads `false` in two opposite
+     * situations: before the first ask, and after the second denial has locked the permission for
+     * good. This flag is what tells them apart, and so what stops the prompt returning every week
+     * with an "Allow" button that the system would silently ignore.
+     */
+    val notificationSystemAsked: Flow<Boolean>
+
+    /**
+     * Records an answer to the prompt. Both halves in one write, like [setDismissedUpdate]: a
+     * timestamp without its flag reads back as "asked, at the epoch", i.e. a snooze that expired
+     * before it started.
+     *
+     * [systemAsked] only ever turns on — passing `false` after a system ask leaves the stored
+     * `true` alone, since "we have shown Android's dialog before" cannot become untrue.
+     */
+    suspend fun setNotificationPrompt(timestamp: Long, systemAsked: Boolean)
 }

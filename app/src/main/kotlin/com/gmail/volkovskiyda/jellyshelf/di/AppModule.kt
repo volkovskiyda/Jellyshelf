@@ -32,6 +32,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.NotificationPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
@@ -108,6 +109,7 @@ val appModule = module {
     singleOf(::AppSettingsState)
     single<TimeProvider> { DefaultTimeProvider() }
     singleOf(::UpdateChecker)
+    singleOf(::NotificationPrompt)
     singleOf(::JellyfinClient)
     singleOf(::JellyfinDataSource)
     singleOf(::IndexSource)

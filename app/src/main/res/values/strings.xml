@@ -242,7 +242,8 @@
     <string name="update_install_installing">Installing the update…</string>
     <string name="update_available_title">Version %1$s available</string>
     <string name="update_install">Update</string>
-    <string name="update_dismiss">Not now</string>
+    <!-- Same words as notification_permission_dismiss, deliberately not the same string — see there. -->
+    <string name="update_dismiss" tools:ignore="DuplicateStrings">Not now</string>
 
     <!-- One per UpdateCheckError case. A failed check always says why — never a silent "no update". -->
     <string name="update_error_api_disabled">The Firebase App Testers API is not allowed for this app’s key, so the tester channel cannot answer. See docs/RELEASING.md.</string>
@@ -256,4 +257,20 @@
     <string name="update_error_interrupted">The update was interrupted. Try again from this screen.</string>
     <string name="update_error_not_supported">This build cannot check the tester channel.</string>
     <string name="update_error_unknown">The update check failed.</string>
+
+    <!--
+      The rationale shown before Android's own POST_NOTIFICATIONS dialog, on API 33+ only. It says
+      what the permission buys (the media notification, which is the only way back into a
+      backgrounded video) and when declining is the right answer — because the ask now arrives on
+      the library screen, before the user has played anything to give it context.
+    -->
+    <string name="notification_permission_title">Show playback notifications?</string>
+    <string name="notification_permission_body">While a video is playing, Jellyshelf can post a notification you can pause and skip from — and tap to jump straight back into the video after leaving the app.\n\nIt is the only thing this permission is used for: no alerts, nothing when the app is idle. Decline and playback still works, but a video you leave has no controls and no way back to it.</string>
+    <string name="notification_permission_allow">Allow</string>
+    <!--
+      Deliberately its own string rather than a reuse of update_dismiss, which happens to read the
+      same today: these are two unrelated refusals, and a translator (or a copy change) must be
+      free to move one without silently moving the other.
+    -->
+    <string name="notification_permission_dismiss" tools:ignore="DuplicateStrings">Not now</string>
 </resources>

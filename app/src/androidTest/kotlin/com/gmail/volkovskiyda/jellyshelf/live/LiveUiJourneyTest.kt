@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.live
 
 import android.content.Context
-import android.os.Build
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -28,7 +27,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
@@ -44,6 +42,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
 import com.gmail.volkovskiyda.jellyshelf.ui.VIDEO_ROW_DETAILS_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LIBRARY_ROW_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
@@ -650,19 +649,6 @@ class LiveUiJourneyTest : KoinTest {
             // After clearLocalData, which writes to this same store.
             context.dataStore.edit { it.clear() }
         }
-    }
-
-    /**
-     * Grants `POST_NOTIFICATIONS` before the player can ask for it. `PlayerScreen` requests it the
-     * first time it opens, and the system dialog would sit over the controls this test acts on —
-     * in another window, where Compose cannot reach it. A no-op once granted, and below API 33
-     * there is no such permission to grant.
-     */
-    private fun grantNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
-            "pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS",
-        ).close()
     }
 
     // --- Waiting ------------------------------------------------------------------------------

@@ -4,14 +4,9 @@
 
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -75,7 +70,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -142,7 +136,6 @@ fun PlayerScreen(
     val video by viewModel.video.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
 
-    RequestNotificationPermissionOnce()
     ImmersiveWhileHere()
 
     // Every explicit exit routes through here — and only explicit exits, which is why it is not
@@ -851,23 +844,6 @@ private fun ImmersiveWhileHere() {
             insets.show(WindowInsetsCompat.Type.systemBars())
             insets.systemBarsBehavior = previousBehavior
         }
-    }
-}
-
-/**
- * One-shot POST_NOTIFICATIONS request (API 33+): the media notification is the only way back to
- * a backgrounded player. Denied → playback still works, the notification just stays hidden; the
- * system's own throttling decides whether the dialog ever shows again.
- */
-@Composable
-private fun RequestNotificationPermissionOnce() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    LaunchedEffect(Unit) {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted) launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 }
 

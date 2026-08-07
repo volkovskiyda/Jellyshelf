@@ -114,6 +114,8 @@ class BaselineProfileGenerator {
      */
     @Test
     fun generate1Connect() = rule.collect(packageName = targetPackage) {
+        // Before the library has anything in it — see the note on the grant itself.
+        grantMediaNotificationPermission()
         pressHome()
         startActivityAndWait()
         // A run that ended on the player or a detail screen leaves the next iteration somewhere
@@ -151,7 +153,8 @@ class BaselineProfileGenerator {
      */
     @Test
     fun generate2Journey() = rule.collect(packageName = targetPackage) {
-        // Before anything can open the player — see the note on the grant itself.
+        // Belt and braces: generate1Connect already granted it, and a run that starts here on an
+        // install that never saw that test must not meet a dialog either.
         grantMediaNotificationPermission()
         pressHome()
         startActivityAndWait()
@@ -311,14 +314,15 @@ class BaselineProfileGenerator {
     }
 
     /**
-     * Grants `POST_NOTIFICATIONS` before the player can ask for it.
+     * Grants `POST_NOTIFICATIONS` before the app can ask for it.
      *
-     * `PlayerScreen` requests it the first time it opens — the media notification is the only way
-     * back into a playing video — and on the freshly installed APK a generation run uses, that puts
-     * a system dialog *over* the player. Playback carries on behind it, so nothing fails except this
-     * journey's own check, which then waits out its timeout looking at a dialog. The dialog belongs
-     * to another process and profiling it would buy the app nothing, so the deterministic answer is
-     * to grant it up front. Idempotent, and a no-op once granted.
+     * The library screen asks the first time it has videos in it — the media notification is the
+     * only way back into a playing video — and on the freshly installed APK a generation run uses,
+     * that puts a dialog over the very list this profile scrolls, with the system's own behind it
+     * if it is answered. Everything carries on behind them, so nothing fails except this journey's
+     * checks, which then wait out their timeouts looking at a dialog. Neither dialog is the app's
+     * to profile, so the deterministic answer is to grant the permission up front. Idempotent, and
+     * a no-op once granted.
      */
     private fun MacrobenchmarkScope.grantMediaNotificationPermission() {
         device.executeShellCommand("pm grant $targetPackage android.permission.POST_NOTIFICATIONS")

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
+import com.gmail.volkovskiyda.jellyshelf.NotificationPermissionRule
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
@@ -95,7 +96,15 @@ class UpdateOfferHostingTest {
     /** The app's own checker, put back in [restoreTheRealChecker]. */
     private lateinit var realChecker: UpdateChecker
 
-    @get:Rule
+    /**
+     * Granted before the activity exists: the library screen asks for it as soon as it has videos,
+     * and residue from an earlier test in this suite is enough to make that happen — over the
+     * offer this test is looking for, in a window of its own.
+     */
+    @get:Rule(order = 0)
+    val notificationPermission = NotificationPermissionRule()
+
+    @get:Rule(order = 1)
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     /**

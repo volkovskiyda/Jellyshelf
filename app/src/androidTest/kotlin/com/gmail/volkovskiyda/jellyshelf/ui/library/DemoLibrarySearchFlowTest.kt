@@ -17,6 +17,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.repository.dataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
@@ -57,6 +58,9 @@ class DemoLibrarySearchFlowTest {
     /** Whatever the previous test left behind, gone — see [com.gmail.volkovskiyda.jellyshelf.ui.DemoModeFlowTest]. */
     @Before
     fun resetAppState() {
+        // This test seeds a full demo library, which is exactly what makes the library screen ask
+        // for POST_NOTIFICATIONS — its dialog would cover the rows and the search field below.
+        grantNotificationPermission()
         WorkManager.getInstance(context).cancelAllWork().result.get()
         runBlocking {
             GlobalContext.get().get<LibraryRepository>().clearLocalData()
