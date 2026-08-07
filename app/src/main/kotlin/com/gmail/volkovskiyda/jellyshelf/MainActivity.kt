@@ -256,19 +256,21 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     val showBottomBar = topLevel.any { it.key == current }
 
     // The update offer, hosted here because this is the only place that knows which tab is current.
-    // `current == AppNavKey.Library` is the whole suppression rule: the player, detail and the other
-    // tabs are excluded by construction rather than by a list of exceptions that a new screen could
-    // forget to join.
+    // The tab is the whole suppression rule for an offer nobody asked for: the player, detail and
+    // the other tabs are excluded by construction rather than by a list of exceptions that a new
+    // screen could forget to join. An offer the user *did* ask for skips that rule entirely — it
+    // is the answer to a question posed on the Settings tab, and belongs where it was asked.
     val updateChecker: UpdateChecker = koinInject()
     val update by updateChecker.available.collectAsStateWithLifecycle()
     val updateScope = rememberCoroutineScope()
     val context = LocalContext.current
-    update?.takeIf { current == AppNavKey.Library }?.let { info ->
+    update?.takeIf { it.requested || current == AppNavKey.Library }?.let { offer ->
+        val info = offer.info
         // Stamps the once-a-day floor when the dialog is actually seen, not when the check found
         // something: checking from Settings and never coming back to Library is not an
         // interruption. Keyed on the version code, so a genuinely new build re-stamps while a
-        // recomposition does not.
-        LaunchedEffect(info.versionCode) { updateChecker.markDialogShown() }
+        // recomposition does not. A requested offer stamps nothing at all — see markDialogShown.
+        LaunchedEffect(info.versionCode) { updateChecker.markDialogShown(offer) }
         UpdateDialog(
             info = info,
             onUpdate = {

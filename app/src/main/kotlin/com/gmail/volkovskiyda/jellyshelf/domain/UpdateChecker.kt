@@ -5,6 +5,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateCheckFailure
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateOffer
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,10 +86,10 @@ class UpdateChecker(
 ) {
     // MutableStateFlow, never @Volatile or an atomic: the project has carried zero @Volatile since
     // 2026-07-29 and this is not the place to reintroduce one.
-    private val _available = MutableStateFlow<UpdateInfo?>(null)
+    private val _available = MutableStateFlow<UpdateOffer?>(null)
 
     /** The update to offer, or null. Null until a check finds something — most launches. */
-    val available: StateFlow<UpdateInfo?> = _available.asStateFlow()
+    val available: StateFlow<UpdateOffer?> = _available.asStateFlow()
 
     private val _error = MutableStateFlow<UpdateCheckError?>(null)
 
@@ -159,9 +160,9 @@ class UpdateChecker(
             settingsRepository.setLastUpdateCheckAt(time.now())
             // Newer-than-installed is a validity rule and binds both paths; only the politeness
             // windows in shouldOffer are the user's to skip by asking.
-            val offer = info?.takeIf {
-                it.versionCode > buildInfo.versionCode && (manual || shouldOffer(it))
-            }
+            val offer = info
+                ?.takeIf { it.versionCode > buildInfo.versionCode && (manual || shouldOffer(it)) }
+                ?.let { UpdateOffer(it, requested = manual) }
             _available.value = offer
             if (manual) _upToDate.value = offer == null
         } catch (e: UpdateCheckFailure) {
@@ -231,8 +232,14 @@ class UpdateChecker(
      * check finds something — a user who taps "Check now" in Settings and never returns to the
      * Library tab was never interrupted, and must not burn the floor. Stamping it in [check] would
      * silently swallow the first offer of every new version.
+     *
+     * A no-op for an offer the user asked for ([UpdateOffer.requested]), for the same reason: the
+     * floor bounds how often the app interrupts, and a dialog opened on request interrupts nobody.
+     * Spending it there would mute the next *automatic* offer for a day — quite possibly of a build
+     * newer than the one just shown.
      */
-    suspend fun markDialogShown() {
+    suspend fun markDialogShown(offer: UpdateOffer) {
+        if (offer.requested) return
         settingsRepository.setLastUpdateDialogAt(time.now())
     }
 

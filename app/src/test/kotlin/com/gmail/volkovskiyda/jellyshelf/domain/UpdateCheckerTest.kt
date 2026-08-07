@@ -192,7 +192,7 @@ class UpdateCheckerTest {
         val checker = checker(gitHub = FakeGitHub { update(170) })
         checker.checkOnStart()
 
-        assertEquals(170, checker.available.value?.versionCode)
+        assertEquals(170, checker.available.value?.info?.versionCode)
     }
 
     // --- Offer rule 2: the one-dialog-a-day floor ---
@@ -219,7 +219,7 @@ class UpdateCheckerTest {
         val checker = checker(settings = settings, gitHub = FakeGitHub { update(170) })
         checker.checkOnStart()
 
-        assertEquals(170, checker.available.value?.versionCode)
+        assertEquals(170, checker.available.value?.info?.versionCode)
     }
 
     // --- Offer rule 3: the snooze ---
@@ -246,7 +246,7 @@ class UpdateCheckerTest {
         val checker = checker(settings = settings, gitHub = FakeGitHub { update(170) })
         checker.checkOnStart()
 
-        assertEquals(170, checker.available.value?.versionCode)
+        assertEquals(170, checker.available.value?.info?.versionCode)
     }
 
     /**
@@ -262,7 +262,7 @@ class UpdateCheckerTest {
         val checker = checker(settings = settings, gitHub = FakeGitHub { update(181) })
         checker.checkOnStart()
 
-        assertEquals(181, checker.available.value?.versionCode)
+        assertEquals(181, checker.available.value?.info?.versionCode)
     }
 
     /**
@@ -293,7 +293,7 @@ class UpdateCheckerTest {
         )
         checker.checkOnStart()
 
-        assertEquals(170, checker.available.value?.versionCode)
+        assertEquals(170, checker.available.value?.info?.versionCode)
     }
 
     // --- "Check now" skips politeness, not validity ---
@@ -312,7 +312,7 @@ class UpdateCheckerTest {
         checker.checkNow()
 
         assertEquals(1, gitHub.calls)
-        assertEquals(170, checker.available.value?.versionCode)
+        assertEquals(170, checker.available.value?.info?.versionCode)
         // Something was found, so this is an offer rather than an "up to date".
         assertFalse(checker.upToDate.value)
     }
@@ -378,7 +378,7 @@ class UpdateCheckerTest {
         checker.checkNow()
 
         assertFalse(checker.upToDate.value)
-        assertEquals(170, checker.available.value?.versionCode)
+        assertEquals(170, checker.available.value?.info?.versionCode)
     }
 
     /** A failed check has no answer at all, and must not claim the reassuring one. */
@@ -438,7 +438,7 @@ class UpdateCheckerTest {
         checker.checkNow()
 
         assertEquals(1, appDistribution.signInAttempts)
-        assertEquals(170, checker.available.value?.versionCode)
+        assertEquals(170, checker.available.value?.info?.versionCode)
     }
 
     // --- Selecting a channel (the sign-in gate) ---
@@ -560,9 +560,62 @@ class UpdateCheckerTest {
 
         assertEquals(0L, settings.savedLastUpdateDialogAt)
 
-        checker.markDialogShown()
+        checker.markDialogShown(checker.available.value!!)
 
         assertEquals(START, settings.savedLastUpdateDialogAt)
+    }
+
+    // --- Offers the user asked for ---
+
+    /** Provenance travels with the offer, so the host can tell the two apart. */
+    @Test
+    fun anAutomaticOffer_isNotMarkedRequested() = runTest {
+        val checker = checker()
+        checker.checkOnStart()
+
+        assertFalse(checker.available.value!!.requested)
+    }
+
+    @Test
+    fun aManualOffer_isMarkedRequested() = runTest {
+        val checker = checker()
+        checker.checkNow()
+
+        assertTrue(checker.available.value!!.requested)
+    }
+
+    /**
+     * The floor bounds how often the app *interrupts*. A dialog the user summoned from Settings
+     * interrupts nobody, and spending the floor on it would mute the next automatic offer for a
+     * day — quite possibly of a build newer than the one just shown.
+     */
+    @Test
+    fun aRequestedDialog_doesNotBurnTheFloor() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val checker = checker(settings = settings)
+        checker.checkNow()
+
+        checker.markDialogShown(checker.available.value!!)
+
+        assertEquals(0L, settings.savedLastUpdateDialogAt)
+    }
+
+    /**
+     * And the floor still stops an *automatic* offer that arrives right after a requested one —
+     * the exemption is per dialog, not a switch that turns the floor off.
+     */
+    @Test
+    fun aManualCheck_leavesTheFloorAvailableForTheNextAutomaticOffer() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val checker = checker(settings = settings)
+        checker.checkNow()
+        checker.markDialogShown(checker.available.value!!)
+
+        // A day later, so the check interval has passed and only the dialog floor could suppress.
+        clock = START + ONE_DAY
+        checker.checkOnStart()
+
+        assertEquals(170, checker.available.value?.info?.versionCode)
     }
 
     /** Choosing to update is not a dismissal: a failed install must re-prompt, not snooze a week. */
