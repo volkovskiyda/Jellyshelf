@@ -146,4 +146,44 @@ class UpdatePreferencesInstrumentedTest {
         assertEquals(2_600L, repository.lastUpdateCheckAt.first())
         assertEquals(2_900L, repository.lastUpdateDialogAt.first())
     }
+
+    // --- The notification prompt's two halves ---------------------------------------------------
+    //
+    // Tested here rather than only through FakeSettingsRepository, because the behaviour that
+    // matters — the flag that only ever turns on — is a line of logic *inside*
+    // DefaultSettingsRepository's edit block, and the fake reimplements it. A fake agreeing with
+    // itself proves nothing about the store the app ships.
+
+    /** `0` and `false`: a fresh install is due as soon as it has a library, not muted for a week. */
+    @Test
+    fun nothingSaved_hasNeverBeenPromptedForNotifications() = runBlocking {
+        val repository = repository()
+
+        assertEquals(0L, repository.notificationPromptAt.first())
+        assertEquals(false, repository.notificationSystemAsked.first())
+    }
+
+    @Test
+    fun aPromptAnswer_persistsBothHalvesTogether() = runBlocking {
+        repository().setNotificationPrompt(timestamp = 3_300L, systemAsked = true)
+
+        val repository = repository()
+        assertEquals(3_300L, repository.notificationPromptAt.first())
+        assertEquals(true, repository.notificationSystemAsked.first())
+    }
+
+    /**
+     * The latch: once Android's dialog has been reached, a later "Not now" restarts the snooze but
+     * cannot un-ask it — otherwise a permission locked by two denials would read as a fresh
+     * install, and the prompt would return every week with an "Allow" that provably does nothing.
+     */
+    @Test
+    fun theSystemAskedFlag_onlyEverTurnsOn() = runBlocking {
+        repository().setNotificationPrompt(timestamp = 3_300L, systemAsked = true)
+        repository().setNotificationPrompt(timestamp = 4_400L, systemAsked = false)
+
+        val repository = repository()
+        assertEquals(4_400L, repository.notificationPromptAt.first())
+        assertEquals(true, repository.notificationSystemAsked.first())
+    }
 }
