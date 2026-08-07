@@ -104,6 +104,13 @@ data class SettingsUiState(
     val signingInTester: Boolean = false,
     /** Why the last check or sign-in failed. Rendered as a sentence, never as a silent no-op. */
     val updateError: UpdateCheckError? = null,
+    /**
+     * The last "Check now" came back with nothing newer. Mutually exclusive with [updateError]:
+     * a check either failed or produced an answer, and this is the answer nobody would otherwise
+     * see — without it, a successful check that finds nothing looks exactly like one that silently
+     * did nothing.
+     */
+    val upToDate: Boolean = false,
     val lastUpdateCheckAt: Long = 0L,
     /**
      * Whether this is a debug build, which hides the whole Updates section (decision 16).
@@ -157,13 +164,14 @@ data class SettingsUiState(
 /** Sync progress as owned by WorkManager, merged into [SettingsUiState] for display. */
 private data class SyncUi(val running: Boolean, val message: String?, val isError: Boolean)
 
-/** The update-check slice of [SettingsUiState], assembled from five independent flows. */
+/** The update-check slice of [SettingsUiState], assembled from six independent flows. */
 private data class UpdateUi(
     val source: UpdateSource,
     val checking: Boolean,
     val signingIn: Boolean,
     val error: UpdateCheckError?,
     val lastCheckAt: Long,
+    val upToDate: Boolean = false,
 )
 
 @Suppress(
@@ -197,7 +205,8 @@ class SettingsViewModel(
 
     /**
      * The update half of the screen's state, combined separately so [state] stays a three-way
-     * merge — `combine` runs out of typed overloads at five.
+     * merge — `combine` runs out of typed overloads at five, which is also why the sixth flow is
+     * folded in with a trailing `combine` rather than joining the list.
      */
     private val updateUi: Flow<UpdateUi> = combine(
         settingsRepo.updateSource,
@@ -207,7 +216,7 @@ class SettingsViewModel(
         settingsRepo.lastUpdateCheckAt,
     ) { source, checking, signingIn, error, lastCheckAt ->
         UpdateUi(source, checking, signingIn, error, lastCheckAt)
-    }
+    }.combine(updateChecker.upToDate) { ui, upToDate -> ui.copy(upToDate = upToDate) }
 
     /**
      * "Look at the sync scope" — a one-shot event, not a state flag, because it fires and is over:
@@ -249,6 +258,7 @@ class SettingsViewModel(
             checkingUpdate = update.checking,
             signingInTester = update.signingIn,
             updateError = update.error,
+            upToDate = update.upToDate,
             lastUpdateCheckAt = update.lastCheckAt,
         )
     }.stateIn(viewModelScope, WhileUiSubscribed, SettingsUiState(isDebugBuild = isDebugBuild))

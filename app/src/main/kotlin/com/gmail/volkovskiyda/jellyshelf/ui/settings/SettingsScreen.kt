@@ -422,6 +422,16 @@ private fun UpdatesSection(
             color = MaterialTheme.colorScheme.error,
         )
     }
+
+    // The answer a successful check produces when it finds nothing. Without it the only feedback is
+    // the "checked just now" line above, which says the check *ran* — not what it concluded.
+    if (state.upToDate) {
+        Text(
+            stringResource(R.string.update_up_to_date),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
 }
 
 /**

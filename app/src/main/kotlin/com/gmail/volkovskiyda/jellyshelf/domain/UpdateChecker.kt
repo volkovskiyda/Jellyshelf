@@ -46,11 +46,13 @@ internal fun elapsed(now: Long, since: Long, window: Long): Boolean = now - sinc
  *
  * Two kinds of gate, and the difference decides which of them "Check now" may skip:
  *
- * - **Validity** — debug build, no real version code, no channel selected. This build cannot
- *   meaningfully compare itself to anything, so *both* paths stop here. A debug install is
- *   `…jellyshelf.debug` with `versionCode = 1` and a `-debug` version name, so every published
- *   release would read as newer; a locally assembled release without `-PbuildNumber` reports `1`
- *   and does the same.
+ * - **Validity** — debug build, no real version code, no channel selected, and whether what the
+ *   channel returned is actually newer than what is installed. *Both* paths stop here: "update to
+ *   the build you are already running" is not an offer a user asked for by tapping "Check now",
+ *   and the GitHub channel hands back its latest release whether or not it is an upgrade. A debug
+ *   install is `…jellyshelf.debug` with `versionCode = 1` and a `-debug` version name, so every
+ *   published release would read as newer; a locally assembled release without `-PbuildNumber`
+ *   reports `1` and does the same.
  * - **Politeness** — the check interval, the dialog floor and the dismissal snooze. These are
  *   about not being a pest, so a user who explicitly taps "Check now" is not subject to them.
  *
@@ -96,6 +98,20 @@ class UpdateChecker(
     private val _checking = MutableStateFlow(false)
     val checking: StateFlow<Boolean> = _checking.asStateFlow()
 
+    private val _upToDate = MutableStateFlow(false)
+
+    /**
+     * The last **manual** check finished and found nothing newer to offer.
+     *
+     * Only manual checks set this. A cold-start check that finds nothing is the ordinary case and
+     * has no news to report; announcing it would put a line on the settings screen that the user
+     * never asked for and cannot explain. Cleared the moment the next check starts, so it always
+     * describes the most recent answer rather than an old one.
+     *
+     * Mutually exclusive with [error] by construction — a check that threw never gets this far.
+     */
+    val upToDate: StateFlow<Boolean> = _upToDate.asStateFlow()
+
     private val _signingIn = MutableStateFlow(false)
 
     /** A tester sign-in is in flight, from [selectSource]. The Custom Tab is a separate task. */
@@ -134,13 +150,20 @@ class UpdateChecker(
         }
 
         _error.value = null
+        _upToDate.value = false
         _checking.value = true
         try {
             val info = fetch(source, manual)
             // Stamped even when nothing was found, and *not* stamped on failure: the interval is
             // about how often we ask, so a transient outage must not buy a day of silence.
             settingsRepository.setLastUpdateCheckAt(time.now())
-            _available.value = info?.takeIf { manual || shouldOffer(it) }
+            // Newer-than-installed is a validity rule and binds both paths; only the politeness
+            // windows in shouldOffer are the user's to skip by asking.
+            val offer = info?.takeIf {
+                it.versionCode > buildInfo.versionCode && (manual || shouldOffer(it))
+            }
+            _available.value = offer
+            if (manual) _upToDate.value = offer == null
         } catch (e: UpdateCheckFailure) {
             _error.value = e.reason ?: UpdateCheckError.Unknown
         } catch (e: IOException) {
@@ -172,14 +195,15 @@ class UpdateChecker(
     }
 
     /**
-     * The three offer rules, in the order that makes the cheap ones first. All must hold.
+     * The two *politeness* rules, cheap one first — both must hold. The caller has already
+     * established that [info] is newer than the installed build, which is not politeness and so is
+     * not skippable.
      *
-     * Rule 3's second branch covers `==` and `<` together: a version code *lower* than the
+     * Rule 2's second branch covers `==` and `<` together: a version code *lower* than the
      * dismissed one is possible — a tag cut from an older commit than the latest tester build — and
      * "not newer, so wait the snooze out" is the right answer for both.
      */
     private suspend fun shouldOffer(info: UpdateInfo): Boolean {
-        if (info.versionCode <= buildInfo.versionCode) return false
         if (!elapsed(time.now(), settingsRepository.lastUpdateDialogAt.first(), DIALOG_INTERVAL_MILLIS)) {
             return false
         }
@@ -260,6 +284,8 @@ class UpdateChecker(
      */
     fun selectSource(source: UpdateSource) = dispatchers.applicationScope.launch {
         _error.value = null
+        // The old channel's answer says nothing about the new one's.
+        _upToDate.value = false
         if (source != UpdateSource.APP_DISTRIBUTION || appDistributionSource.isTesterSignedIn()) {
             settingsRepository.setUpdateSource(source)
             return@launch

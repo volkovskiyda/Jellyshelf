@@ -313,6 +313,95 @@ class UpdateCheckerTest {
 
         assertEquals(1, gitHub.calls)
         assertEquals(170, checker.available.value?.versionCode)
+        // Something was found, so this is an offer rather than an "up to date".
+        assertFalse(checker.upToDate.value)
+    }
+
+    /**
+     * The politeness windows are the user's to skip; "is it actually newer" is not.
+     *
+     * This is the GitHub channel's shape specifically: `releases/latest` answers with the newest
+     * release whether or not it is an upgrade, so without this rule a user already running the
+     * newest build taps "Check now" and is offered the build they are running. App Distribution
+     * hides the same case behind a null result, which is why it never showed up there.
+     */
+    @Test
+    fun checkNow_doesNotOfferTheBuildAlreadyInstalled() = runTest {
+        val checker = checker(gitHub = FakeGitHub { update(165) }, versionCode = 165)
+        checker.checkNow()
+
+        assertNull(checker.available.value)
+        assertTrue(checker.upToDate.value)
+    }
+
+    /** A tag cut from an older commit than the installed build is not an update either. */
+    @Test
+    fun checkNow_doesNotOfferAnOlderBuild() = runTest {
+        val checker = checker(gitHub = FakeGitHub { update(160) }, versionCode = 165)
+        checker.checkNow()
+
+        assertNull(checker.available.value)
+        assertTrue(checker.upToDate.value)
+    }
+
+    /** A channel that answers "nothing new" at all — App Distribution's null — reads the same. */
+    @Test
+    fun checkNow_reportsUpToDateWhenTheChannelHasNothing() = runTest {
+        val checker = checker(gitHub = FakeGitHub { null })
+        checker.checkNow()
+
+        assertNull(checker.available.value)
+        assertTrue(checker.upToDate.value)
+    }
+
+    /**
+     * Nobody asked, so nobody is told. A cold-start check finding nothing is the ordinary case;
+     * announcing it would put a line on the settings screen the user never requested.
+     */
+    @Test
+    fun theAutomaticCheck_neverReportsUpToDate() = runTest {
+        val checker = checker(gitHub = FakeGitHub { null })
+        checker.checkOnStart()
+
+        assertFalse(checker.upToDate.value)
+    }
+
+    /** It describes the *latest* answer, so the next check must not leave the old one on screen. */
+    @Test
+    fun upToDate_isClearedWhenTheNextCheckStarts() = runTest {
+        var answer: UpdateInfo? = null
+        val checker = checker(gitHub = FakeGitHub { answer }, versionCode = 165)
+        checker.checkNow()
+        assertTrue(checker.upToDate.value)
+
+        answer = update(170)
+        checker.checkNow()
+
+        assertFalse(checker.upToDate.value)
+        assertEquals(170, checker.available.value?.versionCode)
+    }
+
+    /** A failed check has no answer at all, and must not claim the reassuring one. */
+    @Test
+    fun aFailedCheck_isNotUpToDate() = runTest {
+        val checker = checker(gitHub = FakeGitHub { throw IOException("no network") })
+        checker.checkNow()
+
+        assertFalse(checker.upToDate.value)
+        assertEquals(UpdateCheckError.Network, checker.error.value)
+    }
+
+    /** Switching channels invalidates the previous channel's answer, which was about a different feed. */
+    @Test
+    fun selectingAChannel_clearsAnEarlierUpToDate() = runTest {
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+        val checker = checker(settings = settings, gitHub = FakeGitHub { null })
+        checker.checkNow()
+        assertTrue(checker.upToDate.value)
+
+        checker.selectSource(UpdateSource.NONE)
+
+        assertFalse(checker.upToDate.value)
     }
 
     // --- Tester sign-in ---
