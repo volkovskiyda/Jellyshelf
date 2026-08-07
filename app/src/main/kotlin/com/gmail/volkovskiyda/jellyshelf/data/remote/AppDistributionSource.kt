@@ -1,5 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.data.remote
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallStage
+import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
@@ -8,6 +10,9 @@ import com.google.firebase.appdistribution.AppDistributionRelease
 import com.google.firebase.appdistribution.FirebaseAppDistribution
 import com.google.firebase.appdistribution.FirebaseAppDistributionException
 import com.google.firebase.appdistribution.FirebaseAppDistributionException.Status
+import com.google.firebase.appdistribution.UpdateProgress
+import com.google.firebase.appdistribution.UpdateStatus
+import com.google.firebase.appdistribution.UpdateTask
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -69,13 +74,22 @@ open class AppDistributionSource {
     }
 
     /**
-     * Downloads and installs the new build. [FirebaseAppDistribution.updateApp] returns an
-     * `UpdateTask` that only completes when the **whole** download and install has finished, so
-     * awaiting this awaits the install — it is not fire-and-forget. No progress listener is
-     * attached because nothing renders progress; see the plan's backlog if that changes.
+     * Downloads and installs the new build, reporting each stage to [onProgress].
+     *
+     * [FirebaseAppDistribution.updateApp] returns an `UpdateTask` that only completes when the
+     * **whole** download and install has finished, so awaiting this awaits the install — it is not
+     * fire-and-forget.
+     *
+     * The SDK posts its own download notification (which is why it merges `POST_NOTIFICATIONS`
+     * into the manifest). [onProgress] is not a substitute for it but a second surface: a
+     * notification is easy to miss from inside the app, and it says nothing about the install
+     * phase after the bytes have landed.
+     *
+     * Terminal statuses are not reported here. Every one of them also completes the task — as a
+     * success or a failure — and reporting both would race two descriptions of the same ending.
      */
-    suspend fun install() {
-        appDistribution.updateApp().await()
+    open suspend fun install(onProgress: (InstallState.Running) -> Unit) {
+        appDistribution.updateApp().await(onProgress)
     }
 
     private fun AppDistributionRelease.toUpdateInfo() = UpdateInfo(
@@ -113,6 +127,53 @@ class UpdateCheckFailure(
 internal suspend fun <T> Task<T>.await(): T? = suspendCancellableCoroutine { continuation ->
     addOnSuccessListener { continuation.resume(it) }
     addOnFailureListener { continuation.resumeWithException(it.toUpdateCheckFailure()) }
+}
+
+/**
+ * The same bridge for an [UpdateTask], which reports progress on the way to completing.
+ *
+ * Separate from the generic [await] rather than an overload of it: only `UpdateTask` has
+ * `addOnProgressListener`, and `UpdateTask` is a `Task<Void>` whose success value is always null,
+ * so there is nothing to hand back but the fact that it finished.
+ *
+ * The listener runs on the SDK's callback thread. It only assigns to a `MutableStateFlow` upstream,
+ * which is safe from any thread — do not grow it into anything that is not.
+ */
+internal suspend fun UpdateTask.await(
+    onProgress: (InstallState.Running) -> Unit,
+): Unit = suspendCancellableCoroutine { continuation ->
+    addOnProgressListener { progress -> progress.toRunning()?.let(onProgress) }
+    addOnSuccessListener { continuation.resume(Unit) }
+    addOnFailureListener { continuation.resumeWithException(it.toUpdateCheckFailure()) }
+}
+
+/**
+ * One SDK progress report as the UI's own model, or null when it describes an *ending* rather than
+ * a stage — those reach the caller as the task completing, and would otherwise be told twice.
+ *
+ * Exhaustive with **no `else`**, for the same reason [Status.toUpdateCheckError] is: an SDK bump
+ * that adds a constant should fail this build rather than quietly render a new state as "preparing".
+ */
+private fun UpdateProgress.toRunning(): InstallState.Running? = when (updateStatus) {
+    UpdateStatus.PENDING -> InstallState.Running(InstallStage.PREPARING)
+    UpdateStatus.DOWNLOADING -> InstallState.Running(
+        stage = InstallStage.DOWNLOADING,
+        bytesDownloaded = apkBytesDownloaded,
+        totalBytes = apkFileTotalBytes,
+    )
+    // The bytes have landed and the system installer has the file. REDIRECTED_TO_PLAY is the same
+    // moment for a build that came from Play instead — in both, the install is out of our hands.
+    UpdateStatus.DOWNLOADED,
+    UpdateStatus.REDIRECTED_TO_PLAY,
+    -> InstallState.Running(InstallStage.INSTALLING)
+    // Every ending: the task itself reports these, as a failure or as a success.
+    UpdateStatus.DOWNLOAD_FAILED,
+    UpdateStatus.INSTALL_FAILED,
+    UpdateStatus.INSTALL_CANCELED,
+    UpdateStatus.UPDATE_CANCELED,
+    UpdateStatus.NEW_RELEASE_NOT_AVAILABLE,
+    UpdateStatus.NEW_RELEASE_CHECK_FAILED,
+    -> null
 }
 
 /** `internal` only so [UpdateCheckErrorTest] can cover the not-a-Firebase-failure branch. */

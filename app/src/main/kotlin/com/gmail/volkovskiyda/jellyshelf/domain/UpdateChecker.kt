@@ -3,6 +3,8 @@ package com.gmail.volkovskiyda.jellyshelf.domain
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateCheckFailure
+import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallStage
+import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateOffer
@@ -76,6 +78,12 @@ internal fun elapsed(now: Long, since: Long, window: Long): Boolean = now - sinc
  * because it is newer than anything dismissed. If 1.2 never ships, 1.1 returns on day 7. A build
  * *older* than the dismissed one takes the same path as the same one and waits the snooze out.
  */
+// TooManyFunctions: this is one policy object, and its surface is the vocabulary the UI speaks —
+// two ways to start a check, three ways an offer can end (dismiss, take it, be shown), the channel
+// switch, and the install with its own outcome. Splitting it would put rules that read each other's
+// state in two files. Suppressed at the declaration rather than baselined, so the finding stays
+// visible if the class grows for a worse reason.
+@Suppress("TooManyFunctions")
 class UpdateChecker(
     private val settingsRepository: SettingsRepository,
     private val gitHubSource: GitHubReleaseSource,
@@ -112,6 +120,16 @@ class UpdateChecker(
      * Mutually exclusive with [error] by construction — a check that threw never gets this far.
      */
     val upToDate: StateFlow<Boolean> = _upToDate.asStateFlow()
+
+    private val _installState = MutableStateFlow<InstallState?>(null)
+
+    /**
+     * The in-app install: its progress while it runs, its reason if it fails, null otherwise.
+     *
+     * Hosted app-wide rather than on a screen, because the install outlives the dialog that starts
+     * it and the user is free to navigate away while the APK downloads.
+     */
+    val installState: StateFlow<InstallState?> = _installState.asStateFlow()
 
     private val _signingIn = MutableStateFlow(false)
 
@@ -252,19 +270,29 @@ class UpdateChecker(
      * The in-app install, for [UpdateSource.APP_DISTRIBUTION] only — the GitHub channel links out
      * to a browser instead, which its caller does.
      *
-     * Suspends until the download **and** install finish, so this is not fire-and-forget. Nothing
-     * renders progress today (see the plan's backlog), but a failure still has to go somewhere the
-     * user can read it, which is why it lands in [error] rather than being logged and lost.
+     * Suspends until the download **and** install finish, so this is not fire-and-forget, and
+     * reports both progress and failure through [installState].
+     *
+     * A success clears the state rather than announcing itself: succeeding means the system
+     * installer has taken over and the app is about to be replaced, so there is nobody left to
+     * read a confirmation.
      */
     suspend fun install() {
+        _installState.value = InstallState.Running(InstallStage.PREPARING)
         try {
-            appDistributionSource.install()
+            appDistributionSource.install { _installState.value = it }
+            _installState.value = null
         } catch (e: UpdateCheckFailure) {
-            _error.value = e.reason ?: UpdateCheckError.Unknown
+            _installState.value = InstallState.Failed(e.reason ?: UpdateCheckError.Unknown)
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             Timber.w(e, "In-app update install failed")
-            _error.value = UpdateCheckError.InstallFailed
+            _installState.value = InstallState.Failed(UpdateCheckError.InstallFailed)
         }
+    }
+
+    /** Drops a finished install's outcome once the user has seen it. */
+    fun clearInstallState() {
+        _installState.value = null
     }
 
     /**

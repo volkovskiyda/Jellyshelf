@@ -3,6 +3,8 @@ package com.gmail.volkovskiyda.jellyshelf.domain
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateCheckFailure
+import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallStage
+import com.gmail.volkovskiyda.jellyshelf.domain.model.InstallState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
@@ -616,6 +618,103 @@ class UpdateCheckerTest {
         checker.checkOnStart()
 
         assertEquals(170, checker.available.value?.info?.versionCode)
+    }
+
+    // --- The in-app install ---
+
+    /** Every stage the SDK reports reaches the UI, in order, so the snackbar can narrate it. */
+    @Test
+    fun install_reportsEveryStage() = runTest {
+        val seen = mutableListOf<InstallState?>()
+        val appDistribution = object : AppDistributionSource() {
+            override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
+                onProgress(InstallState.Running(InstallStage.PREPARING))
+                onProgress(InstallState.Running(InstallStage.DOWNLOADING, 512, 1024))
+                onProgress(InstallState.Running(InstallStage.INSTALLING))
+            }
+        }
+        val checker = checker(appDistribution = appDistribution)
+        val job = launch(Dispatchers.Unconfined) { checker.installState.collect { seen += it } }
+
+        checker.install()
+        job.cancel()
+
+        assertEquals(
+            listOf(
+                null,
+                InstallState.Running(InstallStage.PREPARING),
+                InstallState.Running(InstallStage.DOWNLOADING, 512, 1024),
+                InstallState.Running(InstallStage.INSTALLING),
+                // Cleared on success: the system installer has the file and the app is about to be
+                // replaced, so there is nobody left to read a confirmation.
+                null,
+            ),
+            seen,
+        )
+    }
+
+    /** The reason has to survive to the UI — an install that fails silently looks like a no-op. */
+    @Test
+    fun aFailedInstall_keepsTheReason() = runTest {
+        val appDistribution = object : AppDistributionSource() {
+            override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
+                throw UpdateCheckFailure(UpdateCheckError.DownloadFailed, "", null)
+            }
+        }
+        val checker = checker(appDistribution = appDistribution)
+
+        checker.install()
+
+        assertEquals(InstallState.Failed(UpdateCheckError.DownloadFailed), checker.installState.value)
+    }
+
+    /** A failure with no mapped reason still has to say *something*. */
+    @Test
+    fun anUnexpectedInstallFailure_isStillReported() = runTest {
+        val appDistribution = object : AppDistributionSource() {
+            override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
+                error("boom")
+            }
+        }
+        val checker = checker(appDistribution = appDistribution)
+
+        checker.install()
+
+        assertEquals(InstallState.Failed(UpdateCheckError.InstallFailed), checker.installState.value)
+    }
+
+    /** Dismissing the failure snackbar is what clears it; nothing else should. */
+    @Test
+    fun clearingTheInstallState_dropsAFailure() = runTest {
+        val appDistribution = object : AppDistributionSource() {
+            override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
+                throw UpdateCheckFailure(UpdateCheckError.InstallCancelled, "", null)
+            }
+        }
+        val checker = checker(appDistribution = appDistribution)
+        checker.install()
+
+        checker.clearInstallState()
+
+        assertNull(checker.installState.value)
+    }
+
+    /**
+     * A failed install must not poison the update *check* — the two are separate answers, and the
+     * check's error line lives on a screen the user is not on while installing.
+     */
+    @Test
+    fun aFailedInstall_leavesTheCheckErrorAlone() = runTest {
+        val appDistribution = object : AppDistributionSource() {
+            override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
+                throw UpdateCheckFailure(UpdateCheckError.DownloadFailed, "", null)
+            }
+        }
+        val checker = checker(appDistribution = appDistribution)
+
+        checker.install()
+
+        assertNull(checker.error.value)
     }
 
     /** Choosing to update is not a dismissal: a failed install must re-prompt, not snooze a week. */

@@ -21,6 +21,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -53,6 +55,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
+import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.UpdateDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
@@ -288,6 +291,16 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         )
     }
 
+    // The install narrates itself app-wide: the dialog above closes the moment "Update" is tapped,
+    // and the download outlives whatever screen the user moves to next.
+    val installState by updateChecker.installState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    InstallProgressEffect(
+        state = installState,
+        hostState = snackbarHostState,
+        onFailureDismissed = updateChecker::clearInstallState,
+    )
+
     // Library is the app's home and always the stack root: switching to any other tab rebuilds the
     // stack as [Library, tab] so Back returns to Library, and one more Back exits.
     fun switchTo(key: AppNavKey) {
@@ -324,6 +337,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             // UiAutomator. UiAutomator cannot see test tags at all without this, so By.res(...)
             // would match nothing and quietly profile the launch and nothing else.
             .semantics { testTagsAsResourceId = true },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {

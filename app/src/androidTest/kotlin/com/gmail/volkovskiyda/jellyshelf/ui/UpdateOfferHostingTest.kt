@@ -24,8 +24,8 @@ import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koin.core.context.GlobalContext
 import org.koin.core.context.loadKoinModules
-import org.koin.core.context.unloadKoinModules
 import org.koin.dsl.module
 
 /** Above the fake installed build, so every offer here is genuinely newer. */
@@ -92,11 +92,25 @@ class UpdateOfferHostingTest {
 
     private val overrides = module { single { checker } }
 
+    /** The app's own checker, put back in [restoreTheRealChecker]. */
+    private lateinit var realChecker: UpdateChecker
+
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
+    /**
+     * Re-declares the real single rather than unloading the override.
+     *
+     * `unloadKoinModules` removes definitions *by key*, so unloading a module that declares an
+     * `UpdateChecker` takes the app's own definition with it and leaves the graph without one for
+     * the rest of the process — every later test that builds a screen then dies on
+     * `NoDefinitionFoundException`. Overwriting the binding back is the only way to undo an
+     * override without taking the original with it.
+     */
     @After
-    fun tearDown() = unloadKoinModules(overrides)
+    fun restoreTheRealChecker() {
+        loadKoinModules(module { single { realChecker } })
+    }
 
     private fun label(resId: Int, vararg args: Any) = composeRule.activity.getString(resId, *args)
 
@@ -107,6 +121,7 @@ class UpdateOfferHostingTest {
      * so an override installed here is the one it sees.
      */
     private fun installOverride() {
+        realChecker = GlobalContext.get().get()
         loadKoinModules(overrides)
         composeRule.waitForIdle()
     }

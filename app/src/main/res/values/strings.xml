@@ -236,6 +236,10 @@
     <string name="update_last_checked">checked %1$s</string>
     <string name="update_never_checked">never checked</string>
     <string name="update_up_to_date">You’re up to date</string>
+    <string name="update_install_preparing">Preparing the update…</string>
+    <string name="update_install_downloading">Downloading the update… %1$d%%</string>
+    <string name="update_install_downloading_unknown">Downloading the update…</string>
+    <string name="update_install_installing">Installing the update…</string>
     <string name="update_available_title">Version %1$s available</string>
     <string name="update_install">Update</string>
     <string name="update_dismiss">Not now</string>
