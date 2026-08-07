@@ -34,6 +34,15 @@ import org.junit.runner.RunWith
  *
  * `createAndroidComposeRule<ComponentActivity>` is what gives the test access to string
  * resources, so assertions match on the real user-visible text.
+ *
+ * **Everything below the thumbnail is scrolled to before it is asserted or tapped**, because how
+ * much of this screen fits depends on the viewport. It is one scrolling column led by a
+ * `fillMaxWidth` 16:9 image, so on a landscape tablet — 800 x 500 dp on a Medium Tablet — the image
+ * alone is 450 dp tall and the title, the provenance line and the play button all start below the
+ * fold. `performScrollTo` is a no-op for a node already on screen, so the same test reads the same
+ * on a phone in portrait; without it these pass in portrait and fail in landscape, which is what
+ * they did. `assertIsEnabled` and `assertDoesNotExist` need no scroll — only being *displayed* and
+ * being *tapped* care where the node is.
  */
 @RunWith(AndroidJUnit4::class)
 class DetailContentTest {
@@ -129,8 +138,9 @@ class DetailContentTest {
     fun `a video missing from the server explains itself and offers removal`() {
         setContent(video.copy(missedSyncs = 1))
 
-        composeRule.onNodeWithText(string(R.string.missing_from_server_explained)).assertIsDisplayed()
-        // The detail screen scrolls; the action sits below the fold on a phone-sized viewport.
+        composeRule.onNodeWithText(string(R.string.missing_from_server_explained))
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.remove_from_library))
             .performScrollTo()
             .assertIsDisplayed()
@@ -154,7 +164,9 @@ class DetailContentTest {
 
         val relative = composeRule.activity.resources
             .getQuantityString(R.plurals.synced_minutes_ago, 12, 12)
-        composeRule.onNodeWithText(string(R.string.last_synced).format(relative)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.last_synced).format(relative))
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test
@@ -165,7 +177,7 @@ class DetailContentTest {
         // Formatted in the device's zone, so the expectation is derived rather than hardcoded —
         // what's under test is that the line renders at all and carries the stamp.
         val expected = string(R.string.last_synced).format(formatTimestamp(syncedAt))
-        composeRule.onNodeWithText(expected).assertIsDisplayed()
+        composeRule.onNodeWithText(expected).performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -185,7 +197,9 @@ class DetailContentTest {
             ),
         )
 
-        composeRule.onNodeWithText("yt-dlp timed out", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("yt-dlp timed out", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     /** An index match since the failed fetch makes the stored error moot, not news. */
@@ -214,7 +228,9 @@ class DetailContentTest {
     fun `the chevron opens the mode menu with all three modes`() {
         setContent(video)
 
-        composeRule.onNodeWithContentDescription(string(R.string.playback_options)).performClick()
+        composeRule.onNodeWithContentDescription(string(R.string.playback_options))
+            .performScrollTo()
+            .performClick()
 
         composeRule.onNodeWithText(string(R.string.playback_mode_play)).assertIsDisplayed()
         composeRule.onNodeWithText(string(R.string.playback_mode_external)).assertIsDisplayed()
@@ -232,7 +248,9 @@ class DetailContentTest {
             onSelectMode = { saved = it },
         )
 
-        composeRule.onNodeWithContentDescription(string(R.string.playback_options)).performClick()
+        composeRule.onNodeWithContentDescription(string(R.string.playback_options))
+            .performScrollTo()
+            .performClick()
         composeRule.onNodeWithText(string(R.string.playback_mode_external)).performClick()
 
         assertEquals(PlaybackMode.EXTERNAL, saved)
@@ -244,7 +262,7 @@ class DetailContentTest {
         var played: PlaybackMode? = null
         setContent(video, onPlay = { _, _, mode -> played = mode })
 
-        composeRule.onNodeWithText(string(R.string.play)).performClick()
+        composeRule.onNodeWithText(string(R.string.play)).performScrollTo().performClick()
 
         assertEquals(settings.playbackMode, played)
     }
@@ -290,7 +308,10 @@ class DetailContentTest {
         var played: PlaybackMode? = null
         setContent(demoVideo, settings = demoSettings, onPlay = { _, _, mode -> played = mode })
 
-        composeRule.onNodeWithText(string(R.string.play)).assertIsEnabled().performClick()
+        composeRule.onNodeWithText(string(R.string.play))
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
 
         assertEquals(PlaybackMode.PLAY, played)
     }
@@ -305,7 +326,7 @@ class DetailContentTest {
             onPlay = { _, _, mode -> played = mode },
         )
 
-        composeRule.onNodeWithText(string(R.string.play)).performClick()
+        composeRule.onNodeWithText(string(R.string.play)).performScrollTo().performClick()
 
         assertEquals(PlaybackMode.PLAY, played)
     }
