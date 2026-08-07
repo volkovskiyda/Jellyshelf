@@ -12,9 +12,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.util.SyncTime
 import com.gmail.volkovskiyda.jellyshelf.util.syncTimeOf
 import kotlinx.coroutines.delay
+import org.koin.compose.koinInject
 
 /**
  * A sync time as text: "just now", "12 minutes ago", "2 hours ago", or the exact stamp past the
@@ -47,14 +49,14 @@ fun formatSyncTime(epochMillis: Long, now: Long): String? =
  * function rather than something [formatSyncTime] does for itself.
  */
 @Composable
-fun rememberNow(): State<Long> {
+fun rememberNow(time: TimeProvider = koinInject()): State<Long> {
     val lifecycleOwner = LocalLifecycleOwner.current
     // Seeded once so the first frame has a real value rather than 0 (which reads as "never").
-    val initial = remember { mutableLongStateOf(System.currentTimeMillis()) }
-    return produceState(initial.longValue, lifecycleOwner) {
+    val initial = remember(time) { mutableLongStateOf(time.now()) }
+    return produceState(initial.longValue, lifecycleOwner, time) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
-                value = System.currentTimeMillis()
+                value = time.now()
                 delay(TICK_MS)
             }
         }

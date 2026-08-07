@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
@@ -178,6 +179,7 @@ class SyncInstrumentedTest {
             db = db,
             settings = settings,
             dispatchers = dispatchers,
+            time = DefaultTimeProvider(),
             // The demo backend is never consulted: none of these syncs is a demo.
             sources = LibrarySources(dataSource, indexSource, ytDlp, TestDemoBackend(indexSource)),
         )

@@ -12,6 +12,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.toChapters
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
@@ -383,12 +384,17 @@ internal inline fun <T> tracedSync(block: (Trace) -> T): T {
 }
 
 // TooManyFunctions: the app's single library-domain facade.
-// Suppressed at the declaration rather than baselined, so the finding stays visible where it applies.
-@Suppress("TooManyFunctions")
+// LongParameterList: the primary constructor is private plumbing rather than an API — the secondary
+// below is what Koin and the tests call, and its KDoc says why `writes` and `repoScope` have to be
+// parameters at all.
+// Both suppressed at the declaration rather than baselined, so each finding stays visible where it
+// applies.
+@Suppress("TooManyFunctions", "LongParameterList")
 class DefaultLibraryRepository private constructor(
     private val db: JellyshelfDatabase,
     private val settings: SettingsRepository,
     private val dispatchers: DispatcherProvider,
+    private val time: TimeProvider,
     sources: LibrarySources,
     private val writes: LibraryWrites,
     private val repoScope: CoroutineScope,
@@ -412,13 +418,15 @@ class DefaultLibraryRepository private constructor(
         db: JellyshelfDatabase,
         settings: SettingsRepository,
         dispatchers: DispatcherProvider,
+        time: TimeProvider,
         sources: LibrarySources,
     ) : this(
         db = db,
         settings = settings,
         dispatchers = dispatchers,
+        time = time,
         sources = sources,
-        writes = LibraryWrites(),
+        writes = LibraryWrites(time),
         // Long-running work (the bulk runs, playback reports) happens here so it outlives the
         // screen that started it. Best-effort background work must never crash the process on an
         // unexpected DataStore/DB failure — ioScope logs and moves on.
@@ -562,7 +570,7 @@ class DefaultLibraryRepository private constructor(
         }
 
         return tracedSync { trace ->
-            val fetchStartedAt = System.currentTimeMillis()
+            val fetchStartedAt = time.now()
             val items = runCatchingCancellable {
                 jellyfin.fetchAllItems(s.serverUrl, s.credential, s.userId, s.libraryId)
             }.getOrElse { e ->
@@ -581,7 +589,7 @@ class DefaultLibraryRepository private constructor(
 
             val (index, indexAvailable) = fetchIndex(s)
 
-            val now = System.currentTimeMillis()
+            val now = time.now()
             val serverBase = s.serverUrl.trim().removeSuffix("/")
             val mergeContext = SyncMergeContext(serverBase, now, indexAvailable)
 
@@ -639,7 +647,7 @@ class DefaultLibraryRepository private constructor(
      */
     private suspend fun demoSync(): SyncResult {
         demo.sync()
-        val now = System.currentTimeMillis()
+        val now = time.now()
         val synced = writes.mutex.withLock {
             // missedSyncs reset with the stamp: this listing "saw" every stored row, so a row part
             // way through its grace period from an earlier real library must not keep that count.
@@ -834,7 +842,7 @@ class DefaultLibraryRepository private constructor(
             videoDao.upsert(
                 existing.copy(
                     lastFetchError = message,
-                    lastFetchErrorAt = System.currentTimeMillis(),
+                    lastFetchErrorAt = time.now(),
                 ),
             )
         }
@@ -847,7 +855,7 @@ class DefaultLibraryRepository private constructor(
     private suspend fun applyFetched(youtubeId: String, entry: IndexEntry): Boolean =
         writes.mutex.withLock {
             val existing = videoDao.get(youtubeId) ?: return@withLock false
-            val now = System.currentTimeMillis()
+            val now = time.now()
             val updated = existing.copy(
                 title = entry.title ?: existing.title,
                 channel = entry.channel ?: existing.channel,
@@ -1004,7 +1012,7 @@ class DefaultLibraryRepository private constructor(
      */
     override suspend fun seedDemoLibrary() {
         val entries = indexSource.demoEntries()
-        val now = System.currentTimeMillis()
+        val now = time.now()
         val videos = entries.mapIndexed { index, entry -> demoVideo(entry, index, now) }
         // NonCancellable for the same reason as clearLocalData: the rows and the flag that says
         // what they are must land together, or the app describes a library it doesn't have.

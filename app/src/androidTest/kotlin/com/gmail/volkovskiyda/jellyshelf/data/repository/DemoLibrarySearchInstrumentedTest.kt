@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
@@ -76,6 +77,7 @@ class DemoLibrarySearchInstrumentedTest {
             db = db,
             settings = FakeSettingsRepository(),
             dispatchers = dispatchers,
+            time = DefaultTimeProvider(),
             sources = LibrarySources(
                 JellyfinDataSource(JellyfinClient(httpClient)),
                 indexSource,

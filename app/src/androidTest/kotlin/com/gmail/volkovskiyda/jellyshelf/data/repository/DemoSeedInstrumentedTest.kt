@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
@@ -83,6 +84,7 @@ class DemoSeedInstrumentedTest {
             db = db,
             settings = settings,
             dispatchers = dispatchers,
+            time = DefaultTimeProvider(),
             // Seeding never asks the demo backend for anything — the dataset comes straight off
             // the asset — but it is what every action *after* the seed goes through.
             sources = LibrarySources(
