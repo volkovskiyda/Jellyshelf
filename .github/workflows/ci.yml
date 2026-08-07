@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21   # LTS; AGP 9 needs 17+, Gradle 9.6.1 fully supports 21
+          java-version: 21   # LTS, and what gradle/gradle-daemon-jvm.properties pins; AGP 9 needs 17+
       - uses: gradle/actions/setup-gradle@v6   # caching + wrapper validation
 
       # detekt, :app:lintDebug, unit tests and the screenshot goldens. Exits non-zero if any
