@@ -14,8 +14,10 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.data.remote.RemoteUpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.data.remote.TesterSignIn
 import com.gmail.volkovskiyda.jellyshelf.data.remote.TesterSignInLauncher
+import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultJellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.data.repository.DefaultLibraryRepository
@@ -112,6 +114,7 @@ val appModule = module {
     singleOf(::GitHubReleaseSource)
     single { ActivityTracker() }
     single<TesterSignIn> { TesterSignInLauncher(androidContext(), get()) }
+    singleOf(::RemoteUpdateFlags) { bind<UpdateFlags>() }
     singleOf(::AppDistributionSource)
     singleOf(::DefaultJellyfinRepository) { bind<JellyfinRepository>() }
     singleOf(::YtDlpMetadataSource)

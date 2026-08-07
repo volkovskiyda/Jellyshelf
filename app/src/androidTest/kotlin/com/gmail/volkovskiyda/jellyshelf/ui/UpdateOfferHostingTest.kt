@@ -84,7 +84,7 @@ class UpdateOfferHostingTest {
     private val checker = UpdateChecker(
         settingsRepository = settings,
         gitHubSource = gitHub,
-        appDistributionSource = AppDistributionSource(InertTesterSignIn),
+        appDistributionSource = AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()),
         buildInfo = BuildInfo(isDebug = false, sdkInt = 36, versionCode = INSTALLED_VERSION_CODE),
         time = TimeProvider { NOW },
         dispatchers = TestDispatcherProvider(),

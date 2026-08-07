@@ -43,6 +43,7 @@ import kotlin.coroutines.resumeWithException
  */
 open class AppDistributionSource(
     private val signInLauncher: TesterSignIn,
+    private val flags: UpdateFlags,
 ) {
 
     private val appDistribution: FirebaseAppDistribution
@@ -61,6 +62,8 @@ open class AppDistributionSource(
      *
      * Falls back to `signInTester()` whenever the launcher reports it cannot run, so a device or an
      * SDK version where this does not work degrades to the old behaviour rather than to no sign-in.
+     * [UpdateFlags.forceLegacySignIn] forces that same fallback from the server, for the case the
+     * launcher breaks in a way it cannot detect about itself.
      *
      * Backing out is not a fault either way: the SDK reports [Status.AUTHENTICATION_CANCELED], and
      * the launcher path returns having never signed in — both become
@@ -69,7 +72,9 @@ open class AppDistributionSource(
      * Throws [UpdateCheckFailure] on any failure, so the caller can render the reason.
      */
     open suspend fun signInTester() {
-        if (!signInLauncher.start()) {
+        // Short-circuits before the launcher is even asked, so the kill switch works even if the
+        // launcher is the thing that has gone wrong.
+        if (flags.forceLegacySignIn() || !signInLauncher.start()) {
             appDistribution.signInTester().await()
             return
         }

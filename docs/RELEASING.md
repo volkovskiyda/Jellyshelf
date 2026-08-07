@@ -55,8 +55,60 @@ The behaviour, in full:
   prompts as soon as it is found. Install 1.0, dismiss the 1.1 prompt, and if 1.2 ships the next
   daily check offers it; if 1.2 never ships, 1.1 comes back on day 7.
 - The dialog appears **only on the Library tab** — never over Categories, Detail, or the player.
+  A check the user asked for with "Check now" is the exception: its answer appears wherever they
+  asked, and does not spend the once-a-day dialog allowance.
+- "Check now" that finds nothing newer says **"You're up to date"**. It skips the politeness windows
+  but not the version comparison — GitHub's `releases/latest` answers whether or not it is an
+  upgrade, so without that rule a current user is offered the build they are running.
 - A failed check reports the **actual reason** (not entitled, API blocked, sign-in cancelled), never
   a silent "no update available".
+- The App Distribution install narrates itself in a snackbar (preparing → downloading % →
+  installing), swipeable away; a failure states its reason for 3 seconds and clears itself.
+
+### Kill switch: `force_legacy_tester_sign_in`
+
+The tester sign-in does **not** use the SDK's `signInTester()`. That call hardcodes
+`FLAG_ACTIVITY_NEW_TASK` on its Custom Tab, which puts the browser in its own task — a stray card in
+Recents, Back landing on the sign-in page, and no way for the app to close it, because nothing can
+finish an activity in another app's task. `TesterSignInLauncher` opens the same URL itself, without
+that flag, so the tab is in our task and gets closed when the redirect lands.
+
+That rests on two undocumented internals of a beta SDK (`16.0.0-beta20`, the newest published), both
+read out of the AAR with `javap -c`:
+
+1. the sign-in URL in `TesterSignInManager.SIGNIN_REDIRECT_URL`, and
+2. `TesterSignInManager.onActivityCreated`, which calls `SignInStorage.setSignInStatus(true)`
+   whenever a `SignInResultActivity` is created — it never checks that the SDK started the flow,
+   which is why a redirect the app caused still registers as a sign-in.
+
+The app detects and falls back on its own for everything it *can* see (no foreground activity, no
+Custom Tabs browser, no installation id, a launch that throws). What it cannot see is Google
+changing the URL: the tab would open on an error page and the user would return not signed in, which
+reads as a cancelled sign-in. **That is the symptom to watch for**, and this is the lever:
+
+| | |
+|---|---|
+| Parameter | `force_legacy_tester_sign_in` |
+| Type | Boolean |
+| Default | `false` — no parameter needs to exist in the console for that |
+| Effect when `true` | The launcher is never asked; `signInTester()` runs, Chrome-task behaviour and all |
+
+Set it in **Firebase console → Remote Config → Add parameter**, then Publish. Conditions apply as
+usual, so it can be scoped to the affected app versions rather than everyone — target the release
+that shipped the break and leave later ones on the new path.
+
+Two things about the latency, both deliberate:
+
+- The app fetches at cold start with a 12-hour minimum interval, and reads the **last activated**
+  value at the moment of sign-in. So a flag published now takes effect on the next launch of an app
+  that has fetched it — not mid-session, and not on a device that has not been opened since. This is
+  a kill switch, not a feature flag; do not reuse the shape for anything needing to act now.
+- Debug builds never fetch, matching Crashlytics and Performance, which also keeps instrumented
+  tests and Test Lab off it. They always see the default.
+
+Remote Config needs no API-key change: `firebaseremoteconfig.googleapis.com` and
+`firebaseremoteconfigrealtime.googleapis.com` are already in the key's `apiTargets` (added for
+Performance, 2026-08-05).
 
 ### Prerequisite for the App Distribution channel
 

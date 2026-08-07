@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.data.remote
 
+import com.gmail.volkovskiyda.jellyshelf.ui.FakeUpdateFlags
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -40,7 +41,10 @@ class TesterSignInFallbackTest {
         fun signedIn() = canStart && signsIn && returns > 0
     }
 
-    private fun source(launcher: RecordingSignIn) = object : AppDistributionSource(launcher) {
+    private fun source(
+        launcher: RecordingSignIn,
+        flags: FakeUpdateFlags = FakeUpdateFlags(),
+    ) = object : AppDistributionSource(launcher, flags) {
         override fun isTesterSignedIn() = launcher.signedIn()
     }
 
@@ -93,6 +97,35 @@ class TesterSignInFallbackTest {
         assertEquals(1, launcher.starts, "One tab, not two")
     }
 
+    // --- The kill switch ---
+
+    /**
+     * The whole point of the switch: it must work when the launcher is the broken thing.
+     *
+     * So it is checked *before* start() is called, not after — a launcher that hangs, crashes or
+     * reports success while opening nothing would defeat a switch consulted any later.
+     */
+    @Test
+    fun theKillSwitch_neverAsksTheLauncherAtAll() = runTest {
+        val launcher = RecordingSignIn(canStart = true)
+        val flags = FakeUpdateFlags(legacySignIn = true)
+
+        assertFailsWith<Throwable> { source(launcher, flags).signInTester() }
+
+        assertEquals(0, launcher.starts, "The switch is on; the launcher must not run")
+        assertEquals(0, launcher.returns)
+    }
+
+    /** Off is the shipped behaviour, and the default — an absent parameter must change nothing. */
+    @Test
+    fun theKillSwitchOff_leavesTheLauncherInCharge() = runTest {
+        val launcher = RecordingSignIn(canStart = true)
+
+        source(launcher, FakeUpdateFlags(legacySignIn = false)).signInTester()
+
+        assertEquals(1, launcher.starts)
+    }
+
     /** The sign-in is only ever concluded after the user is actually back. */
     @Test
     fun theResultIsReadAfterTheReturn_notBefore() = runTest {
@@ -107,7 +140,7 @@ class TesterSignInFallbackTest {
                 order += "return"
             }
         }
-        val source = object : AppDistributionSource(launcher) {
+        val source = object : AppDistributionSource(launcher, FakeUpdateFlags()) {
             override fun isTesterSignedIn(): Boolean {
                 order += "read"
                 return true

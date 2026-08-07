@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
@@ -53,6 +54,7 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
         // than it looks under configuration changes and the theme reveal's uiMode handling. It
         // returns immediately unless a release build has opted into a channel, and never blocks —
         // it only launches work on the application scope. UpdateChecker documents every gate.
+        get<UpdateFlags>().refresh()
         get<UpdateChecker>().checkOnStart()
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
         // launches, and re-scheduling on every start would undo "Reset local data", which

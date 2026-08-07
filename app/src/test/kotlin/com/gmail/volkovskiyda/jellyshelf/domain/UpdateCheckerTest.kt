@@ -9,6 +9,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.FakeUpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.ui.InertTesterSignIn
 import com.gmail.volkovskiyda.jellyshelf.ui.TestDispatcherProvider
 import io.ktor.client.HttpClient
@@ -60,7 +61,7 @@ class UpdateCheckerTest {
     private class FakeAppDistribution(
         private val signedIn: Boolean = true,
         private val answer: () -> UpdateInfo? = { null },
-    ) : AppDistributionSource(InertTesterSignIn) {
+    ) : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
         var calls = 0
         var signInAttempts = 0
         override fun isTesterSignedIn() = signedIn
@@ -498,7 +499,7 @@ class UpdateCheckerTest {
         // Suspends the way a Custom Tab does: the user is off in the browser, and nothing has
         // been written yet.
         val inCustomTab = CompletableDeferred<Unit>()
-        val appDistribution = object : AppDistributionSource(InertTesterSignIn) {
+        val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
             override fun isTesterSignedIn() = false
             override suspend fun signInTester() = inCustomTab.await()
         }
@@ -521,7 +522,7 @@ class UpdateCheckerTest {
     @Test
     fun aCancelledSignIn_leavesTheChannelUnchangedAndSaysWhy() = runTest {
         val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
-        val appDistribution = object : AppDistributionSource(InertTesterSignIn) {
+        val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
             override fun isTesterSignedIn() = false
             override suspend fun signInTester() =
                 throw UpdateCheckFailure(UpdateCheckError.SignInCancelled, "cancelled", null)
@@ -627,7 +628,7 @@ class UpdateCheckerTest {
     @Test
     fun install_reportsEveryStage() = runTest {
         val seen = mutableListOf<InstallState?>()
-        val appDistribution = object : AppDistributionSource(InertTesterSignIn) {
+        val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
             override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
                 onProgress(InstallState.Running(InstallStage.PREPARING))
                 onProgress(InstallState.Running(InstallStage.DOWNLOADING, 512, 1024))
@@ -657,7 +658,7 @@ class UpdateCheckerTest {
     /** The reason has to survive to the UI — an install that fails silently looks like a no-op. */
     @Test
     fun aFailedInstall_keepsTheReason() = runTest {
-        val appDistribution = object : AppDistributionSource(InertTesterSignIn) {
+        val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
             override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
                 throw UpdateCheckFailure(UpdateCheckError.DownloadFailed, "", null)
             }
@@ -672,7 +673,7 @@ class UpdateCheckerTest {
     /** A failure with no mapped reason still has to say *something*. */
     @Test
     fun anUnexpectedInstallFailure_isStillReported() = runTest {
-        val appDistribution = object : AppDistributionSource(InertTesterSignIn) {
+        val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
             override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
                 error("boom")
             }
@@ -687,7 +688,7 @@ class UpdateCheckerTest {
     /** Dismissing the failure snackbar is what clears it; nothing else should. */
     @Test
     fun clearingTheInstallState_dropsAFailure() = runTest {
-        val appDistribution = object : AppDistributionSource(InertTesterSignIn) {
+        val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
             override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
                 throw UpdateCheckFailure(UpdateCheckError.InstallCancelled, "", null)
             }
@@ -706,7 +707,7 @@ class UpdateCheckerTest {
      */
     @Test
     fun aFailedInstall_leavesTheCheckErrorAlone() = runTest {
-        val appDistribution = object : AppDistributionSource(InertTesterSignIn) {
+        val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {
             override suspend fun install(onProgress: (InstallState.Running) -> Unit) {
                 throw UpdateCheckFailure(UpdateCheckError.DownloadFailed, "", null)
             }

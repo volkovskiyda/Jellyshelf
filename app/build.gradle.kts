@@ -599,6 +599,10 @@ dependencies {
     // firebase-installations supplies the installation id the sign-in URL is keyed to.
     implementation(libs.androidx.browser)
     implementation(libs.firebase.installations)
+    // The kill switch for that launcher (UpdateFlags). Already present transitively — Performance
+    // configures itself through Remote Config — but a switch this app depends on being able to
+    // read should not rest on another SDK continuing to want it.
+    implementation(libs.firebase.config)
     implementation(platform(libs.ktor.bom))
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
