@@ -21,7 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +55,7 @@ import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
+import com.gmail.volkovskiyda.jellyshelf.ui.InstallSnackbarHost
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.UpdateDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
@@ -337,7 +337,9 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             // UiAutomator. UiAutomator cannot see test tags at all without this, so By.res(...)
             // would match nothing and quietly profile the launch and nothing else.
             .semantics { testTagsAsResourceId = true },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        // The host reads installState too, not just the host state: that is what lets the download
+        // percentage climb inside one snackbar instead of animating a new one in per tick.
+        snackbarHost = { InstallSnackbarHost(snackbarHostState, installState) },
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {

@@ -4,7 +4,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -59,7 +58,9 @@ class InstallProgressSnackbarTest {
                 )
                 // The empty body still has to consume the content padding, or lint reads the
                 // Scaffold as misused — there is simply nothing here to lay out but the host.
-                Scaffold(snackbarHost = { SnackbarHost(hostState) }) { padding ->
+                Scaffold(
+                    snackbarHost = { InstallSnackbarHost(hostState, current) },
+                ) { padding ->
                     Box(Modifier.padding(padding))
                 }
             }
@@ -109,6 +110,28 @@ class InstallProgressSnackbarTest {
 
         composeRule.onNodeWithText(label(R.string.update_install_downloading, 25)).assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.update_install_preparing)).assertDoesNotExist()
+    }
+
+    /**
+     * The percentage climbs inside the snackbar that is already up.
+     *
+     * The label is read from live state rather than from the visuals the snackbar was shown with,
+     * so each tick recomposes one `Text` instead of dismissing and re-animating the whole thing.
+     * [InstallSnackbarKeyTest][com.gmail.volkovskiyda.jellyshelf.ui.InstallSnackbarKeyTest] pins
+     * the key that makes that true; this pins that the rendered text follows anyway.
+     */
+    @Test
+    fun successiveTicks_updateTheLabelInPlace() {
+        setContent(InstallState.Running(InstallStage.DOWNLOADING, 128, 1024))
+
+        listOf(256L, 512L, 768L).forEach { bytes ->
+            composeRule.runOnIdle {
+                state.value = InstallState.Running(InstallStage.DOWNLOADING, bytes, 1024)
+            }
+        }
+
+        composeRule.onNodeWithText(label(R.string.update_install_downloading, 75)).assertIsDisplayed()
+        composeRule.onNodeWithText(label(R.string.update_install_downloading, 12)).assertDoesNotExist()
     }
 
     /** A success clears the state, and the snackbar has to go with it. */
