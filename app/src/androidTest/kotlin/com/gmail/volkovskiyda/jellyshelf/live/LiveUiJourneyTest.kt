@@ -8,7 +8,7 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -51,9 +51,11 @@ import com.gmail.volkovskiyda.jellyshelf.ui.settings.PASSWORD_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SERVER_URL_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.USERNAME_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -112,9 +114,18 @@ class LiveUiJourneyTest : KoinTest {
      * Empty rather than `createAndroidComposeRule<MainActivity>()`: that launches the activity as
      * the rule is applied, which is *before* [setUp] can sign in and wipe the persisted state the
      * launch reads.
+     *
+     * [UnconfinedTestDispatcher] rather than the v2 default of `StandardTestDispatcher`. The default
+     * queues composition coroutines on the test scheduler, which drains them on the thread running
+     * `runTest` — the instrumentation thread, not the main one. This journey opens the player, and
+     * media3's `MediaController` rejects every call made off the application thread, so the
+     * `listen` helper behind `rememberPlayerState` dies with "called from a wrong thread" the moment
+     * its effect is resumed. Unconfined resumes inline on the thread that composed, which is the
+     * main thread — the behaviour the deprecated v1 factories had.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     @get:Rule
-    val composeRule = createEmptyComposeRule()
+    val composeRule = createEmptyComposeRule(UnconfinedTestDispatcher())
 
     private val config by inject<JellyfinTestConfig>()
     private val jellyfinClient by inject<JellyfinClient>()
