@@ -1,13 +1,13 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,20 +39,30 @@ import org.koin.compose.koinInject
  * behind it. This prompt simply waits for the next visit with no offer pending — a week either way
  * costs it nothing.
  */
+// InlinedApi: the one remaining mention of POST_NOTIFICATIONS, a compile-time constant that is
+// only ever *used* behind the permissionExists gate below — on older platforms it is an inert
+// string in the APK, not a call.
+@SuppressLint("InlinedApi")
 @Composable
 internal fun NotificationPermissionPrompt(
     hasVideos: Boolean,
     prompt: NotificationPrompt = koinInject(),
     updateChecker: UpdateChecker = koinInject(),
-    buildInfo: BuildInfo = koinInject(),
+    // The permission asked for, at every step that names one — the readout and the system request
+    // "Allow" fires. One value threaded through rather than three spellings of the same constant,
+    // so pointing this prompt at another permission is a parameter, not an edit. The dialog copy
+    // and [NotificationPrompt]'s policy are notification-specific today; they are the seams to
+    // generalize next if a second permission ever needs this flow.
+    permission: String = Manifest.permission.POST_NOTIFICATIONS,
+    // Below API 33 (minSdk is 30) notifications need no permission at all: nothing is shown and
+    // nothing is requested. A parameter rather than a check made in here, so the composable itself
+    // is not welded to one API level — the host (or a test) states whether the permission exists,
+    // and the default states it the one true way. [NotificationPrompt.due] carries the same rule
+    // as policy; this one keeps the permission machinery below it out of the composition.
+    permissionExists: Boolean = koinInject<BuildInfo>().isAtLeast(Build.VERSION_CODES.TIRAMISU),
     readPermission: ((Activity) -> PermissionReadout)? = null,
 ) {
-    // Below API 33 (minSdk is 30) notifications need no permission at all: nothing is shown and
-    // nothing is requested. `POST_NOTIFICATIONS` is also a constant that does not exist on those
-    // platforms, and this is the guard that says so — `isAtLeast` is annotated
-    // `@ChecksSdkIntAtLeast`, so lint reads it as the version check it is. [NotificationPrompt.due]
-    // carries the same rule as policy; this one keeps the API surface below it unreachable.
-    if (!buildInfo.isAtLeast(Build.VERSION_CODES.TIRAMISU)) return
+    if (!permissionExists) return
 
     // No activity, no permission request and no rationale to read — a composition outside one
     // (previews, host-side rendering) simply never prompts.
@@ -76,7 +86,7 @@ internal fun NotificationPermissionPrompt(
         if (visible) return@LaunchedEffect
         val state = promptState ?: return@LaunchedEffect
         if (!hasVideos || update != null) return@LaunchedEffect
-        val readout = readPermission?.invoke(activity) ?: activity.permissionReadout()
+        val readout = readPermission?.invoke(activity) ?: activity.permissionReadout(permission)
         visible = prompt.due(
             state = state,
             granted = readout.granted,
@@ -91,7 +101,7 @@ internal fun NotificationPermissionPrompt(
             // recorded here — the launcher's result does that, so an abandoned system dialog is
             // still counted as having reached Android.
             visible = false
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            launcher.launch(permission)
         },
         onDismiss = {
             visible = false
@@ -112,15 +122,16 @@ internal fun NotificationPermissionPrompt(
 internal data class PermissionReadout(val granted: Boolean, val shouldShowRationale: Boolean)
 
 /**
- * The real answers. Meaningless below API 33 — where the constant is just a string the platform
- * has never heard of — which the annotation states and the caller's guard enforces.
+ * The real answers for [permission]. Asking about one the platform has never heard of is
+ * meaningless but safe — it is the caller's `permissionExists` gate that keeps the question
+ * sensible, not a platform requirement to annotate: everything here goes through the compat
+ * layer, which answers "denied" and "no rationale" for an unknown permission rather than
+ * crashing. With the gate a plain parameter, lint could not verify a `@RequiresApi` here anyway —
+ * the `@ChecksSdkIntAtLeast` chain only holds while the API level is checked with a constant in
+ * sight.
  */
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-private fun Activity.permissionReadout(): PermissionReadout = PermissionReadout(
-    granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+private fun Activity.permissionReadout(permission: String): PermissionReadout = PermissionReadout(
+    granted = ContextCompat.checkSelfPermission(this, permission) ==
         PackageManager.PERMISSION_GRANTED,
-    shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-        this,
-        Manifest.permission.POST_NOTIFICATIONS,
-    ),
+    shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(this, permission),
 )

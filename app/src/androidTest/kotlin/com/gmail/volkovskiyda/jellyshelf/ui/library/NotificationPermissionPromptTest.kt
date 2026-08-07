@@ -83,16 +83,16 @@ class NotificationPermissionPromptTest {
         hasVideos: Boolean = true,
         settings: FakeSettingsRepository = FakeSettingsRepository(),
         checker: UpdateChecker = inertUpdateChecker(),
-        buildInfo: BuildInfo = this.buildInfo,
+        permissionExists: Boolean = true,
         readout: PermissionReadout = due,
     ) {
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = this.buildInfo) {
+            JellyshelfTheme(dynamicColor = false, buildInfo = buildInfo) {
                 NotificationPermissionPrompt(
                     hasVideos = hasVideos,
                     prompt = prompt(settings),
                     updateChecker = checker,
-                    buildInfo = buildInfo,
+                    permissionExists = permissionExists,
                     readPermission = { readout },
                 )
             }
@@ -121,7 +121,7 @@ class NotificationPermissionPromptTest {
                     hasVideos = hasVideos.value,
                     prompt = prompt(settings),
                     updateChecker = inertUpdateChecker(),
-                    buildInfo = buildInfo,
+                    permissionExists = true,
                     readPermission = { due },
                 )
             }
@@ -133,10 +133,10 @@ class NotificationPermissionPromptTest {
         title.assertIsDisplayed()
     }
 
-    /** Below API 33 there is nothing to ask for, however inviting the rest of the state looks. */
+    /** Below API 33 the permission does not exist, however inviting the rest of the state looks. */
     @Test
-    fun belowApi33_asksForNothing() {
-        setContent(buildInfo = BuildInfo(isDebug = true, sdkInt = 32))
+    fun aPlatformWithoutThePermission_asksForNothing() {
+        setContent(permissionExists = false)
 
         title.assertDoesNotExist()
     }
