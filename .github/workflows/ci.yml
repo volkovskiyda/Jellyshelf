@@ -88,13 +88,23 @@ jobs:
           gcloud auth activate-service-account --key-file "$RUNNER_TEMP/firebase-sa.json"
           gcloud config set project jellyshelf-3dfc8
           # Three devices, each carrying something none of the others do, and no two overlapping on
-          # any axis — API level, form factor, emulated vs real silicon. They run in parallel, so
-          # the matrix costs the slowest one rather than the sum, around five minutes.
-          #   MediumTablet.arm 30 — minSdk and the tablet form factor at once. Both defects this
-          #     level has caught were platform behaviour rather than layout (see below), so carrying
-          #     minSdk on the tablet rather than a phone costs nothing real and saves an execution.
-          #     What it gives up is a bug living specifically in phone layout at API 30; phone layout
-          #     is covered at 35 and 36, so that is a narrow gap and a deliberate one.
+          # any axis — API level, form factor, orientation, emulated vs real silicon. They run in
+          # parallel, so the matrix costs the slowest one rather than the sum, around five minutes.
+          #   MediumTablet.arm 30 landscape — minSdk, the tablet form factor and the only landscape
+          #     window, in one execution. Both defects this level has caught were platform behaviour
+          #     rather than layout (see below), so carrying minSdk on the tablet rather than a phone
+          #     costs nothing real and saves an execution. What it gives up is a bug living
+          #     specifically in phone layout at API 30; phone layout is covered at 35 and 36, so that
+          #     is a narrow gap and a deliberate one.
+          #     Landscape since 2026-08-08, and rather than portrait rather than as well as it,
+          #     because orientation is a device key of its own: Test Lab bills per model, version
+          #     and orientation, so a fourth entry would cost a third virtual execution and take the
+          #     ceiling below from five pushes a day to three. Landscape is the harsher of the two
+          #     at 800x500 dp, where a full-width 16:9 thumbnail is 450 dp tall and pushes a whole
+          #     screen below the fold — nine DetailContentTest cases failed that way on a build this
+          #     matrix had already passed in portrait. What it gives up is a 500x800 window, the
+          #     mild middle ground between landscape and a phone, and nothing about the API 30
+          #     platform behaviour below depends on which way up the device is.
           #   MediumPhone.arm 36 — phone layout at the level most installs actually run.
           #   shiba 35 — a physical Pixel 8: real silicon, and so real hardware codecs behind the
           #     playback tests, which no emulator exercises. High capacity, so it barely queues.
@@ -133,7 +143,7 @@ jobs:
           gcloud firebase test android run --type instrumentation \
             --app app/build/outputs/apk/debug/app-debug.apk \
             --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            --device model=MediumTablet.arm,version=30 \
+            --device model=MediumTablet.arm,version=30,orientation=landscape \
             --device model=MediumPhone.arm,version=36 \
             --device model=shiba,version=35 \
             --timeout 25m
