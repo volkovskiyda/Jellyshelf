@@ -9,13 +9,36 @@ package com.gmail.volkovskiyda.jellyshelf.domain
  * device every time the app started.
  */
 data class DeviceInfo(
-    /** Shown as "Client" in Jellyfin's dashboard and in session lists. */
+    /**
+     * Shown as "Client" in Jellyfin's dashboard and in session lists — and the *only* thing a
+     * stats tool has to classify this install by, since Jellyfin stores no platform or form-factor
+     * field. They keyword-match this string; a name without "Android" in it leaves them echoing the
+     * bare app name back as the platform. See `CLIENT_NAME` in `di/AppModule.kt`.
+     */
     val clientName: String,
-    /** Shown as "Device" — the phone model. */
+    /** Shown as "Device" — what the owner calls this device, see [deviceDisplayName]. */
     val deviceName: String,
     /** App version, shown alongside the client. */
     val version: String,
 )
+
+/**
+ * What to send as `Device` — the name a person would recognise, not a codename.
+ *
+ * [userDeviceName] is the owner's own name for the device (`Settings.Global.DEVICE_NAME`), which
+ * is what the official Jellyfin clients report and what a dashboard shows to identify one session
+ * among several. Android pre-fills it with the bare model, so that case falls through to the
+ * manufacturer-qualified form: "Pixel 7 Pro" alone says less than "Google Pixel 7 Pro".
+ */
+fun deviceDisplayName(userDeviceName: String?, manufacturer: String, model: String): String {
+    val owned = userDeviceName?.trim().orEmpty()
+    if (owned.isNotEmpty() && !owned.equals(model.trim(), ignoreCase = true)) return owned
+
+    // Vendors are inconsistent about whether the model already names the brand: "Xiaomi 14" does,
+    // "SM-S911B" does not.
+    if (model.startsWith(manufacturer, ignoreCase = true)) return model
+    return "${manufacturer.replaceFirstChar(Char::uppercaseChar)} $model"
+}
 
 /**
  * The `Authorization: MediaBrowser …` header Jellyfin requires on `AuthenticateByName` (there is

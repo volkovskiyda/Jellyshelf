@@ -11,12 +11,14 @@ import org.junit.Test
  */
 class DeviceInfoTest {
 
-    private val info = DeviceInfo(clientName = "Jellyshelf", deviceName = "Pixel 5", version = "1.2.3")
+    private val info =
+        DeviceInfo(clientName = "Jellyshelf Android", deviceName = "Wolf Pixel 5", version = "1.2.3")
 
     @Test
     fun `builds the four fields Jellyfin expects, in order`() {
         assertEquals(
-            """MediaBrowser Client="Jellyshelf", Device="Pixel 5", DeviceId="abc-123", Version="1.2.3"""",
+            """MediaBrowser Client="Jellyshelf Android", Device="Wolf Pixel 5", """ +
+                """DeviceId="abc-123", Version="1.2.3"""",
             mediaBrowserAuthHeader(info, "abc-123"),
         )
     }
@@ -45,5 +47,37 @@ class DeviceInfoTest {
         val header = mediaBrowserAuthHeader(info.copy(deviceName = "红米"), "abc-123")
 
         assertTrue(header, header.contains("""Device="unknown""""))
+    }
+
+    @Test
+    fun `prefers the name the owner gave the device`() {
+        assertEquals("Wolf P7", deviceDisplayName("Wolf P7", "Google", "Pixel 7 Pro"))
+    }
+
+    @Test
+    fun `qualifies the model with the manufacturer when there is no owner name`() {
+        assertEquals("Google Pixel 7 Pro", deviceDisplayName(null, "Google", "Pixel 7 Pro"))
+        assertEquals("Google Pixel 7 Pro", deviceDisplayName("", "Google", "Pixel 7 Pro"))
+        assertEquals("Google Pixel 7 Pro", deviceDisplayName("   ", "Google", "Pixel 7 Pro"))
+    }
+
+    /** Android pre-fills the setting with the model, which is not an owner choice worth keeping. */
+    @Test
+    fun `treats an owner name equal to the model as unset`() {
+        assertEquals("Google Pixel 7 Pro", deviceDisplayName("pixel 7 PRO", "Google", "Pixel 7 Pro"))
+        assertEquals("Google Pixel 7 Pro", deviceDisplayName(" Pixel 7 Pro ", "Google", "Pixel 7 Pro"))
+    }
+
+    /** Plenty of vendors already put their name in the model; "Xiaomi Xiaomi 14" reads as a bug. */
+    @Test
+    fun `does not repeat a manufacturer the model already carries`() {
+        assertEquals("Xiaomi 14", deviceDisplayName(null, "Xiaomi", "Xiaomi 14"))
+        assertEquals("XIAOMI 14", deviceDisplayName(null, "Xiaomi", "XIAOMI 14"))
+    }
+
+    /** `Build.MANUFACTURER` is "Google" on a Pixel but "samsung" on a Galaxy. */
+    @Test
+    fun `capitalizes a lowercase manufacturer`() {
+        assertEquals("Samsung SM-S911B", deviceDisplayName(null, "samsung", "SM-S911B"))
     }
 }

@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.di
 
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import androidx.room.Room
 import androidx.work.WorkManager
 import coil.ImageLoader
@@ -35,6 +36,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.NotificationPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
+import com.gmail.volkovskiyda.jellyshelf.domain.deviceDisplayName
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
@@ -90,7 +92,14 @@ val appModule = module {
     single {
         DeviceInfo(
             clientName = CLIENT_NAME,
-            deviceName = Build.MODEL,
+            deviceName = deviceDisplayName(
+                userDeviceName = Settings.Global.getString(
+                    androidContext().contentResolver,
+                    Settings.Global.DEVICE_NAME,
+                ),
+                manufacturer = Build.MANUFACTURER,
+                model = Build.MODEL,
+            ),
             version = BuildConfig.VERSION_NAME,
         )
     }
@@ -141,8 +150,19 @@ val appModule = module {
     workerOf(::SyncWorker)
 }
 
-/** How the app names itself to Jellyfin — the "Client" column in its dashboard and session list. */
-private const val CLIENT_NAME = "Jellyshelf"
+/**
+ * How the app names itself to Jellyfin — the "Client" column in its dashboard and session list.
+ *
+ * The "Android" is load-bearing, not decoration. Jellyfin has no platform or device-type field a
+ * client can populate (`SessionInfo.DeviceType` is never set), so stats tools classify a session by
+ * substring-matching this one string: Tracearr's `normalizeClient` reports platform "Android" for
+ * anything containing "android" and otherwise echoes the raw name back as the platform. Dropping
+ * the word makes Jellyshelf show up as its own platform in everyone's dashboards.
+ *
+ * Keep "TV" and "Shield" out of it unless this really is a TV build — the same matcher reads either
+ * as Android TV.
+ */
+private const val CLIENT_NAME = "Jellyshelf Android"
 
 // Shared lenient Json for both ContentNegotiation and the manual index decode (IndexSource).
 // The three flags together keep request bodies wire-identical to the old Moshi output:
