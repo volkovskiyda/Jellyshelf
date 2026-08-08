@@ -1,6 +1,10 @@
 *.iml
 .gradle
 /local.properties
+
+# Per-checkout answer to run-tests.sh's "which device" question — one serial, or `all`. Written by
+# scripts/worktree.sh so each git worktree tests on a fixed device without re-asking every run.
+/.device
 /.idea
 .DS_Store
 build

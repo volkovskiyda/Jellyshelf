@@ -38,6 +38,21 @@ set -uo pipefail
 # whatever was chosen here — and overrides, rather than obeys, one already in the environment. That
 # keeps a single answer to "which device", instead of two that can disagree.
 #
+# A `.device` file in the repo root is the standing form of that answer: one line holding a serial
+# or the word `all`, read when no --device/--all was passed. It exists for git worktrees, where the
+# prompt would otherwise appear on every run in every worktree; scripts/worktree.sh writes it. A
+# flag still wins, since it answers for this run specifically. Unlike --device, a `.device` naming
+# something unattached is a warning and not an error — standing config outlives a booted emulator,
+# so the run falls back to the normal choice rather than refusing to test at all.
+#
+# Only one checkout at a time should drive a device, so the instrumented layer takes a lock in the
+# git common dir — shared by every worktree of this repo. A second run finding a live holder waits
+# for it rather than asking anything: the host layers have already run by then, and the answer to
+# "shall I wait" was always yes. Ctrl-C is the way out. The contended resource is the Jellyfin
+# account, not the phone, so a second device does not make the overlap safe. --concurrent overrides
+# it for the cases where the collision cannot happen — no .test.env, or -Pandroid.testInstrumentation
+# filters away the live tests. See instrumented_lock_claim.
+#
 # --awake is the other end of a failure that does not look like one: a physical device whose screen
 # locks mid-run fails with `No compose hierarchies found`, which reads as a broken test rather than a
 # dark screen. The flag holds the screen on for the run and puts the three settings back when it
@@ -50,7 +65,9 @@ set -uo pipefail
 #   scripts/run-tests.sh                     run everything available
 #   scripts/run-tests.sh --device <serial>   one device, no prompt (see `adb devices`)
 #   scripts/run-tests.sh --all               every attached device, no prompt
+#                                            (or put either answer in a `.device` file — see above)
 #   scripts/run-tests.sh --awake             hold physical screens on for the run, restore at the end
+#   scripts/run-tests.sh --concurrent        don't wait for another worktree's device run
 #   scripts/run-tests.sh --host-only         skip the instrumented layer even if a device is attached
 #   scripts/run-tests.sh --no-checks         skip static analysis, run only the test layers
 #   scripts/run-tests.sh --help
@@ -64,6 +81,7 @@ HOST_ONLY=0
 RUN_CHECKS=1
 WANT_ALL=0
 WANT_AWAKE=0
+WANT_CONCURRENT=0
 WANT_DEVICE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -71,6 +89,7 @@ while [[ $# -gt 0 ]]; do
     --no-checks) RUN_CHECKS=0 ;;
     --all) WANT_ALL=1 ;;
     --awake) WANT_AWAKE=1 ;;
+    --concurrent) WANT_CONCURRENT=1 ;;
     --device)
       # A missing value would otherwise swallow the next flag as a serial.
       [[ $# -ge 2 ]] || { echo "ERROR: --device needs a serial (see \`adb devices\`)" >&2; exit 2; }
@@ -90,6 +109,20 @@ done
 
 [[ "$WANT_ALL" -eq 1 && -n "$WANT_DEVICE" ]] &&
   { echo "ERROR: --all and --device are contradictory; pass one." >&2; exit 2; }
+
+# `.device` fills in only what no flag answered, so a flag never has to fight the file. Read here
+# rather than at the point of use so that everything downstream sees one pair of variables, however
+# they were set. PINNED_DEVICE records that the answer came from the file, which changes what a
+# device-not-attached means further down.
+PINNED_DEVICE=0
+if [[ "$WANT_ALL" -eq 0 && -z "$WANT_DEVICE" && -f .device ]]; then
+  DEVICE_FILE_VALUE="$(tr -d '[:space:]' <.device)"
+  case "$DEVICE_FILE_VALUE" in
+    "") ;;
+    all|ALL) WANT_ALL=1; PINNED_DEVICE=1 ;;
+    *) WANT_DEVICE="$DEVICE_FILE_VALUE"; PINNED_DEVICE=1 ;;
+  esac
+fi
 
 [[ -x ./gradlew ]] || { echo "ERROR: ./gradlew not found — run this from the repo." >&2; exit 2; }
 
@@ -159,6 +192,171 @@ awake_hold() {
       printf 'awake:   %-24s could not be set — carrying on without it\n' "$serial" >&2
     fi
   done
+}
+
+# One worktree at a time may drive a device, because the live tests make the *server* the contended
+# resource, not the phone: LiveUiJourneyTest signs into the same Jellyfin as the same user and
+# drives the same item, so a second run overlapping it has already cost a run a 401 mid-journey.
+# Giving each worktree its own device does not help — hence a lock rather than more hardware.
+#
+# It lives in the git common dir, which every worktree of this repo shares and no worktree commits.
+# mkdir is the claim: it is atomic on every filesystem worth caring about, where a test-then-write
+# on a plain file is not.
+#
+# Finding it held means waiting, with nothing asked. The one question worth putting — "shall I wait
+# or run anyway?" — has the same answer every time, and putting it needs someone watching the
+# terminal at the exact moment the host layers finish, which is the moment they have wandered off.
+# So: wait by default, --concurrent to opt out, and no abort path at all. Ctrl-C is how you give up,
+# and it costs nothing, because the host layers are already done by the time the wait starts.
+INSTRUMENTED_LOCK=""
+LOCK_HELD=0
+# Interactive waiting is uncapped: a person can see the progress line and interrupt. Without a
+# terminal there is no one to interrupt, and a wait that never ends is a hung CI job rather than a
+# careful one — so it gives up waiting after this and runs anyway, which is the lesser failure.
+LOCK_WAIT_CAP=900
+LOCK_POLL=5
+
+# Waits here run to tens of minutes, and "still waiting (2700)" reads as a bug rather than a number
+# of seconds.
+fmt_duration() {
+  local total="$1"
+  if [[ "$total" -lt 60 ]]; then printf '%ds' "$total"
+  elif [[ $((total % 60)) -eq 0 ]]; then printf '%dm' "$((total / 60))"
+  else printf '%dm%ds' "$((total / 60))" "$((total % 60))"
+  fi
+}
+
+# A holder whose process is gone left the lock behind by being killed -9 or by a power cut; the
+# claim is only meaningful while the claimant is alive.
+lock_holder_alive() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+# Fields, never sourced: the file is written by another process, and sourcing it would execute
+# whatever ended up inside. Sets the four HOLDER_* globals, blanked first so a truncated or
+# half-written info file cannot leave the previous holder's values standing.
+HOLDER_PID="" ; HOLDER_DIR="" ; HOLDER_DEV="" ; HOLDER_WHEN=""
+lock_read_holder() {
+  HOLDER_PID="" ; HOLDER_DIR="" ; HOLDER_DEV="" ; HOLDER_WHEN=""
+  [[ -f "$INSTRUMENTED_LOCK/info" ]] || return 0
+  IFS=$'\n' read -r -d '' HOLDER_PID HOLDER_DIR HOLDER_DEV HOLDER_WHEN \
+    < <(cat "$INSTRUMENTED_LOCK/info"; printf '\0')
+}
+
+lock_take() {
+  printf '%s\n%s\n%s\n%s\n' "$$" "$PWD" "${DEVICES[*]}" "$(date '+%Y-%m-%d %H:%M:%S')" \
+    >"$INSTRUMENTED_LOCK/info"
+  LOCK_HELD=1
+}
+
+instrumented_lock_claim() {
+  local common
+  common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
+  [[ -d "$common" ]] || return 0
+  INSTRUMENTED_LOCK="$common/jellyshelf-instrumented.lock"
+
+  local interactive=0 waited=0 announced=0 next_report=0 report_every=30
+  local stale_seen=0 clear_failures=0 stash
+  # 2>/dev/null comes first on purpose: redirections are applied left to right, and a failing
+  # >/dev/tty otherwise reports itself to a stderr that has not been silenced yet.
+  if [[ -e /dev/tty ]] && : 2>/dev/null >/dev/tty; then interactive=1; else report_every=300; fi
+
+  while true; do
+    # The claim and the retry are the same call: whoever wins the mkdir owns the lock, so a
+    # released lock is picked up here without a separate check that could race two waiters.
+    if mkdir "$INSTRUMENTED_LOCK" 2>/dev/null; then
+      lock_take
+      [[ "$announced" -eq 1 ]] && printf '         device free after %s — starting\n' "$(fmt_duration "$waited")"
+      return 0
+    fi
+
+    lock_read_holder
+    if ! lock_holder_alive "$HOLDER_PID"; then
+      # An empty pid usually means a holder that won the mkdir a millisecond ago and has not
+      # written info yet, not a corpse — the two statements are adjacent. Treating that as stale is
+      # how two waiters both "cleared" a freed lock and both claimed it, which this loop did before
+      # the grace pass was added. One poll of patience distinguishes them.
+      if [[ "$stale_seen" -eq 0 ]]; then
+        stale_seen=1
+        sleep "$LOCK_POLL"
+        waited=$((waited + LOCK_POLL))
+        continue
+      fi
+      # Renamed rather than deleted in place, because rename is exclusive where rm-then-mkdir is
+      # not: of two waiters clearing the same corpse exactly one mv succeeds, and the loser's next
+      # mkdir decides the claim atomically instead of deleting the winner's fresh lock.
+      stash="$INSTRUMENTED_LOCK.stale.$$"
+      if mv "$INSTRUMENTED_LOCK" "$stash" 2>/dev/null; then
+        printf '         (cleared a stale lock from pid %s)\n' "${HOLDER_PID:-unknown}"
+        rm -rf "$stash"
+        stale_seen=0
+        continue
+      fi
+      # Losing that race is normal and self-correcting. Losing it repeatedly is not a race at all
+      # but something we cannot move — an unwritable git dir — and waiting on it would never end.
+      clear_failures=$((clear_failures + 1))
+      if [[ "$clear_failures" -ge 3 ]]; then
+        echo "         NOTE: a stale lock is here and will not clear — proceeding without it." >&2
+        return 0
+      fi
+      continue
+    fi
+    stale_seen=0
+
+    # --concurrent is checked here rather than at the call site on purpose: an unheld lock is still
+    # worth taking, so that a *later* run waits for this one instead of piling a third on top.
+    if [[ "$WANT_CONCURRENT" -eq 1 ]]; then
+      echo
+      printf 'BUSY:    %s is driving %s (pid %s) — --concurrent, not waiting.\n' \
+        "${HOLDER_DIR:-another worktree}" "${HOLDER_DEV:-a device}" "$HOLDER_PID"
+      echo "         If both runs have a filled .test.env, expect live-test flakes."
+      return 0
+    fi
+
+    if [[ "$announced" -eq 0 ]]; then
+      announced=1
+      echo
+      echo "BUSY:    another test run is already driving a device:"
+      printf '           worktree %s\n' "${HOLDER_DIR:-unknown}"
+      printf '           device   %s\n' "${HOLDER_DEV:-unknown}"
+      printf '           started  %s  (pid %s)\n' "${HOLDER_WHEN:-unknown}" "$HOLDER_PID"
+      echo "         Running both at once means two LiveUiJourneyTests on one Jellyfin account."
+      if [[ "$interactive" -eq 1 ]]; then
+        echo "         Waiting for it to finish. Ctrl-C to give up, --concurrent to skip the wait."
+      else
+        printf '         No terminal to interrupt on — waiting up to %s, then running anyway.\n' \
+          "$(fmt_duration "$LOCK_WAIT_CAP")"
+      fi
+      next_report=$report_every
+    fi
+
+    if [[ "$interactive" -eq 0 && "$waited" -ge "$LOCK_WAIT_CAP" ]]; then
+      printf '         NOTE: still held after %s — running anyway. Overlapping live tests may flake.\n' \
+        "$(fmt_duration "$waited")" >&2
+      # Deliberately not claimed: the live holder keeps it, and this run stays a guest so that
+      # finishing first cannot delete a lock it never owned.
+      return 0
+    fi
+
+    sleep "$LOCK_POLL"
+    waited=$((waited + LOCK_POLL))
+    if [[ "$waited" -ge "$next_report" ]]; then
+      printf '         still waiting (%s)\n' "$(fmt_duration "$waited")"
+      next_report=$((waited + report_every))
+    fi
+  done
+}
+
+# Guarded by LOCK_HELD so a guest run — one that proceeded past a live holder — never removes the
+# holder's lock on its way out.
+instrumented_lock_release() {
+  local status=$?
+  [[ "$LOCK_HELD" -eq 1 && -n "$INSTRUMENTED_LOCK" ]] || return $status
+  LOCK_HELD=0
+  rm -rf "$INSTRUMENTED_LOCK"
+  return $status
 }
 
 # Runs from a trap, so it must not disturb the exit status the run had arrived at, and must survive
@@ -281,14 +479,21 @@ if [[ -n "$WANT_DEVICE" ]]; then
   for d in ${DEVICES[@]+"${DEVICES[@]}"}; do [[ "$d" == "$WANT_DEVICE" ]] && FOUND=1; done
   if [[ "$FOUND" -eq 0 ]]; then
     if [[ "$HOST_ONLY" -eq 1 ]]; then
-      echo "         --device $WANT_DEVICE is not attached — moot under --host-only."
+      SOURCE_LABEL="--device"; [[ "$PINNED_DEVICE" -eq 1 ]] && SOURCE_LABEL=".device"
+      echo "         $SOURCE_LABEL $WANT_DEVICE is not attached — moot under --host-only."
       DEVICES=()
+    elif [[ "$PINNED_DEVICE" -eq 1 ]]; then
+      # Standing config, not an answer for this run: the pinned emulator simply isn't booted yet.
+      # Drop the pin and let the normal path choose, rather than refusing to run.
+      echo "         NOTE: .device names $WANT_DEVICE, which is not attached — ignoring the pin."
+      WANT_DEVICE=""
     else
       echo "ERROR: --device $WANT_DEVICE is not attached, or is offline/unauthorized." >&2
       exit 2
     fi
   else
     DEVICES=("$WANT_DEVICE")
+    [[ "$PINNED_DEVICE" -eq 1 ]] && echo "         pinned by .device"
   fi
 fi
 
@@ -325,18 +530,27 @@ fi
 # Fanning out is the one case that must not inherit a stale serial from the caller's environment.
 [[ ${#DEVICES[@]} -gt 1 ]] && unset ANDROID_SERIAL
 
+# One handler for both undo steps, installed before either of them has anything to undo, so every
+# way out of the script — summary, Ctrl-C, a layer that dies — comes back through it. Both halves
+# no-op until they have been armed, which is what makes it safe to install this early.
+cleanup() {
+  local status=$?
+  instrumented_lock_release
+  awake_restore
+  return $status
+}
+trap 'cleanup' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+
 # After the choice rather than before it, so --awake reaches the devices the layer will actually run
-# on and leaves the ones the picker ruled out untouched. The traps go up before the first write, so
-# every way out of the script — summary, Ctrl-C, a layer that dies — comes back through the restore.
+# on and leaves the ones the picker ruled out untouched.
 if [[ "$WANT_AWAKE" -eq 1 ]]; then
   if [[ "$HOST_ONLY" -eq 1 ]]; then
     echo "awake:   moot under --host-only — nothing runs on a device"
   elif [[ ${#DEVICES[@]} -eq 0 ]]; then
     echo "awake:   no device to hold awake"
   else
-    trap 'awake_restore' EXIT
-    trap 'awake_restore; exit 130' INT
-    trap 'awake_restore; exit 143' TERM
     awake_hold
   fi
 fi
@@ -388,9 +602,16 @@ elif [[ ${#DEVICES[@]} -eq 0 ]]; then
   echo "-- behavior tests: skipped, no device or emulator attached --"
   echo
 else
+  # Claimed here rather than up front, so a run that has to wait for another worktree spends the
+  # wait having already finished detekt, the unit tests and the goldens — the layers that need no
+  # device and no server. Nothing above this point touches either.
+  instrumented_lock_claim
   # Every device, not just the first: with no ANDROID_SERIAL that is what Gradle actually runs on.
   run_layer "behavior tests (on ${DEVICES[*]})" :app:connectedDebugAndroidTest \
     && INSTRUMENTED_RESULT="passed" || INSTRUMENTED_RESULT="FAILED"
+  # Released here rather than left to the trap: everything below is report aggregation, which
+  # touches neither the device nor the server, and a waiting worktree should not sit through it.
+  instrumented_lock_release
 fi
 
 # Always aggregated, pass or fail. The report reads whatever XML is on disk and stamps itself

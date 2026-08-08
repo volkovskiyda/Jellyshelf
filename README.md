@@ -338,7 +338,10 @@ scripts/run-tests.sh --host-only  # skip the device layer even if one is attache
 ```
 
 It aggregates all of it into one page at `app/build/test-summary/index.html`, on failures too.
-The layers can also be run individually:
+With more than one device attached it asks which to use; `--device`, `--all` or a `.device` file
+answer that up front. Only one checkout at a time may drive a device — a second run waits for the
+first, because the live tests share one Jellyfin account
+([docs/WORKTREES.md](docs/WORKTREES.md)). The layers can also be run individually:
 
 ```bash
 ./gradlew detekt :app:lintDebug           # static analysis
