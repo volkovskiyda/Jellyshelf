@@ -749,6 +749,10 @@ dependencies {
     androidTestImplementation(platform(libs.ktor.bom))
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    // Not used directly — Compose's test rules drive Espresso underneath. Declared purely to pull
+    // the resolved version off 3.5.0, whose input injection is broken on Android 16. See the
+    // androidxTestEspresso comment in libs.versions.toml.
+    androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.ktor.client.mock)
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.koin.test)
