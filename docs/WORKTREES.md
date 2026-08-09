@@ -105,6 +105,34 @@ A holder killed with `-9`, or lost to a power cut, leaves the lock behind; the n
 dead pid and clears it. `list` reads the same lock, so you can check who has the device before
 starting anything.
 
+`--concurrent` is refused outright when the holder is on **your** device. Two runs on one device
+reinstall the same `…jellyshelf.debug` APK over each other mid-suite, which is a guaranteed failure
+rather than a flake, and no flag should be able to ask for it.
+
+### The same rule inside one run
+
+One `run-tests.sh` across several devices has the same problem, and it is not a worktree issue at
+all: AGP runs connected tests on every attached device **in parallel** (measured — the same class
+across two devices took max(13s, 5s), not the sum), which with `.test.env` filled means one
+`LiveUiJourneyTest` per device against one account.
+
+So the behavior layer splits in two whenever more than one device is in play:
+
+```
+-- behavior tests (offline, on 192.168.11.111:5555 emulator-5554) --   both at once
+-- live tests (on 192.168.11.111:5555) --                              one at a time,
+-- live tests (on emulator-5554) --                                    ANDROID_SERIAL pinned
+```
+
+Every test still runs on every device — the split is `package` / `notPackage` on
+`com.gmail.volkovskiyda.jellyshelf.live`, not a reduction in coverage. One device stays one
+invocation, unchanged.
+
+Because Gradle clears `outputs/androidTest-results/connected/debug` at the start of every
+invocation, each pass's XML is copied aside and put back before the summary reads it. Without that
+the report would show only the last device's live pass — four files instead of one, in the two-
+device case above.
+
 ## `.device`
 
 One line — a serial, or the word `all`. It is the standing answer to run-tests.sh's "which device"

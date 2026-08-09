@@ -24,15 +24,22 @@ set -uo pipefail
 # drives the app end to end and undoes every write. Nothing here switches them on or off; the
 # config file is the switch. See "Demo and live tests" in the README.
 #
-# Which device runs that layer matters, because Gradle's default is every attached one at once —
-# and with .test.env filled that is one concurrent LiveUiJourneyTest per device, all signing into
-# the same Jellyfin as the same user. That is not hypothetical: it has already cost a run a 401
-# mid-journey. So with more than one device attached the script asks, arrow keys and enter, rather
-# than picking or fanning out silently. --device and --all answer it up front; a single attached
-# device is not worth a question and is used as-is.
+# Which device runs that layer matters, because Gradle's default is every attached one **at once**.
+# That is measured rather than assumed: the same class across two devices took max(13s, 5s), not
+# the sum. For the offline tests it is free parallelism. For the live ones it is a bug — one
+# concurrent LiveUiJourneyTest per device, all signing into the same Jellyfin as the same user,
+# which has already cost a run a 401 mid-journey.
 #
-# Without a terminal to ask on (CI, piped output, a backgrounded run) the question cannot be put, so
-# the old behaviour stands: every device, with the warning printed. Pass --device or --all there.
+# So on more than one device the layer runs in two phases: everything outside the live package fans
+# out as before, then the live package runs once per device with ANDROID_SERIAL pinned, strictly
+# one at a time. Every test still runs on every device; only the overlap is gone. One device is one
+# invocation, unchanged. Because Gradle clears the results directory on each invocation, each
+# phase's XML is stashed and put back before the summary — see stash_instrumented_results.
+#
+# The script still asks which device to use with more than one attached, since the choice is now
+# about time rather than safety. --device and --all answer it up front; a single attached device is
+# not worth a question and is used as-is. Without a terminal to ask on (CI, piped output, a
+# backgrounded run) the question cannot be put, so every device runs.
 #
 # ANDROID_SERIAL is not an input. AGP reads it to target a device, so the script exports it from
 # whatever was chosen here — and overrides, rather than obeys, one already in the environment. That
@@ -251,6 +258,40 @@ lock_take() {
   LOCK_HELD=1
 }
 
+# Sharing a device is not the flaky case, it is the broken one: the second run reinstalls the same
+# .debug APK over the first mid-suite and kills it. --concurrent asserts "these two cannot collide",
+# and on one device that is simply untrue — so it is refused rather than warned about. Disjoint
+# devices are what the flag is for. Reads the HOLDER_* globals; call after lock_read_holder.
+refuse_if_device_shared() {
+  local d shared=""
+  for d in ${DEVICES[@]+"${DEVICES[@]}"}; do
+    [[ " $HOLDER_DEV " == *" $d "* ]] && shared+=" $d"
+  done
+  [[ -n "$shared" ]] || return 0
+  echo >&2
+  echo "ERROR: --concurrent, but the run already under way is on the same device:$shared" >&2
+  printf '         holder   %s (pid %s)\n' "${HOLDER_DIR:-unknown}" "$HOLDER_PID" >&2
+  echo "         Two runs on one device reinstall the APK over each other — a guaranteed" >&2
+  echo "         failure, not a flake. Drop --concurrent to queue behind it, or pass --device" >&2
+  echo "         with a device it is not using." >&2
+  exit 2
+}
+
+# --concurrent's refusal, brought forward to before the host layers. The claim itself belongs after
+# them, but a run that is going to be refused should be refused in the first seconds rather than
+# after detekt, the unit tests and the goldens. The check inside the claim stays: a holder can also
+# appear while those layers are running.
+instrumented_lock_precheck() {
+  local common
+  common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
+  [[ -d "$common" ]] || return 0
+  INSTRUMENTED_LOCK="$common/jellyshelf-instrumented.lock"
+  [[ -d "$INSTRUMENTED_LOCK" ]] || return 0
+  lock_read_holder
+  lock_holder_alive "$HOLDER_PID" || return 0
+  refuse_if_device_shared
+}
+
 instrumented_lock_claim() {
   local common
   common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
@@ -308,10 +349,12 @@ instrumented_lock_claim() {
     # --concurrent is checked here rather than at the call site on purpose: an unheld lock is still
     # worth taking, so that a *later* run waits for this one instead of piling a third on top.
     if [[ "$WANT_CONCURRENT" -eq 1 ]]; then
+      refuse_if_device_shared
       echo
       printf 'BUSY:    %s is driving %s (pid %s) — --concurrent, not waiting.\n' \
         "${HOLDER_DIR:-another worktree}" "${HOLDER_DEV:-a device}" "$HOLDER_PID"
-      echo "         If both runs have a filled .test.env, expect live-test flakes."
+      echo "         Different devices, so only the Jellyfin account is shared: if both runs have"
+      echo "         a filled .test.env, expect live-test flakes."
       return 0
     fi
 
@@ -356,6 +399,43 @@ instrumented_lock_release() {
   [[ "$LOCK_HELD" -eq 1 && -n "$INSTRUMENTED_LOCK" ]] || return $status
   LOCK_HELD=0
   rm -rf "$INSTRUMENTED_LOCK"
+  return $status
+}
+
+# The live tests are a package rather than an annotation, which is what makes them filterable from
+# the command line at all: `package` and `notPackage` are runner arguments, so the suite can be
+# split into "everything else" and "the ones that touch the server" without touching a test.
+LIVE_PACKAGE="com.gmail.volkovskiyda.jellyshelf.live"
+ANDROID_TEST_RESULTS="$PWD/app/build/outputs/androidTest-results/connected/debug"
+RESULTS_STASH=""
+
+# AGP writes one TEST-<device>-_app-.xml per device and clears that directory at the start of every
+# invocation, so a second pass destroys the first's results. Each pass is copied out under a name
+# carrying its tag, and they all go back before :app:testSummary reads the directory. The names only
+# have to be unique — testSummary walks the tree and sums the <testsuites> header of every file.
+stash_instrumented_results() {
+  local tag="$1" f base
+  [[ -d "$ANDROID_TEST_RESULTS" ]] || return 0
+  [[ -n "$RESULTS_STASH" ]] || RESULTS_STASH="$(mktemp -d "${TMPDIR:-/tmp}/jellyshelf-results.XXXXXX")"
+  for f in "$ANDROID_TEST_RESULTS"/*.xml; do
+    [[ -e "$f" ]] || continue
+    base="$(basename "$f" .xml)"
+    cp "$f" "$RESULTS_STASH/${base}-${tag}.xml"
+  done
+}
+
+# Also called from the trap, so an interrupted run still reports the passes that did finish rather
+# than only whichever one Gradle was in the middle of. Idempotent: no stash, nothing to do.
+restore_instrumented_results() {
+  local status=$?
+  [[ -n "$RESULTS_STASH" && -d "$RESULTS_STASH" ]] || return $status
+  mkdir -p "$ANDROID_TEST_RESULTS"
+  # The last pass's own XML is already in the stash, so clearing here cannot lose anything, and it
+  # keeps that pass from being counted twice under two names.
+  rm -f "$ANDROID_TEST_RESULTS"/*.xml
+  cp "$RESULTS_STASH"/*.xml "$ANDROID_TEST_RESULTS"/ 2>/dev/null
+  rm -rf "$RESULTS_STASH"
+  RESULTS_STASH=""
   return $status
 }
 
@@ -518,8 +598,8 @@ if [[ ${#DEVICES[@]} -gt 1 && "$HOST_ONLY" -eq 0 && "$WANT_ALL" -eq 0 ]]; then
 fi
 
 if [[ ${#DEVICES[@]} -gt 1 ]]; then
-  echo "         NOTE: the behavior layer runs on all ${#DEVICES[@]}. With .test.env filled that is"
-  echo "         one LiveUiJourneyTest per device, concurrently, all writing to the same server."
+  echo "         NOTE: the offline tests run on all ${#DEVICES[@]} at once; the live ones then run on"
+  echo "         each device in turn, never two at a time against the same server."
 elif [[ ${#DEVICES[@]} -eq 1 ]]; then
   # The one place ANDROID_SERIAL is set: AGP reads it to target a device, and exporting it here —
   # rather than reading whatever the environment held — keeps the chosen, reported and tested
@@ -535,6 +615,7 @@ fi
 # no-op until they have been armed, which is what makes it safe to install this early.
 cleanup() {
   local status=$?
+  restore_instrumented_results
   instrumented_lock_release
   awake_restore
   return $status
@@ -542,6 +623,10 @@ cleanup() {
 trap 'cleanup' EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
+
+if [[ "$WANT_CONCURRENT" -eq 1 && "$HOST_ONLY" -eq 0 && ${#DEVICES[@]} -gt 0 ]]; then
+  instrumented_lock_precheck
+fi
 
 # After the choice rather than before it, so --awake reaches the devices the layer will actually run
 # on and leaves the ones the picker ruled out untouched.
@@ -606,9 +691,42 @@ else
   # wait having already finished detekt, the unit tests and the goldens — the layers that need no
   # device and no server. Nothing above this point touches either.
   instrumented_lock_claim
-  # Every device, not just the first: with no ANDROID_SERIAL that is what Gradle actually runs on.
-  run_layer "behavior tests (on ${DEVICES[*]})" :app:connectedDebugAndroidTest \
-    && INSTRUMENTED_RESULT="passed" || INSTRUMENTED_RESULT="FAILED"
+  if [[ ${#DEVICES[@]} -eq 1 ]]; then
+    # One device is one Gradle invocation: nothing to interleave, nothing to stash.
+    run_layer "behavior tests (on ${DEVICES[0]})" :app:connectedDebugAndroidTest \
+      && INSTRUMENTED_RESULT="passed" || INSTRUMENTED_RESULT="FAILED"
+  else
+    # AGP runs connected tests on every attached device *in parallel* — measured, not assumed: the
+    # same class across two devices took max(13s, 5s), not the sum. For the offline tests that is
+    # exactly what you want. For the live ones it is a bug: LiveUiJourneyTest signs into the same
+    # Jellyfin as the same user and drives the same item, so N devices means N concurrent journeys
+    # fighting over one account, which is what cost a run a 401.
+    #
+    # So the layer splits. Everything but the live package fans out as before; the live package
+    # then runs once per device with ANDROID_SERIAL pinned, strictly one at a time. Coverage is
+    # unchanged — every test still runs on every device — only the live overlap is gone.
+    INSTRUMENTED_FAILED=0
+    run_layer "behavior tests (offline, on ${DEVICES[*]})" :app:connectedDebugAndroidTest \
+      "-Pandroid.testInstrumentationRunnerArguments.notPackage=$LIVE_PACKAGE" || INSTRUMENTED_FAILED=1
+    stash_instrumented_results offline
+
+    for d in "${DEVICES[@]}"; do
+      export ANDROID_SERIAL="$d"
+      run_layer "live tests (on $d)" :app:connectedDebugAndroidTest \
+        "-Pandroid.testInstrumentationRunnerArguments.package=$LIVE_PACKAGE" || INSTRUMENTED_FAILED=1
+      stash_instrumented_results "live-$d"
+    done
+    unset ANDROID_SERIAL
+
+    # Each invocation wipes the previous one's XML — verified, not assumed — so without this the
+    # summary would report only the last device's live pass and call it the whole layer.
+    restore_instrumented_results
+    if [[ "$INSTRUMENTED_FAILED" -eq 0 ]]; then
+      INSTRUMENTED_RESULT="passed (offline fanned out, live one device at a time)"
+    else
+      INSTRUMENTED_RESULT="FAILED"
+    fi
+  fi
   # Released here rather than left to the trap: everything below is report aggregation, which
   # touches neither the device nor the server, and a waiting worktree should not sit through it.
   instrumented_lock_release
