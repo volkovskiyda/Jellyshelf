@@ -106,10 +106,19 @@ jobs:
           #     mild middle ground between landscape and a phone, and nothing about the API 30
           #     platform behaviour below depends on which way up the device is.
           #   MediumPhone.arm 36 — phone layout at the level most installs actually run.
-          #   shiba 35 — a physical Pixel 8: real silicon, and so real hardware codecs behind the
-          #     playback tests, which no emulator exercises. High capacity, so it barely queues.
-          #     Pinned to 35 deliberately — see below, where API 36 on physical hardware is why this
-          #     is a Pixel 8 at 35 rather than the newest phone in the catalogue.
+          #     MediumPhone_ps16k.arm 37 was tried here on 2026-08-09 and put back: it is the only
+          #     image with API 37 and 16 KB memory pages, which would be worth having since the APK
+          #     ships five native libraries, but it fails InstallFlowTest where every other device
+          #     passes the same APK — one case in one run (matrix-1nax7tw90ci2m), two in the next
+          #     (matrix at 22:14). Both are the offer dialog never arriving; giving it an explicit
+          #     5 s wait made it worse rather than better, so the cause is not simply that the image
+          #     is slow. Worth another look on its own, not while moving the matrix.
+          #   frankel 36 — a physical Pixel 10: real silicon, and so real hardware codecs behind the
+          #     playback tests, which no emulator exercises. It offers API 36 and nothing else, the
+          #     newest level any physical device in the catalogue runs — there is no physical 37,
+          #     against 67 physical models at 36. Replaces shiba (Pixel 8) at 35, which was pinned
+          #     there only by the bug below; frankel was the model that bug hit hardest, so it is
+          #     also the strongest evidence the fix holds on real hardware.
           #
           # Adding API 30 on 2026-08-06 turned up two test defects that no other device could see,
           # both since fixed: an assertion reading SQLite plans by text (pre-3.36 spells a scan
@@ -124,28 +133,28 @@ jobs:
           # runs out ahead of the other. A fourth device costs two pushes a day whichever kind it
           # is, which is what pairing minSdk with the tablet buys back.
           #
-          # Why no physical device at API 36, which is where most installs are. On a physical device
-          # every UI test can fail with `NoSuchMethodException:
-          # android.hardware.input.InputManager.getInstance` — the test framework's input injection,
-          # not this app: it takes down exactly the 90 tests that inject touches and leaves every
-          # DAO, sync and serialization test passing. It is not the API level, and not one bad
-          # model. Measured 2026-08-06: frankel (Pixel 10) failed; tokay (Pixel 9) passed 205/205 and
-          # then failed the same way eight minutes later on the same APK, one run's logcat carrying
-          # 360 mentions of that method and the other none. One model at one version is not one
-          # build on Test Lab — the pool serves whichever unit is free, and some Android 16 units
-          # have already dropped the method. So a physical device at 36 is a coin flip until
-          # androidx.test catches up, while 35 and below cannot be served a build new enough to have
-          # lost it. Emulated 36 is unaffected and covers the level.
+          # Why API 36 was off limits until 2026-08-09, and what changed. Every UI test could fail
+          # with `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — the test
+          # framework's input injection, not this app: it took down exactly the tests that inject
+          # touches and left every DAO, sync and serialization test passing. Measured 2026-08-06:
+          # frankel (Pixel 10) failed; tokay (Pixel 9) passed 205/205 and then failed the same way
+          # eight minutes later on the same APK. That looked like Test Lab serving whichever unit is
+          # free, some Android 16 units having dropped the method — so the matrix pinned physical to
+          # 35 and kept API 37 out entirely.
           #
-          # MediumPhone_ps16k.arm 37 is out for the same reason and will not come back sooner: the
-          # only image running API 37 (targetSdk) and the only one with 16 KB memory pages, which
-          # matter because the APK ships five native libraries.
+          # The real cause was in this repo's dependency graph. Nothing declared espresso-core, so
+          # Compose ui-test's request for 3.4.0 resolved to 3.5.0 (December 2022), which reflects on
+          # that method. Declaring 3.7.0 fixed it: the local Pixel_9 AVD at API 36 went from 135 of
+          # 285 failing to 285 of 285 passing, with no mention of the method anywhere in the run.
+          # Since the pin existed only to dodge that bug, it goes. If this ever comes back, check
+          # the resolved espresso-core version before blaming the device pool:
+          #   ./gradlew :app:dependencies --configuration debugAndroidTestRuntimeClasspath
           gcloud firebase test android run --type instrumentation \
             --app app/build/outputs/apk/debug/app-debug.apk \
             --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
             --device model=MediumTablet.arm,version=30,orientation=landscape \
             --device model=MediumPhone.arm,version=36 \
-            --device model=shiba,version=35 \
+            --device model=frankel,version=36 \
             --timeout 25m
 
   # Every green main push reaches testers, with no manual step. PRs never get here.
