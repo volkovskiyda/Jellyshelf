@@ -357,6 +357,55 @@ tasks.register("testSummary") {
             }
         }
 
+        // Splits the behavior layer by device, for the case the single row cannot answer: which
+        // device failed, and on what. Only consulted when something failed — a green run says so
+        // in one line and does not need the breakdown.
+        //
+        // The device name comes from the XML itself (each <testsuite> carries
+        // <property name="device" …/>), not from the file name, so it survives the renaming
+        // scripts/run-tests.sh does when it stashes one pass out of the next pass's way. The phase
+        // is inferred the same way — a file whose every case is in the live package is the live
+        // pass — rather than from that name, for the same reason.
+        val perDevice = { dir: File ->
+            dir.walkTopDown().filter { it.isFile && it.extension == "xml" }.mapNotNull { file ->
+                runCatching {
+                    val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+                        .newDocumentBuilder().parse(file)
+                    val elements = { tag: String ->
+                        val nodes = doc.getElementsByTagName(tag)
+                        (0 until nodes.length).map { nodes.item(it) as org.w3c.dom.Element }
+                    }
+                    val device = elements("property")
+                        .firstOrNull { it.getAttribute("name") == "device" }
+                        ?.getAttribute("value")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: file.nameWithoutExtension
+                    val cases = elements("testcase")
+                    val live = cases.count { it.getAttribute("classname").contains(".live.") }
+                    val phase = when {
+                        cases.isEmpty() || live == 0 -> "offline"
+                        live == cases.size -> "live"
+                        // One invocation carrying both: a single-device run, which is not split.
+                        else -> ""
+                    }
+                    val failed = cases.filter { case ->
+                        val children = case.childNodes
+                        (0 until children.length).any {
+                            val name = children.item(it).nodeName
+                            name == "failure" || name == "error"
+                        }
+                    }.map { "${it.getAttribute("classname")}.${it.getAttribute("name")}" }
+                    // Totals from the <testsuites> wrapper when present — it is the file's own
+                    // header — falling back to counting cases for a file that lacks one.
+                    val header = elements("testsuites").firstOrNull()
+                    val attr = { name: String -> header?.getAttribute(name)?.toIntOrNull() ?: 0 }
+                    val tests = if (header != null) attr("tests") else cases.size
+                    val skipped = if (header != null) attr("skipped") else 0
+                    Triple(device to phase, Triple(tests, failed.size.coerceAtLeast(attr("failures")), skipped), failed)
+                }.getOrNull()
+            }.sortedWith(compareBy({ it.first.first }, { it.first.second })).toList()
+        }
+
         // Counts findings by severity in a detekt (checkstyle `<error>`) or lint (`<issue>`) report;
         // null when the file is absent, i.e. the tool never ran. A real XML parse here rather than
         // the line scan above: lint embeds multi-line rule explanations in its attributes, which
@@ -405,8 +454,15 @@ tasks.register("testSummary") {
         val totalTests = ran.sumOf { it.first }
         val totalFailures = ran.sumOf { it.second }
         val totalSkipped = ran.sumOf { it.third }
+        val behaviorLabel = "Behavior tests (device)"
+        val behaviorDir = layers.first { it.first == behaviorLabel }.second
+        val behaviorFailed = (parsed.firstOrNull { it.first == behaviorLabel }?.second?.second ?: 0) > 0
+        // Only when it failed, and only when more than one file contributed: one device running one
+        // invocation is already fully described by the row above it.
+        val breakdown = if (behaviorFailed) perDevice(behaviorDir).takeIf { it.size > 1 }.orEmpty() else emptyList()
+
         val rows = parsed.joinToString("\n") { (label, stats, href) ->
-            if (stats == null) {
+            val row = if (stats == null) {
                 """      <tr class="notrun"><td>$label</td><td colspan="4">not run</td></tr>"""
             } else {
                 val (tests, failures, skipped) = stats
@@ -415,7 +471,38 @@ tasks.register("testSummary") {
                 """      <tr class="$cls"><td>$name</td><td>$tests</td>""" +
                     """<td>${tests - failures - skipped}</td><td>$failures</td><td>$skipped</td></tr>"""
             }
+            if (label != behaviorLabel || breakdown.isEmpty()) {
+                row
+            } else {
+                val sub = breakdown.joinToString("\n") { (key, stats, _) ->
+                    val (device, phase) = key
+                    val (tests, failures, skipped) = stats
+                    val suffix = if (phase.isEmpty()) "" else " — $phase"
+                    """      <tr class="detail ${if (failures > 0) "fail" else "pass"}">""" +
+                        """<td>$device$suffix</td><td>$tests</td>""" +
+                        """<td>${tests - failures - skipped}</td><td>$failures</td><td>$skipped</td></tr>"""
+                }
+                "$row\n$sub"
+            }
         }
+
+        // The list the terminal cannot hold: every failed case, named, under the device that failed
+        // it. Capped per group, because one broken emulator produces hundreds of identical lines
+        // and the point is to identify the device, not to reprint the suite.
+        val failureLimit = 20
+        val failureSections = breakdown.filter { it.third.isNotEmpty() }.joinToString("\n") { (key, _, failed) ->
+            val (device, phase) = key
+            val shown = failed.take(failureLimit).joinToString("\n") { "              <li>$it</li>" }
+            val more = (failed.size - failureLimit).takeIf { it > 0 }
+                ?.let { """              <li class="more">…and $it more</li>""" }.orEmpty()
+            val suffix = if (phase.isEmpty()) "" else " — $phase"
+            """            <h3>$device$suffix &middot; ${failed.size} failed</h3>
+            <ul class="failures">
+$shown
+$more
+            </ul>"""
+        }
+        val failuresHtml = if (failureSections.isBlank()) "" else "            <h2>What failed, by device</h2>\n$failureSections"
         val analysisErrors = analysed.sumOf { it.first }
         val analysisFindings = analysed.sumOf { it.first + it.second + it.third }
         val analysisRows = checked.joinToString("\n") { (label, stats, link) ->
@@ -477,12 +564,19 @@ tasks.register("testSummary") {
               tr.pass td:first-child::before { content: "\2713 "; color: #17803d; }
               tr.warn td:first-child::before { content: "\26A0 "; color: #b7791f; }
               tr.notrun td { color: #999; font-style: italic; }
+              tr.detail td { color: #555; font-size: .9rem; }
+              tr.detail td:first-child { padding-left: 2.2rem; }
+              h3 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+              ul.failures { margin: 0; padding-left: 1.4rem; font-size: .9rem; color: #555; }
+              ul.failures li { font-family: ui-monospace, monospace; font-size: .82rem; }
+              ul.failures li.more { font-family: inherit; font-style: italic; }
               tfoot td { font-weight: 600; border-top: 2px solid #ccc; border-bottom: none; }
               a { color: #1a4f9c; }
               .hint { margin: .75rem 0 0; color: #b7791f; }
               .hint code { background: #f2f2f2; padding: .1rem .4rem; border-radius: 4px; color: #222; }
               @media (prefers-color-scheme: dark) {
                 body { background: #16181c; color: #e6e6e6; }
+                tr.detail td, ul.failures { color: #9aa4b2; }
                 th, td { border-color: #303540; } thead th { color: #9aa4b2; border-color: #454b57; }
                 tfoot td { border-color: #454b57; } a { color: #7aa7ff; } .meta { color: #9aa4b2; }
                 .hint code { background: #232833; color: #e6e6e6; }
@@ -505,6 +599,7 @@ $rows
               <td>$totalFailures</td><td>$totalSkipped</td></tr></tfoot>
             </table>
 $screenshotHint
+$failuresHtml
             <h2>Static analysis</h2>
             <table>
               <thead><tr><th>Tool</th><th>Findings</th><th>Errors</th><th>Warnings</th><th>Other</th></tr></thead>
@@ -523,6 +618,22 @@ $analysisRows
         parsed.forEach { (label, stats) ->
             val line = stats?.let { "${it.first} tests, ${it.second} failed, ${it.third} skipped" } ?: "not run"
             logger.lifecycle("  %-24s %s".format(label, line))
+            // Printed here rather than left to the HTML: "behavior tests FAILED" on a multi-device
+            // run does not say which device, and that is the first thing anyone asks.
+            if (label == behaviorLabel) {
+                breakdown.forEach { (key, stats, failed) ->
+                    val (device, phase) = key
+                    val suffix = if (phase.isEmpty()) "" else " ($phase)"
+                    logger.lifecycle(
+                        "    %-30s %s".format(
+                            device + suffix,
+                            "${stats.first} tests, ${stats.second} failed",
+                        ),
+                    )
+                    failed.take(5).forEach { logger.lifecycle("      - $it") }
+                    (failed.size - 5).takeIf { it > 0 }?.let { logger.lifecycle("      …and $it more") }
+                }
+            }
         }
         checked.forEach { (label, stats) ->
             val line = stats?.let {
