@@ -1029,7 +1029,9 @@ class DefaultLibraryRepository private constructor(
     /**
      * Wipe all locally cached library data (videos, categories, their links) and
      * reset the last-sync marker. Connection settings — server URL, API key, user,
-     * folder scope — are left untouched, so a subsequent sync rebuilds from scratch.
+     * folder scope — are left untouched, so a subsequent sync rebuilds from scratch. Sign out
+     * pairs this with SettingsRepository.clearConnection to drop those too; this half stands alone
+     * for the demo wipe a real sign-in performs.
      *
      * This is also the way out of demo mode, which is why the flag goes with the rows: it
      * describes what the library holds, and after this the library holds nothing.

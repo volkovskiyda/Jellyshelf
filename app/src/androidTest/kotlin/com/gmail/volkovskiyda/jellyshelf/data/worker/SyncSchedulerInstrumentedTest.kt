@@ -85,7 +85,7 @@ class SyncSchedulerInstrumentedTest {
         )
     }
 
-    /** "Reset local data" must genuinely stop syncing — a survivor would refill the wiped tables. */
+    /** Sign out must genuinely stop syncing — a survivor would refill the tables it just wiped. */
     @Test
     fun cancelAll_cancelsBothTheManualAndThePeriodicWork() {
         scheduler.syncNow()

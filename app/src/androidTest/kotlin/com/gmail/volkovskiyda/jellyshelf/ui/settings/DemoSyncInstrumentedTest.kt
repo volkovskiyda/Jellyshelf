@@ -88,7 +88,7 @@ class DemoSyncInstrumentedTest {
     }
 
     /**
-     * WorkManager is process-wide and its state feeds the same status line these tests read, so
+     * WorkManager is process-wide and it owns the sync status line these tests read, so
      * work left behind by another class — or by the real-path case here — would surface as a
      * "Syncing…" that wins over everything asserted below.
      *
@@ -152,7 +152,7 @@ class DemoSyncInstrumentedTest {
                 3,
                 1,
             ),
-            state.status,
+            state.syncStatus?.text,
         )
     }
 
@@ -165,8 +165,8 @@ class DemoSyncInstrumentedTest {
         advanceUntilIdle()
 
         val state = viewModel.state.value
-        assertEquals("Something broke", state.status)
-        assertTrue(state.statusIsError)
+        assertEquals("Something broke", state.syncStatus?.text)
+        assertTrue(state.syncStatus?.isError == true)
     }
 
     /** The demo branch must not swallow the real path: without the flag, this still enqueues. */

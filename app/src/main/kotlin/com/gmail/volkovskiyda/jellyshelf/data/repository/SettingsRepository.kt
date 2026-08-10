@@ -141,6 +141,31 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         }
     }
 
+    /**
+     * The whole connection, gone — see [SettingsRepository.clearConnection]. Listed key by key
+     * rather than `clear()`: this store also holds the device id, the theme, the playback and
+     * update preferences and the notification-prompt history, none of which a sign-out touches.
+     *
+     * The last-sync marker and the demo flag are deliberately absent: they describe the library
+     * rows, and [LibraryRepository.clearLocalData] resets them with the rows themselves.
+     */
+    override suspend fun clearConnection() {
+        ds.edit {
+            it.remove(Keys.SERVER_URL)
+            it.remove(Keys.API_KEY)
+            it.remove(Keys.ACCESS_TOKEN)
+            it.remove(Keys.USER_ID)
+            it.remove(Keys.USER_NAME)
+            it.remove(Keys.LIBRARY_ID)
+            it.remove(Keys.LIBRARY_NAME)
+            it.remove(Keys.INDEX_URL)
+            it.remove(Keys.TOKEN_IN_QUERY)
+            // Re-arms the "check the sync scope" nudge for whoever signs in next, exactly as a
+            // successful sign-in does — it is once per sign-in, and this is a new one.
+            it.remove(Keys.SYNC_SCOPE_NUDGED)
+        }
+    }
+
     override suspend fun deviceId(): String {
         snapshotDeviceId()?.let { return it }
         // Generated under edit() so two concurrent first-callers agree: DataStore serializes

@@ -30,6 +30,19 @@ interface SettingsRepository {
     suspend fun clearSession()
 
     /**
+     * Drops everything that describes a server: the token and its user, the server URL, the
+     * advanced API key, the metadata index URL, the folder scope and the playback-handoff switch.
+     * What survives is the device's own state — the install's [deviceId], the theme, the playback
+     * preferences, the update-check settings — none of which came from a server.
+     *
+     * Sign-out's half of the wipe; the library rows are [LibraryRepository.clearLocalData]'s, and
+     * [com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel.signOut] is the one caller
+     * that does both. A superset of [clearSession], which stays for the *involuntary* case — an
+     * expired token, where the connection the user configured is still the one they want.
+     */
+    suspend fun clearConnection()
+
+    /**
      * Stable per-install id sent as `DeviceId`. Generated and persisted on first use: Jellyfin
      * keys a session on it, so a fresh value each launch would litter the dashboard with devices.
      */

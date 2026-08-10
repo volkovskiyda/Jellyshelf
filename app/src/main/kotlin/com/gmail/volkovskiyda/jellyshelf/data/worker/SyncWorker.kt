@@ -70,7 +70,7 @@ class SyncWorker(
  * Owns every sync enqueue. Sync is WorkManager's job, not a ViewModel's: tab switches clear tab
  * ViewModels, so a sync running in `viewModelScope` was silently cancelled mid-flight.
  *
- * The periodic worker is created by "Sync now" rather than at app start, so "Reset local data"
+ * The periodic worker is created by "Sync now" rather than at app start, so Sign out
  * can genuinely stop background syncing — an Application-level schedule would just resurrect it
  * on the next launch.
  */

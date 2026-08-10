@@ -67,8 +67,30 @@ class SettingsUiStateTest {
 
     @Test
     fun `an install already in demo mode is not offered it again`() {
-        // The way out is Reset local data, not a second tap of the same button.
+        // The way out is Sign out, not a second tap of the same button.
         assertFalse(SettingsUiState(demoMode = true).canTryDemo)
+    }
+
+    // --- what there is to sign out of ---
+
+    @Test
+    fun `a fresh install has nothing to sign out of`() {
+        assertFalse(SettingsUiState().canSignOut)
+    }
+
+    @Test
+    fun `every path that holds data can sign out of it`() {
+        // All three leave the install with a library, and Sign out is the only thing that clears
+        // one — the API-key path included, which never "signed in" at all.
+        assertTrue(SettingsUiState(signedIn = true).canSignOut)
+        assertTrue(SettingsUiState(demoMode = true).canSignOut)
+        assertTrue(SettingsUiState(apiKeyConnected = true).canSignOut)
+    }
+
+    @Test
+    fun `a typed but unconnected api key does not`() {
+        // The field, not the persisted key: the button must not swap out mid-type.
+        assertFalse(SettingsUiState(apiKey = "key").canSignOut)
     }
 
     @Test

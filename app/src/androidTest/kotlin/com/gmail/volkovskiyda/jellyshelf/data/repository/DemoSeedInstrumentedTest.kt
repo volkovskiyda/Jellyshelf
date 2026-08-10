@@ -191,7 +191,7 @@ class DemoSeedInstrumentedTest {
         assertEquals(firstCategories, db.categoryDao().observeWithCounts().first().size)
     }
 
-    /** Reset local data is the documented way out of demo mode, so it has to be a complete one. */
+    /** Sign out is the documented way out of demo mode, so this wipe has to be a complete one. */
     @Test
     fun clearLocalData_leavesDemoMode() = runBlocking {
         val repo = repository()

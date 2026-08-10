@@ -94,10 +94,11 @@ class DemoSignInInstrumentedTest {
 
     @Before
     fun setUp() {
-        // WorkManager is process-wide, and SettingsUiState.status is deliberately shared with the
-        // sync worker (see SettingsViewModel.state) — so manual-sync work left enqueued by
-        // SyncSchedulerInstrumentedTest surfaces here as a "Syncing…" that wins over everything
-        // this class asserts on. Awaited, so the cancel has landed before any ViewModel subscribes.
+        // WorkManager is process-wide and feeds SettingsUiState.syncStatus (see
+        // SettingsViewModel.state), so manual-sync work left enqueued by
+        // SyncSchedulerInstrumentedTest surfaces here as a "Syncing…" — and, more to the point,
+        // as a `busy` that makes every action below return early. Awaited, so the cancel has
+        // landed before any ViewModel subscribes.
         WorkManager.getInstance(app).cancelAllWork().result.get()
         Dispatchers.setMain(StandardTestDispatcher())
     }
@@ -157,10 +158,10 @@ class DemoSignInInstrumentedTest {
         advanceUntilIdle()
 
         val state = viewModel.state.value
-        assertTrue(state.statusIsError)
+        assertTrue(state.authStatus?.isError == true)
         assertEquals(
             string(R.string.sign_in_failed, string(R.string.invalid_username_or_password)),
-            state.status,
+            state.authStatus?.text,
         )
         assertFalse("a failed sign-in must not enter demo mode", state.demoMode)
         assertEquals("and must not seed anything", 0, library.seeds)
@@ -180,8 +181,8 @@ class DemoSignInInstrumentedTest {
 
         val state = viewModel.state.value
         assertEquals(1, library.seeds)
-        assertEquals(string(R.string.demo_library_loaded), state.status)
-        assertFalse(state.statusIsError)
+        assertEquals(string(R.string.demo_library_loaded), state.authStatus?.text)
+        assertFalse(state.authStatus?.isError == true)
         assertEquals("the typed password must not linger", "", state.password)
         assertTrue("no server may be contacted: ${jellyfin.calls}", jellyfin.calls.isEmpty())
     }
@@ -194,7 +195,7 @@ class DemoSignInInstrumentedTest {
         advanceUntilIdle()
 
         assertEquals(1, library.seeds)
-        assertEquals(string(R.string.demo_library_loaded), viewModel.state.value.status)
+        assertEquals(string(R.string.demo_library_loaded), viewModel.state.value.authStatus?.text)
     }
 
     /** A real sign-in over a demo wipes it *first*, before the server can be asked for anything. */
@@ -210,7 +211,7 @@ class DemoSignInInstrumentedTest {
 
         // The fake server throws, so this settles on a failure — which is fine: the wipe has to
         // happen on the attempt, and it is the ordering that matters.
-        assertTrue(viewModel.state.value.statusIsError)
+        assertTrue(viewModel.state.value.authStatus?.isError == true)
         assertEquals(1, library.clears)
         assertEquals(listOf("clear"), library.writeOrder)
         assertEquals(listOf("signIn(https://example.org)"), jellyfin.calls)
@@ -225,7 +226,8 @@ class DemoSignInInstrumentedTest {
         viewModel.connect()
         advanceUntilIdle()
 
-        assertTrue(viewModel.state.value.statusIsError)
+        // The advanced connect reports on its own line, not the sign-in form's.
+        assertTrue(viewModel.state.value.connectStatus?.isError == true)
         assertEquals(1, library.clears)
         assertEquals(listOf("clear"), library.writeOrder)
     }
@@ -299,7 +301,7 @@ class DemoSignInInstrumentedTest {
         viewModel.signIn()
         advanceUntilIdle()
 
-        assertTrue(viewModel.state.value.statusIsError)
+        assertTrue(viewModel.state.value.authStatus?.isError == true)
         assertEquals(0, library.clears)
     }
 }

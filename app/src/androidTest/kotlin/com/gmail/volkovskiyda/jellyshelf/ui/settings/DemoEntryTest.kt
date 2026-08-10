@@ -81,19 +81,30 @@ class DemoEntryTest {
         assertEquals(1, demoTaps)
     }
 
-    /** In demo the button is gone — Reset local data is the way out — and the caption explains why. */
+    /** In demo the button is gone — Sign out is the way out — and the caption explains why. */
     @Test
     fun inDemoMode_theCaptionReplacesTheButton() {
         setContent(SettingsUiState(demoMode = true))
 
         composeRule.onNodeWithText(label(R.string.demo_mode_active)).assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.try_demo)).assertDoesNotExist()
-        // The exit is still there, further down the same scrolling column. Scrolled to rather than
-        // asserted in place, so that moving a section above or below it stays a layout change
-        // rather than a test failure.
-        composeRule.onNodeWithText(label(R.string.reset_local_data))
+        // Scrolled to rather than asserted in place, so that moving a section above or below it
+        // stays a layout change rather than a test failure.
+        composeRule.onNodeWithText(label(R.string.sign_out))
             .performScrollTo()
             .assertIsDisplayed()
+    }
+
+    /**
+     * A demo is not signed in, so Sign in has to stay: signing in to a real server from a demo is
+     * one step, and the demo caption promises exactly that ("connecting to a server clears the
+     * demo data"). Sign out being the *only* button here would make it two.
+     */
+    @Test
+    fun inDemoMode_signInIsStillOffered() {
+        setContent(SettingsUiState(demoMode = true))
+
+        composeRule.onNodeWithText(label(R.string.sign_in)).assertIsDisplayed()
     }
 
     @Test

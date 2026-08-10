@@ -25,6 +25,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerControls
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsActions
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsContent
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsUiState
+import com.gmail.volkovskiyda.jellyshelf.ui.settings.StatusLine
 
 // Screen-level goldens. Each screen is captured in the states whose layout differs — loading,
 // empty, populated — rather than at every window size: these are regression guards for states
@@ -450,7 +451,8 @@ private fun SettingsConnected() {
                 ),
                 selectedUserId = "user-id",
                 selectedUserName = "Sample User",
-                status = "Synced 812/879 videos with metadata into 214 categories",
+                apiKeyConnected = true,
+                syncStatus = StatusLine("Synced 812/879 videos with metadata into 214 categories"),
                 lastSyncAt = PREVIEW_SYNCED_AT,
             ),
             videoCount = 879,
@@ -480,6 +482,9 @@ private fun SettingsAdvancedExpanded() {
                 ),
                 selectedUserId = "user-id",
                 selectedUserName = "Sample User",
+                // The API-key path is never `signedIn`, and this is what still offers it a way
+                // out — the only golden that renders Sign out beside a Sign in button.
+                apiKeyConnected = true,
             ),
             videoCount = 879,
             actions = SettingsActions(),
@@ -525,7 +530,10 @@ private fun SettingsIndexUnavailable() {
                 indexUrl = previewSettings.indexUrl,
                 selectedUserId = "user-id",
                 selectedUserName = "Sample User",
-                status = "Synced 0/879 videos with metadata into 0 categories • metadata index unavailable",
+                apiKeyConnected = true,
+                syncStatus = StatusLine(
+                    "Synced 0/879 videos with metadata into 0 categories • metadata index unavailable",
+                ),
                 lastSyncAt = PREVIEW_SYNCED_AT,
             ),
             videoCount = 879,

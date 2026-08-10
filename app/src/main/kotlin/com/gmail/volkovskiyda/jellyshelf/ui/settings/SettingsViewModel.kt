@@ -61,6 +61,16 @@ private const val CRUMB_SEPARATOR = " › "
 /** A folder in the Jellyfin item tree. */
 data class FolderRef(val id: String, val name: String, val path: String?)
 
+/**
+ * One line of feedback, rendered under the control that produced it.
+ *
+ * The screen keeps four of these rather than one shared slot ([SettingsUiState.authStatus] and
+ * friends). A single line had to arbitrate — "a local operation's message wins while it runs" —
+ * and still lost: a sync finishing mid-sign-in replaced the sign-in error, and "Connected — 3
+ * users" sitting under the sign-in button never said which button it was answering.
+ */
+data class StatusLine(val text: String, val isError: Boolean = false)
+
 data class SettingsUiState(
     val serverUrl: String = "",
     val apiKey: String = "",
@@ -86,8 +96,22 @@ data class SettingsUiState(
     val childFolders: List<FolderRef> = emptyList(),
     val loadingFolders: Boolean = false,
     val busy: Boolean = false,
-    val status: String? = null,
-    val statusIsError: Boolean = false,
+    /**
+     * The sign-in form's line: signing in, signed in as, a rejected password, entering or leaving
+     * the demo. Rendered directly above the button that produced it — an authentication error at
+     * the far end of a scrolling column is an error nobody reads.
+     */
+    val authStatus: StatusLine? = null,
+    /** The advanced API-key connect's line, under its own button. */
+    val connectStatus: StatusLine? = null,
+    /** The sync-scope section's line: folder-browser failures, and the "check the scope" nudge. */
+    val scopeStatus: StatusLine? = null,
+    /**
+     * Sync's line, under **Sync now**. Fed by WorkManager rather than by this screen, so it can
+     * describe a sync started on an earlier visit — which is exactly why it is not shared with the
+     * three above.
+     */
+    val syncStatus: StatusLine? = null,
     val lastSyncAt: Long = 0L,
     /**
      * A sync is in flight. Distinct from [busy], which any settings operation raises — a sign-in
@@ -96,6 +120,13 @@ data class SettingsUiState(
     val syncRunning: Boolean = false,
     /** The library holds seeded demo data rather than a real server's. */
     val demoMode: Boolean = false,
+    /**
+     * A server-wide API key is *persisted* — a Connect actually succeeded — as opposed to the
+     * [apiKey] field merely holding text. What makes Sign out reachable on the advanced path,
+     * where [signedIn] is false; reading the field instead would swap the button out from under
+     * someone halfway through typing a key.
+     */
+    val apiKeyConnected: Boolean = false,
     /** Which channel the app watches for a newer build of itself; [UpdateSource.NONE] is off. */
     val updateSource: UpdateSource = UpdateSource.NONE,
     /** A check is in flight, from "Check now". */
@@ -137,9 +168,16 @@ data class SettingsUiState(
     /**
      * Whether to offer the demo. Only with nothing configured — either credential counts, on the
      * same reading as [canEditIndex] — and only when the library isn't already a demo, since the
-     * way *out* of one is Reset local data rather than a second tap of this.
+     * way *out* of one is Sign out rather than a second tap of this.
      */
     val canTryDemo: Boolean get() = !demoMode && !signedIn && apiKey.isBlank()
+
+    /**
+     * Whether there is anything to sign out *of*: a user token, a demo library, or a persisted
+     * API key. All three leave the install holding data, and Sign out is the one action that
+     * clears it — which is why the API-key path counts even though it never "signed in".
+     */
+    val canSignOut: Boolean get() = signedIn || demoMode || apiKeyConnected
 
     /**
      * The picked user is the demo server's fake one. There is no item tree behind it, so the sync
@@ -162,7 +200,7 @@ data class SettingsUiState(
 }
 
 /** Sync progress as owned by WorkManager, merged into [SettingsUiState] for display. */
-private data class SyncUi(val running: Boolean, val message: String?, val isError: Boolean)
+private data class SyncUi(val running: Boolean, val line: StatusLine?)
 
 /** The update-check slice of [SettingsUiState], assembled from six independent flows. */
 private data class UpdateUi(
@@ -239,6 +277,9 @@ class SettingsViewModel(
      * Sync no longer runs in this scope, so its progress can't be held in [_state]: the worker
      * outlives the ViewModel a tab switch clears. Merging the two here keeps the screen's
      * contract unchanged while a sync started on one visit still reports on the next.
+     *
+     * Sync owns [SettingsUiState.syncStatus] outright — no precedence rule, because it no longer
+     * shares a line with anything a local operation writes.
      */
     val state: StateFlow<SettingsUiState> = combine(_state, _sync, updateUi) { local, sync, update ->
         val withSync = if (sync == null) {
@@ -247,10 +288,7 @@ class SettingsViewModel(
             local.copy(
                 busy = local.busy || sync.running,
                 syncRunning = sync.running,
-                // A local operation's own message wins while it runs — a sync finishing in the
-                // middle of a connect must not overwrite "Connecting…".
-                status = if (local.busy) local.status else sync.message ?: local.status,
-                statusIsError = if (local.busy) local.statusIsError else sync.isError,
+                syncStatus = sync.line,
             )
         }
         withSync.copy(
@@ -288,6 +326,8 @@ class SettingsViewModel(
                 indexUrl = if (edited) cur.indexUrl else s.indexUrl,
                 username = if (edited) cur.username else s.userName,
                 signedIn = s.isSignedIn,
+                // The *persisted* key, never the field — see [SettingsUiState.apiKeyConnected].
+                apiKeyConnected = s.apiKey.isNotBlank(),
                 tokenInQuery = s.tokenInQuery,
                 // `edited` guards this for the same reason as the fields above, and for one more:
                 // a Connect that finished while this read was still in flight has already put the
@@ -341,7 +381,7 @@ class SettingsViewModel(
             .onEach { info ->
                 _sync.value = when (info.state) {
                     WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING, WorkInfo.State.BLOCKED ->
-                        SyncUi(running = true, message = app.getString(R.string.syncing), isError = false)
+                        SyncUi(running = true, line = StatusLine(app.getString(R.string.syncing)))
                     WorkInfo.State.SUCCEEDED -> {
                         val out = info.outputData
                         // The worker exits early without output when credentials are missing;
@@ -362,7 +402,7 @@ class SettingsViewModel(
                             )
                         }
                         _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
-                        SyncUi(running = false, message = message, isError = false)
+                        SyncUi(running = false, line = message?.let { StatusLine(it) })
                     }
                     WorkInfo.State.FAILED -> {
                         // A sync that hit a rejected token already cleared the session in the data
@@ -371,12 +411,14 @@ class SettingsViewModel(
                         _state.value = _state.value.copy(signedIn = settingsRepo.snapshot().isSignedIn)
                         SyncUi(
                             running = false,
-                            message = info.outputData.getString(SyncWorker.KEY_ERROR)
-                                ?: app.getString(R.string.unknown_error),
-                            isError = true,
+                            line = StatusLine(
+                                info.outputData.getString(SyncWorker.KEY_ERROR)
+                                    ?: app.getString(R.string.unknown_error),
+                                isError = true,
+                            ),
                         )
                     }
-                    // Cancelled by "Reset local data", which posts its own status — leave it be.
+                    // Cancelled by Sign out, which clears this slot itself — leave it be.
                     WorkInfo.State.CANCELLED -> null
                 }
             }
@@ -510,8 +552,7 @@ class SettingsViewModel(
         val serverUrl = normalizeServerUrl(s.serverUrl)
         if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
             _state.value = s.copy(
-                status = app.getString(R.string.enter_server_user_password),
-                statusIsError = true,
+                authStatus = StatusLine(app.getString(R.string.enter_server_user_password), isError = true),
             )
             return
         }
@@ -520,8 +561,7 @@ class SettingsViewModel(
                 busy = true,
                 // The field shows the URL that is actually being tried.
                 serverUrl = serverUrl,
-                status = app.getString(R.string.signing_in),
-                statusIsError = false,
+                authStatus = StatusLine(app.getString(R.string.signing_in)),
             )
             clearDemoLibrary()
             runCatchingCancellable {
@@ -538,8 +578,7 @@ class SettingsViewModel(
                 _state.value = _state.value.copy(
                     busy = false,
                     password = "",
-                    status = app.getString(R.string.sign_in_failed, cause),
-                    statusIsError = true,
+                    authStatus = StatusLine(app.getString(R.string.sign_in_failed, cause), isError = true),
                 )
             }
         }
@@ -566,6 +605,8 @@ class SettingsViewModel(
             busy = false,
             password = "",
             signedIn = true,
+            // setConnection just persisted whatever the advanced field held, so this follows it.
+            apiKeyConnected = form.apiKey.isNotBlank(),
             username = session.user.name,
             selectedUserId = session.user.id,
             selectedUserName = session.user.name,
@@ -573,13 +614,15 @@ class SettingsViewModel(
             selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else form.selectedScopePath,
             // The user picker is an API-key-mode affordance; a token identifies its user.
             users = emptyList(),
+            // A new user means a new item tree, so whatever the scope section last said about the
+            // old one — a failed folder load, or the nudge — no longer describes anything.
+            scopeStatus = null,
             // Re-read, don't keep: clearDemoLibrary just zeroed the persisted marker when this
             // sign-in replaced a demo library, and the stale demo timestamp would otherwise leave
             // the index field locked (indexProtected) with nothing ever synced against this
             // server. A re-sign-in over an intact library reads its real value back unchanged.
             lastSyncAt = settingsRepo.snapshot().lastSyncAt,
-            status = app.getString(R.string.signed_in_as, session.user.name),
-            statusIsError = false,
+            authStatus = StatusLine(app.getString(R.string.signed_in_as, session.user.name)),
         )
     }
 
@@ -604,18 +647,19 @@ class SettingsViewModel(
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 busy = true,
-                status = app.getString(R.string.signing_in),
-                statusIsError = false,
+                authStatus = StatusLine(app.getString(R.string.signing_in)),
             )
             if (isDemoAuthFailure(password)) {
                 _state.value = _state.value.copy(
                     busy = false,
                     password = "",
-                    status = app.getString(
-                        R.string.sign_in_failed,
-                        app.getString(R.string.invalid_username_or_password),
+                    authStatus = StatusLine(
+                        app.getString(
+                            R.string.sign_in_failed,
+                            app.getString(R.string.invalid_username_or_password),
+                        ),
+                        isError = true,
                     ),
-                    statusIsError = true,
                 )
                 return@launch
             }
@@ -633,16 +677,14 @@ class SettingsViewModel(
     private suspend fun enterDemo() {
         _state.value = _state.value.copy(
             busy = true,
-            status = app.getString(R.string.loading_demo_library),
-            statusIsError = false,
+            authStatus = StatusLine(app.getString(R.string.loading_demo_library)),
         )
         withContext(NonCancellable) { libraryRepo.seedDemoLibrary() }
         _state.value = _state.value.copy(
             busy = false,
             // Whatever was typed to get here is not a credential and does not linger.
             password = "",
-            status = app.getString(R.string.demo_library_loaded),
-            statusIsError = false,
+            authStatus = StatusLine(app.getString(R.string.demo_library_loaded)),
             lastSyncAt = settingsRepo.snapshot().lastSyncAt,
         )
         _demoEntered.emit(Unit)
@@ -661,18 +703,54 @@ class SettingsViewModel(
 
     // ----------------------------------------------------------------------
 
-    /** Drops the token (and the user it identified); the server URL and API key stay put. */
+    /**
+     * Sign out, and take with it everything the connection produced: the token, the server URL, the
+     * API key, the index URL, the folder scope, and every locally cached video and category. Also
+     * the way out of demo mode, which has no credential to drop but the same seeded library.
+     *
+     * The wipe used to be a separate "Reset local data" button. Folding it in here makes Sign out
+     * the one destructive action on this screen: a signed-out install still holding a full library
+     * is a state nothing else in the app expects, and clearing the rows while keeping the
+     * credentials that produced them was never what anyone came to Settings to do. The confirmation
+     * lives in the UI — [SettingsScreen] — because it is a presentation of the danger, not the rule.
+     */
     fun signOut() {
         if (_state.value.busy) return
+        // Raised here rather than inside the coroutine, unlike every other guard on this screen:
+        // this one destroys data, and two taps in the same frame would both pass a check that the
+        // launch has not run yet — twice through a wipe is survivable, twice through a *confirmed*
+        // wipe is a second dialog the user never answered.
+        _state.value = _state.value.copy(
+            busy = true,
+            authStatus = StatusLine(app.getString(R.string.signing_out)),
+        )
         viewModelScope.launch {
-            settingsRepo.clearSession()
-            _state.value = _state.value.copy(
-                signedIn = false,
-                password = "",
-                selectedUserId = "",
-                selectedUserName = "",
-                status = app.getString(R.string.signed_out),
-                statusIsError = false,
+            val leavingDemo = settingsRepo.snapshot().demoMode
+            // Stop sync first, for the reason the old Reset local data did: a worker running
+            // through the wipe would refill the tables, and the periodic one would go on doing it
+            // against credentials that are about to be gone.
+            syncScheduler.cancelAll()
+            _sync.value = null
+            // NonCancellable across both writes: a half-signed-out install — no token but a full
+            // library, or a wiped library still holding a server URL — is a state no other screen
+            // expects, and this ViewModel is cleared by the tab switch a sign-out invites.
+            withContext(NonCancellable) {
+                settingsRepo.clearConnection()
+                libraryRepo.clearLocalData()
+            }
+            settingsCache.clear()
+            // The fields are blank again, so nothing typed is being protected from the init load.
+            fieldsEdited = false
+            // Rebuilt rather than copied: this is a fresh install's state, and a `copy` would have
+            // to remember to blank every field the connection filled. The theme is carried across
+            // by hand because it is the one thing here that never came from a server; the update
+            // slice is merged in by [state] from its own flows and needs no carrying.
+            _state.value = SettingsUiState(
+                isDebugBuild = isDebugBuild,
+                themeState = _state.value.themeState,
+                authStatus = StatusLine(
+                    app.getString(if (leavingDemo) R.string.demo_left else R.string.signed_out),
+                ),
             )
         }
     }
@@ -703,7 +781,9 @@ class SettingsViewModel(
         // Same courtesy as signIn: a bare host gets its https:// before anything is tried.
         val serverUrl = normalizeServerUrl(s.serverUrl)
         if (serverUrl.isBlank() || s.apiKey.isBlank()) {
-            _state.value = s.copy(status = app.getString(R.string.enter_server_and_key), statusIsError = true)
+            _state.value = s.copy(
+                connectStatus = StatusLine(app.getString(R.string.enter_server_and_key), isError = true),
+            )
             return
         }
         viewModelScope.launch {
@@ -711,8 +791,7 @@ class SettingsViewModel(
                 busy = true,
                 // The field shows the URL that is actually being tried.
                 serverUrl = serverUrl,
-                status = if (silent) s.status else app.getString(R.string.connecting),
-                statusIsError = false,
+                connectStatus = if (silent) s.connectStatus else StatusLine(app.getString(R.string.connecting)),
             )
             clearDemoLibrary()
             runCatchingCancellable {
@@ -733,12 +812,13 @@ class SettingsViewModel(
                 _state.value = current.copy(
                     busy = false,
                     users = users,
+                    // The key has just been persisted, so the install can be signed out of it.
+                    apiKeyConnected = true,
                     selectedUserId = selected?.id ?: current.selectedUserId,
                     selectedUserName = selected?.name ?: current.selectedUserName,
                     selectedScopeId = if (userChanged) ROOT_SCOPE_ID else current.selectedScopeId,
                     selectedScopePath = if (userChanged) ROOT_SCOPE_PATH else current.selectedScopePath,
-                    status = connectedStatus(users.size),
-                    statusIsError = false,
+                    connectStatus = StatusLine(connectedStatus(users.size)),
                 )
                 selected?.let {
                     settingsRepo.setUser(it.id, it.name)
@@ -747,8 +827,10 @@ class SettingsViewModel(
             }.onFailure { e ->
                 _state.value = _state.value.copy(
                     busy = false,
-                    status = app.getString(R.string.connection_failed, reason(e)),
-                    statusIsError = true,
+                    connectStatus = StatusLine(
+                        app.getString(R.string.connection_failed, reason(e)),
+                        isError = true,
+                    ),
                 )
             }
         }
@@ -763,8 +845,7 @@ class SettingsViewModel(
     private fun offerDemoUser() {
         _state.value = _state.value.copy(
             users = listOf(User(id = DEMO_USER_ID, name = DEMO_USER)),
-            status = connectedStatus(1),
-            statusIsError = false,
+            connectStatus = StatusLine(connectedStatus(1)),
         )
     }
 
@@ -859,7 +940,10 @@ class SettingsViewModel(
         // the folder the user has since navigated to.
         loadChildrenJob?.cancel()
         loadChildrenJob = viewModelScope.launch {
-            _state.value = _state.value.copy(loadingFolders = true)
+            // The line describes *this* attempt, so the previous one's failure goes with the start
+            // of it — a slot that only ever gains messages would keep showing a dead error while
+            // the folders it complained about load successfully underneath.
+            _state.value = _state.value.copy(loadingFolders = true, scopeStatus = null)
             runCatchingCancellable {
                 // Browse with the credentials that are actually saved, not with whatever is
                 // half-typed in the fields: the folder tree belongs to the connection the app is
@@ -879,37 +963,13 @@ class SettingsViewModel(
                 _state.value = _state.value.copy(
                     childFolders = emptyList(),
                     loadingFolders = false,
-                    status = message,
-                    statusIsError = true,
+                    scopeStatus = StatusLine(message, isError = true),
                 )
             }
         }
     }
 
     // ----------------------------------------------------------------------
-
-    /** Clear all locally cached videos/categories, keeping connection settings. */
-    fun resetLocalData() {
-        if (_state.value.busy) return
-        viewModelScope.launch {
-            _state.value = _state.value.copy(
-                busy = true,
-                status = app.getString(R.string.clearing_local_data),
-                statusIsError = false,
-            )
-            // Stop sync first: a worker running through the wipe would refill the tables, and
-            // the periodic one must not resurrect the data the user just asked us to drop.
-            syncScheduler.cancelAll()
-            _sync.value = null
-            libraryRepo.clearLocalData()
-            _state.value = _state.value.copy(
-                busy = false,
-                status = app.getString(R.string.local_data_cleared),
-                statusIsError = false,
-                lastSyncAt = 0L,
-            )
-        }
-    }
 
     /**
      * Hands the sync to WorkManager and (re)creates the periodic one. Deliberately not awaited:
@@ -932,9 +992,10 @@ class SettingsViewModel(
             }
             if (shouldNudgeScope()) {
                 settingsRepo.setSyncScopeNudged(true)
+                // On the scope section's own line, which is what the shake points at — a nudge
+                // under Sync now would be an arrow pointing at itself.
                 _state.value = _state.value.copy(
-                    status = app.getString(R.string.check_sync_scope_first),
-                    statusIsError = false,
+                    scopeStatus = StatusLine(app.getString(R.string.check_sync_scope_first)),
                 )
                 // Emitted as well as written to the status line: the shake is the eye-catching
                 // half, the status text is the half a screen reader and a stopped animation
@@ -980,14 +1041,14 @@ class SettingsViewModel(
      * same [LibraryRepository.sync] call the worker would have made.
      */
     private suspend fun demoSync() {
-        _sync.value = SyncUi(running = true, message = app.getString(R.string.syncing), isError = false)
+        _sync.value = SyncUi(running = true, line = StatusLine(app.getString(R.string.syncing)))
         // NonCancellable so a tab switch mid-sync can't abandon a half-applied one: this ViewModel
         // is cleared on every tab change, unlike the worker that normally owns this work.
         val result = withContext(NonCancellable) { libraryRepo.sync() }
         _state.value = _state.value.copy(lastSyncAt = settingsRepo.snapshot().lastSyncAt)
         _sync.value = when (result) {
-            is SyncResult.Success -> SyncUi(false, syncSummary(result), isError = false)
-            is SyncResult.Error -> SyncUi(false, result.message, isError = true)
+            is SyncResult.Success -> SyncUi(false, StatusLine(syncSummary(result)))
+            is SyncResult.Error -> SyncUi(false, StatusLine(result.message, isError = true))
         }
     }
 

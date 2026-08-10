@@ -133,7 +133,6 @@ fun SettingsScreen(
             navigateTo = viewModel::navigateTo,
             useCurrentFolder = viewModel::useCurrentFolder,
             syncNow = viewModel::syncNow,
-            resetLocalData = viewModel::resetLocalData,
             onUpdateSourceChange = viewModel::onUpdateSourceChange,
             checkForUpdates = viewModel::checkForUpdates,
         ),
@@ -161,7 +160,7 @@ internal fun SettingsContent(
     // from the wall clock would make their output depend on when they ran.
     now: Long = 0L,
 ) {
-    var showResetDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
     val scopeShake = rememberScopeShake(nudgeScope)
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -232,12 +231,34 @@ internal fun SettingsContent(
                         .testTag(PASSWORD_FIELD_TAG),
                 )
             }
-            Button(
-                onClick = if (state.signedIn) actions.signOut else actions.signIn,
-                enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(if (state.signedIn) R.string.sign_out else R.string.sign_in))
+            // Directly above the button that produces it: a rejected password reported at the far
+            // end of a scrolling column is a rejection nobody sees.
+            StatusText(state.authStatus)
+
+            // Signed in, the two are one control in one slot — there is nothing to sign in *to*
+            // while a token is held. Otherwise Sign in stays the primary action and Sign out is
+            // offered underneath, because a demo (or API-key) install signing in to a real server
+            // is a supported one-step move that must not become "sign out first".
+            if (state.signedIn) {
+                DestructiveButton(
+                    label = stringResource(R.string.sign_out),
+                    onClick = { showSignOutDialog = true },
+                    enabled = !state.busy,
+                )
+            } else {
+                Button(
+                    onClick = actions.signIn,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.sign_in)) }
+
+                if (state.canSignOut) {
+                    DestructiveButton(
+                        label = stringResource(R.string.sign_out),
+                        onClick = { showSignOutDialog = true },
+                        enabled = !state.busy,
+                    )
+                }
             }
 
             // The one-tap way into the demo, next to the sign-in form it stands in for. (Typing
@@ -286,25 +307,11 @@ internal fun SettingsContent(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.sync_now)) }
 
-            DestructiveButton(
-                label = stringResource(R.string.reset_local_data),
-                onClick = { showResetDialog = true },
-                enabled = !state.busy,
-            )
-
             if (state.busy) CircularProgressIndicator()
 
-            state.status?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (state.statusIsError) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                )
-            }
+            // Sync's own line, and the one slot fed from outside this screen: WorkManager replays
+            // the last sync here, so it can be describing one started on an earlier visit.
+            StatusText(state.syncStatus)
 
             Text(
                 stringResource(
@@ -340,28 +347,63 @@ internal fun SettingsContent(
         }
     }
 
-    if (showResetDialog) {
+    if (showSignOutDialog) {
+        // Two wordings for one action: a demo has no connection to retype and can be reloaded in a
+        // tap, so warning it about server URLs and API keys would overstate what it costs.
+        val demo = state.demoMode
         AlertDialog(
-            onDismissRequest = { showResetDialog = false },
-            title = { Text(stringResource(R.string.reset_dialog_title)) },
+            onDismissRequest = { showSignOutDialog = false },
+            title = {
+                Text(
+                    stringResource(
+                        if (demo) R.string.sign_out_dialog_title_demo else R.string.sign_out_dialog_title,
+                    ),
+                )
+            },
             text = {
-                Text(stringResource(R.string.reset_dialog_text))
+                Text(
+                    stringResource(
+                        if (demo) R.string.sign_out_dialog_text_demo else R.string.sign_out_dialog_text,
+                    ),
+                )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showResetDialog = false
-                        actions.resetLocalData()
+                        showSignOutDialog = false
+                        actions.signOut()
                     },
                 ) {
-                    Text(stringResource(R.string.reset), color = MaterialTheme.colorScheme.error)
+                    Text(
+                        stringResource(if (demo) R.string.leave_demo else R.string.sign_out),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { showSignOutDialog = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
+}
+
+/**
+ * One status slot, rendered in the section that produced it — see [StatusLine] for why there are
+ * four of them rather than one. Draws nothing when there is nothing to say, so an absent line
+ * costs no vertical space (the parent Column's spacing would otherwise show as a gap).
+ */
+@Composable
+private fun StatusText(status: StatusLine?) {
+    status ?: return
+    Text(
+        status.text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (status.isError) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.primary
+        },
+    )
 }
 
 /**
@@ -509,6 +551,10 @@ private fun AdvancedAuthSection(
         modifier = Modifier.fillMaxWidth(),
     ) { Text(stringResource(R.string.connect_load_users)) }
 
+    // Under the button it answers: "Connected — 3 users" sitting by the sign-in form used to read
+    // as a report on the sign-in.
+    StatusText(state.connectStatus)
+
     if (state.users.isNotEmpty()) {
         Text(stringResource(R.string.user), style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -628,6 +674,10 @@ private fun ScopeSection(state: SettingsUiState, actions: SettingsActions) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.primary,
     )
+
+    // The section's own line: folder-browser failures, and the "check the sync scope" nudge that
+    // the shake below points at. Above the controls, so the nudge is read before the tap it wants.
+    StatusText(state.scopeStatus)
 
     if (!state.browserOpen) {
         TextButton(onClick = actions.openBrowser) { Text(stringResource(R.string.change_folder)) }

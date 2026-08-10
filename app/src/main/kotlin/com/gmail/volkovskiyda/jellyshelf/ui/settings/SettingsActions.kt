@@ -28,7 +28,6 @@ internal data class SettingsActions(
     val navigateTo: (Int) -> Unit = {},
     val useCurrentFolder: () -> Unit = {},
     val syncNow: () -> Unit = {},
-    val resetLocalData: () -> Unit = {},
     val onUpdateSourceChange: (UpdateSource) -> Unit = {},
     val checkForUpdates: () -> Unit = {},
 )

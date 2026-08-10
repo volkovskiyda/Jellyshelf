@@ -57,7 +57,7 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
         get<UpdateFlags>().refresh()
         get<UpdateChecker>().checkOnStart()
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
-        // launches, and re-scheduling on every start would undo "Reset local data", which
+        // launches, and re-scheduling on every start would undo the wipe Sign out performs, which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).
     }
 

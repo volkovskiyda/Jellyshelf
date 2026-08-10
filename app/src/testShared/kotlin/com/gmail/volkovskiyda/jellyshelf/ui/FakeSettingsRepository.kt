@@ -84,6 +84,26 @@ class FakeSettingsRepository(
         _settings.value = _settings.value.copy(accessToken = "", userId = "", userName = "")
     }
 
+    /**
+     * Mirrors the real store: everything a server put here, gone — and nothing else. The last-sync
+     * marker and the demo flag stay for `clearLocalData` to reset, and the device preferences
+     * ([themeState], the update flows, …) live outside [Settings] and are untouched by construction.
+     */
+    override suspend fun clearConnection() {
+        _settings.value = _settings.value.copy(
+            serverUrl = "",
+            apiKey = "",
+            accessToken = "",
+            userId = "",
+            userName = "",
+            libraryId = "",
+            libraryName = "",
+            indexUrl = "",
+            tokenInQuery = false,
+        )
+        _syncScopeNudged.value = false
+    }
+
     /** Fixed rather than random: a test asserting on the auth header needs a predictable id. */
     override suspend fun deviceId(): String = FAKE_DEVICE_ID
 

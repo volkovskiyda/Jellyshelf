@@ -32,7 +32,7 @@ import org.koin.core.context.GlobalContext
  * The whole demo-mode journey through the **real app**: the real Koin graph, the real DataStore,
  * the real Room database and the real bundled asset. Items 01-03 each test their own slice against
  * fakes; nothing else joins them up, and the joins are where a feature like this breaks — a seed
- * that works but never navigates, a Reset that clears rows but leaves the flag.
+ * that works but never navigates, a sign-out that clears rows but leaves the flag.
  *
  * It is also, deliberately, the click path a Firebase Test Lab baseline-profile generator will
  * replay (`internal/release-ci-plan/` item 08): launch → **Try demo** → browse → open a video.
@@ -61,16 +61,14 @@ class DemoModeFlowTest {
      *
      * The WorkManager half is not incidental. Manual-sync work left enqueued by
      * [com.gmail.volkovskiyda.jellyshelf.data.worker.SyncSchedulerInstrumentedTest] reaches this
-     * screen as a running sync, which disables its buttons and takes over its status line — so
-     * "Try demo" would be tapped and ignored, and the sign-in error would be replaced by
-     * "Syncing…". Both are exactly what a user would see, which is why the fix is to clear the
-     * residue rather than to loosen the assertions.
+     * screen as a running sync, which disables its buttons — so "Try demo" would be tapped and
+     * ignored. Exactly what a user would see, which is why the fix is to clear the residue rather
+     * than to loosen the assertions.
      *
      * Cancelling is not enough on its own, and neither is wiping Room and DataStore. A **finished**
-     * sync stays in WorkManager's history, `SettingsViewModel` replays the last one onto the status
-     * line, and a real one from
-     * [com.gmail.volkovskiyda.jellyshelf.live.LiveUiJourneyTest] then sits there as "Synced 852/862
-     * videos…" over the sign-in error this test is waiting for — so the history is pruned too. And
+     * sync stays in WorkManager's history and `SettingsViewModel` replays the last one — which, for
+     * an *enqueued* leftover, is a `busy` this screen's buttons are all disabled by. So the history
+     * is pruned too. And
      * [LibraryFilterState] is a process-lifetime singleton holding the library's search query and
      * its last emission, neither of which lives in a database: a query left by an earlier test
      * filters this one's demo library down to "no videos match".
@@ -115,7 +113,7 @@ class DemoModeFlowTest {
     }
 
     @Test
-    fun theDemoJourney_seedsBrowsesAndResets() {
+    fun theDemoJourney_seedsBrowsesAndSignsOut() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             // A fresh install opens on Settings rather than an empty library.
             awaitText(string(R.string.try_demo))
@@ -139,21 +137,22 @@ class DemoModeFlowTest {
             composeRule.onNodeWithText(string(R.string.tab_categories)).performClick()
             awaitText(string(R.string.dim_channels))
 
-            // The documented way out: Reset local data, which drops the rows and the demo flag
-            // together — the button that offers the demo is back afterwards.
+            // The documented way out: Sign out, which drops the rows and the demo flag together —
+            // the button that offers the demo is back afterwards.
             composeRule.onNodeWithText(string(R.string.tab_settings)).performClick()
-            awaitText(string(R.string.reset_local_data))
+            awaitText(string(R.string.sign_out))
             // Scrolled to, not just found: Settings is a scrolling column, and how much of it fits
-            // depends on the device's navigation mode — a 3-button bar costs enough height to leave
-            // this button below the fold. Off-screen it is still in the semantics tree, so a plain
+            // depends on the device's navigation mode — a 3-button bar costs enough height to push
+            // a button below the fold. Off-screen it is still in the semantics tree, so a plain
             // performClick finds the node and injects a touch nobody receives, which then fails as
             // a missing confirm dialog rather than as the unreachable button it is.
-            composeRule.onNodeWithText(string(R.string.reset_local_data)).performScrollTo().performClick()
-            // The confirm button lives in a dialog window that composes after the tap.
-            awaitText(string(R.string.reset_dialog_title))
-            composeRule.onNodeWithText(string(R.string.reset)).performClick()
+            composeRule.onNodeWithText(string(R.string.sign_out)).performScrollTo().performClick()
+            // The confirm button lives in a dialog window that composes after the tap. Its label
+            // is the demo wording, which is also what keeps it distinct from the button behind it.
+            awaitText(string(R.string.sign_out_dialog_title_demo))
+            composeRule.onNodeWithText(string(R.string.leave_demo)).performClick()
 
-            awaitText(string(R.string.local_data_cleared))
+            awaitText(string(R.string.demo_left))
             composeRule.onNodeWithText(string(R.string.try_demo)).assertExists()
             composeRule.onNodeWithText(string(R.string.demo_mode_active)).assertDoesNotExist()
         }

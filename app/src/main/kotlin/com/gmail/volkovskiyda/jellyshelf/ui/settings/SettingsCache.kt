@@ -19,4 +19,13 @@ class SettingsCache {
     fun store(serverUrl: String, users: List<User>) {
         entry.value = Entry(serverUrl, users)
     }
+
+    /**
+     * Forgets the cached users. Only a sign-out needs this: the entry is keyed by server URL, so a
+     * *changed* URL already misses — but a sign-out clears the URL to blank and the next sign-in
+     * may well retype the same one, which would otherwise hit a cache from before the wipe.
+     */
+    fun clear() {
+        entry.value = null
+    }
 }
