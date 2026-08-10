@@ -359,8 +359,8 @@ class SyncInstrumentedTest {
     @Test
     fun sync_leavesALargeMetadataGapToTheDeliberateBulkFetch() = runBlocking {
         val ytDlp = FakeYtDlp(ApplicationProvider.getApplicationContext(), dispatchers)
-        // Ten missing videos is the threshold: the pass must not run at all.
-        val repo = repository(serverIds = List(10) { "video-0000$it" }, ytDlp = ytDlp)
+        // Twenty-five missing videos is the threshold: the pass must not run at all.
+        val repo = repository(serverIds = List(25) { "video-0000$it" }, ytDlp = ytDlp)
 
         val result = repo.sync() as SyncResult.Success
 

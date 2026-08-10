@@ -108,11 +108,11 @@ private const val MIN_TRUSTED_LISTING_RATIO = 0.5
  * bigger gap is a bulk job the user starts deliberately from the Uncategorized filter, where it
  * reports progress and can be cancelled.
  */
-private const val AUTO_FILL_MAX_MISSING = 10
+private const val AUTO_FILL_MAX_MISSING = 25
 
 /**
  * Total budget for a sync's auto-fill pass. The sync runs inside a WorkManager worker with a
- * ~10 minute execution window, and up to nine extractions at yt-dlp's own 60 s ceiling could
+ * ~10 minute execution window, and up to 24 extractions at yt-dlp's own 60 s ceiling could
  * otherwise consume nearly all of it.
  */
 private val AUTO_FILL_BUDGET = 5.minutes
