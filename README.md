@@ -9,7 +9,8 @@ external player or to the Jellyfin web UI — the choice is a setting on the pla
 No Jellyfin server to hand? **Settings → Try demo** runs the whole app on a seeded library —
 see [Demo mode](#demo-mode--try-it-without-a-server).
 
-`com.gmail.volkovskiyda.jellyshelf` · single-module · Compose + Navigation 3 + Adaptive ·
+`com.gmail.volkovskiyda.jellyshelf` · single app module (plus a `:baselineprofile` tooling
+module) · Compose + Navigation 3 + Adaptive ·
 Media3 (ExoPlayer + MediaSession) · Room · Ktor (OkHttp engine) / kotlinx.serialization ·
 WorkManager · DataStore · Coil · Koin · bundled yt-dlp (youtubedl-android).
 
@@ -144,9 +145,10 @@ server anywhere to reject anything. Any other password enters the demo. These va
 before any URL normalization and before any network call, and none of them is ever stored as a
 connection.
 
-**Leaving** is the ordinary **Reset local data**, which drops the seeded rows and the demo flag
-together. Connecting to a real server clears the demo data first, so seeded rows never meet a real
-sync — the Settings screen says so while a demo is loaded.
+**Leaving** is the ordinary **Sign out** — its confirmation dialog reads "Leave demo?" while a
+demo is loaded — which drops the seeded rows and the demo flag together. Connecting to a real
+server clears the demo data first, so seeded rows never meet a real sync — the Settings screen
+says so while a demo is loaded.
 
 The dataset is [`app/src/main/assets/demo/library.json`](app/src/main/assets/demo/library.json),
 a real, valid example of the metadata index format that
@@ -232,7 +234,8 @@ the External player mode.
   the screen and system surfaces (notification, output switcher, Android Auto) can drive it.
   Tapping the notification reopens the player on whatever is playing.
 - **Resume** — the position is saved locally every 10 seconds and on pause, so process death
-  can't lose it, and reported to Jellyfin once per stop. Positions only start counting once the
+  can't lose it, and reported to Jellyfin through the live playback session (see
+  [Watch state](#watch-state)). Positions only start counting once the
   video is genuinely under way (a tenth of it, or one minute, whichever is smaller), so stepping
   through a queue can't overwrite a resume point you earned with one you didn't.
 
@@ -258,9 +261,19 @@ instead. That toggle applies to the external-player intent only.
 Syncs both ways: the app reads `Played` / `PlaybackPositionTicks` / `PlayCount` from Jellyfin on
 every sync, and writes back when you mark watched/unwatched or finish a video. A finished video
 is marked played through `/PlayedItems` (the endpoint that actually increments `PlayCount` and
-stamps `LastPlayedDate`); one stopped partway writes its resume position instead, which is what
-puts it in Jellyfin's "Continue Watching". MX Player and VLC report their position back on exit,
-so the external path records progress too; other players simply won't.
+stamps `LastPlayedDate`).
+
+The in-app player follows Jellyfin's own session flow while a video plays: a start report once
+playback is genuinely under way, progress every 10 seconds (and once more on a pause), and a stop
+report carrying the final position. So the video appears as "now playing" on the server dashboard,
+and the *server's* resume thresholds — not this app — decide when a partway stop counts as watched
+or lands in "Continue Watching"; a video can even tip over to watched mid-play once it crosses the
+server's threshold.
+
+An external player reports nothing while it runs, so there is no session for the server to
+threshold: a partway stop there writes its resume position directly to the item's user data, which
+is what puts it in "Continue Watching". MX Player and VLC report their position back on exit, so
+the external path records progress too; other players simply won't.
 
 ## Endpoints to verify against your Jellyfin version
 
@@ -274,15 +287,15 @@ targets standard endpoints; confirm these against your server build and adjust i
   reads come with it and are reliable.
 - `POST` / `DELETE /Users/{userId}/PlayedItems/{itemId}` — mark (un)watched, and what a finished
   video reports through.
-- `POST /Users/{userId}/Items/{itemId}/UserData` — resume-position write ("Continue Watching").
+- `POST /Sessions/Playing`, `POST /Sessions/Playing/Progress`, `POST /Sessions/Playing/Stopped` —
+  the in-app player's live session reporting; the stop report is what carries an in-app partway
+  resume position, leaving the server to threshold it.
+- `POST /Users/{userId}/Items/{itemId}/UserData` — the *external-player* resume-position write
+  ("Continue Watching"), where no live session exists.
 - `DELETE /Items/{itemId}` — "Remove watched", which deletes the media file too.
 - `POST /Playlists` — create a playlist from a category.
 - `GET /Videos/{id}/stream?static=true`, `GET /Videos/{id}/main.m3u8` — direct play and the
   transcode fallback. `GET /Items/{id}/Images/Primary` — thumbnails.
-
-`POST /Sessions/Playing/Progress` is implemented but **not** called: live session reporting
-("now playing" on the server dashboard) is backlog, and resume positions go to `UserData`
-instead, which persists them without a live session to sustain.
 
 ## Build
 

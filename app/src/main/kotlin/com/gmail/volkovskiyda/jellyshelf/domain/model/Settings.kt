@@ -47,7 +47,7 @@ data class Settings(
     val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
     /**
      * Whether the library holds seeded demo data rather than a real server's. Set by the demo
-     * seeder and cleared by "Reset local data" — the flag never outlives the rows it describes.
+     * seeder and cleared by Sign out's wipe — the flag never outlives the rows it describes.
      *
      * Read by the UI (which hides server-dependent affordances) and by playback (which plays a
      * bundled clip). Demo installs have no credentials, so [isConnected] is false throughout and
