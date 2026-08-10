@@ -176,7 +176,7 @@ draws the thumbnails, and [`scripts/make-demo-clip.sh`](scripts/make-demo-clip.s
    instead of everything. Narrowing it deletes the now-out-of-scope videos locally right away;
    videos that merely stop appearing in an unchanged scope get a grace period of three syncs
    first, so a Jellyfin rescan doesn't empty the library.
-5. **Sync now** — first sync; a WorkManager job then re-syncs every 3 hours.
+5. **Sync now** — first sync; a WorkManager job then re-syncs every 2 hours.
 
 **Appearance → Theme** overrides light/dark independently of the system: tapping the switch walks
 light → auto → dark and back, and the change animates as a circular reveal from the tap. Auto is

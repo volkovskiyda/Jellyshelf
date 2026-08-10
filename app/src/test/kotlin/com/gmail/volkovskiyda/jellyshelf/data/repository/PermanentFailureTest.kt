@@ -60,7 +60,7 @@ class PermanentFailureTest {
     /**
      * A cleartext block never reaches the server, so it arrives as an [UnknownServiceException]
      * rather than a `ResponseException` — the case that used to be classified transient and let
-     * the periodic worker retry an `http://` URL every 3 hours forever.
+     * the periodic worker retry an `http://` URL every 2 hours forever.
      */
     @Test
     fun `a cleartext block is permanent`() {

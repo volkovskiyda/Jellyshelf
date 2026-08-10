@@ -116,6 +116,6 @@ class SyncScheduler(private val workManager: WorkManager) {
     companion object {
         private const val PERIODIC_WORK_NAME = "jellyshelf-periodic-sync"
         private const val MANUAL_WORK_NAME = "jellyshelf-manual-sync"
-        private const val SYNC_PERIOD_HOURS = 3L
+        private const val SYNC_PERIOD_HOURS = 2L
     }
 }
