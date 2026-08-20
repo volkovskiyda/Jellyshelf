@@ -12,11 +12,15 @@ import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Settings
@@ -417,7 +421,19 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         onOpen = { navThrottle { push(AppNavKey.Player(playing.youtubeId)) } },
                         onPlayPause = nowPlayingState::playPause,
                         onStop = nowPlayingState::stop,
-                        modifier = if (showBottomBar) Modifier else Modifier.navigationBarsPadding(),
+                        // The horizontal inset always, the bottom one only when the bar is the
+                        // lowest thing in the slot. In landscape with three-button navigation the
+                        // system bar is down one *side*, and without the horizontal inset the
+                        // bar's stop button draws underneath it — NavigationBar insets itself, so
+                        // only the bar was exposed. When the tabs are showing they own the bottom
+                        // inset, and taking it here as well would leave a gap between the two.
+                        modifier = Modifier.windowInsetsPadding(
+                            if (showBottomBar) {
+                                WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
+                            } else {
+                                WindowInsets.navigationBars
+                            },
+                        ),
                     )
                 }
                 if (showBottomBar) {
