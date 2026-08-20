@@ -52,6 +52,8 @@ class PlayerControlsTest {
         onPrevious: () -> Unit = {},
         onNext: () -> Unit = {},
         onSeek: (Long) -> Unit = {},
+        onBack: () -> Unit = {},
+        onMinimize: () -> Unit = {},
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -74,7 +76,8 @@ class PlayerControlsTest {
                     onScrubbingChanged = {},
                     onSpeedMenuChanged = {},
                     onOpenChapters = {},
-                    onBack = {},
+                    onBack = onBack,
+                    onMinimize = onMinimize,
                 )
             }
         }
@@ -82,6 +85,29 @@ class PlayerControlsTest {
 
     private fun onDescription(resId: Int) =
         composeRule.onNodeWithContentDescription(composeRule.activity.getString(resId))
+
+    /**
+     * The two exits are separate controls doing separate things: back stops playback (its callback
+     * is the one that calls stopPlayback), minimize leaves it running. A single button wired to
+     * both, or either wired to the other's callback, is the failure this catches — and it would be
+     * silent, because both look like "the player closed".
+     */
+    @Test
+    fun theTopBar_offersBackAndMinimizeSeparately() {
+        var backs = 0
+        var minimizes = 0
+        setControls(onBack = { backs++ }, onMinimize = { minimizes++ })
+
+        onDescription(R.string.player_minimize).performClick()
+
+        assertEquals(0, backs)
+        assertEquals(1, minimizes)
+
+        onDescription(R.string.back).performClick()
+
+        assertEquals(1, backs)
+        assertEquals(1, minimizes)
+    }
 
     @Test
     fun speedChip_showsTheCurrentSpeed_andTheMenuStartsClosed() {

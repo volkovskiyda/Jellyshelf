@@ -8,9 +8,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -51,10 +53,12 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
+import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallSnackbarHost
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
+import com.gmail.volkovskiyda.jellyshelf.ui.MiniPlayerBar
 import com.gmail.volkovskiyda.jellyshelf.ui.UpdateDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
@@ -296,6 +300,13 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         onFailureDismissed = updateChecker::clearInstallState,
     )
 
+    // Something is playing and this is not the player screen: the bar is the way back to it, and
+    // (with back-stopping playback) the only in-app way to end the session. Written by
+    // PlaybackService, so it is already right on a launch that walked in on playback under way.
+    val nowPlayingState: NowPlayingState = koinInject()
+    val nowPlaying by nowPlayingState.nowPlaying.collectAsStateWithLifecycle()
+    val showMiniPlayer = nowPlaying != null && current !is AppNavKey.Player
+
     // Library is the app's home and always the stack root: switching to any other tab rebuilds the
     // stack as [Library, tab] so Back returns to Library, and one more Back exits.
     fun switchTo(key: AppNavKey) {
@@ -336,18 +347,37 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         // percentage climb inside one snackbar instead of animating a new one in per tick.
         snackbarHost = { InstallSnackbarHost(snackbarHostState, installState) },
         bottomBar = {
-            if (showBottomBar) {
-                NavigationBar {
-                    topLevel.forEach { item ->
-                        val label = stringResource(item.labelRes)
-                        NavigationBarItem(
-                            selected = current == item.key,
-                            onClick = { switchTo(item.key) },
-                            // The visible label already names the item; a duplicate icon
-                            // description would make TalkBack announce it twice.
-                            icon = { Icon(item.icon, contentDescription = null) },
-                            label = { Text(label) },
-                        )
+            // One slot, two things that can be in it. The bar sits above the tabs when both show;
+            // on Detail and CategoryVideos there are no tabs, and then the bar is what has to
+            // clear the system navigation — otherwise it draws under the gesture pill.
+            Column {
+                nowPlaying?.takeIf { showMiniPlayer }?.let { playing ->
+                    MiniPlayerBar(
+                        title = playing.title,
+                        artworkUri = playing.artworkUri,
+                        isPlaying = playing.isPlaying,
+                        // Same dedupe the notification path uses: compare on the video, since a
+                        // player opened from a list carries an origin the bar knows nothing about
+                        // and re-pushing it would stack two player entries for one video.
+                        onOpen = { navThrottle { push(AppNavKey.Player(playing.youtubeId)) } },
+                        onPlayPause = nowPlayingState::playPause,
+                        onStop = nowPlayingState::stop,
+                        modifier = if (showBottomBar) Modifier else Modifier.navigationBarsPadding(),
+                    )
+                }
+                if (showBottomBar) {
+                    NavigationBar {
+                        topLevel.forEach { item ->
+                            val label = stringResource(item.labelRes)
+                            NavigationBarItem(
+                                selected = current == item.key,
+                                onClick = { switchTo(item.key) },
+                                // The visible label already names the item; a duplicate icon
+                                // description would make TalkBack announce it twice.
+                                icon = { Icon(item.icon, contentDescription = null) },
+                                label = { Text(label) },
+                            )
+                        }
                     }
                 }
             }

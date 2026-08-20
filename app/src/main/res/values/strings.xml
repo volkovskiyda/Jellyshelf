@@ -140,6 +140,16 @@
     <string name="playback_error">Playback failed: %1$s — try the External player mode</string>
     <string name="playback_transcoding_fallback">Direct play failed, switching to transcoding…</string>
     <string name="chapters">Chapters</string>
+    <string name="player_minimize">Minimize player</string>
+    <!--
+      The mini-player bar. None of its three targets carries a visible label, so each needs its
+      own description: the row's is a click label (it says what the tap does, not what the row
+      is), the two buttons' are ordinary content descriptions.
+    -->
+    <string name="mini_player_open">Open the player</string>
+    <string name="mini_player_play">Play</string>
+    <string name="mini_player_pause">Pause</string>
+    <string name="mini_player_stop">Stop playback</string>
 
     <!-- Settings -->
     <string name="appearance">Appearance</string>

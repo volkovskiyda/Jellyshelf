@@ -14,6 +14,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -86,6 +87,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     // Framework-instantiated, so dependencies resolve via Koin instead of the constructor.
     private val repo: LibraryRepository by inject()
     private val settingsState: AppSettingsState by inject()
+    private val nowPlaying: NowPlayingState by inject()
 
     // The player's application thread is this service's main thread; session callbacks, the
     // listener and the periodic saver all stay on it, which is also what makes the plain-var
@@ -145,6 +147,25 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         // Last, so a transition has already been reported and re-tracked before this seeks.
         player.addListener(ResumeSeedingListener())
         this.player = player
+        // The mini-player bar's two buttons, on the real player. Registered here rather than
+        // handed a controller, because a controller is what *starts* this service.
+        nowPlaying.attach(object : NowPlayingState.Transport {
+            override fun playPause() {
+                // media3's own helper, the one the player screen's button state uses, so the bar
+                // and the screen cannot disagree about what a play tap does to an ended video.
+                this@PlaybackService.player?.let(Util::handlePlayPauseButtonAction)
+            }
+
+            override fun stop() {
+                // Exactly PlayerViewModel.stopPlayback: the pause is what makes the stop report
+                // carry the real position (the tracker only records one from a STATE_READY pause),
+                // and clearing the queue is what fires the single stop report. Anything else here
+                // either loses the position or reports twice.
+                val p = this@PlaybackService.player ?: return
+                p.pause()
+                p.clearMediaItems()
+            }
+        })
         restorePlaybackSpeed(player)
         session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity(youtubeId = null))
@@ -192,6 +213,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         // this service going away (swipe from recents, system stop).
         val p = player
         if (p != null) watch.onDestroy(p.currentPosition).perform()
+        nowPlaying.detach()
         session?.release()
         p?.release()
         session = null
@@ -304,6 +326,19 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             pausedJob?.cancel()
             // A notification tap should reopen the player on whatever is playing now.
             session?.setSessionActivity(sessionActivity(mediaItem?.mediaId))
+            // The same moment tells the mini-player bar what to draw — the metadata is the one
+            // resolve() attached, so the bar shows the same title and artwork the notification
+            // does. A null item is the queue emptying, which is the bar's cue to go away.
+            nowPlaying.show(
+                mediaItem?.let {
+                    NowPlaying(
+                        youtubeId = it.mediaId,
+                        title = it.mediaMetadata.title?.toString(),
+                        artworkUri = it.mediaMetadata.artworkUri?.toString(),
+                        isPlaying = player?.isPlaying == true,
+                    )
+                },
+            )
         }
 
         override fun onPositionDiscontinuity(
@@ -320,6 +355,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            nowPlaying.setPlaying(isPlaying)
             if (isPlaying) {
                 // Cancelled before the resume is reported, not after: both run on this thread, so
                 // stopping the keep-alive here is what guarantees a stale "is paused" tick cannot

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
@@ -119,10 +120,21 @@ internal const val PLAYER_POSITION_TAG = "player_position"
 
 /**
  * In-app player: full-bleed video over black with hand-built Compose controls on the session's
- * [MediaController]. Leaving the screen on purpose — any back arrow or system back — stops
- * playback, reports the position to the server and drops the media notification: back means done
- * watching. Merely hiding the app keeps playing, and the notification is the way back to here.
+ * [MediaController].
+ *
+ * Two deliberate exits, and the difference between them is the whole point:
+ *
+ *  - **Back** — the back arrow or the system gesture — stops playback, reports the position to the
+ *    server and drops the media notification. Back means *done watching*, and that is unchanged.
+ *  - **Minimize** — the down-chevron in the top bar — pops this screen and leaves playback running.
+ *    The mini-player bar then appears on whatever screen is underneath, and is the way back here.
+ *
+ * Merely hiding the app also keeps playing; the media notification is a third way back.
  * Orientation is free (sensor); the surface just re-fits.
+ *
+ * Minimize exists because the bar needs playback to survive leaving the player. It is a *second*
+ * exit rather than a change to the first: back stopping playback was decided deliberately, and
+ * this does not reopen it.
  */
 @Composable
 fun PlayerScreen(
@@ -138,8 +150,8 @@ fun PlayerScreen(
 
     ImmersiveWhileHere()
 
-    // Every explicit exit routes through here — and only explicit exits, which is why it is not
-    // an onCleared()/lifecycle hook: those also fire on rotation and on minimizing.
+    // Every *stopping* exit routes through here — and only those, which is why it is not an
+    // onCleared()/lifecycle hook: those also fire on rotation and on minimizing.
     val leave = {
         viewModel.stopPlayback()
         onBack()
@@ -166,6 +178,9 @@ fun PlayerScreen(
                 chapters = chapters,
                 onSpeedPicked = viewModel::savePlaybackSpeed,
                 onBack = leave,
+                // The nav layer's plain pop: no stopPlayback, so the session survives and the
+                // mini-player bar picks it up on the screen underneath.
+                onMinimize = onBack,
             )
         }
     }
@@ -179,6 +194,7 @@ private fun PlayerWithControls(
     chapters: List<Chapter>,
     onSpeedPicked: (Float) -> Unit,
     onBack: () -> Unit,
+    onMinimize: () -> Unit,
 ) {
     // Snapshots the UI renders from — polled/listened, because a Player is not observable state.
     var positionMs by remember { mutableLongStateOf(controller.currentPosition.coerceAtLeast(0)) }
@@ -419,6 +435,7 @@ private fun PlayerWithControls(
                 onSpeedMenuChanged = { speedMenuOpen = it },
                 onOpenChapters = { chaptersOpen = true },
                 onBack = onBack,
+                onMinimize = onMinimize,
             )
         }
         if (chaptersOpen) {
@@ -446,7 +463,7 @@ private fun PlayerWithControls(
 
 /**
  * The controls overlay, stateless so previews and tests can render it without a player: top bar
- * (back + title + speed menu + chapters), centre transport row, bottom chapter-step row and
+ * (back + minimize + title + speed menu + chapters), centre transport row, bottom chapter-step row and
  * position–seek–duration bar with chapter tick markers. Its only internal state is transient
  * interaction — the in-flight scrub and the open speed menu — each reported via its `on*Changed`
  * callback so the caller can pin the overlay open while the user is mid-gesture.
@@ -473,6 +490,7 @@ internal fun PlayerControls(
     onSpeedMenuChanged: (Boolean) -> Unit,
     onOpenChapters: () -> Unit,
     onBack: () -> Unit,
+    onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // The scrim covers the full screen; the controls inside stay clear of the display cutout,
@@ -488,6 +506,13 @@ internal fun PlayerControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BackButton(onClick = onBack, tint = Color.White)
+            IconButton(onClick = onMinimize) {
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = stringResource(R.string.player_minimize),
+                    tint = Color.White,
+                )
+            }
             Text(
                 title.orEmpty(),
                 color = Color.White,

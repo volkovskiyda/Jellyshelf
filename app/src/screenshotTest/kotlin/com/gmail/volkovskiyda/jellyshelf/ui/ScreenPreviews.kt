@@ -262,6 +262,7 @@ private fun PlayerControlsWithChapters() {
             onSpeedMenuChanged = {},
             onOpenChapters = {},
             onBack = {},
+            onMinimize = {},
         )
     }
 }
@@ -295,6 +296,7 @@ private fun PlayerControlsSingleVideo() {
             onSpeedMenuChanged = {},
             onOpenChapters = {},
             onBack = {},
+            onMinimize = {},
         )
     }
 }
