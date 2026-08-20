@@ -35,6 +35,9 @@ private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO/relea
  * compares against `BuildConfig.VERSION_CODE`. That is why no separate `version.json` is needed:
  * the asset name already carries the identity. Anchored, and compiled once as a top-level `val`.
  */
+/** How GitHub spells the only digest algorithm this app will act on. */
+private const val SHA256_PREFIX = "sha256:"
+
 private val APK_ASSET = Regex("""^jellyshelf-.*\.(\d+)\.apk$""")
 
 /**
@@ -89,6 +92,13 @@ open class GitHubReleaseSource(
                     versionName = release.tagName.removePrefix("v"),
                     releaseNotes = release.body.orEmpty().trim(),
                     downloadUrl = asset.browserDownloadUrl,
+                    // GitHub reports it as "sha256:<hex>"; anything else — a digest algorithm we
+                    // do not recognise, or none at all on older releases — reads as null, which
+                    // sends the update to the browser rather than through an unverified install.
+                    sha256 = asset.digest
+                        ?.removePrefix(SHA256_PREFIX)
+                        ?.takeIf { asset.digest.startsWith(SHA256_PREFIX) && it.isNotBlank() }
+                        ?.lowercase(),
                     source = UpdateSource.GITHUB,
                 )
             }
@@ -106,4 +116,9 @@ private data class GitHubRelease(
 private data class GitHubAsset(
     val name: String,
     @SerialName("browser_download_url") val browserDownloadUrl: String,
+    /**
+     * `"sha256:<hex>"` on releases published since GitHub added the field, absent on older ones —
+     * hence nullable rather than defaulted, so "no digest" stays distinguishable from an empty one.
+     */
+    val digest: String? = null,
 )

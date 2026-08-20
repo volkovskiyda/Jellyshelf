@@ -52,6 +52,7 @@ val UpdateCheckError.messageRes: Int
         UpdateCheckError.SignInRequired -> R.string.update_error_sign_in_required
         UpdateCheckError.Network -> R.string.update_error_network
         UpdateCheckError.DownloadFailed -> R.string.update_error_download_failed
+        UpdateCheckError.VerificationFailed -> R.string.update_error_verification_failed
         UpdateCheckError.InstallFailed -> R.string.update_error_install_failed
         UpdateCheckError.InstallCancelled -> R.string.update_error_install_cancelled
         UpdateCheckError.Interrupted -> R.string.update_error_interrupted

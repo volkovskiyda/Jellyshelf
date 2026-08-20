@@ -14,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.InstallOutcome
 import com.gmail.volkovskiyda.jellyshelf.domain.NotificationPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
@@ -22,6 +23,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeUpdateFlags
+import com.gmail.volkovskiyda.jellyshelf.ui.InertApkInstall
 import com.gmail.volkovskiyda.jellyshelf.ui.InertTesterSignIn
 import com.gmail.volkovskiyda.jellyshelf.ui.RecordingUpdateCheckSchedule
 import com.gmail.volkovskiyda.jellyshelf.ui.TestDispatcherProvider
@@ -235,5 +237,7 @@ class NotificationPermissionPromptTest {
         time = TimeProvider { NOW },
         dispatchers = TestDispatcherProvider(),
         updateCheckSchedule = RecordingUpdateCheckSchedule(),
+        apkInstaller = InertApkInstall,
+        installOutcome = InstallOutcome(),
     )
 }

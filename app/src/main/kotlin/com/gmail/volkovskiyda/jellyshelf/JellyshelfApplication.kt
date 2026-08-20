@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.gmail.volkovskiyda.jellyshelf.data.install.ApkInstaller
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
@@ -61,6 +62,9 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
         // correct — it is cancelled by turning the channel off, which is persisted state this
         // reads back and honours, not by an act it would undo.
         get<UpdateChecker>().scheduleBackgroundCheck()
+        // A download interrupted by the process dying leaves a part-file nothing else will clean
+        // up. Cheap, and the cache is the one place where leaving rubbish is purely our fault.
+        ApkInstaller.sweep(this)
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
         // launches, and re-scheduling on every start would undo the wipe Sign out performs, which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).

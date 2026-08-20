@@ -277,6 +277,11 @@
     <string name="update_error_sign_in_required">Sign in to the tester account to check — tap Check now.</string>
     <string name="update_error_network">Could not reach the update channel.</string>
     <string name="update_error_download_failed">Downloading the update failed.</string>
+    <!--
+      Integrity, not connectivity: the download completed and did not match the digest the release
+      published. Worded so it reads as "we refused", because that is what happened.
+    -->
+    <string name="update_error_verification_failed">The download did not match the published release, so it was not installed.</string>
     <string name="update_error_install_failed">Installing the update failed.</string>
     <string name="update_error_install_cancelled">The install was cancelled.</string>
     <string name="update_error_interrupted">The update was interrupted. Try again from this screen.</string>

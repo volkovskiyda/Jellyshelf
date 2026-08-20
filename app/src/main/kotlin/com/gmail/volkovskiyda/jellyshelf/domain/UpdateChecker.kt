@@ -94,6 +94,8 @@ class UpdateChecker(
     private val time: TimeProvider,
     private val dispatchers: DispatcherProvider,
     private val updateCheckSchedule: UpdateCheckSchedule,
+    private val apkInstaller: ApkInstall,
+    private val installOutcome: InstallOutcome,
 ) {
     // MutableStateFlow, never @Volatile or an atomic: the project has carried zero @Volatile since
     // 2026-07-29 and this is not the place to reintroduce one.
@@ -318,24 +320,55 @@ class UpdateChecker(
     }
 
     /**
-     * The in-app install, for [UpdateSource.APP_DISTRIBUTION] only — the GitHub channel links out
-     * to a browser instead, which its caller does.
+     * Whether [install] can handle this offer, or the caller should open the browser instead.
      *
-     * Suspends until the download **and** install finish, so this is not fire-and-forget, and
-     * reports both progress and failure through [installState].
+     * The only case it cannot is a GitHub release with no published digest — an older release, or
+     * one GitHub has no `digest` for. There is nothing to verify such a download against, so it is
+     * not installed in-app at all; the browser path it falls back to is exactly what every GitHub
+     * update did before.
+     */
+    fun canInstall(info: UpdateInfo): Boolean =
+        info.source == UpdateSource.APP_DISTRIBUTION || info.sha256 != null
+
+    /**
+     * The in-app install, for either channel.
+     *
+     * App Distribution's SDK downloads and verifies its own bytes. GitHub's are downloaded here and
+     * checked against the digest the release published — see
+     * [ApkInstaller][com.gmail.volkovskiyda.jellyshelf.data.install.ApkInstaller]. Both narrate
+     * through [installState], so the two channels are indistinguishable on screen, which is the
+     * point: the user picked a channel, not an install mechanism.
+     *
+     * Suspends until the install has been handed over, so this is not fire-and-forget, and reports
+     * both progress and failure through [installState].
      *
      * A success clears the state rather than announcing itself: succeeding means the system
      * installer has taken over and the app is about to be replaced, so there is nobody left to
      * read a confirmation.
      */
-    suspend fun install() {
+    suspend fun install(info: UpdateInfo) {
         _installState.value = InstallState.Running(InstallStage.PREPARING)
         try {
-            appDistributionSource.install { _installState.value = it }
-            _installState.value = null
+            if (info.source == UpdateSource.APP_DISTRIBUTION) {
+                appDistributionSource.install { _installState.value = it }
+                _installState.value = null
+            } else {
+                // The system installer reports asynchronously, through a broadcast that outlives
+                // this call — so the outcome is what clears or fails the state, not returning.
+                installOutcome.observe { reason ->
+                    _installState.value = reason?.let { InstallState.Failed(it) }
+                    installOutcome.clear()
+                }
+                apkInstaller.downloadAndInstall(info) { _installState.value = it }
+            }
+        } catch (e: ApkInstallFailure) {
+            installOutcome.clear()
+            _installState.value = InstallState.Failed(e.reason)
         } catch (e: UpdateCheckFailure) {
+            installOutcome.clear()
             _installState.value = InstallState.Failed(e.reason ?: UpdateCheckError.Unknown)
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            installOutcome.clear()
             Timber.w(e, "In-app update install failed")
             _installState.value = InstallState.Failed(UpdateCheckError.InstallFailed)
         }

@@ -58,7 +58,6 @@ import androidx.navigation3.ui.NavDisplay
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
-import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
@@ -348,10 +347,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 // Not a dismissal: if the install fails or the browser download is abandoned, the
                 // prompt should return on the next check rather than be snoozed for a week.
                 updateChecker.clearAvailable()
-                if (info.source == UpdateSource.APP_DISTRIBUTION) {
-                    updateScope.launch { updateChecker.install() }
+                if (updateChecker.canInstall(info)) {
+                    updateScope.launch { updateChecker.install(info) }
                 } else {
-                    // GitHub links out — the release asset opens in a browser.
+                    // A GitHub release with no published digest: there is nothing to check the
+                    // download against, so it is not installed in-app at all. The browser takes it
+                    // from here, exactly as every GitHub update did before.
                     Playback.openUrl(context, info.downloadUrl)
                 }
             },

@@ -85,6 +85,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Where a PackageInstaller session reports back. Not exported: the only sender is the
+             system, through a PendingIntent this app created, and nothing else has any business
+             telling the app an install finished. -->
+        <receiver
+            android:name=".data.install.InstallResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.gmail.volkovskiyda.jellyshelf.INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
+
         <!-- Remove WorkManager's default on-startup initializer: Koin's workManagerFactory()
              initializes WorkManager with the injection-aware worker factory instead (see
              JellyshelfApplication). -->

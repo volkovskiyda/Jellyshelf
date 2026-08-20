@@ -91,6 +91,8 @@ class UpdateCheckerTest {
         isDebug: Boolean = false,
         versionCode: Int = 165,
         schedule: RecordingUpdateCheckSchedule = RecordingUpdateCheckSchedule(),
+        apkInstall: ApkInstall = FakeApkInstall(),
+        outcome: InstallOutcome = InstallOutcome(),
     ) = UpdateChecker(
         settingsRepository = settings,
         gitHubSource = gitHub,
@@ -100,7 +102,101 @@ class UpdateCheckerTest {
         time = TimeProvider { clock },
         dispatchers = TestDispatcherProvider(),
         updateCheckSchedule = schedule,
+        apkInstaller = apkInstall,
+        installOutcome = outcome,
     )
+
+    // --- Which channel installs how ---
+
+    /**
+     * The GitHub channel used to hand every update to a browser. It installs in-app now, and this
+     * is what says so — a regression here is invisible, because the browser fallback still works.
+     */
+    @Test
+    fun aGitHubUpdateWithADigest_installsInApp() = runTest {
+        val install = FakeApkInstall()
+        val info = gitHubUpdate()
+        val checker = checker(apkInstall = install)
+
+        assertTrue(checker.canInstall(info))
+        checker.install(info)
+
+        assertEquals(listOf(info), install.installed)
+    }
+
+    /**
+     * And one without a digest does not. There is nothing to check the download against, so the
+     * only honest options are the browser or nothing — never an unverified install.
+     */
+    @Test
+    fun aGitHubUpdateWithoutADigest_isNotInstallable() = runTest {
+        val install = FakeApkInstall()
+        val checker = checker(apkInstall = install)
+
+        assertFalse(checker.canInstall(gitHubUpdate(sha256 = null)))
+        assertEquals(emptyList<UpdateInfo>(), install.installed)
+    }
+
+    /** App Distribution installs through its own SDK, and must not be routed through the new path. */
+    @Test
+    fun anAppDistributionUpdate_neverReachesTheApkInstaller() = runTest {
+        val install = FakeApkInstall()
+        val checker = checker(apkInstall = install)
+
+        assertTrue(checker.canInstall(appDistributionUpdate()))
+        checker.install(appDistributionUpdate())
+
+        assertEquals(emptyList<UpdateInfo>(), install.installed)
+    }
+
+    /**
+     * A digest mismatch has to reach the user as itself. Reported as a generic install failure it
+     * would read as "try again", when the right response is not to trust the download at all.
+     */
+    @Test
+    fun aDigestMismatch_surfacesAsItsOwnReason() = runTest {
+        val install = FakeApkInstall {
+            throw ApkInstallFailure(UpdateCheckError.VerificationFailed)
+        }
+        val checker = checker(apkInstall = install)
+
+        checker.install(gitHubUpdate())
+
+        assertEquals(
+            InstallState.Failed(UpdateCheckError.VerificationFailed),
+            checker.installState.value,
+        )
+    }
+
+    /**
+     * The system reports the session's outcome long after the call that started it returned, so a
+     * cancelled install has to arrive through the outcome channel or nothing is ever said.
+     */
+    @Test
+    fun aCancelledSystemPrompt_failsTheInstallAfterTheFact() = runTest {
+        val outcome = InstallOutcome()
+        val checker = checker(outcome = outcome)
+
+        checker.install(gitHubUpdate())
+        outcome.finished(UpdateCheckError.InstallCancelled)
+
+        assertEquals(
+            InstallState.Failed(UpdateCheckError.InstallCancelled),
+            checker.installState.value,
+        )
+    }
+
+    /** Success says nothing: the app is about to be replaced by the build it just installed. */
+    @Test
+    fun aSuccessfulSystemInstall_clearsTheNarration() = runTest {
+        val outcome = InstallOutcome()
+        val checker = checker(outcome = outcome)
+
+        checker.install(gitHubUpdate())
+        outcome.finished(null)
+
+        assertNull(checker.installState.value)
+    }
 
     // --- The daily background check's schedule ---
 
@@ -735,7 +831,7 @@ class UpdateCheckerTest {
         val checker = checker(appDistribution = appDistribution)
         val job = launch(Dispatchers.Unconfined) { checker.installState.collect { seen += it } }
 
-        checker.install()
+        checker.install(appDistributionUpdate())
         job.cancel()
 
         assertEquals(
@@ -762,7 +858,7 @@ class UpdateCheckerTest {
         }
         val checker = checker(appDistribution = appDistribution)
 
-        checker.install()
+        checker.install(appDistributionUpdate())
 
         assertEquals(InstallState.Failed(UpdateCheckError.DownloadFailed), checker.installState.value)
     }
@@ -777,7 +873,7 @@ class UpdateCheckerTest {
         }
         val checker = checker(appDistribution = appDistribution)
 
-        checker.install()
+        checker.install(appDistributionUpdate())
 
         assertEquals(InstallState.Failed(UpdateCheckError.InstallFailed), checker.installState.value)
     }
@@ -791,7 +887,7 @@ class UpdateCheckerTest {
             }
         }
         val checker = checker(appDistribution = appDistribution)
-        checker.install()
+        checker.install(appDistributionUpdate())
 
         checker.clearInstallState()
 
@@ -811,7 +907,7 @@ class UpdateCheckerTest {
         }
         val checker = checker(appDistribution = appDistribution)
 
-        checker.install()
+        checker.install(appDistributionUpdate())
 
         assertNull(checker.error.value)
     }
@@ -827,5 +923,39 @@ class UpdateCheckerTest {
 
         assertNull(checker.available.value)
         assertEquals(0, settings.dismissedUpdate(UpdateSource.GITHUB).first())
+    }
+}
+
+/** An App Distribution offer, which is what every pre-existing install test is about. */
+private fun appDistributionUpdate(versionCode: Int = 170) = UpdateInfo(
+    versionCode = versionCode,
+    versionName = "1.0.$versionCode",
+    releaseNotes = "",
+    downloadUrl = "",
+    source = UpdateSource.APP_DISTRIBUTION,
+)
+
+/** A GitHub offer, with or without the digest that decides whether it can be installed in-app. */
+private fun gitHubUpdate(sha256: String? = "a".repeat(64), versionCode: Int = 170) = UpdateInfo(
+    versionCode = versionCode,
+    versionName = "1.0.$versionCode",
+    releaseNotes = "",
+    downloadUrl = "https://example.invalid/jellyshelf-1.0.$versionCode.apk",
+    sha256 = sha256,
+    source = UpdateSource.GITHUB,
+)
+
+/** Records what it was asked to install, and can fail the way the real one does. */
+private class FakeApkInstall(
+    private val behaviour: suspend ((InstallState.Running) -> Unit) -> Unit = {},
+) : ApkInstall {
+    val installed = mutableListOf<UpdateInfo>()
+
+    override suspend fun downloadAndInstall(
+        info: UpdateInfo,
+        onProgress: (InstallState.Running) -> Unit,
+    ) {
+        installed += info
+        behaviour(onProgress)
     }
 }

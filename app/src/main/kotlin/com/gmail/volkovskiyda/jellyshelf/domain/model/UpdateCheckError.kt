@@ -43,6 +43,16 @@ sealed interface UpdateCheckError {
     /** The update was found, but downloading its APK failed. */
     data object DownloadFailed : UpdateCheckError
 
+    /**
+     * The APK downloaded, and is not the APK the release published — its SHA-256 does not match
+     * the digest the channel reported.
+     *
+     * Its own reason rather than a flavour of [DownloadFailed], because it means something
+     * different and much worse: the bytes arrived intact enough to hash, and they are the wrong
+     * bytes. Nothing is installed, the file is deleted, and the user is told plainly.
+     */
+    data object VerificationFailed : UpdateCheckError
+
     /** The APK downloaded, but installing it failed. */
     data object InstallFailed : UpdateCheckError
 

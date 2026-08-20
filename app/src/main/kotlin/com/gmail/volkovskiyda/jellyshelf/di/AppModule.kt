@@ -9,6 +9,7 @@ import coil.ImageLoader
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
+import com.gmail.volkovskiyda.jellyshelf.data.install.ApkInstaller
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
@@ -31,10 +32,12 @@ import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
 import com.gmail.volkovskiyda.jellyshelf.data.worker.UpdateCheckScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.UpdateCheckWorker
+import com.gmail.volkovskiyda.jellyshelf.domain.ApkInstall
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.InstallOutcome
 import com.gmail.volkovskiyda.jellyshelf.domain.NotificationPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateCheckSchedule
@@ -139,6 +142,9 @@ val appModule = module {
     singleOf(::DefaultLibraryRepository) { bind<LibraryRepository>() }
     singleOf(::SyncScheduler)
     singleOf(::UpdateCheckScheduler) { bind<UpdateCheckSchedule>() }
+    // Written by the install result receiver, read by the checker — see InstallOutcome.
+    single { InstallOutcome() }
+    single<ApkInstall> { ApkInstaller(androidContext(), get(), get()) }
     // Written by PlaybackService, read by whatever screen is not the player.
     singleOf(::NowPlayingState)
     // Read from a broadcast receiver on a cold process — see MediaButtonGate.

@@ -50,10 +50,11 @@ class GitHubReleaseSourceTest {
         }
     """.trimIndent()
 
-    private fun asset(name: String) = """
+    private fun asset(name: String, digest: String? = null) = """
         {
           "name": "$name",
           "content_type": "application/vnd.android.package-archive",
+          ${digest?.let { """"digest": "$it",""" }.orEmpty()}
           "browser_download_url":
             "https://github.com/volkovskiyda/Jellyshelf/releases/download/v1.0/$name"
         }
@@ -144,5 +145,51 @@ class GitHubReleaseSourceTest {
         // `body` is absent entirely here, not just empty — an update with no notes is still an
         // update, and the dialog renders no body rather than an empty box.
         assertEquals("", info?.releaseNotes)
+    }
+
+    // --- The digest, which decides whether an update may be installed in-app at all ---
+
+    /**
+     * Carried through with the `sha256:` prefix stripped, because that is the shape the installer
+     * compares against a `MessageDigest` result.
+     */
+    @Test
+    fun theAssetDigestIsCarriedThrough() = runTest {
+        val hex = "d0a142f21c18fa9a74217a2cae20a09bfb64f3a412814d07bd646508e2f4dde6"
+        val info = source(release(asset("jellyshelf-1.0.165.apk", "sha256:$hex"))).latestRelease()
+
+        assertEquals(hex, info?.sha256)
+    }
+
+    /** Upper-case hex is the same digest; the installer compares case-insensitively anyway. */
+    @Test
+    fun anUpperCaseDigestIsNormalised() = runTest {
+        val hex = "D0A142F21C18FA9A74217A2CAE20A09BFB64F3A412814D07BD646508E2F4DDE6"
+        val info = source(release(asset("jellyshelf-1.0.165.apk", "sha256:$hex"))).latestRelease()
+
+        assertEquals(hex.lowercase(), info?.sha256)
+    }
+
+    /**
+     * An older release that predates the field. Null rather than an empty string, because null is
+     * what sends the update to the browser instead of through an unverified in-app install.
+     */
+    @Test
+    fun aReleaseWithoutADigest_offersNoneRatherThanAnEmptyOne() = runTest {
+        val info = source(release(asset("jellyshelf-1.0.165.apk"))).latestRelease()
+
+        assertNull(info?.sha256)
+    }
+
+    /**
+     * A digest in some algorithm this app does not implement reads as no digest at all — acting on
+     * it would mean comparing a SHA-256 against something that is not one, and "they differ" is the
+     * *lucky* outcome of that.
+     */
+    @Test
+    fun aDigestInAnotherAlgorithm_isIgnored() = runTest {
+        val info = source(release(asset("jellyshelf-1.0.165.apk", "sha512:abcdef"))).latestRelease()
+
+        assertNull(info?.sha256)
     }
 }

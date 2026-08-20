@@ -18,5 +18,18 @@ data class UpdateInfo(
      * installs in-app through the SDK rather than opening anything.
      */
     val downloadUrl: String,
+    /**
+     * The published APK's SHA-256, lower-case hex, or null when the channel does not say.
+     *
+     * It is what makes an in-app install of a GitHub release defensible: the app downloads bytes
+     * from the internet and hands them to the package installer, and this is the only thing that
+     * says they are the bytes the release actually published. A null therefore does not mean
+     * "install unverified" — it means fall back to the browser, which is the whole point of the
+     * field being nullable rather than a defaulted empty string.
+     *
+     * Always null for [UpdateSource.APP_DISTRIBUTION], whose SDK owns its own download and
+     * integrity end to end.
+     */
+    val sha256: String? = null,
     val source: UpdateSource,
 )
