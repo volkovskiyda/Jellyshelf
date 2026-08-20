@@ -1,5 +1,8 @@
 *.iml
 .gradle
+# Kotlin 2.x's per-project build state (.kotlin/sessions). A build byproduct like .gradle above,
+# and empty until one runs, which is why it stayed out of here until it wasn't.
+.kotlin
 /local.properties
 
 # Per-checkout answer to run-tests.sh's "which device" question — one serial, or `all`. Written by
