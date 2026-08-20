@@ -92,6 +92,7 @@ import androidx.media3.ui.compose.state.rememberPlaybackSpeedState
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
+import com.gmail.volkovskiyda.jellyshelf.LocalIsInPip
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
@@ -129,7 +130,13 @@ internal const val PLAYER_POSITION_TAG = "player_position"
  *  - **Minimize** — the down-chevron in the top bar — pops this screen and leaves playback running.
  *    The mini-player bar then appears on whatever screen is underneath, and is the way back here.
  *
- * Merely hiding the app also keeps playing; the media notification is a third way back.
+ * Merely hiding the app also keeps playing — and while a video is actually rolling, leaving from
+ * *this* screen shrinks the app into a Picture-in-Picture window rather than just hiding it.
+ * Expanding that window comes back here with the back stack untouched; closing it destroys the
+ * activity while the service plays on, exactly as leaving used to, and then the notification (or
+ * the mini-player bar on the next launch) is the way back. The media notification is a third way
+ * back in every case.
+ *
  * Orientation is free (sensor); the surface just re-fits.
  *
  * Minimize exists because the bar needs playback to survive leaving the player. It is a *second*
@@ -147,8 +154,9 @@ fun PlayerScreen(
     val controller by viewModel.controller.collectAsStateWithLifecycle()
     val video by viewModel.video.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
+    val isInPip = LocalIsInPip.current
 
-    ImmersiveWhileHere()
+    ImmersiveWhileHere(enabled = !isInPip)
 
     // Every *stopping* exit routes through here — and only those, which is why it is not an
     // onCleared()/lifecycle hook: those also fire on rotation and on minimizing.
@@ -177,6 +185,7 @@ fun PlayerScreen(
                 title = video?.title,
                 chapters = chapters,
                 onSpeedPicked = viewModel::savePlaybackSpeed,
+                isInPip = isInPip,
                 onBack = leave,
                 // The nav layer's plain pop: no stopPlayback, so the session survives and the
                 // mini-player bar picks it up on the screen underneath.
@@ -193,6 +202,7 @@ private fun PlayerWithControls(
     title: String?,
     chapters: List<Chapter>,
     onSpeedPicked: (Float) -> Unit,
+    isInPip: Boolean,
     onBack: () -> Unit,
     onMinimize: () -> Unit,
 ) {
@@ -287,6 +297,17 @@ private fun PlayerWithControls(
     var scrubbing by remember { mutableStateOf(false) }
     var chaptersOpen by remember { mutableStateOf(false) }
     var speedMenuOpen by remember { mutableStateOf(false) }
+    // A PiP window is a thumbnail of the video and nothing else. Anything overlaid on it is
+    // unreadable at that size and unusable through the platform's own tap handling, so the panels
+    // are closed on the way in rather than merely hidden — reopening the window should not
+    // restore a chapter list the user has long since forgotten leaving open.
+    LaunchedEffect(isInPip) {
+        if (isInPip) {
+            controlsVisible = false
+            chaptersOpen = false
+            speedMenuOpen = false
+        }
+    }
     // Auto-hide while playing; scrubbing, the open chapter panel or the speed menu pins the
     // controls (hiding them would tear the open menu out of the composition mid-use).
     val controlsPinned = scrubbing || chaptersOpen || speedMenuOpen
@@ -357,7 +378,11 @@ private fun PlayerWithControls(
             .fillMaxSize()
             // Both halves of the hold live in one pointerInput, keyed on the controller the
             // button states are themselves remembered from, so neither can restart mid-gesture.
-            .pointerInput(controller) {
+            // Keyed on isInPip as well, so entering PiP tears the handlers down: a double-tap
+            // seek or a press-and-hold from a 200 dp window would be an accident every time, and
+            // the platform reads taps there as "expand me" anyway.
+            .pointerInput(controller, isInPip) {
+                if (isInPip) return@pointerInput
                 coroutineScope {
                     launch {
                         detectTapGestures(
@@ -392,7 +417,7 @@ private fun PlayerWithControls(
                     }
                 }
             }
-            .playerDragGestures(gestureHandler),
+            .then(if (isInPip) Modifier else Modifier.playerDragGestures(gestureHandler)),
     ) {
         PlayerSurface(
             player = controller,
@@ -407,7 +432,7 @@ private fun PlayerWithControls(
         if (isBuffering) {
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
         }
-        if (controlsVisible) {
+        if (controlsVisible && !isInPip) {
             PlayerControls(
                 title = title,
                 showPlay = playPause.showPlay,
@@ -438,7 +463,7 @@ private fun PlayerWithControls(
                 onMinimize = onMinimize,
             )
         }
-        if (chaptersOpen) {
+        if (chaptersOpen && !isInPip) {
             ChaptersPanel(
                 chapters = chapters,
                 currentChapter = currentChapter(chapters, positionMs),
@@ -449,7 +474,7 @@ private fun PlayerWithControls(
                 onDismiss = { chaptersOpen = false },
             )
         }
-        gestureIndicator?.let { indicator ->
+        gestureIndicator?.takeIf { !isInPip }?.let { indicator ->
             GestureIndicatorPill(
                 indicator,
                 Modifier
@@ -855,11 +880,15 @@ internal fun ChaptersPanel(
  * Immersive fullscreen for the lifetime of this screen: bars hidden, revealable with a swipe,
  * restored on leave. Window-level state, so the dispose branch is what keeps the rest of the
  * app's screens laid out normally.
+ *
+ * Off while the app is a Picture-in-Picture window: there are no system bars in that window to
+ * hide, and the swipe behaviour it sets belongs to the full-screen activity it will be again.
  */
 @Composable
-private fun ImmersiveWhileHere() {
+private fun ImmersiveWhileHere(enabled: Boolean) {
     val activity = LocalActivity.current
-    DisposableEffect(activity) {
+    DisposableEffect(activity, enabled) {
+        if (!enabled) return@DisposableEffect onDispose {}
         val window = activity?.window ?: return@DisposableEffect onDispose {}
         val insets = WindowCompat.getInsetsController(window, window.decorView)
         val previousBehavior = insets.systemBarsBehavior

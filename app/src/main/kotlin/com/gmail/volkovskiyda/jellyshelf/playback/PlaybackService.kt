@@ -13,6 +13,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
@@ -378,6 +379,16 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState != Player.STATE_ENDED) return
             watch.onEnded(player?.duration?.takeIf { it != C.TIME_UNSET }).perform()
+        }
+
+        /**
+         * Shapes the Picture-in-Picture window. Reported here rather than read off the player
+         * screen because it arrives from the decoder, which is this service's business and
+         * outlives any screen — and because the activity has to know the shape *before* the user
+         * leaves, which is exactly when the screen stops being able to tell it anything.
+         */
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            nowPlaying.setVideoSize(videoSize.width, videoSize.height)
         }
     }
 

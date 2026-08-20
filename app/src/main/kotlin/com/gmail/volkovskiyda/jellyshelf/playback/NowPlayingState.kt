@@ -16,6 +16,14 @@ data class NowPlaying(
     val title: String?,
     val artworkUri: String?,
     val isPlaying: Boolean,
+    /**
+     * The decoded video's pixel size, for Picture-in-Picture's aspect ratio; zero until the first
+     * frame has been decoded, and zero forever for a stream that turns out to have no video.
+     * Here rather than in a flow of its own because the activity reads it in the same breath as
+     * [isPlaying], and the bar simply ignores it.
+     */
+    val videoWidth: Int = 0,
+    val videoHeight: Int = 0,
 )
 
 /**
@@ -66,6 +74,11 @@ class NowPlayingState {
     /** Play/pause moved without the item changing. A no-op when nothing is showing. */
     fun setPlaying(isPlaying: Boolean) {
         _nowPlaying.value = _nowPlaying.value?.copy(isPlaying = isPlaying)
+    }
+
+    /** The decoder reported the video's size. A no-op when nothing is showing. */
+    fun setVideoSize(width: Int, height: Int) {
+        _nowPlaying.value = _nowPlaying.value?.copy(videoWidth = width, videoHeight = height)
     }
 
     fun playPause() {

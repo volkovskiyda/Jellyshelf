@@ -1,11 +1,14 @@
 package com.gmail.volkovskiyda.jellyshelf
 
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Color
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,7 +58,10 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
+import com.gmail.volkovskiyda.jellyshelf.playback.PipAspect
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
+import com.gmail.volkovskiyda.jellyshelf.playback.pipAspect
+import com.gmail.volkovskiyda.jellyshelf.playback.pipEligible
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallSnackbarHost
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
@@ -74,6 +81,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeRevealController
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.themeBackgroundArgb
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.compose.koinViewModel
@@ -88,12 +96,24 @@ private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: Ima
 private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
 private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
 
+/**
+ * Whether the activity is showing as a Picture-in-Picture window right now.
+ *
+ * A composition local rather than a parameter threaded through the nav: only the player screen
+ * cares, it sits several layers down, and everything that renders that screen's parts outside the
+ * app — previews, screenshot tests, the Compose behaviour suite — is correct with the default.
+ */
+val LocalIsInPip = compositionLocalOf { false }
+
 class MainActivity : ComponentActivity() {
     private val themeModeCache: ThemeModeCache by inject()
 
     // The same instance composition resolves via koinViewModel(): both come from this activity's
     // ViewModelStore. Held here so intent handling can reach it outside composition.
     private val mainViewModel: MainViewModel by viewModel()
+
+    /** Fed by the platform's own callback, read by composition — see [LocalIsInPip]. */
+    private val inPip = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,6 +124,7 @@ class MainActivity : ComponentActivity() {
         window.setBackgroundDrawable(themeBackgroundArgb(this, startupDark).toDrawable())
         applyEdgeToEdge(startupDark)
         selectSplashTheme()
+        addOnPictureInPictureModeChangedListener { inPip.value = it.isInPictureInPictureMode }
         setContent {
             val viewModel = mainViewModel
             val themeState by viewModel.themeState.collectAsStateWithLifecycle()
@@ -119,7 +140,11 @@ class MainActivity : ComponentActivity() {
             // SettingsActions: where a tap landed is presentation detail the settings screen has no
             // reason to carry.
             val revealController = remember { ThemeRevealController() }
-            CompositionLocalProvider(LocalThemeRevealController provides revealController) {
+            val isInPip by inPip.collectAsStateWithLifecycle()
+            CompositionLocalProvider(
+                LocalThemeRevealController provides revealController,
+                LocalIsInPip provides isInPip,
+            ) {
                 ThemeReveal(controller = revealController, darkTheme = darkTarget) { appliedDark ->
                     // Keyed on what is actually rendered rather than on the target: the bars and the
                     // window background have to flip in the same frame the snapshot overlay appears,
@@ -153,6 +178,26 @@ class MainActivity : ComponentActivity() {
     private fun forwardOpenPlayer(intent: Intent?) {
         intent?.getStringExtra(PlaybackService.EXTRA_OPEN_PLAYER)
             ?.let(mainViewModel::requestOpenPlayer)
+    }
+
+    /**
+     * Keeps the window's Picture-in-Picture parameters in step with what is on screen.
+     *
+     * `setAutoEnterEnabled` is the whole mechanism: rather than catching the moment the user
+     * leaves and calling `enterPictureInPictureMode` — which only ever sees the button-navigation
+     * case and misses the gesture — the activity states *in advance* whether leaving now should
+     * shrink it, and the platform does the rest. That is why this has to be re-stated whenever
+     * the answer changes rather than called once.
+     *
+     * The aspect ratio is left unset while the size is unknown, so the platform picks its own
+     * instead of being handed a degenerate one.
+     */
+    fun updatePipParams(eligible: Boolean, aspect: PipAspect?) {
+        val params = PictureInPictureParams.Builder()
+            .setAutoEnterEnabled(eligible)
+            .apply { aspect?.let { setAspectRatio(Rational(it.numerator, it.denominator)) } }
+            .build()
+        setPictureInPictureParams(params)
     }
 
     /**
@@ -306,6 +351,16 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     val nowPlayingState: NowPlayingState = koinInject()
     val nowPlaying by nowPlayingState.nowPlaying.collectAsStateWithLifecycle()
     val showMiniPlayer = nowPlaying != null && current !is AppNavKey.Player
+
+    // Picture-in-Picture is stated in advance, not triggered — see MainActivity.updatePipParams.
+    // Re-stated whenever the answer changes: which screen is on top, whether it is playing, and
+    // the shape of the video once the decoder reports it.
+    val activity = LocalActivity.current as? MainActivity
+    val pipEligible = pipEligible(current, nowPlaying)
+    val pipAspect = nowPlaying?.let { pipAspect(it.videoWidth, it.videoHeight) }
+    LaunchedEffect(activity, pipEligible, pipAspect) {
+        activity?.updatePipParams(pipEligible, pipAspect)
+    }
 
     // Library is the app's home and always the stack root: switching to any other tab rebuilds the
     // stack as [Library, tab] so Back returns to Library, and one more Back exits.

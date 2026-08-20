@@ -28,16 +28,28 @@
 
         <!-- uiMode handled in-process: a system dark-mode flip repaints the composition in place
              instead of tearing the activity down (and in a forced light/dark mode it changes
-             nothing visible at all, so the recreation was pure waste). Every other configuration
-             change, rotation included, still recreates.
+             nothing visible at all, so the recreation was pure waste).
+
+             The four size-related changes are here for Picture-in-Picture: entering and leaving
+             PiP is a configuration change, and an activity that is recreated by it loses the
+             player it was meant to keep showing. Rotation therefore stops recreating this
+             activity too — that is a consequence, not a side goal. Compose recomposes on a
+             configuration change without recreation, so the app follows; anything added here
+             that reads a Configuration must read it from composition rather than caching it at
+             onCreate.
 
              singleTop so a media-notification tap lands in the running activity as onNewIntent
-             (forwarded to the player screen) instead of stacking a second instance. -->
+             (forwarded to the player screen) instead of stacking a second instance.
+
+             supportsPictureInPicture without an explicit launchMode change: PiP re-uses this
+             same singleTop instance, which is what keeps the back stack intact when the window
+             is expanded again. -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="uiMode"
+            android:configChanges="uiMode|screenSize|smallestScreenSize|screenLayout|orientation"
             android:exported="true"
             android:launchMode="singleTop"
+            android:supportsPictureInPicture="true"
             android:theme="@style/Theme.Jellyshelf">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
