@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -49,6 +50,9 @@ private const val NOW = 1_800_000_000_000L
  * activity's first composition — sign-in screen, navigation, the dialog tearing down — and on a
  * device that measured well past 5 s. This test only pins that the round trip completes.
  */
+/** See [InstallFlowTest.offerAndAccept] — the offer dialog is a window, and lands late. */
+private const val OFFER_TIMEOUT_MS = 5_000L
+
 private const val FAILURE_TIMEOUT_MS = 15_000L
 
 /**
@@ -139,6 +143,15 @@ class InstallFlowTest {
     private fun offerAndAccept() {
         runBlocking { checker.checkNow() }
         composeRule.waitForIdle()
+        // Waited for rather than asserted outright, for the reason [UpdateOfferHostingTest] gives:
+        // the dialog is a *window*, and `waitForIdle` returns once the composition that asked for
+        // it has settled — a beat before that window is attached and laid out. A bare
+        // `assertIsDisplayed` cannot tell "not there" from "not there yet", so it turns a few
+        // hundred milliseconds of device speed into a failure with a misleading message.
+        composeRule.waitUntil(OFFER_TIMEOUT_MS) {
+            composeRule.onNodeWithText(label(R.string.update_available_title, OFFERED_VERSION_NAME))
+                .isDisplayed()
+        }
         composeRule.onNodeWithText(label(R.string.update_available_title, OFFERED_VERSION_NAME))
             .assertIsDisplayed()
 
