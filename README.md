@@ -341,6 +341,33 @@ Regenerate when the startup path changes shape rather than on every commit, and 
 before committing it — two failure modes produce a plausible-looking but worthless profile. Runbook:
 [docs/BASELINE-PROFILE.md](docs/BASELINE-PROFILE.md).
 
+**Tracing and the benchmark.** The app writes its own system-trace sections with
+`androidx.tracing` on the paths worth watching — `Application.onCreate` and the Koin graph inside
+it, `MainActivity.onCreate`, one library browse emission (with the row count beside it as a
+counter, because that cost is per row), one ranked-search emission, a full sync, and the player's
+media-id resolution. They are named in one place, `app/.../util/Traces.kt`, they cost a branch when
+nothing is recording, and they are in every build type rather than gated to one. Open a recording
+in [Perfetto](https://ui.perfetto.dev) and every one of them is a labelled slice under
+`Jellyshelf.`.
+
+The same sections are what makes a regression measurable rather than anecdotal.
+`JourneyBenchmark`, beside the profile generator, replays a cold launch and a library scroll
+against the `benchmarkRelease` build — R8-minified, baseline profile required — and reports each
+section as a metric alongside the framework's startup and frame timings:
+
+```bash
+./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest   # same device rules as above
+```
+
+Run it before a change and after, on the same phone with the same library, and compare. There is
+deliberately no committed threshold to fail against: these numbers move with the device, the
+library size and how warm the phone is, so a number in the repository would fail for reasons that
+have nothing to do with a commit.
+
+Firebase Performance covers the same two of these spans in the field (`library_sync`,
+`player_startup`) and is not a substitute — that one samples real installs and reports minutes
+later, on release builds only; these are local, exact, free, and available on any build.
+
 ## Testing
 
 One command runs every layer available and prints a single verdict:

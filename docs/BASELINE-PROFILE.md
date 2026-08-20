@@ -285,8 +285,31 @@ network at all.
 
 ## Is it earning its place?
 
-Worth confirming once, not worth wiring into CI: a macrobenchmark startup comparison of
-`CompilationMode.None()` against `CompilationMode.Partial()`. The `:baselineprofile` module already
-has the `benchmarkRelease` variant such a benchmark would run against — deliberately left minified,
+`JourneyBenchmark`, beside the generator in this module, is where that question is answered. It
+replays a cold launch and a library scroll against the same `benchmarkRelease` variant — minified,
 so it stays release-like, and carrying the same `.benchmark` application id for the same reason the
 profiling variant does: a measurement run must not cost you the app you actually use.
+
+```sh
+./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest
+```
+
+Same prerequisites as generating: a physical arm64 device, awake and unlocked. And the same state
+requirement, more strictly — every test there needs a **populated library**, because a cold launch
+into an empty screen is fast for reasons that have nothing to do with the profile. Run
+`generateReleaseBaselineProfile` first, or drive the app to a synced Library tab by hand; the
+benchmark checks and fails with that message rather than reporting the empty launch as a win.
+
+Two things it reports beyond the framework's startup timings:
+
+- **This app's own trace sections** — `Jellyshelf.app.onCreate`, `Jellyshelf.app.startKoin`,
+  `Jellyshelf.activity.onCreate`, `Jellyshelf.library.browse` — written with `androidx.tracing`
+  from `app/.../util/Traces.kt`. Startup time says a launch got slower; these say where.
+- **Whether the profile was applied at all.** `CompilationMode.Partial(BaselineProfileMode.Require)`
+  fails the run rather than quietly measuring an unprofiled app. Nothing else in this project
+  catches a profile that shipped broken, which is worth more than the numbers on some days.
+
+The original comparison this section asked for — `CompilationMode.None()` against
+`CompilationMode.Partial()` — is now one edited line in that file. Still worth doing once when the
+startup path changes shape, still not worth wiring into CI: the APK is arm64-only, which puts it
+out of reach of every runner, and the numbers move with the device and its thermal state anyway.

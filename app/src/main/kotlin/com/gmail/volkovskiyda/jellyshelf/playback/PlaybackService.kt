@@ -23,6 +23,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.tracing.traceAsync
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
@@ -32,6 +33,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import com.google.common.util.concurrent.ListenableFuture
@@ -255,7 +257,18 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             startupTrace = FirebasePerformance.getInstance().newTrace("player_startup")
                 .apply { start() }
             return scope.future {
-                val resolved = mediaItems.map { resolve(it) }
+                // An *async* section, not a `trace { }` one: resolving suspends on DataStore and
+                // Room, so it can resume on a thread other than the one it began on, and
+                // beginSection/endSection are thread-confined — a plain section would be closed on
+                // the wrong track or not at all. The cookie is what lets two overlapping startups
+                // be told apart, so it comes from the video being started rather than being a
+                // constant. See [Traces.PLAYER_RESOLVE].
+                val resolved = traceAsync(
+                    Traces.PLAYER_RESOLVE,
+                    mediaItems.firstOrNull()?.mediaId.hashCode(),
+                ) {
+                    mediaItems.map { resolve(it) }
+                }
                 if (startPositionMs != C.TIME_UNSET || resolved.isEmpty()) {
                     // A controller that wants a specific position passes one — the transcode
                     // fallback, which must land exactly where the failed decode left off.

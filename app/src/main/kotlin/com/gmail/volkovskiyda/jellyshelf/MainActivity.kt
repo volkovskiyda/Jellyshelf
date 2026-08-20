@@ -55,6 +55,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import androidx.tracing.trace
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
@@ -84,6 +85,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeRevealController
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.themeBackgroundArgb
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.gmail.volkovskiyda.jellyshelf.util.UpdateNotification
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -122,7 +124,12 @@ class MainActivity : ComponentActivity() {
     /** Fed by the platform's own callback, read by composition — see [LocalIsInPip]. */
     private val inPip = MutableStateFlow(false)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    // Wrapped whole, super included: unlike Application.onCreate, ComponentActivity's is where the
+    // saved state, the ViewModelStore and the window are restored, and a cold launch that is slow
+    // here should say so rather than hide it outside the section. What the section does *not* cover
+    // is the first composition — setContent returns as soon as the tree is set, and Compose runs it
+    // on the first measure pass afterwards, with sections of its own. See [Traces].
+    override fun onCreate(savedInstanceState: Bundle?) = trace(Traces.ACTIVITY_ON_CREATE) {
         super.onCreate(savedInstanceState)
         forwardOpenPlayer(intent)
         forwardShowUpdate(intent)

@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf
 
 import android.app.Application
+import androidx.tracing.trace
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.gmail.volkovskiyda.jellyshelf.data.install.ApkInstaller
@@ -9,6 +10,7 @@ import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
+import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.perf.FirebasePerformance
 import org.koin.android.ext.android.get
@@ -19,15 +21,27 @@ import timber.log.Timber
 
 class JellyshelfApplication : Application(), ImageLoaderFactory {
 
+    // Everything after super.onCreate() is inside the trace section, and super itself is not:
+    // Application.onCreate's base implementation is empty, and the SDK initialization that looks
+    // like it belongs there (Firebase, WorkManager, profileinstaller) runs in ContentProviders
+    // before this method is entered at all. See [Traces].
     override fun onCreate() {
         super.onCreate()
-        startKoin {
-            androidContext(this@JellyshelfApplication)
-            // Register the Koin worker factory so workers declared with workerOf(...) get
-            // constructor injection. The default WorkManager initializer is removed in the
-            // manifest so this is the sole initialization path (see AndroidManifest.xml).
-            workManagerFactory()
-            modules(appModule)
+        trace(Traces.APP_ON_CREATE) { start() }
+    }
+
+    private fun start() {
+        // The DI graph gets its own nested section: it is the one step here that grows with the
+        // app, and a slow cold start should say whether the cost is Koin or one of the calls below.
+        trace(Traces.START_KOIN) {
+            startKoin {
+                androidContext(this@JellyshelfApplication)
+                // Register the Koin worker factory so workers declared with workerOf(...) get
+                // constructor injection. The default WorkManager initializer is removed in the
+                // manifest so this is the sole initialization path (see AndroidManifest.xml).
+                workManagerFactory()
+                modules(appModule)
+            }
         }
         // Registered before anything can navigate, so the tracker never misses the first activity.
         // The tester sign-in needs a foreground Activity to open its Custom Tab into this app's

@@ -84,6 +84,16 @@ firebasePerfPlugin = "2.0.2"
 androidxBaselineProfile = "1.5.0-rc01"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.0"
+# System tracing — the app-side half of the same measurement story the baseline profile serves.
+# The sections it writes are what `:baselineprofile`'s TraceSectionMetric reads back, and they cost
+# a branch when no trace is being captured, so they stay in every build type rather than being
+# gated to one.
+#
+# 2.0.0 folded the old `tracing-ktx` artifact into this one: that coordinate still publishes at
+# 2.0.0, but its classes.jar holds nothing but a version marker (checked, not assumed), so
+# `trace("label") { }` and `traceAsync` now come from `tracing` itself. Declaring both would add a
+# dependency that contributes no code.
+androidxTracing = "2.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -158,6 +168,7 @@ firebase-appdistribution-api = { group = "com.google.firebase", name = "firebase
 firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
 firebase-config = { group = "com.google.firebase", name = "firebase-config" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "androidxBrowser" }
+androidx-tracing = { group = "androidx.tracing", name = "tracing", version.ref = "androidxTracing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

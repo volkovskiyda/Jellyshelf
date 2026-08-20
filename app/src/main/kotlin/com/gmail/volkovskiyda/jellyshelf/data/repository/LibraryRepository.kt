@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import androidx.room.withTransaction
+import androidx.tracing.trace
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoBrowseRow
@@ -42,6 +43,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.PlaystateRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
 import com.gmail.volkovskiyda.jellyshelf.util.SESSION_EXPIRED_MESSAGE
+import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
 import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
@@ -70,6 +72,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import kotlin.time.Duration.Companion.minutes
+import androidx.tracing.Trace as SystemTrace
 
 private val HTTP_CLIENT_ERRORS = 400..499
 private const val HTTP_REQUEST_TIMEOUT = 408
@@ -371,12 +374,19 @@ private class BulkRunner(private val scope: CoroutineScope) {
  * [com.gmail.volkovskiyda.jellyshelf.JellyshelfApplication]). Top-level and inline so the block's
  * non-local `return` works and the trace adds almost nothing to [DefaultLibraryRepository], which
  * stays close to detekt's LargeClass ceiling even with the playstate slice split out.
+ *
+ * The same span is also written as the system-trace section [Traces.LIBRARY_SYNC]. The two answer
+ * different questions and are kept together here so they can never drift apart: Firebase samples
+ * real installs and reports minutes later, while the section is local, exact, free, and the one a
+ * macrobenchmark can assert on. `trace { }` is inline too, so the non-local `return` this function
+ * exists to allow still works through both, and its own `finally` closes the section on the way
+ * out — including when the sync throws or is cancelled.
  */
-internal inline fun <T> tracedSync(block: (Trace) -> T): T {
+internal inline fun <T> tracedSync(block: (Trace) -> T): T = trace(Traces.LIBRARY_SYNC) {
     val trace = FirebasePerformance.getInstance().newTrace("library_sync")
     trace.start()
     trace.putAttribute("result", "error")
-    return try {
+    try {
         block(trace)
     } finally {
         trace.stop()
@@ -458,6 +468,24 @@ class DefaultLibraryRepository private constructor(
     // Room already runs the queries themselves on its own executor; this moves the mapping too.
 
     /**
+     * The row→domain mapping every browse flow ends in, inside the [Traces.LIBRARY_BROWSE] section.
+     *
+     * One helper rather than the same `map` written three times, because the section has to cover
+     * exactly the mapping and nothing else: Room runs the query on its own executor and then emits,
+     * so a section wrapped around the flow rather than around the block would time the
+     * subscription, not the work. The row count rides along as a counter — this cost is per row,
+     * and a duration without the size that produced it says nothing (`BrowseCostBenchmark` exists
+     * because the same emission is hundreds of ms at 10,000 rows and unmeasurable at 60).
+     */
+    private fun Flow<List<VideoBrowseRow>>.mapToDomainTraced(): Flow<List<Video>> =
+        map { rows ->
+            trace(Traces.LIBRARY_BROWSE) {
+                SystemTrace.setCounter(Traces.BROWSE_ROWS, rows.size)
+                rows.map(VideoBrowseRow::toDomain)
+            }
+        }
+
+    /**
      * The whole library, by file name.
      *
      * Rows carry only what a list renders: `description`, `chapters`, `tags` and
@@ -465,7 +493,7 @@ class DefaultLibraryRepository private constructor(
      * [observeVideo] for those.
      */
     override fun observeVideos(): Flow<List<Video>> =
-        videoDao.observeAllBrowse().map { it.map(VideoBrowseRow::toDomain) }
+        videoDao.observeAllBrowse().mapToDomainTraced()
             .flowOn(dispatchers.default)
 
     /**
@@ -487,9 +515,13 @@ class DefaultLibraryRepository private constructor(
      */
     override fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>> =
         if (query.isBlank()) {
-            browseSource(bucket).map { it.map(VideoBrowseRow::toDomain) }
+            browseSource(bucket).mapToDomainTraced()
         } else {
-            rankedSource(bucket).map { SearchRanking.rankVideos(query, it).map(VideoEntity::toDomain) }
+            rankedSource(bucket).map { rows ->
+                trace(Traces.LIBRARY_SEARCH) {
+                    SearchRanking.rankVideos(query, rows).map(VideoEntity::toDomain)
+                }
+            }
         }.flowOn(dispatchers.default)
 
     private fun browseSource(bucket: DurationBucket?): Flow<List<VideoBrowseRow>> =
@@ -519,7 +551,7 @@ class DefaultLibraryRepository private constructor(
         VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatchedBrowse()
         VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatchedBrowse()
         else -> videoDao.observeByCategoryBrowse(categoryId)
-    }.map { it.map(VideoBrowseRow::toDomain) }.flowOn(dispatchers.default)
+    }.mapToDomainTraced().flowOn(dispatchers.default)
 
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }

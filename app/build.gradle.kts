@@ -731,6 +731,10 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)
+    // System-trace sections (util/Traces.kt). Already on the classpath transitively — profileinstaller
+    // and Compose both pull it — but this app writes its own sections, so it declares the version it
+    // compiles against rather than inheriting whichever one another library happens to want.
+    implementation(libs.androidx.tracing)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.coil.compose)
     implementation(platform(libs.firebase.bom))
