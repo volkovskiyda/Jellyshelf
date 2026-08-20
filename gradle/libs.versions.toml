@@ -74,7 +74,7 @@ firebasePerfPlugin = "2.0.2"
 # the first version that accepts one. Drop back to stable once 1.5.0 ships.
 # profileinstaller is the runtime half: it installs the committed profile on devices where ART does
 # not pick it up by itself, and it versions independently of the benchmark family.
-androidxBaselineProfile = "1.5.0-beta01"
+androidxBaselineProfile = "1.5.0-rc01"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.0"
 
