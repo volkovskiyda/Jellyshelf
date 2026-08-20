@@ -20,17 +20,17 @@ activityCompose = "1.13.0"
 # Custom Tabs. Already present transitively through firebase-appdistribution, but that artifact is
 # releaseImplementation-only, so the sign-in launcher would not compile on debug without this.
 androidxBrowser = "1.10.0"
-composeBom = "2026.06.01"
+composeBom = "2026.08.00"
 googleDevtoolsKsp = "2.3.11"
 kotlinxSerializationJson = "1.11.0"
-navigation3 = "1.1.5"
-adaptive = "1.3.0-rc01"
+navigation3 = "1.1.6"
+adaptive = "1.3.0"
 roomRuntime = "2.8.4"
 coilCompose = "2.7.0"
 ktor = "3.5.2"
 # Pulled in transitively by both Ktor's engine and Coil; declared explicitly because app code
 # builds Coil's client with it (di/AppModule.kt), so it must not depend on either one's graph.
-okhttp = "5.4.0"
+okhttp = "5.5.0"
 coroutines = "1.11.0"
 androidxTestExtJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
@@ -61,12 +61,12 @@ composeScreenshot = "0.0.1-alpha16"
 # mapping file, perf-plugin weaves network/@AddTrace instrumentation into release bytecode
 # (2.0.1 is the first release compatible with AGP 9).
 googleServices = "4.5.0"
-firebaseBom = "34.17.0"
+firebaseBom = "34.18.0"
 # App Distribution is the exception to the BoM rule above: firebase-bom 34.17.0 lists 28 artifacts
 # and none of them is an App Distribution one (verified 2026-08-06), so these two pin their own
 # version — and need their own bump, which nothing else here does. Still upstream beta after years.
 firebaseAppDistribution = "16.0.0-beta20"
-firebaseCrashlyticsPlugin = "3.0.7"
+firebaseCrashlyticsPlugin = "3.0.8"
 firebasePerfPlugin = "2.0.2"
 # Baseline profile. The benchmark family (the plugin and macro-junit4) ships as a set and shares one
 # ref. This is a pre-release on purpose: 1.4.1 is the latest stable, but it refuses to apply to an
@@ -74,7 +74,7 @@ firebasePerfPlugin = "2.0.2"
 # the first version that accepts one. Drop back to stable once 1.5.0 ships.
 # profileinstaller is the runtime half: it installs the committed profile on devices where ART does
 # not pick it up by itself, and it versions independently of the benchmark family.
-androidxBaselineProfile = "1.5.0-beta01"
+androidxBaselineProfile = "1.5.0-rc01"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.0"
 
