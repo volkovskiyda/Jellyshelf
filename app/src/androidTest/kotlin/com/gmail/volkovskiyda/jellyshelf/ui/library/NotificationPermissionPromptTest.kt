@@ -23,6 +23,7 @@ import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeUpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.ui.InertTesterSignIn
+import com.gmail.volkovskiyda.jellyshelf.ui.RecordingUpdateCheckSchedule
 import com.gmail.volkovskiyda.jellyshelf.ui.TestDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.ui.inertUpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
@@ -233,5 +234,6 @@ class NotificationPermissionPromptTest {
         buildInfo = BuildInfo(isDebug = false, sdkInt = 36, versionCode = 100),
         time = TimeProvider { NOW },
         dispatchers = TestDispatcherProvider(),
+        updateCheckSchedule = RecordingUpdateCheckSchedule(),
     )
 }

@@ -29,12 +29,15 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.LibrarySources
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
+import com.gmail.volkovskiyda.jellyshelf.data.worker.UpdateCheckScheduler
+import com.gmail.volkovskiyda.jellyshelf.data.worker.UpdateCheckWorker
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.NotificationPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.UpdateCheckSchedule
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.deviceDisplayName
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
@@ -135,6 +138,7 @@ val appModule = module {
     singleOf(::LibrarySources)
     singleOf(::DefaultLibraryRepository) { bind<LibraryRepository>() }
     singleOf(::SyncScheduler)
+    singleOf(::UpdateCheckScheduler) { bind<UpdateCheckSchedule>() }
     // Written by PlaybackService, read by whatever screen is not the player.
     singleOf(::NowPlayingState)
     // Read from a broadcast receiver on a cold process — see MediaButtonGate.
@@ -154,6 +158,7 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
 
     workerOf(::SyncWorker)
+    workerOf(::UpdateCheckWorker)
 }
 
 /**

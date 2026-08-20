@@ -63,6 +63,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val DISMISSED_UPDATE_AT_GITHUB = longPreferencesKey("dismissed_update_at_github")
         val DISMISSED_UPDATE_AT_APP_DISTRIBUTION =
             longPreferencesKey("dismissed_update_at_app_distribution")
+        val LAST_NOTIFIED_UPDATE = intPreferencesKey("last_notified_update_version_code")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val LAST_UPDATE_DIALOG_AT = longPreferencesKey("last_update_dialog_at")
         val NOTIFICATION_PROMPT_AT = longPreferencesKey("notification_prompt_at")
@@ -341,6 +342,13 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         ds.edit {
             if (youtubeId == null) it.remove(Keys.LAST_PLAYED_VIDEO_ID) else it[Keys.LAST_PLAYED_VIDEO_ID] = youtubeId
         }
+    }
+
+    override val lastNotifiedUpdate: Flow<Int> = prefs
+        .map { it[Keys.LAST_NOTIFIED_UPDATE] ?: 0 }
+
+    override suspend fun setLastNotifiedUpdate(versionCode: Int) {
+        ds.edit { it[Keys.LAST_NOTIFIED_UPDATE] = versionCode }
     }
 
     override val lastUpdateCheckAt: Flow<Long> = prefs

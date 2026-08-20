@@ -257,6 +257,15 @@
     <string name="update_install_downloading_unknown">Downloading the update…</string>
     <string name="update_install_installing">Installing the update…</string>
     <string name="update_available_title">Version %1$s available</string>
+    <!--
+      The background update check's notification. Low importance: worth finding, never worth
+      interrupting. The channel name is what the user sees in system settings, so it names the
+      thing they would want to turn off rather than the mechanism.
+    -->
+    <string name="update_notification_channel">App updates</string>
+    <string name="update_notification_channel_description">Tells you when a newer version of Jellyshelf is available.</string>
+    <string name="update_notification_title">Jellyshelf update available</string>
+    <string name="update_notification_text">Version %1$s is ready to install.</string>
     <string name="update_install">Update</string>
     <!-- Same words as notification_permission_dismiss, deliberately not the same string — see there. -->
     <string name="update_dismiss" tools:ignore="DuplicateStrings">Not now</string>

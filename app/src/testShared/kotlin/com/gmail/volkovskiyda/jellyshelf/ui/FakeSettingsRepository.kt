@@ -52,6 +52,7 @@ class FakeSettingsRepository(
     private val _syncScopeNudged = MutableStateFlow(syncScopeNudged)
     private val _updateSource = MutableStateFlow(updateSource)
     private val _lastPlayedVideoId = MutableStateFlow<String?>(null)
+    private val _lastNotifiedUpdate = MutableStateFlow(0)
     private val _lastUpdateCheckAt = MutableStateFlow(lastUpdateCheckAt)
     private val _lastUpdateDialogAt = MutableStateFlow(lastUpdateDialogAt)
     private val _notificationPromptAt = MutableStateFlow(notificationPromptAt)
@@ -191,6 +192,11 @@ class FakeSettingsRepository(
     override val lastPlayedVideoId: Flow<String?> = _lastPlayedVideoId
     override suspend fun setLastPlayedVideoId(youtubeId: String?) {
         _lastPlayedVideoId.value = youtubeId
+    }
+
+    override val lastNotifiedUpdate: Flow<Int> = _lastNotifiedUpdate
+    override suspend fun setLastNotifiedUpdate(versionCode: Int) {
+        _lastNotifiedUpdate.value = versionCode
     }
 
     override val lastUpdateCheckAt: Flow<Long> = _lastUpdateCheckAt

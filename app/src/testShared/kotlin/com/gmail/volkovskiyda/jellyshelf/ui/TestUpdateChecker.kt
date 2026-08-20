@@ -36,4 +36,5 @@ fun inertUpdateChecker(settings: SettingsRepository = FakeSettingsRepository()) 
     buildInfo = BuildInfo(isDebug = true, sdkInt = 36),
     time = TimeProvider { 0L },
     dispatchers = TestDispatcherProvider(),
+    updateCheckSchedule = RecordingUpdateCheckSchedule(),
 )

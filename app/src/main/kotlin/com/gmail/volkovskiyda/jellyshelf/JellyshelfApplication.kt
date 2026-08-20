@@ -56,6 +56,11 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
         // it only launches work on the application scope. UpdateChecker documents every gate.
         get<UpdateFlags>().refresh()
         get<UpdateChecker>().checkOnStart()
+        // And the daily one, which the launch check cannot stand in for: the whole point is the
+        // user who does not launch. Unlike periodic sync below, re-stating this every start is
+        // correct — it is cancelled by turning the channel off, which is persisted state this
+        // reads back and honours, not by an act it would undo.
+        get<UpdateChecker>().scheduleBackgroundCheck()
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
         // launches, and re-scheduling on every start would undo the wipe Sign out performs, which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).

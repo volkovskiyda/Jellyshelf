@@ -102,6 +102,7 @@ class UpdateOfferHostingTest {
         buildInfo = BuildInfo(isDebug = false, sdkInt = 36, versionCode = INSTALLED_VERSION_CODE),
         time = TimeProvider { NOW },
         dispatchers = TestDispatcherProvider(),
+        updateCheckSchedule = RecordingUpdateCheckSchedule(),
     )
 
     private val overrides = module { single { checker } }

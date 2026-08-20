@@ -85,6 +85,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.theme.ThemeRevealController
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.isDark
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.themeBackgroundArgb
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.util.UpdateNotification
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -116,12 +117,16 @@ class MainActivity : ComponentActivity() {
     // ViewModelStore. Held here so intent handling can reach it outside composition.
     private val mainViewModel: MainViewModel by viewModel()
 
+    /** Reached from intent handling, outside composition — hence the field rather than koinInject. */
+    private val updateChecker: UpdateChecker by inject()
+
     /** Fed by the platform's own callback, read by composition — see [LocalIsInPip]. */
     private val inPip = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         forwardOpenPlayer(intent)
+        forwardShowUpdate(intent)
         // Everything the window shows before composition — its colour and its bar icons — has to
         // be decided now, from the cache, because the persisted theme is still an async read away.
         val startupDark = cachedDarkTheme()
@@ -172,6 +177,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         forwardOpenPlayer(intent)
+        forwardShowUpdate(intent)
     }
 
     /**
@@ -202,6 +208,20 @@ class MainActivity : ComponentActivity() {
             .apply { aspect?.let { setAspectRatio(Rational(it.numerator, it.denominator)) } }
             .build()
         setPictureInPictureParams(params)
+    }
+
+    /**
+     * An update-notification tap: show the offer wherever the app lands, rather than making the
+     * user find the Library tab to read the answer to something they just asked for by tapping.
+     *
+     * Only promotes an offer that is already in hand. A tap can easily outlive the process that
+     * found the update — the notification is the surface for exactly that user — and in that case
+     * the cold-start check running a few lines above finds it again, which is why this needs no
+     * fallback of its own.
+     */
+    private fun forwardShowUpdate(intent: Intent?) {
+        if (intent?.getBooleanExtra(UpdateNotification.EXTRA_SHOW_UPDATE, false) != true) return
+        updateChecker.showRequested()
     }
 
     /**

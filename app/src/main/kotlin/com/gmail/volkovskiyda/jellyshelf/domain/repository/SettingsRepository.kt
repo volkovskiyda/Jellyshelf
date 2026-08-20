@@ -160,6 +160,19 @@ interface SettingsRepository {
     suspend fun setLastPlayedVideoId(youtubeId: String?)
 
     /**
+     * The versionCode already announced by a notification, `0` when none has been.
+     *
+     * The background check runs daily and an unacted-on offer survives every one of them, so
+     * without this the same release would be announced every morning. Stamped when a notification
+     * is actually posted, never when one is merely suppressed.
+     *
+     * Not a dismissal: swiping the notification away records nothing. The 7-day snooze belongs to
+     * the dialog's explicit dismiss, which is a different act by a user who read the offer.
+     */
+    val lastNotifiedUpdate: Flow<Int>
+    suspend fun setLastNotifiedUpdate(versionCode: Int)
+
+    /**
      * Epoch millis of the last completed check, `0` when never. Shared across sources: it throttles
      * how often the app *asks*, which is about network politeness rather than about any one
      * channel. `0` means "the window has elapsed", so a fresh install checks on first launch.

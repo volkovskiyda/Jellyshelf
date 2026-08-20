@@ -83,7 +83,9 @@ internal fun elapsed(now: Long, since: Long, window: Long): Boolean = now - sinc
 // switch, and the install with its own outcome. Splitting it would put rules that read each other's
 // state in two files. Suppressed at the declaration rather than baselined, so the finding stays
 // visible if the class grows for a worse reason.
-@Suppress("TooManyFunctions")
+// LongParameterList: eight collaborators, every one of them injected and named at the use site.
+// Bundling them into a holder would hide which rules depend on what, for one fewer line here.
+@Suppress("TooManyFunctions", "LongParameterList")
 class UpdateChecker(
     private val settingsRepository: SettingsRepository,
     private val gitHubSource: GitHubReleaseSource,
@@ -91,6 +93,7 @@ class UpdateChecker(
     private val buildInfo: BuildInfo,
     private val time: TimeProvider,
     private val dispatchers: DispatcherProvider,
+    private val updateCheckSchedule: UpdateCheckSchedule,
 ) {
     // MutableStateFlow, never @Volatile or an atomic: the project has carried zero @Volatile since
     // 2026-07-29 and this is not the place to reintroduce one.
@@ -140,6 +143,28 @@ class UpdateChecker(
     val isDebugBuild: Boolean = buildInfo.isDebug
 
     /**
+     * Brings the daily background check into line with the current channel — scheduled while there
+     * is a channel to check, cancelled otherwise.
+     *
+     * Debug builds never schedule: the whole update feature is hidden there, and a worker asking
+     * GitHub about a version that does not exist would be the one part of it still running.
+     */
+    private fun applyBackgroundSchedule(source: UpdateSource) {
+        if (buildInfo.isDebug || source == UpdateSource.NONE) {
+            updateCheckSchedule.cancel()
+        } else {
+            updateCheckSchedule.schedule()
+        }
+    }
+
+    /** Called once per process, after the graph is up — see JellyshelfApplication. */
+    fun scheduleBackgroundCheck() {
+        dispatchers.applicationScope.launch {
+            applyBackgroundSchedule(settingsRepository.updateSource.first())
+        }
+    }
+
+    /**
      * The cold-start check. Fire-and-forget on the application scope: nothing waits for it, and a
      * launch must not be delayed by a network call.
      *
@@ -149,8 +174,18 @@ class UpdateChecker(
      * to use "Check now" — the one path allowed to sign in.
      */
     fun checkOnStart() {
-        dispatchers.applicationScope.launch { check(manual = false) }
+        dispatchers.applicationScope.launch { checkPeriodic() }
     }
+
+    /**
+     * The same automatic check as [checkOnStart], awaited rather than fired and forgotten — for the
+     * background worker, which has nothing to look at afterwards unless it waits for the answer.
+     *
+     * Automatic, not manual: it must honour the once-a-day floor and the snooze exactly as a launch
+     * does, and it must never sign a tester in, since there is no user present to meet the browser
+     * that would open.
+     */
+    suspend fun checkPeriodic() = check(manual = false)
 
     /**
      * The "Check now" path: skips every politeness window and may sign a tester in, because the
@@ -261,6 +296,22 @@ class UpdateChecker(
         settingsRepository.setLastUpdateDialogAt(time.now())
     }
 
+    /**
+     * Promotes the offer already in hand to one the user asked for — the notification-tap path.
+     *
+     * Tapping the notification *is* asking, and it says nothing about which tab the app happens to
+     * open on, so the offer has to be showable wherever that turns out to be. Flipping
+     * [UpdateOffer.requested] is exactly that: the hosting gate already lets a requested offer
+     * appear anywhere, and [markDialogShown] already declines to spend the once-a-day interrupt
+     * floor on one — which is right here too, since a dialog the user summoned interrupts nobody.
+     *
+     * A no-op when there is no offer: the check that found it runs in a process the tap may have
+     * outlived, and the cold-start check will find it again.
+     */
+    fun showRequested() {
+        _available.value = _available.value?.copy(requested = true)
+    }
+
     /** Clears the offer without recording a dismissal — the user chose to update. */
     fun clearAvailable() {
         _available.value = null
@@ -321,6 +372,11 @@ class UpdateChecker(
         _error.value = null
         // The old channel's answer says nothing about the new one's.
         _upToDate.value = false
+        // Turning the feature off has to stop the background check too, or the daily wake-up
+        // outlives the choice that justified it. Scheduling for a channel the sign-in below may
+        // yet fail is deliberate: the worker's own first gate is the persisted source, so a check
+        // that runs before the source is written simply returns.
+        applyBackgroundSchedule(source)
         if (source != UpdateSource.APP_DISTRIBUTION || appDistributionSource.isTesterSignedIn()) {
             settingsRepository.setUpdateSource(source)
             return@launch

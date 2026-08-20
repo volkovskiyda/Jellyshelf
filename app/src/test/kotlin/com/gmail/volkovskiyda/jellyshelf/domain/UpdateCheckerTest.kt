@@ -11,6 +11,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeUpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.ui.InertTesterSignIn
+import com.gmail.volkovskiyda.jellyshelf.ui.RecordingUpdateCheckSchedule
 import com.gmail.volkovskiyda.jellyshelf.ui.TestDispatcherProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -89,6 +90,7 @@ class UpdateCheckerTest {
         appDistribution: AppDistributionSource = FakeAppDistribution(),
         isDebug: Boolean = false,
         versionCode: Int = 165,
+        schedule: RecordingUpdateCheckSchedule = RecordingUpdateCheckSchedule(),
     ) = UpdateChecker(
         settingsRepository = settings,
         gitHubSource = gitHub,
@@ -97,7 +99,102 @@ class UpdateCheckerTest {
         // SAM-converted, so the tests below keep moving time by assigning to `clock`.
         time = TimeProvider { clock },
         dispatchers = TestDispatcherProvider(),
+        updateCheckSchedule = schedule,
     )
+
+    // --- The daily background check's schedule ---
+
+    /**
+     * Turning a channel on is what justifies the daily wake-up, and turning it off is what has to
+     * stop it — a worker that outlives the choice behind it is the kind of battery drain nobody
+     * connects back to a setting they changed weeks ago.
+     */
+    @Test
+    fun pickingAChannel_schedulesTheDailyCheck() = runTest {
+        val schedule = RecordingUpdateCheckSchedule()
+
+        checker(schedule = schedule).selectSource(UpdateSource.GITHUB).join()
+
+        assertEquals(1, schedule.scheduled)
+        assertEquals(0, schedule.cancelled)
+    }
+
+    @Test
+    fun turningUpdatesOff_cancelsTheDailyCheck() = runTest {
+        val schedule = RecordingUpdateCheckSchedule()
+
+        checker(schedule = schedule).selectSource(UpdateSource.NONE).join()
+
+        assertEquals(0, schedule.scheduled)
+        assertEquals(1, schedule.cancelled)
+    }
+
+    /**
+     * The whole update feature is hidden in debug builds, and a background worker is the one part
+     * of it that would keep running where nobody could see it — asking GitHub about a version code
+     * of 1, daily, forever.
+     */
+    @Test
+    fun aDebugBuild_neverSchedulesTheDailyCheck() = runTest {
+        val schedule = RecordingUpdateCheckSchedule()
+
+        checker(isDebug = true, schedule = schedule).selectSource(UpdateSource.GITHUB).join()
+
+        assertEquals(0, schedule.scheduled)
+        assertEquals(1, schedule.cancelled)
+    }
+
+    /** Start-up brings the schedule into line with whatever channel was persisted. */
+    @Test
+    fun startUp_schedulesForTheStoredChannel() = runTest {
+        val schedule = RecordingUpdateCheckSchedule()
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.GITHUB)
+
+        checker(settings = settings, schedule = schedule).scheduleBackgroundCheck()
+
+        assertEquals(1, schedule.scheduled)
+    }
+
+    @Test
+    fun startUp_withUpdatesOff_cancelsInstead() = runTest {
+        val schedule = RecordingUpdateCheckSchedule()
+        val settings = FakeSettingsRepository(updateSource = UpdateSource.NONE)
+
+        checker(settings = settings, schedule = schedule).scheduleBackgroundCheck()
+
+        assertEquals(1, schedule.cancelled)
+    }
+
+    // --- The notification tap ---
+
+    /**
+     * Tapping the notification *is* asking, so the offer has to be showable wherever the app opens
+     * — a requested offer is not confined to the Library tab, and does not spend the once-a-day
+     * interrupt floor. Without the flip the tap opens the app onto no dialog at all.
+     */
+    @Test
+    fun showRequested_promotesTheOfferInHand() = runTest {
+        val checker = checker()
+        // The *automatic* path, which is the only one that produces an unrequested offer — and so
+        // the only one a notification can be describing. A manual check is requested already.
+        checker.checkPeriodic()
+        assertEquals(false, checker.available.value?.requested)
+
+        checker.showRequested()
+
+        assertEquals(true, checker.available.value?.requested)
+    }
+
+    /** The tap can outlive the process that found the update; the cold-start check finds it again. */
+    @Test
+    fun showRequested_withNothingInHand_doesNothing() = runTest {
+        val checker = checker(gitHub = FakeGitHub { null })
+        checker.checkPeriodic()
+
+        checker.showRequested()
+
+        assertNull(checker.available.value)
+    }
 
     // --- Validity gates: this build cannot compare itself to anything ---
 
