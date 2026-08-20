@@ -27,10 +27,10 @@ import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import org.junit.After
 import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.loadKoinModules
@@ -104,6 +104,7 @@ class InstallFlowTest {
         buildInfo = BuildInfo(isDebug = false, sdkInt = 36, versionCode = INSTALLED_VERSION_CODE),
         time = TimeProvider { NOW },
         dispatchers = TestDispatcherProvider(),
+        updateCheckSchedule = RecordingUpdateCheckSchedule(),
     )
 
     private lateinit var realChecker: UpdateChecker
@@ -112,23 +113,35 @@ class InstallFlowTest {
     @get:Rule(order = 0)
     val notificationPermission = NotificationPermissionRule()
 
+    /**
+     * Swaps the checker in **before the compose rule launches the activity**, and puts the real one
+     * back afterwards — the shape [UpdateOfferHostingTest] uses, and for the reason it documents.
+     *
+     * Doing it from the test body instead is a race: `koinInject` resolves once and remembers, so
+     * whichever checker the composition sees first is the one the screen keeps. Win the race and it
+     * watches the fake; lose it and it watches the app's own checker, which has nothing to offer
+     * and never shows a dialog — a five-second timeout with no hint of why.
+     *
+     * Restoring re-declares the real single rather than unloading the override, because
+     * `unloadKoinModules` removes definitions by key and would take the app's own with it.
+     */
     @get:Rule(order = 1)
-    val composeRule = createAndroidComposeRule<MainActivity>()
+    val koinOverride = object : ExternalResource() {
+        override fun before() {
+            realChecker = GlobalContext.get().get()
+            loadKoinModules(module { single { checker } })
+        }
 
-    /** Re-declares the real single rather than unloading — see [UpdateOfferHostingTest]. */
-    @After
-    fun restoreTheRealChecker() {
-        installGate.complete(Unit)
-        if (::realChecker.isInitialized) {
+        override fun after() {
+            // Released first: a test holding the install open would otherwise leave the fake's
+            // coroutine parked on a gate nothing completes.
+            installGate.complete(Unit)
             loadKoinModules(module { single { realChecker } })
         }
     }
 
-    private fun installOverride() {
-        realChecker = GlobalContext.get().get()
-        loadKoinModules(module { single { checker } })
-        composeRule.waitForIdle()
-    }
+    @get:Rule(order = 2)
+    val composeRule = createAndroidComposeRule<MainActivity>()
 
     private fun label(resId: Int, vararg args: Any) = composeRule.activity.getString(resId, *args)
 
@@ -167,8 +180,6 @@ class InstallFlowTest {
             // has to be up *while* the install runs, not after it resolves.
             installGate.await()
         }
-        installOverride()
-
         offerAndAccept()
 
         composeRule.onNodeWithText(label(R.string.update_install_downloading, 50)).assertIsDisplayed()
@@ -185,8 +196,6 @@ class InstallFlowTest {
     @Test
     fun aFailedInstall_saysWhyThenClearsAllTheWayBack() {
         installBehaviour = { throw UpdateCheckFailure(UpdateCheckError.DownloadFailed, "", null) }
-        installOverride()
-
         offerAndAccept()
 
         val message = label(UpdateCheckError.DownloadFailed.messageRes)
