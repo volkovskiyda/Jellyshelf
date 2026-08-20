@@ -151,7 +151,7 @@ application id, so parallel installs overwrite each other on a shared device —
 a per-worktree `applicationIdSuffix`, *fails the build*: `google-services.json` has exactly three
 clients and AGP hard-fails with "No matching client found" for a fourth. Combined with the server
 being the real bottleneck, a second AVD earns its keep only for form-factor coverage (a tablet, an
-API 30 device), not for parallelism.
+API 31 device), not for parallelism.
 
 **RAM is the binding constraint on parallel *building*.** Each concurrent Gradle build forks its own
 daemon at 4 GB plus a 2 GB Kotlin daemon; each emulator is another 2–3 GB. On a 16 GB machine, two

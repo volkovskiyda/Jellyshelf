@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.theme
 
 import android.content.Context
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -11,9 +10,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
-import org.koin.compose.koinInject
 
 /**
  * The effective dark flag for a [ThemeMode]: forced by the user, or the system's own setting when
@@ -36,14 +33,9 @@ fun ThemeMode.isDark(): Boolean = when (this) {
  * and the app that replaces it are the same colour and the hand-over is invisible. It assumes the
  * dynamic colour the app actually runs with; only host-side rendering opts out of that.
  */
-fun themeBackgroundArgb(context: Context, darkTheme: Boolean, buildInfo: BuildInfo): Int {
-    val scheme = when {
-        buildInfo.isAtLeast(Build.VERSION_CODES.S) ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+fun themeBackgroundArgb(context: Context, darkTheme: Boolean): Int {
+    val scheme =
+        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     return scheme.background.toArgb()
 }
 
@@ -63,11 +55,10 @@ private val LightColorScheme = lightColorScheme(
 fun JellyshelfTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
-    buildInfo: BuildInfo = koinInject(),
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
-        dynamicColor && buildInfo.isAtLeast(Build.VERSION_CODES.S) -> {
+        dynamicColor -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

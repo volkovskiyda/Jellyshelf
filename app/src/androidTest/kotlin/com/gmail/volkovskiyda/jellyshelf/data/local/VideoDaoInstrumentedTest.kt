@@ -153,13 +153,19 @@ class VideoDaoInstrumentedTest {
     /**
      * One wording for a plan line, whatever SQLite the platform ships.
      *
-     * SQLite 3.36 dropped the `TABLE` keyword: what Android 12+ prints as `SCAN videos`, API 30
-     * prints as `SCAN TABLE videos`. That is a rename, not a different plan — but the assertions
-     * below match plan text, so without this the same query reads as two different outcomes. It bit
-     * in the direction that does not announce itself: [assertNoTableScan] compares a line to
-     * `"SCAN videos"` exactly, so on API 30 a real full-table scan printed `SCAN TABLE videos`,
-     * failed to match, and the guard passed while the thing it guards against was happening.
-     * Normalising here rather than in each matcher keeps that fix in one place.
+     * SQLite 3.36 dropped the `TABLE` keyword from query plans, and Android crosses that line
+     * well above minSdk. Measured through this very path on 2026-08-20: API 31 ships SQLite
+     * 3.32.2 and prints `SCAN TABLE videos`, API 34 ships 3.39.2 and prints `SCAN videos` (32 and
+     * 33 were not measured, and do not need to be — they can only be one of the two). That is a
+     * rename, not a different plan, but the assertions below match plan text, so without this the
+     * same query reads as two different outcomes.
+     *
+     * It bites in the direction that does not announce itself: [assertNoTableScan] compares a line
+     * to `"SCAN videos"` exactly, so on a pre-3.36 platform a real full-table scan prints
+     * `SCAN TABLE videos`, fails to match, and the guard passes while the thing it guards against
+     * is happening. **The CI tablet runs API 31**, so this is load-bearing today, not history —
+     * deleting it silently disarms the guard on the one device that carries minSdk.
+     * Normalising here rather than in each matcher keeps that in one place.
      */
     private fun normalizePlan(detail: String): String =
         detail.replace(PLAN_TABLE_KEYWORD, "$1 ")

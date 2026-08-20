@@ -12,7 +12,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
@@ -55,7 +54,7 @@ class PlayerControlsTest {
         onSeek: (Long) -> Unit = {},
     ) {
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+            JellyshelfTheme(dynamicColor = false) {
                 PlayerControls(
                     title = "Sample video",
                     showPlay = false,

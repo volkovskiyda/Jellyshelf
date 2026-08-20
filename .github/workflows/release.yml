@@ -46,10 +46,10 @@ jobs:
   # A second instrumented pass, on three devices ci.yml never runs. The tag always points at a commit
   # that already went green on main, so repeating that matrix would tell us nothing — every device
   # here is chosen for what the CI three do not carry:
-  #   MediumTablet.arm 35 — tablet layout at a modern API. With CI's tablet@30 and phone@36 this
+  #   MediumTablet.arm 35 — tablet layout at a modern API. With CI's tablet@31 and phone@36 this
   #     completes the form-factor × API-level square, the last corner being MediumPhone.arm below.
-  #   MediumPhone.arm 30 — phone layout at minSdk, which ci.yml deliberately gives up when it pairs
-  #     API 30 with the tablet to save an execution. A release is where that gap is worth closing.
+  #   MediumPhone.arm 31 — phone layout at minSdk, which ci.yml deliberately gives up when it pairs
+  #     API 31 with the tablet to save an execution. A release is where that gap is worth closing.
   #   tangorpro 33 — a physical Pixel Tablet: real silicon behind a tablet layout, so hardware codecs
   #     and a large screen at once, which no other device in either workflow has together.
   #
@@ -93,7 +93,7 @@ jobs:
           gcloud firebase test android run --type instrumentation \
             --app app/build/outputs/apk/debug/app-debug.apk \
             --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            --device model=MediumPhone.arm,version=30 \
+            --device model=MediumPhone.arm,version=31 \
             --device model=MediumTablet.arm,version=35 \
             --device model=tangorpro,version=33 \
             --timeout 25m

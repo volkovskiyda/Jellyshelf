@@ -34,7 +34,8 @@ fun grantNotificationPermission() {
  * which is before any `@Before` runs. Declare this at `order = 0` and the compose rule after it.
  *
  * Not `GrantPermissionRule`: that one fails outright on a permission the platform has never heard
- * of, and this suite still runs on API 30, where `POST_NOTIFICATIONS` does not exist.
+ * of, and this suite still runs at API 31 — two levels below the API 33 that introduced
+ * `POST_NOTIFICATIONS`.
  */
 class NotificationPermissionRule : TestRule {
     override fun apply(base: Statement, description: Description): Statement = object : Statement() {

@@ -10,7 +10,6 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
@@ -51,7 +50,7 @@ class UpdateDialogTest {
 
     private fun setContent(notes: String = "Some release notes.") {
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+            JellyshelfTheme(dynamicColor = false) {
                 UpdateDialog(
                     info = info(notes),
                     onUpdate = { updates++ },

@@ -305,7 +305,7 @@ targets standard endpoints; confirm these against your server build and adjust i
 ./gradlew :app:assembleRelease      # R8-shrunk; signed only if keystore.properties exists
 ```
 
-Minimum: `minSdk 30`, `compileSdk 37`. Debug builds allow cleartext HTTP for LAN servers, and
+Minimum: `minSdk 31`, `compileSdk 37`. Debug builds allow cleartext HTTP for LAN servers, and
 install alongside release (`.debug` application id, badged launcher icon).
 
 **arm64 only.** The bundled yt-dlp ships a Python runtime per ABI, so the APK is restricted to

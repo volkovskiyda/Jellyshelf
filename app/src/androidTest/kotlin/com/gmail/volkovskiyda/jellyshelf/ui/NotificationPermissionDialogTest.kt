@@ -10,7 +10,6 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -44,7 +43,7 @@ class NotificationPermissionDialogTest {
 
     private fun setContent() {
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+            JellyshelfTheme(dynamicColor = false) {
                 NotificationPermissionDialog(
                     onAllow = { allows++ },
                     onDismiss = { dismissals++ },

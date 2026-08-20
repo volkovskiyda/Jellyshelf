@@ -3,7 +3,6 @@ package com.gmail.volkovskiyda.jellyshelf
 import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -47,7 +46,6 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
@@ -88,7 +86,6 @@ private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
 
 class MainActivity : ComponentActivity() {
     private val themeModeCache: ThemeModeCache by inject()
-    private val buildInfo: BuildInfo by inject()
 
     // The same instance composition resolves via koinViewModel(): both come from this activity's
     // ViewModelStore. Held here so intent handling can reach it outside composition.
@@ -100,7 +97,7 @@ class MainActivity : ComponentActivity() {
         // Everything the window shows before composition — its colour and its bar icons — has to
         // be decided now, from the cache, because the persisted theme is still an async read away.
         val startupDark = cachedDarkTheme()
-        window.setBackgroundDrawable(themeBackgroundArgb(this, startupDark, buildInfo).toDrawable())
+        window.setBackgroundDrawable(themeBackgroundArgb(this, startupDark).toDrawable())
         applyEdgeToEdge(startupDark)
         selectSplashTheme()
         setContent {
@@ -126,8 +123,7 @@ class MainActivity : ComponentActivity() {
                     // they change at the start of a reveal rather than following its edge.)
                     DisposableEffect(appliedDark) {
                         window.setBackgroundDrawable(
-                            themeBackgroundArgb(this@MainActivity, appliedDark, buildInfo)
-                                .toDrawable(),
+                            themeBackgroundArgb(this@MainActivity, appliedDark).toDrawable(),
                         )
                         applyEdgeToEdge(appliedDark)
                         onDispose {}
@@ -181,7 +177,6 @@ class MainActivity : ComponentActivity() {
      * [ThemeModeCache].
      */
     private fun selectSplashTheme() {
-        if (!buildInfo.isAtLeast(Build.VERSION_CODES.S)) return
         splashScreen.setSplashScreenTheme(
             when (themeModeCache.peek()) {
                 ThemeMode.LIGHT -> R.style.Theme_Jellyshelf_Splash_Light

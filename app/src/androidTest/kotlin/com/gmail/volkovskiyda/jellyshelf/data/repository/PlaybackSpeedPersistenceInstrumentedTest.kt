@@ -22,8 +22,7 @@ import org.junit.runner.RunWith
  * No `awaitPersisted` poll like [FilterPersistenceInstrumentedTest] has, deliberately: that helper
  * exists because the filter holders write fire-and-forget on `applicationScope`, so a read straight
  * afterwards races the disk. Here the test awaits the suspend `ds.edit` itself, and `first()` on a
- * *fresh* collection always sees the current value — the API 30 defect it works around is about
- * updates dropped for an already-collecting flow, which nothing here does.
+ * *fresh* collection always sees the current value.
  */
 @RunWith(AndroidJUnit4::class)
 class PlaybackSpeedPersistenceInstrumentedTest {

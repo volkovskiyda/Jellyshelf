@@ -90,12 +90,10 @@ jobs:
           # Three devices, each carrying something none of the others do, and no two overlapping on
           # any axis — API level, form factor, orientation, emulated vs real silicon. They run in
           # parallel, so the matrix costs the slowest one rather than the sum, around five minutes.
-          #   MediumTablet.arm 30 landscape — minSdk, the tablet form factor and the only landscape
-          #     window, in one execution. Both defects this level has caught were platform behaviour
-          #     rather than layout (see below), so carrying minSdk on the tablet rather than a phone
-          #     costs nothing real and saves an execution. What it gives up is a bug living
-          #     specifically in phone layout at API 30; phone layout is covered at 35 and 36, so that
-          #     is a narrow gap and a deliberate one.
+          #   MediumTablet.arm 31 landscape — minSdk, the tablet form factor and the only landscape
+          #     window, in one execution. Carrying minSdk on the tablet rather than a phone saves an
+          #     execution. What it gives up is a bug living specifically in phone layout at API 31;
+          #     phone layout is covered at 35 and 36, so that is a narrow gap and a deliberate one.
           #     Landscape since 2026-08-08, and rather than portrait rather than as well as it,
           #     because orientation is a device key of its own: Test Lab bills per model, version
           #     and orientation, so a fourth entry would cost a third virtual execution and take the
@@ -103,8 +101,7 @@ jobs:
           #     at 800x500 dp, where a full-width 16:9 thumbnail is 450 dp tall and pushes a whole
           #     screen below the fold — nine DetailContentTest cases failed that way on a build this
           #     matrix had already passed in portrait. What it gives up is a 500x800 window, the
-          #     mild middle ground between landscape and a phone, and nothing about the API 30
-          #     platform behaviour below depends on which way up the device is.
+          #     mild middle ground between landscape and a phone.
           #   MediumPhone.arm 36 — phone layout at the level most installs actually run.
           #     MediumPhone_ps16k.arm 37 was tried here on 2026-08-09 and put back: it is the only
           #     image with API 37 and 16 KB memory pages, which would be worth having since the APK
@@ -120,12 +117,11 @@ jobs:
           #     there only by the bug below; frankel was the model that bug hit hardest, so it is
           #     also the strongest evidence the fix holds on real hardware.
           #
-          # Adding API 30 on 2026-08-06 turned up two test defects that no other device could see,
-          # both since fixed: an assertion reading SQLite plans by text (pre-3.36 spells a scan
-          # `SCAN TABLE videos`, so assertNoTableScan matched nothing and passed while a real table
-          # scan went by), and a persistence wait that watched one flow collection for an update
-          # DataStore on API 30 intermittently never delivers. See those two test files for the
-          # detail. Both fixes were confirmed at API 30 on Test Lab, virtual and physical alike.
+          # The minSdk entry is also the only one below SQLite 3.36, which spells a query plan
+          # `SCAN TABLE videos` where later levels spell it `SCAN videos` (measured 2026-08-20: API
+          # 31 ships 3.32.2, API 34 ships 3.39.2). VideoDaoInstrumentedTest normalises the two, and
+          # that normalising is load-bearing exactly while this entry stays below 34 — its
+          # scan assertion matches plan text, and unnormalised it would pass on a real table scan.
           #
           # Quota, since it decides how many devices fit: the Spark plan allows ten virtual and five
           # physical executions a day, counted per device. Two virtual and one physical a run puts
@@ -152,7 +148,7 @@ jobs:
           gcloud firebase test android run --type instrumentation \
             --app app/build/outputs/apk/debug/app-debug.apk \
             --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            --device model=MediumTablet.arm,version=30,orientation=landscape \
+            --device model=MediumTablet.arm,version=31,orientation=landscape \
             --device model=MediumPhone.arm,version=36 \
             --device model=frankel,version=36 \
             --timeout 25m

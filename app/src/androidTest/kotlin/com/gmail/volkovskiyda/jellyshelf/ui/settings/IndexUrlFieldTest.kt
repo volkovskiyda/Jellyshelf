@@ -16,7 +16,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -56,7 +55,7 @@ class IndexUrlFieldTest {
         // would never stick and the test would pass for the wrong reason.
         var state by mutableStateOf(initial)
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+            JellyshelfTheme(dynamicColor = false) {
                 SettingsContent(
                     state = state,
                     videoCount = 0,

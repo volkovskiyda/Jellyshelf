@@ -21,7 +21,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
@@ -68,7 +67,7 @@ class UpdateSourceSelectorTest {
         // would reset on every recomposition and no click would ever stick.
         var selected by mutableStateOf(initial)
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+            JellyshelfTheme(dynamicColor = false) {
                 Column {
                     UpdateSourceSelector(
                         selected = selected,

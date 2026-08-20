@@ -15,7 +15,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
-import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
@@ -59,7 +58,7 @@ class ThemeModeSwitchTest {
         // would reset on every recomposition and no click would ever stick.
         var state by mutableStateOf(initial)
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+            JellyshelfTheme(dynamicColor = false) {
                 ThemeModeSwitch(mode = state.mode, onClick = { state = state.next() })
             }
         }
@@ -69,7 +68,7 @@ class ThemeModeSwitchTest {
     private fun setContentWithReveal(controller: ThemeRevealController) {
         var state by mutableStateOf(ThemeState())
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = BuildInfo(isDebug = true, sdkInt = 36)) {
+            JellyshelfTheme(dynamicColor = false) {
                 CompositionLocalProvider(LocalThemeRevealController provides controller) {
                     ThemeModeSwitch(mode = state.mode, onClick = { state = state.next() })
                 }

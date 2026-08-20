@@ -19,10 +19,9 @@ import org.junit.runner.RunWith
  * fresh [DefaultSettingsRepository] over the same store, which is what a cold launch builds.
  *
  * Persistence is asserted by **re-reading from a fresh repository**, never by watching one
- * collection: on API 30 DataStore drops 1–2 flow update notifications per 25 writes, so a test that
- * collects once and waits for the next emission is flaky there by construction. Every read below
- * therefore builds its own repository and takes `first()` — a fresh collection always sees the
- * current value. Do not "simplify" these into a single collector.
+ * collection: every read below builds its own repository and takes `first()`, and a fresh
+ * collection always sees the current value instead of waiting on an emission. That is deliberate —
+ * do not "simplify" these into a single collector.
  */
 @RunWith(AndroidJUnit4::class)
 class UpdatePreferencesInstrumentedTest {

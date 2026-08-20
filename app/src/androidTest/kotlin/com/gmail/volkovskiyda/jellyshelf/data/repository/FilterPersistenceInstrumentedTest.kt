@@ -74,14 +74,9 @@ class FilterPersistenceInstrumentedTest {
      * deliberately, since nothing in the UI should block on a preference write — so a test that
      * reads straight back is racing the disk rather than testing anything.
      *
-     * Re-reads the store rather than watching one collection for the value to arrive, which is the
-     * obvious way to write this and is not sound on API 30: DataStore there intermittently does not
-     * deliver an update to an already-collecting flow. Measured on an API 30 emulator, one to two
-     * writes in every 25 were never seen by a collector that subscribed before them, while a read
-     * issued straight afterwards returned the value every time — so the write had landed and only
-     * the notification was lost. The same probe saw none in 75 polled iterations, and none at all on
-     * API 34. A poll therefore tests what this class means to test, "the value is in the store",
-     * rather than the platform's willingness to announce it.
+     * Re-reads the store rather than watching one collection for the value to arrive: a poll tests
+     * what this class means to test, "the value is in the store", rather than the platform's
+     * willingness to announce it to a collector that subscribed first.
      */
     private suspend fun <T> awaitPersisted(flow: Flow<T>, expected: T) {
         val reached = withTimeoutOrNull(WRITE_TIMEOUT_MS) {

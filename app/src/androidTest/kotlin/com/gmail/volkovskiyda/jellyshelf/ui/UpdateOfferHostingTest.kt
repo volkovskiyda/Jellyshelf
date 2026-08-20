@@ -125,8 +125,9 @@ class UpdateOfferHostingTest {
      * the one it keeps for the life of the screen. Loading the override from the test body is a
      * race against `startStack` resolving out of DataStore — win it and the screen watches the fake,
      * lose it and the screen watches the app's own checker, which has nothing to offer and never
-     * shows a dialog. That is the whole of the API-30 tablet failure on Test Lab; on a device that
-     * reads DataStore a few hundred ms slower the same test passes for no better reason than luck.
+     * shows a dialog. That is the whole of the tablet failure this rule was written for on Test
+     * Lab; on a device that reads DataStore a few hundred ms slower the same test passes for no
+     * better reason than luck.
      *
      * Restoring re-declares the real single rather than unloading the override: `unloadKoinModules`
      * removes definitions *by key*, so unloading a module that declares an `UpdateChecker` takes the

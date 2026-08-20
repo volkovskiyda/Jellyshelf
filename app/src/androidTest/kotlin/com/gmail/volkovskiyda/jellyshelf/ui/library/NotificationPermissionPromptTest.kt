@@ -87,7 +87,7 @@ class NotificationPermissionPromptTest {
         readout: PermissionReadout = due,
     ) {
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false, buildInfo = buildInfo) {
+            JellyshelfTheme(dynamicColor = false) {
                 NotificationPermissionPrompt(
                     hasVideos = hasVideos,
                     prompt = prompt(settings),
@@ -116,7 +116,7 @@ class NotificationPermissionPromptTest {
         val settings = FakeSettingsRepository()
         composeRule.setContent {
             hasVideos = remember { mutableStateOf(false) }
-            JellyshelfTheme(dynamicColor = false, buildInfo = buildInfo) {
+            JellyshelfTheme(dynamicColor = false) {
                 NotificationPermissionPrompt(
                     hasVideos = hasVideos.value,
                     prompt = prompt(settings),
