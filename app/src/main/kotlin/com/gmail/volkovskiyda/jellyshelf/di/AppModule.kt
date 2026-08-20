@@ -5,7 +5,9 @@ import android.os.Build
 import android.provider.Settings
 import androidx.room.Room
 import androidx.work.WorkManager
-import coil.ImageLoader
+import coil3.ImageLoader
+import coil3.network.ktor3.KtorNetworkFetcherFactory
+import coil3.serviceLoaderEnabled
 import com.gmail.volkovskiyda.jellyshelf.BuildConfig
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
@@ -63,16 +65,15 @@ import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpSend
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
+import io.ktor.client.plugins.plugin
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
-import okhttp3.Interceptor
-import okhttp3.OkHttpClient
-import okhttp3.Response
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.dsl.workerOf
 import org.koin.core.module.dsl.bind
@@ -80,7 +81,6 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import timber.log.Timber
-import java.util.concurrent.TimeUnit
 
 /**
  * The whole app's Koin graph. Consumer definitions use the constructor-reference DSL (`singleOf`,
@@ -227,36 +227,50 @@ private fun provideHttpClient(buildInfo: BuildInfo, json: Json): HttpClient = Ht
 }
 
 // Coil's ImageLoader, installed app-wide by JellyshelfApplication so every AsyncImage picks it up
-// without per-call plumbing. Its client is tuned like the API client above — the same 30 s budget,
-// and debug logging, so image traffic stops being the one half of the app's network that never
-// appears in logcat.
+// without per-call plumbing. Coil 3 ships no network layer of its own, so the fetcher is wired
+// explicitly — to Ktor, the same stack the API client uses, tuned to the same 30 s budget and with
+// the same debug logging. serviceLoaderEnabled(false) turns off the ServiceLoader scan that would
+// otherwise register a second, untuned Ktor fetcher behind this one: it could never be reached
+// past the explicit registration above it, and the scan is pure startup cost.
 //
-// Deliberately its own OkHttpClient rather than the Ktor engine's: OkHttp allows 5 concurrent
-// requests per host, and a screen full of thumbnails would queue ahead of the very API calls that
-// populate it.
+// Deliberately its own HttpClient rather than the injected API one: each Ktor OkHttp engine owns an
+// OkHttp dispatcher, which allows 5 concurrent requests per host, and a screen full of thumbnails
+// sharing one would queue ahead of the very API calls that populate it.
 private fun provideImageLoader(context: Context, buildInfo: BuildInfo): ImageLoader =
     ImageLoader.Builder(context)
-        .okHttpClient {
-            OkHttpClient.Builder()
-                .connectTimeout(NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .readTimeout(NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .apply { if (buildInfo.isDebug) addInterceptor(ImageLogInterceptor()) }
-                .build()
-        }
+        .serviceLoaderEnabled(false)
+        .components { add(KtorNetworkFetcherFactory(httpClient = { imageHttpClient(buildInfo) })) }
         .build()
 
 /**
- * Logs image requests through Timber, like the Ktor client, **with the api key stripped**.
- * Thumbnail URLs carry the server credential as a query parameter (see `authorizedImageUrl`), and
- * logcat is readable by other apps on a dev device — so the one thing a BASIC-style logger would
- * print is the one thing that must not be printed.
+ * The image half of the app's traffic. Unlike [provideHttpClient] this deliberately leaves
+ * `expectSuccess` at its default: Coil's `NetworkFetcher` reads the status code itself to drive the
+ * disk cache (a 304 is a cache *hit*, not a failure), and making Ktor throw first would take that
+ * away from it.
+ *
+ * Timeouts mirror the old OkHttp pair exactly — connect and socket, no `requestTimeoutMillis`,
+ * since that one would cap the whole download and a full-size still on a slow LAN is not a
+ * 30-second promise anyone made.
  */
-private class ImageLogInterceptor : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        val response = chain.proceed(request)
-        Timber.tag("Coil").d("${response.code} ${stripCredentials(request.url.toString())}")
-        return response
+private fun imageHttpClient(buildInfo: BuildInfo): HttpClient = HttpClient(OkHttp) {
+    install(HttpTimeout) {
+        connectTimeoutMillis = NETWORK_TIMEOUT_MILLIS
+        socketTimeoutMillis = NETWORK_TIMEOUT_MILLIS
+    }
+}.apply {
+    // Logged here rather than through the Logging plugin, and via stripCredentials, because
+    // thumbnail URLs carry the server credential as a query parameter (see `authorizedImageUrl`)
+    // and logcat is readable by other apps on a dev device — so the one thing a stock logger would
+    // print is the one thing that must not be printed. Timber keeps it debug-only: release strips
+    // the call through the -assumenosideeffects rules.
+    if (buildInfo.isDebug) {
+        plugin(HttpSend).intercept { request ->
+            execute(request).also { call ->
+                Timber.tag("Coil").d(
+                    "${call.response.status.value} ${stripCredentials(call.request.url.toString())}",
+                )
+            }
+        }
     }
 }
 

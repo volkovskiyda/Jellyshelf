@@ -2,8 +2,9 @@ package com.gmail.volkovskiyda.jellyshelf
 
 import android.app.Application
 import androidx.tracing.trace
-import coil.ImageLoader
-import coil.ImageLoaderFactory
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
 import com.gmail.volkovskiyda.jellyshelf.data.install.ApkInstaller
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
@@ -19,7 +20,7 @@ import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.context.startKoin
 import timber.log.Timber
 
-class JellyshelfApplication : Application(), ImageLoaderFactory {
+class JellyshelfApplication : Application(), SingletonImageLoader.Factory {
 
     // Everything after super.onCreate() is inside the trace section, and super itself is not:
     // Application.onCreate's base implementation is empty, and the SDK initialization that looks
@@ -85,10 +86,12 @@ class JellyshelfApplication : Application(), ImageLoaderFactory {
     }
 
     /**
-     * Coil's singleton hook: every `AsyncImage` resolves its loader through here, so the tuned
-     * client in [com.gmail.volkovskiyda.jellyshelf.di.appModule] applies without threading an
-     * `ImageLoader` through the composables. Called lazily on the first image request, long after
-     * [startKoin], so resolving from the graph here is safe.
+     * Coil's singleton hook: `SingletonImageLoader` detects that the `Application` implements this
+     * factory, so every `AsyncImage` resolves its loader through here and the tuned client in
+     * [com.gmail.volkovskiyda.jellyshelf.di.appModule] applies without threading an `ImageLoader`
+     * through the composables. Called lazily on the first image request, long after [startKoin], so
+     * resolving from the graph here is safe. [context] is ignored for the same reason: the loader
+     * is built from the Koin `androidContext()`, which is this application.
      */
-    override fun newImageLoader(): ImageLoader = get()
+    override fun newImageLoader(context: PlatformContext): ImageLoader = get()
 }

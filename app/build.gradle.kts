@@ -737,6 +737,9 @@ dependencies {
     implementation(libs.androidx.tracing)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.coil.compose)
+    // Coil 3 registers no network fetcher on its own; di/AppModule.kt wires this one to a
+    // dedicated Ktor client, so images ride the same HTTP stack as the rest of the app.
+    implementation(libs.coil.network.ktor3)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.perf)
@@ -783,6 +786,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.material)
+    // No app code names an okhttp type; this declaration exists purely to raise the engine's
+    // transitive OkHttp to the version pinned in the catalog. Dropping it silently downgrades
+    // every HTTP call in the app to whatever Ktor happens to ask for.
     implementation(libs.okhttp)
     implementation(libs.timber)
     implementation(libs.youtubedl.android.library)
