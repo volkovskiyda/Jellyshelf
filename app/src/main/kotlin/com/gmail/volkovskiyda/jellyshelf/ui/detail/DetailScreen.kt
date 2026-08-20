@@ -92,7 +92,7 @@ fun DetailScreen(
     // Launch the external player for a result; MX Player / VLC hand back the final position,
     // which we persist locally and report to Jellyfin as PlaybackStopped.
     val playerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         Timber.tag(Playback.TAG).d("player returned: resultCode=${result.resultCode} hasData=${result.data != null}")
         val playback = Playback.parseResult(result.data)
@@ -316,8 +316,8 @@ internal fun DetailContent(
             ) {
                 Text(
                     stringResource(
-                        if (current.played) R.string.mark_unwatched else R.string.mark_watched
-                    )
+                        if (current.played) R.string.mark_unwatched else R.string.mark_watched,
+                    ),
                 )
             }
 
@@ -336,8 +336,8 @@ internal fun DetailContent(
                             fetching -> R.string.fetching_metadata
                             hasMetadata -> R.string.update_metadata
                             else -> R.string.get_metadata
-                        }
-                    )
+                        },
+                    ),
                 )
             }
 

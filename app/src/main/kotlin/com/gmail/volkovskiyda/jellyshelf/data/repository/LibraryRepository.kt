@@ -246,7 +246,7 @@ internal fun retainedRows(
     if (prune == Prune.NOTHING) {
         Timber.w(
             "Sync saw only ${videos.size} of ${existingById.size} stored videos — " +
-                "the server is likely mid-rescan; keeping every stored video this round."
+                "the server is likely mid-rescan; keeping every stored video this round.",
         )
     }
     val seenIds = videos.mapTo(HashSet(videos.size)) { it.youtubeId }

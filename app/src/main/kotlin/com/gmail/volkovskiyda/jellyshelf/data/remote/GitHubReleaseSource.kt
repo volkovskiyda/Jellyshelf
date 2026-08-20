@@ -23,6 +23,9 @@ private const val REPO = "volkovskiyda/Jellyshelf"
  */
 private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO/releases/latest"
 
+/** How GitHub spells the only digest algorithm this app will act on. */
+private const val SHA256_PREFIX = "sha256:"
+
 /**
  * The published APK's name, as `release.yml` writes it:
  *
@@ -35,9 +38,6 @@ private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO/relea
  * compares against `BuildConfig.VERSION_CODE`. That is why no separate `version.json` is needed:
  * the asset name already carries the identity. Anchored, and compiled once as a top-level `val`.
  */
-/** How GitHub spells the only digest algorithm this app will act on. */
-private const val SHA256_PREFIX = "sha256:"
-
 private val APK_ASSET = Regex("""^jellyshelf-.*\.(\d+)\.apk$""")
 
 /**

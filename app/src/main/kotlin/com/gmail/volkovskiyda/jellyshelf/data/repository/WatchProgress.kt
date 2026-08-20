@@ -43,8 +43,10 @@ private const val MAX_PROGRESS_SECONDS = 60L
  * server's thresholds decide watched-ness from the positions the in-app player reports.
  */
 internal fun isFinishedStop(completed: Boolean, positionTicks: Long, durationSeconds: Long): Boolean =
-    completed || durationSeconds > 0 &&
-        ticksToSeconds(positionTicks) >= durationSeconds - COMPLETION_THRESHOLD_SECONDS
+    completed || (
+        durationSeconds > 0 &&
+            ticksToSeconds(positionTicks) >= durationSeconds - COMPLETION_THRESHOLD_SECONDS
+        )
 
 /** Stopping within this many seconds of the end counts as a finished watch, not a resume point. */
 private const val COMPLETION_THRESHOLD_SECONDS = 5L

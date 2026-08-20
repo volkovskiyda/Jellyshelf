@@ -94,7 +94,7 @@ interface VideoDao {
     @Query(
         "SELECT * FROM videos " +
             "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
-            "ORDER BY fileName"
+            "ORDER BY fileName",
     )
     fun observeByDurationRange(minSeconds: Long, maxSeconds: Long): Flow<List<VideoEntity>>
 
@@ -102,7 +102,7 @@ interface VideoDao {
     @Query(
         "SELECT * FROM videos " +
             "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
-            "ORDER BY fileName"
+            "ORDER BY fileName",
     )
     fun observeByDurationRangeBrowse(minSeconds: Long, maxSeconds: Long): Flow<List<VideoBrowseRow>>
 
@@ -110,14 +110,14 @@ interface VideoDao {
     @Query(
         "SELECT v.* FROM videos v " +
             "INNER JOIN video_category vc ON vc.youtubeId = v.youtubeId " +
-            "WHERE vc.categoryId = :categoryId ORDER BY v.fileName"
+            "WHERE vc.categoryId = :categoryId ORDER BY v.fileName",
     )
     fun observeByCategoryBrowse(categoryId: String): Flow<List<VideoBrowseRow>>
 
     @Query(
         "SELECT v.* FROM videos v " +
             "INNER JOIN video_category vc ON vc.youtubeId = v.youtubeId " +
-            "WHERE vc.categoryId = :categoryId ORDER BY v.fileName"
+            "WHERE vc.categoryId = :categoryId ORDER BY v.fileName",
     )
     suspend fun getByCategory(categoryId: String): List<VideoEntity>
 

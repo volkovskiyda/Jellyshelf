@@ -23,10 +23,11 @@ jobs:
           java-version: 21   # LTS, and what gradle/gradle-daemon-jvm.properties pins; AGP 9 needs 17+
       - uses: gradle/actions/setup-gradle@v6   # caching + wrapper validation
 
-      # detekt, :app:lintDebug, unit tests and the screenshot goldens. Exits non-zero if any
-      # layer fails, and skips the instrumented layer since no device is attached — so no
-      # workflow-side logic is needed. Note detekt has no baseline (deleted in 6ab505d): any
-      # finding fails the build, by design. Fix the finding, don't regenerate a baseline.
+      # detekt, ktlintCheck, :app:lintDebug, unit tests and the screenshot goldens. Exits non-zero
+      # if any layer fails, and skips the instrumented layer since no device is attached — so no
+      # workflow-side logic is needed. Note that none of the three analysers carries a baseline, by
+      # design (detekt's was deleted in 6ab505d, ktlint never had one): any finding fails the build.
+      # Fix the finding, don't regenerate a baseline. ktlint's half is `./gradlew ktlintFormat`.
       - run: scripts/run-tests.sh --host-only
 
       - run: ./gradlew :app:assembleDebug

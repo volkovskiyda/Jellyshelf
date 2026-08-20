@@ -270,20 +270,22 @@ tasks.matching { it.name.startsWith("connected") && it.name.endsWith("AndroidTes
         }
     }
 
-/**
- * Single HTML page summarising every test layer and both static-analysis tools, written to
- * `app/build/test-summary/index.html`. Only reads XML that is already on disk — it never runs a
- * test or a check itself, so it is safe to attach to any pipeline; `scripts/run-tests.sh` calls it
- * once the layers it ran have finished.
- *
- * Everything lives inside doLast: the configuration cache cannot serialize references to
- * build-script-level functions or classes, so the parsers are local lambdas rather than helpers.
- */
+// Single HTML page summarising every test layer and all three static-analysis tools, written to
+// `app/build/test-summary/index.html`. Only reads XML that is already on disk — it never runs a
+// test or a check itself, so it is safe to attach to any pipeline; `scripts/run-tests.sh` calls it
+// once the layers it ran have finished.
+//
+// Everything lives inside doLast: the configuration cache cannot serialize references to
+// build-script-level functions or classes, so the parsers are local lambdas rather than helpers.
+//
+// A line comment rather than KDoc: nothing reads a build script's KDoc, and `tasks.register(...)`
+// is a call rather than a declaration for one to attach to — which is what ktlint's `standard:kdoc`
+// rule objects to.
 tasks.register("testSummary") {
     group = "verification"
     description =
         "Aggregate test results (unit, screenshot, instrumented) and static analysis " +
-            "(detekt, lint) into one HTML report."
+        "(detekt, ktlint, lint) into one HTML report."
     // Paths resolved at configuration time; all file access happens in doLast.
     val buildDir = layout.buildDirectory.get().asFile
     // detekt is applied to the root project (it scans app/src from there), so its reports land in
@@ -305,19 +307,35 @@ tasks.register("testSummary") {
             "reports/androidTests/connected/debug/index.html",
         ),
     ).map { (label, results, report) -> Triple(label, buildDir.resolve(results), buildDir.resolve(report)) }
-    // Static analysis: findings rather than tests, so these get their own table. Both tools write
-    // an XML report next to the HTML one a human opens.
+    // Static analysis: findings rather than tests, so these get their own table. All three tools
+    // write an XML report next to the HTML one a human opens; the second element of each entry is
+    // where to look for that XML — a file, or a directory to walk — and the third is the HTML to
+    // link to, or null when there is no single one to name (see ktlint below).
     val checks = listOf(
         Triple(
             "detekt",
-            rootBuildDir.resolve("reports/detekt/detekt.xml"),
+            listOf(rootBuildDir.resolve("reports/detekt/detekt.xml")),
             rootBuildDir.resolve("reports/detekt/detekt.html"),
+        ),
+        // Directories rather than files, and three of them: ktlint runs per project and per source
+        // set, so :app alone writes one report for main, one for test, one for androidTest, one for
+        // screenshotTest and one for its build script, with the root project and :baselineprofile
+        // adding theirs. Summing them is the only way to get one number, and there is no single
+        // HTML page to link to — the link is resolved below, to whichever report has findings.
+        Triple(
+            "ktlint",
+            listOf(
+                buildDir.resolve("reports/ktlint"),
+                rootBuildDir.resolve("reports/ktlint"),
+                rootProject.file("baselineprofile/build/reports/ktlint"),
+            ),
+            null,
         ),
         // lintDebug only, matching scripts/run-tests.sh — the release variant reports the same
         // findings a second time.
         Triple(
             "Android lint (debug)",
-            buildDir.resolve("reports/lint-results-debug.xml"),
+            listOf(buildDir.resolve("reports/lint-results-debug.xml")),
             buildDir.resolve("reports/lint-results-debug.html"),
         ),
     )
@@ -406,24 +424,47 @@ tasks.register("testSummary") {
             }.sortedWith(compareBy({ it.first.first }, { it.first.second })).toList()
         }
 
-        // Counts findings by severity in a detekt (checkstyle `<error>`) or lint (`<issue>`) report;
-        // null when the file is absent, i.e. the tool never ran. A real XML parse here rather than
-        // the line scan above: lint embeds multi-line rule explanations in its attributes, which
-        // regexes read wrong. Unreadable XML counts as "not run" instead of failing the summary.
-        val parseFindings = { file: File ->
-            file.takeIf { it.isFile }?.let { xml ->
+        // Every XML report a check entry points at: the file itself, or every `*.xml` under it when
+        // the entry names a directory. Empty when the tool never ran, which is what lets the row
+        // below say "not run" rather than "0 findings".
+        //
+        // ktlint's `*Format` reports are excluded deliberately. Those list what `ktlintFormat`
+        // *fixed*, not what is still wrong, and counting them would report a clean tree as dirty
+        // for as long as the last format run's output sat in the build directory.
+        val findingReports = { roots: List<File> ->
+            roots.flatMap { root ->
+                when {
+                    root.isFile -> listOf(root)
+                    root.isDirectory ->
+                        root.walkTopDown()
+                            .filter { it.isFile && it.extension == "xml" && !it.parentFile.name.endsWith("Format") }
+                            .toList()
+                    else -> emptyList()
+                }
+            }
+        }
+
+        // Counts findings by severity across a tool's checkstyle (`<error>`) or lint (`<issue>`)
+        // reports; null when there are none to read, i.e. the tool never ran. A real XML parse here
+        // rather than the line scan above: lint embeds multi-line rule explanations in its
+        // attributes, which regexes read wrong. Unreadable XML counts as "not run" instead of
+        // failing the summary.
+        val parseFindings = { xmls: List<File> ->
+            xmls.takeIf { it.isNotEmpty() }?.let { files ->
                 runCatching {
-                    val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance()
-                        .newDocumentBuilder().parse(xml)
-                    val severities = listOf("error", "issue").flatMap { tag ->
-                        val nodes = doc.getElementsByTagName(tag)
-                        (0 until nodes.length).map { i ->
-                            (nodes.item(i) as org.w3c.dom.Element).getAttribute("severity").lowercase()
+                    val severities = files.flatMap { xml ->
+                        val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+                            .newDocumentBuilder().parse(xml)
+                        listOf("error", "issue").flatMap { tag ->
+                            val nodes = doc.getElementsByTagName(tag)
+                            (0 until nodes.length).map { i ->
+                                (nodes.item(i) as org.w3c.dom.Element).getAttribute("severity").lowercase()
+                            }
                         }
                     }
-                    // detekt emits error/warning/info, lint fatal/error/warning/information/hint;
-                    // everything below a warning is folded into "other" (lint's baseline note lands
-                    // there, for one).
+                    // detekt and ktlint emit error/warning/info, lint fatal/error/warning/
+                    // information/hint; everything below a warning is folded into "other" (lint's
+                    // baseline note lands there, for one).
                     Triple(
                         severities.count { it == "error" || it == "fatal" },
                         severities.count { it == "warning" },
@@ -442,8 +483,17 @@ tasks.register("testSummary") {
         val parsed = layers.map { (label, resultsDir, report) ->
             Triple(label, parse(resultsDir), href(report))
         }
-        val checked = checks.map { (label, resultsFile, report) ->
-            Triple(label, parseFindings(resultsFile), href(report))
+        val checked = checks.map { (label, roots, report) ->
+            val xmls = findingReports(roots)
+            // A tool with one report links to it. A tool with many (ktlint) links to the first that
+            // has an `<error>` in it, and to none when the whole run was clean — where the row's
+            // own "0 findings" is the entire story and a link to an empty page is noise.
+            val link = report?.let(href)
+                ?: xmls.firstOrNull { it.readText().contains("<error") }
+                    ?.let { File(it.parentFile, "${it.nameWithoutExtension}.html") }
+                    ?.takeIf { it.exists() }
+                    ?.let(href)
+            Triple(label, parseFindings(xmls), link)
         }
         val ran = parsed.mapNotNull { it.second }
         val analysed = checked.mapNotNull { it.second }
@@ -502,7 +552,11 @@ $shown
 $more
             </ul>"""
         }
-        val failuresHtml = if (failureSections.isBlank()) "" else "            <h2>What failed, by device</h2>\n$failureSections"
+        val failuresHtml = if (failureSections.isBlank()) {
+            ""
+        } else {
+            "            <h2>What failed, by device</h2>\n$failureSections"
+        }
         val analysisErrors = analysed.sumOf { it.first }
         val analysisFindings = analysed.sumOf { it.first + it.second + it.third }
         val analysisRows = checked.joinToString("\n") { (label, stats, link) ->

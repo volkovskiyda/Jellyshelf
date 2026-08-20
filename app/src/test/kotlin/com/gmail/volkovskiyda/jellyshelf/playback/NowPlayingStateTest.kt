@@ -67,8 +67,12 @@ class NowPlayingStateTest {
     fun theButtonsReachTheRegisteredTransport() {
         val calls = mutableListOf<String>()
         state.attach(object : NowPlayingState.Transport {
-            override fun playPause() { calls += "playPause" }
-            override fun stop() { calls += "stop" }
+            override fun playPause() {
+                calls += "playPause"
+            }
+            override fun stop() {
+                calls += "stop"
+            }
         })
 
         state.playPause()
@@ -92,8 +96,12 @@ class NowPlayingStateTest {
     fun detachClearsTheItemAndTheTransport() {
         val calls = mutableListOf<String>()
         state.attach(object : NowPlayingState.Transport {
-            override fun playPause() { calls += "playPause" }
-            override fun stop() { calls += "stop" }
+            override fun playPause() {
+                calls += "playPause"
+            }
+            override fun stop() {
+                calls += "stop"
+            }
         })
         state.show(playing())
 

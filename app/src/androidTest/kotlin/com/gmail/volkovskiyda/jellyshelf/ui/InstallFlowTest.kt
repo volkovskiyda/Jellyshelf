@@ -44,6 +44,9 @@ private const val OFFERED_VERSION_NAME = "1.0.200"
 /** See [UpdateOfferHostingTest]: the clock has to dwarf the `0`-means-never timestamps. */
 private const val NOW = 1_800_000_000_000L
 
+/** See [InstallFlowTest.offerAndAccept] — the offer dialog is a window, and lands late. */
+private const val OFFER_TIMEOUT_MS = 5_000L
+
 /**
  * Far past the 3 s a failure nominally narrates itself for. Deliberately looser than
  * [InstallProgressSnackbarTest]'s window: the interval's *length* is that test's to pin, against a
@@ -51,9 +54,6 @@ private const val NOW = 1_800_000_000_000L
  * activity's first composition — sign-in screen, navigation, the dialog tearing down — and on a
  * device that measured well past 5 s. This test only pins that the round trip completes.
  */
-/** See [InstallFlowTest.offerAndAccept] — the offer dialog is a window, and lands late. */
-private const val OFFER_TIMEOUT_MS = 5_000L
-
 private const val FAILURE_TIMEOUT_MS = 15_000L
 
 /**

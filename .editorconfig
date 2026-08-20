@@ -1,0 +1,90 @@
+# Formatting rules, read by ktlint (see build.gradle.kts) and by IntelliJ/Android Studio, so the
+# editor and the build agree without either one holding a private copy. ktlint takes almost all of
+# its behaviour from this file rather than from the Gradle extension — the plugin only decides which
+# files to look at.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+# Code style, and the choice with the widest blast radius here. ktlint 1.x defaults to
+# `ktlint_official`, which is a house style of its own: it mandates trailing commas, rewraps every
+# function and class signature that crosses the line limit, and forces a multiline expression onto
+# its own line after `=`. Applying it would reformat most of this repo in one commit and fight the
+# IDE's own formatter afterwards.
+#
+# `intellij_idea` is what Android Studio produces with `kotlin.code.style=official`
+# (gradle.properties), which is what this codebase was written to. It keeps the diff to genuine
+# violations rather than to a change of house style, and keeps `ktlintFormat` and Ctrl-Alt-L in
+# agreement.
+ktlint_code_style = intellij_idea
+
+# Trailing commas, on both sides. Kotlin allows them, the codebase already uses them throughout, and
+# they keep a one-line diff to one line when a parameter is added.
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+
+# Import layout: no wildcards at any count, and nothing hand-ordered. Matches the existing files,
+# which list every import in full — a star import hides which symbol a file actually depends on.
+ij_kotlin_packages_to_use_import_on_demand = unset
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647
+
+# The same width the code and its comments are already written to, and the same number detekt's
+# MaxLineLength carries. Both have to be told; there is no shared source for it.
+max_line_length = 120
+
+# @Composable functions are PascalCase by convention — the same exemption detekt's FunctionNaming
+# already carries (config/detekt/detekt.yml). Named annotations rather than the rule switched off,
+# so a genuinely mis-named plain function is still caught. @PreviewTest is the screenshot plugin's
+# marker, and its previews are composables too.
+ktlint_function_naming_ignore_when_annotated_with = Composable, PreviewTest
+
+# Three rules `ktlint_code_style = intellij_idea` leaves on that this project switches off, all for
+# the same reason: each one imposes a layout the codebase deliberately does not use, and none of
+# them catches a defect. Measured on the run that introduced ktlint, they were 433 of 585 findings.
+#
+#   function-signature / class-signature collapse a declaration onto one line whenever it fits
+#     inside max_line_length. This codebase writes parameter lists one-per-line regardless — it
+#     keeps the diff of adding a parameter to one line, and Android Studio's own formatter leaves
+#     such a list alone, so leaving these on would mean ktlintFormat and Ctrl-Alt-L undoing each
+#     other on every touched file.
+#   blank-line-between-when-conditions puts a blank line between every branch of any `when` that
+#     has one multiline branch. Branches here are routinely one line with a comment above them,
+#     and doubling their height buys nothing.
+#
+# Everything else ktlint reports is left on, including the rules that found real defects the first
+# time they ran (stacked KDoc blocks, an unpaired backing property).
+ktlint_standard_function-signature = disabled
+ktlint_standard_class-signature = disabled
+ktlint_standard_blank-line-between-when-conditions = disabled
+
+# Two more, off for the same reason — a style preference imposed on code that is already consistent,
+# with no defect behind any of their findings:
+#
+#   function-expression-body rewrites `fun f(x: T) { throw E() }` as `fun f(x: T): Unit = throw E()`.
+#     Every finding it had here was that shape — a test double overriding a Unit-returning function
+#     to throw — and the expression form needs an explicit `: Unit` to compile, so it is longer and
+#     reads worse than what it replaces.
+#   backing-property-naming requires `_foo` to have a public `foo` beside it. The ViewModels here
+#     prefix every private mutable flow, whether or not it is exposed one-for-one: SettingsViewModel
+#     merges `_sync` into `state` rather than publishing it. Renaming it to `sync` would leave
+#     `private val sync` next to `private val _state` and read as the public half of the pair.
+ktlint_standard_function-expression-body = disabled
+ktlint_standard_backing-property-naming = disabled
+
+[*.{json,yml,yaml,xml,toml}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab

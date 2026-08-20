@@ -359,15 +359,23 @@ constraint applies: the offline tests fan out in parallel, then the live tests r
 in turn, so two journeys never hit the server at once. The layers can also be run individually:
 
 ```bash
-./gradlew detekt :app:lintDebug           # static analysis
+./gradlew detekt ktlintCheck :app:lintDebug  # static analysis
+./gradlew ktlintFormat                    # fix the formatting half of it in place
 ./gradlew :app:testDebugUnitTest          # JVM unit tests incl. MockEngine networking tests
 ./gradlew :app:validateDebugScreenshotTest  # Compose screenshot goldens (host-side, LayoutLib)
 ./gradlew :app:connectedDebugAndroidTest  # instrumentation tests (needs a device/emulator)
 ```
 
-- **Static analysis** — detekt (with the ktlint rule set) plus Android lint at
-  `checkAllWarnings`. detekt carries **no baseline** by design: any finding fails the build, so
-  fix the finding rather than regenerating one.
+- **Static analysis** — three tools with no overlap between them: detekt for Kotlin complexity,
+  naming and style, ktlint for formatting, Android lint at `checkAllWarnings` for the platform
+  checks. None of them carries a baseline by design: any finding fails the build, so fix the
+  finding rather than regenerating one. ktlint's half is usually one command away —
+  `./gradlew ktlintFormat`. Its rules come from `.editorconfig`, which Android Studio reads too,
+  so the editor and the build agree; the code style there is `intellij_idea` rather than ktlint's
+  own `ktlint_official`, which would restyle most of the repo and then fight Ctrl-Alt-L. (detekt
+  used to run the ktlint rule set itself, through `detekt-formatting`. That plugin was dropped
+  when ktlint arrived — two engines reporting the same finding under two rule ids, free to
+  disagree on version, is worse than either alone.)
 - **Unit tests** (`src/test`) run on the JVM with no device. `JellyfinApiTest` drives the Ktor
   client over a `MockEngine` to lock in the request-body wire format, URL/header construction,
   unknown-key tolerance, and error mapping. The decision-heavy pieces — merge, prune policy,

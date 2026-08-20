@@ -5,12 +5,12 @@ set -uo pipefail
 #
 # Runs every check in the project and prints one summary at the end:
 #
-#   1. Static analysis   (detekt, :app:lintDebug)           host-side, always runs
+#   1. Static analysis   (detekt, ktlintCheck, :app:lintDebug)  host-side, always runs
 #   2. Unit tests        (:app:testDebugUnitTest)           host-side, always runs
 #   3. Screenshot goldens(:app:validateDebugScreenshotTest) host-side, always runs
 #   4. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
 #
-# :app:testSummary then aggregates the JUnit XML of every test layer and the detekt/lint XML
+# :app:testSummary then aggregates the JUnit XML of every test layer and the detekt/ktlint/lint XML
 # reports into one HTML page at app/build/test-summary/index.html — on failures too, since that is
 # when a per-layer breakdown is most useful.
 #
@@ -279,7 +279,8 @@ refuse_if_device_shared() {
 
 # --concurrent's refusal, brought forward to before the host layers. The claim itself belongs after
 # them, but a run that is going to be refused should be refused in the first seconds rather than
-# after detekt, the unit tests and the goldens. The check inside the claim stays: a holder can also
+# after static analysis, the unit tests and the goldens. The check inside the claim stays: a holder
+# can also
 # appear while those layers are running.
 instrumented_lock_precheck() {
   local common
@@ -662,9 +663,23 @@ run_layer() {
 }
 
 if [[ "$RUN_CHECKS" -eq 1 ]]; then
-  # detekt covers Kotlin style/complexity, lint the Android-specific checks. lintDebug only —
-  # the release variant would report the same findings twice.
-  run_layer "static analysis" detekt :app:lintDebug \
+  # Three tools with no overlap: detekt covers Kotlin complexity/naming/style, ktlint formatting,
+  # lint the Android-specific checks. lintDebug only — the release variant would report the same
+  # findings twice.
+  #
+  # `ktlintCheck` unqualified, unlike the two beside it: ktlint is applied to every project (see the
+  # root build.gradle.kts), so the bare name runs it in all of them — the root's build scripts and
+  # settings.gradle.kts, :app's source sets and :baselineprofile's. Qualifying it would silently
+  # drop two thirds of the repo. A finding here is usually one command away from fixed:
+  # `./gradlew ktlintFormat`.
+  #
+  # `--continue` is load-bearing, and it is the whole reason this layer names its own Gradle flag.
+  # Without it Gradle stops at the first task that fails, so one detekt finding hides every ktlint
+  # and lint finding in the repo — and :app:testSummary then reports those two as "not run", which
+  # reads like they passed. The point of a layer that runs three tools is to learn all three
+  # answers in one go. The build still fails; --continue changes what gets reported, not the
+  # verdict.
+  run_layer "static analysis" --continue detekt ktlintCheck :app:lintDebug \
     && CHECKS_RESULT="passed" || CHECKS_RESULT="FAILED"
 else
   CHECKS_RESULT="skipped (--no-checks)"
@@ -688,8 +703,8 @@ elif [[ ${#DEVICES[@]} -eq 0 ]]; then
   echo
 else
   # Claimed here rather than up front, so a run that has to wait for another worktree spends the
-  # wait having already finished detekt, the unit tests and the goldens — the layers that need no
-  # device and no server. Nothing above this point touches either.
+  # wait having already finished static analysis, the unit tests and the goldens — the layers that
+  # need no device and no server. Nothing above this point touches either.
   instrumented_lock_claim
   if [[ ${#DEVICES[@]} -eq 1 ]]; then
     # One device is one Gradle invocation: nothing to interleave, nothing to stash.
@@ -756,6 +771,10 @@ if [[ "$FAILED" -ne 0 ]]; then
   print_report_link
   echo "Per-layer detail: app/build/reports/tests/ (unit),"
   echo "  app/build/reports/screenshotTest/ (goldens), app/build/reports/androidTests/ (behavior)."
+  if [[ "$CHECKS_RESULT" == "FAILED" ]]; then
+    echo "If the static-analysis failure is ktlint (formatting), it is fixable in one command:"
+    echo "  ./gradlew ktlintFormat"
+  fi
   if [[ "$SCREENSHOT_RESULT" == "FAILED" ]]; then
     echo "Screenshot goldens differ. If the change is intentional (new feature, fixed typo),"
     echo "re-bake the baselines and re-run:"

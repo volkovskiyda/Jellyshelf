@@ -257,7 +257,7 @@ private fun CategoryVideoList(
     } else if (videos.isEmpty()) {
         EmptyState(
             stringResource(
-                if (isUncategorized) R.string.empty_uncategorized else R.string.empty_category
+                if (isUncategorized) R.string.empty_uncategorized else R.string.empty_category,
             ),
         )
     } else {

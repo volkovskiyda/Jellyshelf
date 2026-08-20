@@ -141,8 +141,12 @@ class MiniPlayerHostingTest {
     fun theBarsButtons_reachTheRegisteredTransport() {
         val calls = mutableListOf<String>()
         nowPlaying.attach(object : NowPlayingState.Transport {
-            override fun playPause() { calls += "playPause" }
-            override fun stop() { calls += "stop" }
+            override fun playPause() {
+                calls += "playPause"
+            }
+            override fun stop() {
+                calls += "stop"
+            }
         })
         startPlaying()
         awaitBar()

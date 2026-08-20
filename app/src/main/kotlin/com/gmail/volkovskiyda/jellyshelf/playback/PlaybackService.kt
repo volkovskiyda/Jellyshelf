@@ -475,6 +475,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         }
     }
 
+    /** The same for a moment that decided several things at once, in the order the tracker chose. */
+    private fun List<WatchAction>.perform() = forEach { it.perform() }
+
     /**
      * How the server is delivering what is loaded right now, resolved at send time rather than
      * carried through the tracker: it can change mid-video, and only the player knows.
@@ -483,9 +486,6 @@ class PlaybackService : MediaSessionService(), KoinComponent {
      * transcode fallback swapped in; everything else is the direct stream this app asks for first.
      * A demo clip is neither, but it never reaches a report: those are gated out in the repository.
      */
-    /** The same for a moment that decided several things at once, in the order the tracker chose. */
-    private fun List<WatchAction>.perform() = forEach { it.perform() }
-
     private fun currentPlayMethod(): PlayMethod {
         val uri = player?.currentMediaItem?.localConfiguration?.uri
         return if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) {

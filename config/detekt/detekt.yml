@@ -48,6 +48,7 @@ style:
     # Previews are invoked reflectively by LayoutLib, never called from Kotlin.
     ignoreAnnotated: ['Preview', 'PreviewTest']
 
-formatting:
-  MaximumLineLength:
-    maxLineLength: 120
+# No `formatting:` block, and no detekt-formatting plugin behind one. That rule set is ktlint's,
+# wrapped: it is now run by ktlint itself (see build.gradle.kts), configured from .editorconfig, and
+# having both would report every layout finding twice. MaxLineLength above is detekt's own rule and
+# stays — .editorconfig carries the same 120 for ktlint, because nothing shares the number.

@@ -972,16 +972,16 @@ class SettingsViewModel(
     // ----------------------------------------------------------------------
 
     /**
-     * Hands the sync to WorkManager and (re)creates the periodic one. Deliberately not awaited:
-     * a tab switch clears this ViewModel, which used to cancel the sync mid-flight.
-     */
-    /**
      * Syncs — unless this is the first sync since signing in and the scope is still the whole
      * server, in which case it points that out instead and lets the next tap through.
      *
      * The rule lives here rather than in the composable because it is a rule: what the screen does
      * with [nudgeScope] is a rendering choice, but *whether* a tap syncs is not. Arming is once per
      * sign-in and survives process death, so the nudge can never become a permanent extra tap.
+     *
+     * A sync that does go ahead is handed to [SyncScheduler], which enqueues it and (re)creates the
+     * periodic worker. Deliberately not awaited: a tab switch clears this ViewModel, which used to
+     * cancel the sync mid-flight.
      */
     fun syncNow() {
         val indexUrl = _state.value.indexUrl

@@ -49,6 +49,13 @@ koinBom = "4.2.2"
 # Static analysis. 1.23.8 is the current stable line; it embeds its own Kotlin parser, so it lags
 # the project's Kotlin version without blocking it.
 detekt = "1.23.8"
+# Formatting, and the other half of that pair: detekt owns complexity, naming and style, ktlint owns
+# layout. Two refs because the two halves version independently — ktlint-gradle only wires the
+# engine into Gradle, while the engine decides how code is formatted. Pinning the engine rather than
+# inheriting whatever default the plugin ships is what stops a plugin bump from silently
+# reformatting the codebase; both are ours to move deliberately.
+ktlint = "1.8.0"
+ktlintGradle = "14.2.0"
 # Compose Preview Screenshot Testing. Alpha and versioned independently of AGP; needs AGP 9.0+.
 # This ref also decides two transitives that dependencyUpdates keeps offering newer versions of:
 # layoutlib (the renderer behind the goldens) and the JUnit Platform line. Both are the plugin's
@@ -137,7 +144,6 @@ koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compos
 koin-androidx-workmanager = { group = "io.insert-koin", name = "koin-androidx-workmanager" }
 koin-test = { group = "io.insert-koin", name = "koin-test" }
 screenshot-validation-api = { group = "com.android.tools.screenshot", name = "screenshot-validation-api", version.ref = "composeScreenshot" }
-detekt-formatting = { group = "io.gitlab.arturbosch.detekt", name = "detekt-formatting", version.ref = "detekt" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-ui-test-junit4-accessibility = { group = "androidx.compose.ui", name = "ui-test-junit4-accessibility" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
@@ -162,6 +168,7 @@ google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "googleDev
 jetbrains-kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "composeScreenshot" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlyticsPlugin" }
 firebase-perf = { id = "com.google.firebase.firebase-perf", version.ref = "firebasePerfPlugin" }
