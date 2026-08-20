@@ -1,0 +1,42 @@
+# Dependency PRs, so bumps arrive on their own instead of waiting for someone to run
+# `./gradlew dependencyUpdates` and read the report.
+#
+# Grouped and weekly on purpose. PRs themselves are cheap — ci.yml gates `testlab` and
+# `distribute` on a push to main, so a pull_request runs only the host-side `checks` job — but
+# every *merge* cuts a Test Lab run against the daily quota and pushes a fresh build to testers.
+# One grouped PR a week is one merge a week; ten single-dependency PRs would be ten.
+#
+# Majors are deliberately left ungrouped: they arrive one per PR, because a major is the kind of
+# bump that wants its own build, its own test run and its own place in the history.
+#
+# What this does NOT cover: the Gradle wrapper (gradle/wrapper/gradle-wrapper.properties, 9.7.0
+# today). Dependabot's gradle ecosystem reads the version catalogue and the build files, not the
+# wrapper, so the wrapper — and anything else Dependabot cannot see — stays on the manual
+# `./gradlew dependencyUpdates` channel.
+version: 2
+updates:
+  # The version catalogue (gradle/libs.versions.toml) is the single version source, and
+  # Dependabot updates catalogues natively — no per-module configuration needed.
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      gradle-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # Both workflows pin actions by major tag (actions/checkout@v7,
+  # gradle/actions/setup-gradle@v6, …), so these move rarely — one group for all of them.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
