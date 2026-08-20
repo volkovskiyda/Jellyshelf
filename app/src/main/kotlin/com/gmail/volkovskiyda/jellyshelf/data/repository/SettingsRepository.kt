@@ -55,6 +55,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val CATEGORIES_SEARCH_ALL = booleanPreferencesKey("categories_search_all")
         val SYNC_SCOPE_NUDGED = booleanPreferencesKey("sync_scope_nudged")
         val DEMO_MODE = booleanPreferencesKey("demo_mode")
+        val LAST_PLAYED_VIDEO_ID = stringPreferencesKey("last_played_video_id")
         val UPDATE_SOURCE = stringPreferencesKey("update_source")
         val DISMISSED_UPDATE_GITHUB = intPreferencesKey("dismissed_update_version_code_github")
         val DISMISSED_UPDATE_APP_DISTRIBUTION =
@@ -329,6 +330,16 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         ds.edit {
             it[codeKey] = versionCode
             it[atKey] = timestamp
+        }
+    }
+
+    override val lastPlayedVideoId: Flow<String?> = prefs
+        .map { it[Keys.LAST_PLAYED_VIDEO_ID] }
+
+    /** A null clears the key rather than storing an empty string, so "nothing" has one spelling. */
+    override suspend fun setLastPlayedVideoId(youtubeId: String?) {
+        ds.edit {
+            if (youtubeId == null) it.remove(Keys.LAST_PLAYED_VIDEO_ID) else it[Keys.LAST_PLAYED_VIDEO_ID] = youtubeId
         }
     }
 

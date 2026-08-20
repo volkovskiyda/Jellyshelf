@@ -71,6 +71,20 @@
             </intent-filter>
         </service>
 
+        <!-- A media key pressed while nothing is running — a headset button, a Bluetooth remote —
+             arrives as a broadcast, and there is no service alive to receive it. This resolves it
+             to the session service and starts it, which is the other half of onPlaybackResumption:
+             without it a media key reaches nothing at all. media3's receiver subclassed rather
+             than used directly, so it can decline to start the service when there is nothing to
+             resume — see MediaButtonGate. Exported because the sender is the system. -->
+        <receiver
+            android:name=".playback.MediaButtonGate"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!-- Remove WorkManager's default on-startup initializer: Koin's workManagerFactory()
              initializes WorkManager with the injection-aware worker factory instead (see
              JellyshelfApplication). -->

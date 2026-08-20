@@ -25,10 +25,12 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
@@ -89,6 +91,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val repo: LibraryRepository by inject()
     private val settingsState: AppSettingsState by inject()
     private val nowPlaying: NowPlayingState by inject()
+    private val settingsRepository: SettingsRepository by inject()
+    private val dispatchers: DispatcherProvider by inject()
+    private val resumable: ResumableCache by inject()
 
     // The player's application thread is this service's main thread; session callbacks, the
     // listener and the periodic saver all stay on it, which is also what makes the plain-var
@@ -272,6 +277,60 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 MediaSession.MediaItemsWithStartPosition(resolved, index, ticksToMillis(resumeTicks))
             }
         }
+
+        /**
+         * What the system's own resumption surfaces get when they ask: the output switcher, a
+         * Bluetooth or headset play button, a reboot. They ask a *dead* process, so everything
+         * here is read back from storage rather than from any live state.
+         *
+         * The three-argument form, which is the one media3 actually invokes (`MediaSessionImpl`
+         * calls it directly; its two-argument sibling is deprecated and only reached through this
+         * one's default implementation). [isForPlayback] is false when the system wants the
+         * metadata to *offer* a resumption rather than to start one — the answer is the same
+         * either way, and media3 decides whether to press play.
+         *
+         * A single-item queue, matching the notification-reopen path. The list the video was
+         * originally played from died with the process, and inventing one would queue up videos
+         * the user never chose.
+         *
+         * Failing the future is the correct answer to "nothing to resume" — the system then shows
+         * nothing at all, which is what should happen after an explicit stop, after the video has
+         * left the library, or while signed out.
+         */
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
+            val lastPlayedId = settingsRepository.lastPlayedVideoId.first()
+            val video = lastPlayedId?.let { repo.observeVideo(it).first() }
+            val request = resumptionRequest(
+                lastPlayedId = lastPlayedId,
+                videoExists = video != null,
+                savedTicks = video?.playbackPositionTicks ?: 0L,
+                played = video?.played == true,
+            )
+            // resolve() hands back a URI-less item when the row cannot be turned into a stream —
+            // signed out, or a demo row left behind by a half-cleared demo. Playing that would
+            // surface as an ExoPlayer source error with no screen to show it on.
+            val item = request
+                ?.let { resolve(MediaItem.Builder().setMediaId(it.youtubeId).build()) }
+                ?.takeIf { it.localConfiguration != null }
+            if (request == null || item == null) {
+                // Reached only when [MediaButtonGate] said yes and the answer turned out to be
+                // no — the video has left the library since, or the session is signed out — or
+                // when the asker was not a media button at all. Correcting the mirror is what
+                // makes that self-healing: the next media button is declined outright, before a
+                // service that cannot play is ever started.
+                resumable.store(false)
+                error("nothing to resume")
+            }
+            MediaSession.MediaItemsWithStartPosition(
+                listOf(item),
+                0,
+                request.startPositionMs,
+            )
+        }
     }
 
     private suspend fun resolve(item: MediaItem): MediaItem {
@@ -330,6 +389,16 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             // The same moment tells the mini-player bar what to draw — the metadata is the one
             // resolve() attached, so the bar shows the same title and artwork the notification
             // does. A null item is the queue emptying, which is the bar's cue to go away.
+            // On the application scope, not this service's: the clear below happens as the queue
+            // empties, which is immediately before the service is torn down, and a write on the
+            // service scope would be cancelled with it — leaving a video the user explicitly
+            // stopped on offer in the system's resumption UI.
+            dispatchers.applicationScope.launch {
+                settingsRepository.setLastPlayedVideoId(mediaItem?.mediaId)
+            }
+            // The synchronous mirror a media button is answered from, written here so the two
+            // never disagree about whether there is anything to come back to.
+            resumable.store(mediaItem != null)
             nowPlaying.show(
                 mediaItem?.let {
                     NowPlaying(

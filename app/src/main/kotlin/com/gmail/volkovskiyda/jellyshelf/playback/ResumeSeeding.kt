@@ -28,3 +28,30 @@ internal fun resumeSeekMs(transitionReason: Int, savedTicks: Long): Long? {
     if (!queueMove) return null
     return ticksToMillis(savedTicks).takeIf { it > 0L }
 }
+
+/** What a system resumption request should hand back — see [resumptionRequest]. */
+internal data class ResumptionRequest(val youtubeId: String, val startPositionMs: Long)
+
+/**
+ * What to give the system's media-resumption surfaces when they ask, or null when there is
+ * nothing to resume — the caller then fails the future, and the system shows nothing.
+ *
+ * Null is the *right* answer in two ordinary cases, and neither is an error worth surfacing:
+ * nothing has played since the app was installed or since the last explicit stop, or the video
+ * that was playing has since gone from the library (a re-scoped sync, a file deleted on the
+ * server). Resuming a video that is no longer there would fail later and less legibly.
+ *
+ * A watched video starts at zero rather than at its saved position. Completion clears the
+ * position anyway, so this is belt and braces — but the alternative, resuming a finished video
+ * two seconds from its end, is the kind of thing that only shows up in front of a user.
+ */
+internal fun resumptionRequest(
+    lastPlayedId: String?,
+    videoExists: Boolean,
+    savedTicks: Long,
+    played: Boolean,
+): ResumptionRequest? {
+    if (lastPlayedId == null || !videoExists) return null
+    val startMs = if (played) 0L else ticksToMillis(savedTicks).coerceAtLeast(0L)
+    return ResumptionRequest(lastPlayedId, startMs)
+}

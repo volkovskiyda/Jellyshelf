@@ -143,6 +143,23 @@ interface SettingsRepository {
     suspend fun setDismissedUpdate(source: UpdateSource, versionCode: Int, timestamp: Long)
 
     /**
+     * The youtubeId the player was last on, or null when there is nothing to resume.
+     *
+     * What the system's media-resumption surfaces — the output switcher, a Bluetooth play button —
+     * restart after the process is gone. It has to be a *stored* value rather than the back stack,
+     * because player entries are deliberately never persisted there, and it is a preference rather
+     * than a column because it is app state about the player, not a fact about a video: the schema
+     * window closed at v1.0 and a column would need a real migration to say something Room has no
+     * business knowing.
+     *
+     * Written whenever the queue moves to a video and cleared when the queue empties, which is the
+     * explicit stop — "done watching" should not come back from a quick-settings tile. A process
+     * killed with a video still loaded keeps the value, which is the whole point.
+     */
+    val lastPlayedVideoId: Flow<String?>
+    suspend fun setLastPlayedVideoId(youtubeId: String?)
+
+    /**
      * Epoch millis of the last completed check, `0` when never. Shared across sources: it throttles
      * how often the app *asks*, which is about network politeness rather than about any one
      * channel. `0` means "the window has elapsed", so a fresh install checks on first launch.

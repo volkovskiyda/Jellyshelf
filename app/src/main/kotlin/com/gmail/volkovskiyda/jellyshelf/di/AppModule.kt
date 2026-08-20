@@ -42,6 +42,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
+import com.gmail.volkovskiyda.jellyshelf.playback.ResumableCache
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesViewModel
@@ -136,6 +137,8 @@ val appModule = module {
     singleOf(::SyncScheduler)
     // Written by PlaybackService, read by whatever screen is not the player.
     singleOf(::NowPlayingState)
+    // Read from a broadcast receiver on a cold process — see MediaButtonGate.
+    single { ResumableCache(androidContext()) }
 
     // Process-lifetime UI state that must survive tab switches (which clear tab ViewModels).
     singleOf(::LibraryFilterState)
