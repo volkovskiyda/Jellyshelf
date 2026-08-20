@@ -359,8 +359,11 @@ class SyncInstrumentedTest {
     @Test
     fun sync_leavesALargeMetadataGapToTheDeliberateBulkFetch() = runBlocking {
         val ytDlp = FakeYtDlp(ApplicationProvider.getApplicationContext(), dispatchers)
-        // Twenty-five missing videos is the threshold: the pass must not run at all.
-        val repo = repository(serverIds = List(25) { "video-0000$it" }, ytDlp = ytDlp)
+        // Twenty-five missing videos is the threshold: the pass must not run at all. Zero-padded
+        // because a youtubeId is exactly eleven characters (see YoutubeId) — "video-0000$it" grows
+        // to twelve at ten, and the sync silently drops every id it cannot parse, so the seed would
+        // land back under the threshold and auto-fill after all.
+        val repo = repository(serverIds = List(25) { "video-%05d".format(it) }, ytDlp = ytDlp)
 
         val result = repo.sync() as SyncResult.Success
 
