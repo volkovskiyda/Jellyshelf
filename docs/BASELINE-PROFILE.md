@@ -230,6 +230,27 @@ before it reaches the network. The live tests check the same credentials in isol
 `LiveEndpointTest` into the command above for the endpoints alone, or keep `LiveUiJourneyTest` to
 check them through the same form this run fills in.
 
+If the on-screen status reads `Request timeout has expired [url=…]` and the server is plainly up —
+a browser on the same device loads it — suspect **local network protection**. From Android 16, a
+connection to a private address (`10.*`, `172.16-31.*`, `192.168.*`, link-local, multicast) needs
+`ACCESS_LOCAL_NETWORK` on top of `INTERNET`, and an app without it is not refused, it is *dropped*:
+the request hangs until the client's own timeout fires and reports the server as unreachable. The
+app declares the permission, so the install grant carries it; a device where it was revoked by hand
+will not. Check, and grant:
+
+```sh
+adb shell dumpsys package com.gmail.volkovskiyda.jellyshelf.benchmark | grep ACCESS_LOCAL_NETWORK
+adb shell pm grant com.gmail.volkovskiyda.jellyshelf.benchmark android.permission.ACCESS_LOCAL_NETWORK
+```
+
+`ensureLibrary` grants it at the top of every run for exactly this reason. The `appops` view is the
+one that says whether a connection was actually dropped — `rejectTime` is the tell, and it carries a
+timestamp you can line up against the failure:
+
+```sh
+adb shell appops get com.gmail.volkovskiyda.jellyshelf.benchmark | grep ACCESS_LOCAL_NETWORK
+```
+
 **Playback never got past 0:00.** The generator waits for the player's elapsed-position label to
 move, not for the player screen or the pause button, so the video really did not roll — or its
 controls were hidden from UiAutomator. In order of likelihood:
@@ -294,11 +315,46 @@ profiling variant does: a measurement run must not cost you the app you actually
 ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest
 ```
 
-Same prerequisites as generating: a physical arm64 device, awake and unlocked. And the same state
-requirement, more strictly — every test there needs a **populated library**, because a cold launch
-into an empty screen is fast for reasons that have nothing to do with the profile. Run
-`generateReleaseBaselineProfile` first, or drive the app to a synced Library tab by hand; the
-benchmark checks and fails with that message rather than reporting the empty launch as a win.
+With more than one device attached that runs on each in turn, which is rarely what you want for a
+number you intend to compare; `ANDROID_SERIAL=<serial> ./gradlew …` picks one.
+
+Same prerequisites as generating: a physical arm64 device, awake and unlocked. It needs the same
+**populated library**, more strictly — a cold launch into an empty screen is fast for reasons that
+have nothing to do with the profile — but it no longer asks you to arrange one. It signs in and
+syncs for itself, through the same `ensureLibrary` steps the generator's `generate1Connect` walks,
+sharing them from `LibraryJourney.kt`. The checks that fail on an empty list stay where they were,
+as the backstop rather than the instruction.
+
+This file used to say to run `generateReleaseBaselineProfile` first, which could not work — worth
+knowing, because the failure reads as a broken benchmark rather than as a missing prerequisite:
+
+- The generator's three tests are **skipped** outside `nonMinifiedRelease`, since `BaselineProfileRule`
+  only collects there. A `benchmarkRelease` run shows them as `<skipped/>` in the XML and drives
+  nothing.
+- **AGP's connected-test teardown uninstalls the app under test.** So does the generation run's — the
+  signed-in, synced `…jellyshelf.benchmark` install it leaves behind is gone before the benchmark's
+  own run installs its variant, along with its credentials and its database. It is the same teardown
+  the `.benchmark` application id exists to keep away from your real install.
+
+That second point still applies to the benchmark itself, and is why the first test of a run pays for
+a full sign-in and sync every time. `-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true`
+suppresses the teardown if you are iterating and want the next run to start from a synced install.
+
+It also means the benchmark waits for that sync to *finish* rather than for rows to appear, and then
+force-stops the app until it stays stopped. Both are for `StartupMode.COLD`, which checks the
+process is gone the instant macrobenchmark kills it — and WorkManager's `ForceStopRunnable` restarts
+the process to reschedule whatever is queued, so a sync still in flight makes that check lose a race
+it cannot see:
+
+```
+Benchmark: Force-stopping process com.gmail.volkovskiyda.jellyshelf.benchmark
+WM-ForceStopRunnable: Application was force-stopped, rescheduling.
+java.lang.IllegalStateException: Package … must not be running prior to cold start!
+```
+
+The message names neither WorkManager nor the sync. On a Pixel 5 the first sync was still running
+seven seconds after the library filled; a faster device finishes sooner and the same run passes,
+which is what makes this look like a device problem rather than a timing one.
 
 Two things it reports beyond the framework's startup timings:
 

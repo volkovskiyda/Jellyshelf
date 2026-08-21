@@ -10,11 +10,8 @@ import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.TraceSectionMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
-import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.Until
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,13 +25,15 @@ import org.junit.runner.RunWith
  * benchmark records and reports it beside the framework's own startup and frame metrics. A slice
  * that gets slower shows up as a number here rather than as a vague sense that launches feel worse.
  *
- * Run it by hand with the Pixel 5 attached, awake and unlocked. Like the profile generator beside
- * it, it is not part of any build and CI never invokes it — the app APK is arm64-only, which no
- * x86_64 runner or Gradle-managed device can install:
+ * Run it by hand with a device attached, awake and unlocked. Like the profile generator beside it,
+ * it is not part of any build and CI never invokes it — the app APK is arm64-only, which no x86_64
+ * runner or Gradle-managed device can install:
  *
  * ```
  * ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest
  * ```
+ *
+ * With more than one device attached that runs on each in turn; `ANDROID_SERIAL` picks one.
  *
  * Results print to the console and land as JSON in
  * `baselineprofile/build/outputs/connected_android_test_additional_output/`, with the Perfetto
@@ -46,16 +45,19 @@ import org.junit.runner.RunWith
  * both the release build and `.debug` (see `:app`'s `finalizeDsl`). Measuring a debug build would
  * measure the debug build.
  *
- * **It measures whatever state the install is in.** Every test below needs a populated library:
- * [startup] measures a cold launch *into a list*, and the browse section only exists because there
- * are rows to map. Run [BaselineProfileGenerator] first — it signs in, syncs and leaves the app on
- * the Library tab, which is exactly the state these want — or drive the app there by hand. The
- * checks below say so rather than reporting a fast launch into an empty screen as an improvement.
+ * **It brings its own library.** Every test here needs a populated one: [startup] measures a cold
+ * launch *into a list*, and the browse section only exists because there are rows to map. This used
+ * to be the reader's job — the file said to run [BaselineProfileGenerator] first — and that could
+ * not be done. The generator's tests are `@skipped` in this variant, because `BaselineProfileRule`
+ * only collects in `nonMinifiedRelease`; and AGP's connected-test teardown uninstalls the app under
+ * test at the end of every run, so a real generation run's signed-in, synced install is gone before
+ * this one starts. [ensureLibrary] is therefore called here too, from [connect] below, and the
+ * checks that fail on an empty list are kept as the backstop they always were.
  *
  * **Comparing across versions is manual, and deliberately so.** There is no committed baseline to
  * regress against: these numbers depend on the device, the library size and the thermal state of
  * the phone, so a threshold in the repository would fail for reasons that have nothing to do with a
- * commit. Record a run before a change and one after, on the same phone with the same library, and
+ * commit. Record a run before a change and one after, on the same device with the same library, and
  * read the difference — the same discipline `BrowseCostBenchmark` documents for its own numbers.
  */
 @RunWith(AndroidJUnit4::class)
@@ -66,16 +68,34 @@ class JourneyBenchmark {
 
     /**
      * The app being measured, from the runner argument `:baselineprofile`'s build script fills in
-     * off the built APK's own metadata — the same channel [BaselineProfileGenerator] reads, and for
-     * the same reason: the profiling variants carry a `.benchmark` suffix, so the shipped
-     * application id is not the one installed here.
+     * off the built APK's own metadata — the profiling variants carry a `.benchmark` suffix, so the
+     * shipped application id is not the one installed here.
      */
-    private val targetPackage = requireNotNull(
-        InstrumentationRegistry.getArguments().getString("targetAppId"),
-    ) {
-        "targetAppId runner argument missing — it is set in baselineprofile/build.gradle.kts, so " +
-            "this run is not the one Gradle configures. Use " +
-            "./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest."
+    private val targetPackage = JourneyConfig.targetPackage
+
+    /**
+     * Signs in, syncs and leaves the app on a populated Library tab, before anything is measured.
+     *
+     * Its own [MacrobenchmarkScope] rather than the one `measureRepeated` hands the blocks below:
+     * this has to happen once, ahead of the iterations, and outside every trace the run records.
+     * Doing it in a `setupBlock` would work but would repeat the whole check on each of the
+     * [ITERATIONS] passes for nothing.
+     *
+     * Cheap on the second call and on every later run against a surviving install — [ensureLibrary]
+     * reads the state off the screen and steps past whatever has already happened. The first call
+     * after a fresh install pays for a real sign-in and sync, which is the price of the teardown
+     * uninstall and not something this can avoid.
+     *
+     * It ends with [awaitStoppable] because connecting is not free of consequences: a first sync
+     * leaves WorkManager holding live work, and work is what brings a force-stopped process back.
+     */
+    @Before
+    fun connect() {
+        val scope = MacrobenchmarkScope(targetPackage, launchWithClearTask = true)
+        scope.ensureLibrary()
+        // Leaves the process gone and staying gone, which [startup] needs and cannot check for
+        // itself in a way that says what went wrong.
+        scope.awaitStoppable()
     }
 
     /**
@@ -109,7 +129,9 @@ class JourneyBenchmark {
         setupBlock = { pressHome() },
     ) {
         startActivityAndWait()
-        awaitLibrary()
+        // Short, not the sync budget [awaitLibrary] defaults to: [connect] has already established
+        // that the rows are there, so anything slower than a launch here is a failure, not a wait.
+        awaitLibrary(LIBRARY_TIMEOUT_MS)
     }
 
     /**
@@ -133,32 +155,17 @@ class JourneyBenchmark {
             startActivityAndWait()
         },
     ) {
-        val list = awaitLibrary()
-        // Keep the gesture off the display edges, which the system back gesture owns.
-        list.setGestureMargin(device.displayWidth / GESTURE_MARGIN_FRACTION)
-        repeat(SCROLLS) {
-            list.fling(Direction.DOWN)
-            device.waitForIdle()
+        awaitLibrary(LIBRARY_TIMEOUT_MS)
+        // The first fling is checked, and only the first: it reports whether the content actually
+        // moved, which is the difference between a scroll benchmark and a benchmark of a list
+        // sitting still. That second thing is what a gesture the device quietly refused produces,
+        // and in the numbers it looks like an improvement. The rest are allowed to run out of list.
+        check(flingScreen(Direction.DOWN)) {
+            "The library did not scroll, so there are no frames here worth timing. Either the " +
+                "gesture never reached the list, or the library is short enough to fit on this " +
+                "screen, which no benchmark can make scrollable."
         }
-    }
-
-    /**
-     * The library list, once it has rows in it, or a failed run.
-     *
-     * Throws rather than returning null on purpose: a benchmark that quietly measured a launch onto
-     * an empty screen would report a number that looks like an improvement and means nothing. The
-     * selector is a resource id published from a Compose test tag by `testTagsAsResourceId` — the
-     * same bridge [BaselineProfileGenerator] steers by.
-     */
-    private fun MacrobenchmarkScope.awaitLibrary(): UiObject2 {
-        checkNotNull(device.wait(Until.findObject(By.res(LIBRARY_ROW)), TIMEOUT_MS)) {
-            "The library has no rows, so there is nothing here worth timing. Run " +
-                "BaselineProfileGenerator first to sign in and sync, or check that " +
-                "testTagsAsResourceId is still set on MainActivity's root Scaffold."
-        }
-        return checkNotNull(device.wait(Until.findObject(By.res(LIBRARY_LIST)), TIMEOUT_MS)) {
-            "Library rows exist but the list container does not — the resource-id bridge broke."
-        }
+        repeat(SCROLLS - 1) { flingScreen(Direction.DOWN) }
     }
 
     private companion object {
@@ -166,8 +173,8 @@ class JourneyBenchmark {
          * The section names, repeated from `:app`'s `util/Traces.kt`.
          *
          * They have to be repeated: this is a `com.android.test` module targeting `:app`, so it
-         * cannot see a single class of it — the same reason [BaselineProfileGenerator] holds its own
-         * copies of the resource ids it steers by. That makes these a contract rather than a
+         * cannot see a single class of it — the same reason [LibraryJourney.kt][JourneyConfig] holds
+         * its own copies of the resource ids it steers by. That makes these a contract rather than a
          * reference, and a one-sided rename does not fail to compile, it silently measures nothing.
          * `Traces` says so on the other side too.
          */
@@ -176,19 +183,14 @@ class JourneyBenchmark {
         const val ACTIVITY_ON_CREATE = "Jellyshelf.activity.onCreate"
         const val LIBRARY_BROWSE = "Jellyshelf.library.browse"
 
-        /** Resource ids, published from Compose test tags by `testTagsAsResourceId`. */
-        const val LIBRARY_LIST = "library_list"
-        const val LIBRARY_ROW = "library_row"
-
         /**
-         * Enough for a median to mean something without the phone heating up, which changes the
+         * Enough for a median to mean something without the device heating up, which changes the
          * answer more than most code does. Raise it when chasing a small difference, and let the
          * device cool between runs.
          */
         const val ITERATIONS = 5
 
-        const val TIMEOUT_MS = 10_000L
-        const val SCROLLS = 3
-        const val GESTURE_MARGIN_FRACTION = 5
+        /** Long enough for a launch to render its first rows, short enough to fail fast. */
+        const val LIBRARY_TIMEOUT_MS = 10_000L
     }
 }
