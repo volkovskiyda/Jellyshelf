@@ -303,4 +303,24 @@
       free to move one without silently moving the other.
     -->
     <string name="notification_permission_dismiss" tools:ignore="DuplicateStrings">Not now</string>
+
+    <!--
+      The rationale shown before Android's own ACCESS_LOCAL_NETWORK dialog, on API 36+ only.
+
+      This permission is unusual in that its absence produces no error: Android drops the
+      connection rather than refusing it, so the app waits out its own request timeout and reports
+      the server as unreachable. The body therefore has to describe a symptom the user may already
+      have seen and blamed on their server, which is why it is more concrete than the notification
+      one — and has to say what is *not* being done, since "let this app see devices on your
+      network" is a fair thing to hesitate over.
+    -->
+    <string name="local_network_permission_title">Allow Jellyshelf to reach your server?</string>
+    <string name="local_network_permission_body">A Jellyfin server on your own network — anything at a 192.168, 10.x or .local address — is behind a separate Android permission from Android 16 onwards, on top of ordinary internet access.
+
+Jellyshelf uses it for one thing: connecting to the server address you enter. It does not scan your network or look for anything else on it.
+
+Without it, Android does not refuse the connection, it silently drops it — so signing in sits there and then reports the server as unreachable, even though the server is fine.</string>
+    <string name="local_network_permission_allow" tools:ignore="DuplicateStrings">Allow</string>
+    <!-- Its own string for the same reason notification_permission_dismiss is: unrelated refusals. -->
+    <string name="local_network_permission_dismiss" tools:ignore="DuplicateStrings">Not now</string>
 </resources>

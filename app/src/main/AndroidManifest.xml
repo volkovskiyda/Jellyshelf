@@ -5,6 +5,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- A self-hosted Jellyfin is usually on the same LAN as the phone, and from Android 16 that
+         is its own permission: local network protection puts every connection to an RFC1918 (or
+         link-local, or multicast) address behind ACCESS_LOCAL_NETWORK, on top of INTERNET. An app
+         that does not declare it does not get an error — the connection is dropped and the request
+         sits there until the client's own timeout fires, which reads as "the server is down"
+         rather than as a missing permission. On an Android 17 tablet this app spent 30 seconds per
+         sign-in doing exactly that while the browser beside it loaded the same URL.
+
+         Unknown on API < 36, where the platform ignores it. Declaring it is what makes the install
+         grant carry: the system hands it to an app that asks for it up front, flagged
+         REVOKE_WHEN_REQUESTED, so a first launch reaches a LAN server without a prompt and the
+         permission only becomes a dialog if the app ever requests it explicitly. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
     <!-- In-app playback runs as a media foreground service (PlaybackService). Its notification
          needs POST_NOTIFICATIONS on API 33+, requested at runtime from the library screen once it
          has videos in it (see NotificationPrompt); when denied, playback still works — the media
