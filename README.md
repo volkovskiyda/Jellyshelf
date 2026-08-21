@@ -14,6 +14,40 @@ module) · Compose + Navigation 3 + Adaptive ·
 Media3 (ExoPlayer + MediaSession) · Room · Ktor (OkHttp engine) / kotlinx.serialization ·
 WorkManager · DataStore · Coil · Koin · bundled yt-dlp (youtubedl-android).
 
+## Screenshots
+
+Taken in [demo mode](#demo-mode--try-it-without-a-server), so the library is the seeded one
+rather than a real archive. Both sections are collapsed on purpose — expand one and the images
+download then, not on every visit to this page.
+
+<!-- Regenerate: install the debug build, Settings -> Try demo, then `adb exec-out screencap -p`.
+     SystemUI demo mode (`adb shell am broadcast -a com.android.systemui.demo -e command enter`)
+     is what pins the status bar to 12:00 / 100% with no notification icons. -->
+
+<details>
+<summary><b>Phone</b> — Pixel 5, 1080×2340</summary>
+<br>
+
+| Library | Categories | Video detail | Settings |
+| --- | --- | --- | --- |
+| <img src="docs/screenshots/pixel5-library.png" alt="Library list with search field, thumbnails and a watched marker" width="200"> | <img src="docs/screenshots/pixel5-categories.png" alt="Categories screen with Channels, YouTube categories and Years tabs" width="200"> | <img src="docs/screenshots/pixel5-detail.png" alt="Video detail with play button, mark as watched and chapter list" width="200"> | <img src="docs/screenshots/pixel5-settings-dark.png" alt="Settings in dark theme showing the theme switch and demo mode notice" width="200"> |
+
+</details>
+
+<details>
+<summary><b>Tablet</b> — Pixel Tablet, 2560×1600 landscape</summary>
+<br>
+
+| Library | Categories |
+| --- | --- |
+| <img src="docs/screenshots/tablet-library.png" alt="Library list on a tablet in landscape" width="400"> | <img src="docs/screenshots/tablet-categories.png" alt="Categories on a tablet, all six grouping tabs visible at once" width="400"> |
+
+| Video detail | Settings |
+| --- | --- |
+| <img src="docs/screenshots/tablet-detail.png" alt="Video detail on a tablet, scrolled to the play button and description" width="400"> | <img src="docs/screenshots/tablet-settings-dark.png" alt="Settings on a tablet in dark theme" width="400"> |
+
+</details>
+
 ## The data pipeline
 
 ```
