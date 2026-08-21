@@ -17,10 +17,9 @@ import io.ktor.client.plugins.timeout
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.contentLength
-import io.ktor.utils.io.core.isEmpty
-import io.ktor.utils.io.core.readBytes
 import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.withContext
+import kotlinx.io.readByteArray
 import timber.log.Timber
 import java.io.File
 import java.security.MessageDigest
@@ -99,8 +98,8 @@ class ApkInstaller(
                 target.outputStream().use { out ->
                     while (!channel.isClosedForRead) {
                         val packet = channel.readRemaining(DOWNLOAD_CHUNK_BYTES)
-                        while (!packet.isEmpty) {
-                            val bytes = packet.readBytes()
+                        while (!packet.exhausted()) {
+                            val bytes = packet.readByteArray()
                             out.write(bytes)
                             digest.update(bytes)
                             received += bytes.size
