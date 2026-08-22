@@ -32,8 +32,11 @@ set -uo pipefail
 #
 # So on more than one device the layer runs in two phases: everything outside the live package fans
 # out as before, then the live package runs once per device with ANDROID_SERIAL pinned, strictly
-# one at a time. Every test still runs on every device; only the overlap is gone. One device is one
-# invocation, unchanged. Because Gradle clears the results directory on each invocation, each
+# one at a time. Every test is still *offered* to every device; only the overlap is gone. Whether it
+# ran is a separate question: the live tests skip themselves rather than fail, so a phase in which
+# every one of them skipped is a green invocation that touched nothing. That reports SKIP rather
+# than PASS and names the device in the summary — see live_layer_covered — because the alternative
+# is coverage that silently never happened. One device is one invocation, unchanged. Because Gradle clears the results directory on each invocation, each
 # phase's XML is stashed and put back before the summary — see stash_instrumented_results.
 #
 # The script still asks which device to use with more than one attached, since the choice is now
@@ -440,6 +443,24 @@ restore_instrumented_results() {
   return $status
 }
 
+# True when the live tests whose XML is on disk actually ran. Every live test guards itself with
+# assumeTrue — no .test.env, no sync scope, server unreachable — and a skip is not a failure, so a
+# run where all of them skip is a *green* invocation that touched nothing. On API 36+ that is the
+# ordinary outcome for a device whose app has not been granted ACCESS_LOCAL_NETWORK: the
+# reachability probe is dropped rather than refused, times out, and the whole package assumes itself
+# away. Counting testcases in the live package rather than whole files keeps this usable from the
+# single-device branch too, where one invocation carries the offline half as well.
+live_layer_covered() {
+  local counts total skipped
+  counts="$(cat "$ANDROID_TEST_RESULTS"/*.xml 2>/dev/null | awk -v pkg="$LIVE_PACKAGE" '
+    index($0, "<testcase ") { live = (index($0, "classname=\"" pkg) > 0); if (live) total++ }
+    live && index($0, "<skipped") { skipped++ }
+    END { print (total + 0) " " (skipped + 0) }
+  ')"
+  total="${counts%% *}" ; skipped="${counts##* }"
+  [[ "$total" -gt 0 && "$skipped" -lt "$total" ]]
+}
+
 # Runs from a trap, so it must not disturb the exit status the run had arrived at, and must survive
 # being called twice — the INT handler exits, which fires the EXIT trap on top of it.
 awake_restore() {
@@ -643,6 +664,10 @@ fi
 echo
 
 CHECKS_RESULT="" ; UNIT_RESULT="" ; SCREENSHOT_RESULT="" ; INSTRUMENTED_RESULT=""
+# Devices whose live tests all skipped. A space-separated string rather than an array: this
+# is read while empty, and bash 3.2 — still /bin/bash on macOS — treats "${arr[@]}" on an
+# empty array as unbound under `set -u`.
+LIVE_UNCOVERED=""
 FAILED=0
 # Printed as an absolute file:// URL at the end — terminals linkify that, a relative path
 # they do not, and the point of the report is that it opens in one click.
@@ -650,8 +675,19 @@ SUMMARY_REPORT="$PWD/app/build/test-summary/index.html"
 
 run_layer() {
   local label="$1" ; shift
+  # A layer that can succeed without having run anything — the live ones — names a predicate here.
+  # It is consulted only once Gradle has succeeded, and answering non-zero downgrades the verdict
+  # from PASS to SKIP (return 2) without touching the exit status: a layer that ran nothing has not
+  # failed, it has just covered nothing, and "PASS" is the one thing that must not be printed for it.
+  local verdict_fn=""
+  if [[ "${1:-}" == "--verdict-fn" ]]; then verdict_fn="$2" ; shift 2 ; fi
   echo "-- $label --"
   if ./gradlew "$@" --console=plain; then
+    if [[ -n "$verdict_fn" ]] && ! "$verdict_fn"; then
+      echo "SKIP: $label — every test in it skipped, so nothing was covered"
+      echo
+      return 2
+    fi
     echo "PASS: $label"
     echo
     return 0
@@ -708,8 +744,15 @@ else
   instrumented_lock_claim
   if [[ ${#DEVICES[@]} -eq 1 ]]; then
     # One device is one Gradle invocation: nothing to interleave, nothing to stash.
-    run_layer "behavior tests (on ${DEVICES[0]})" :app:connectedDebugAndroidTest \
-      && INSTRUMENTED_RESULT="passed" || INSTRUMENTED_RESULT="FAILED"
+    if run_layer "behavior tests (on ${DEVICES[0]})" :app:connectedDebugAndroidTest; then
+      INSTRUMENTED_RESULT="passed"
+      # No --verdict-fn here: this invocation carries the offline tests too, so it really did cover
+      # something and the layer really did pass. Only the live half can have vanished, which makes
+      # it a note rather than a verdict.
+      live_layer_covered || LIVE_UNCOVERED=" ${DEVICES[0]}"
+    else
+      INSTRUMENTED_RESULT="FAILED"
+    fi
   else
     # AGP runs connected tests on every attached device *in parallel* — measured, not assumed: the
     # same class across two devices took max(13s, 5s), not the sum. For the offline tests that is
@@ -727,8 +770,15 @@ else
 
     for d in "${DEVICES[@]}"; do
       export ANDROID_SERIAL="$d"
-      run_layer "live tests (on $d)" :app:connectedDebugAndroidTest \
-        "-Pandroid.testInstrumentationRunnerArguments.package=$LIVE_PACKAGE" || INSTRUMENTED_FAILED=1
+      # This invocation runs the live package and nothing else, so "it passed" and "it ran" are not
+      # the same claim — hence the verdict predicate.
+      run_layer "live tests (on $d)" --verdict-fn live_layer_covered :app:connectedDebugAndroidTest \
+        "-Pandroid.testInstrumentationRunnerArguments.package=$LIVE_PACKAGE"
+      case $? in
+        0) ;;
+        2) LIVE_UNCOVERED="$LIVE_UNCOVERED $d" ;;
+        *) INSTRUMENTED_FAILED=1 ;;
+      esac
       stash_instrumented_results "live-$d"
     done
     unset ANDROID_SERIAL
@@ -742,6 +792,12 @@ else
       INSTRUMENTED_RESULT="FAILED"
     fi
   fi
+  # Said in the summary line and not only in the note under it. A layer reporting a bare "passed"
+  # is the whole mechanism by which an unreachable server goes unnoticed for weeks.
+  if [[ -n "$LIVE_UNCOVERED" && "$INSTRUMENTED_RESULT" != "FAILED" ]]; then
+    INSTRUMENTED_RESULT="$INSTRUMENTED_RESULT; live tests covered nothing on$LIVE_UNCOVERED"
+  fi
+
   # Released here rather than left to the trap: everything below is report aggregation, which
   # touches neither the device nor the server, and a waiting worktree should not sit through it.
   instrumented_lock_release
@@ -765,6 +821,22 @@ printf '  %-20s %s\n' "static analysis"    "$CHECKS_RESULT"
 printf '  %-20s %s\n' "unit tests"         "$UNIT_RESULT"
 printf '  %-20s %s\n' "screenshot goldens" "$SCREENSHOT_RESULT"
 printf '  %-20s %s\n' "behavior tests"     "$INSTRUMENTED_RESULT"
+
+# Printed on the passing path as well as the failing one, because this *is* the passing path: a
+# skip is not a failure, so nothing else here would ever mention it.
+if [[ -n "$LIVE_UNCOVERED" ]]; then
+  echo
+  echo "WARNING: every live test skipped on$LIVE_UNCOVERED, so that layer covered nothing there."
+  echo "  They guard themselves with assumeTrue and a skip is not a failure, which is exactly why"
+  echo "  this needs saying out loud. Usual causes, commonest first:"
+  echo "    - on API 36+, the app has not been granted ACCESS_LOCAL_NETWORK, so its reachability"
+  echo "      probe to a LAN server is dropped rather than refused and times out. The tell is"
+  echo "      \`adb -s <serial> shell appops get <pkg> ACCESS_LOCAL_NETWORK\` reading 'ignore';"
+  echo "      declaring it in the manifest is not enough, the app has to request it — open the"
+  echo "      app's sign-in screen and answer the permission dialog."
+  echo "    - the server is genuinely unreachable from that device"
+  echo "    - .test.env is missing, or has no JELLYFIN_SYNC_FOLDER / JELLYFIN_SYNC_FOLDER_ID"
+fi
 
 if [[ "$FAILED" -ne 0 ]]; then
   echo
