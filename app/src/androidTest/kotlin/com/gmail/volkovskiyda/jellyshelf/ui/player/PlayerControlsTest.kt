@@ -19,6 +19,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.text.NumberFormat
 
 /**
  * Behavior tests for the player controls' speed menu and transport row — stateless content, so
@@ -87,6 +88,24 @@ class PlayerControlsTest {
         composeRule.onNodeWithContentDescription(composeRule.activity.getString(resId))
 
     /**
+     * The label the chip and the menu actually render for [speed], built the way `formatSpeed`
+     * builds it rather than written out as `"1.5×"`.
+     *
+     * `NumberFormat` is locale-sensitive, so a hard-coded separator only matches devices whose
+     * locale happens to use it: on a `uk-UA` phone the app renders `"1,5×"` and every assertion
+     * looking for `"1.5×"` fails, while the `assertDoesNotExist` lines beside them pass
+     * **vacuously** — they assert the absence of a string that was never on screen, so a real
+     * regression would go through green. Locales with non-Latin digits break the whole-number
+     * labels too, which is why `1×` and `3×` come through here as well rather than only the
+     * fractional ones.
+     */
+    private fun speedLabel(speed: Float): String =
+        composeRule.activity.getString(
+            R.string.playback_speed_value,
+            NumberFormat.getNumberInstance().format(speed.toDouble()),
+        )
+
+    /**
      * The two exits are separate controls doing separate things: back stops playback (its callback
      * is the one that calls stopPlayback), minimize leaves it running. A single button wired to
      * both, or either wired to the other's callback, is the failure this catches — and it would be
@@ -113,8 +132,8 @@ class PlayerControlsTest {
     fun speedChip_showsTheCurrentSpeed_andTheMenuStartsClosed() {
         setControls(speed = 1.5f)
 
-        composeRule.onNodeWithText("1.5×").assertIsDisplayed()
-        composeRule.onNodeWithText("0.5×").assertDoesNotExist()
+        composeRule.onNodeWithText(speedLabel(1.5f)).assertIsDisplayed()
+        composeRule.onNodeWithText(speedLabel(0.5f)).assertDoesNotExist()
     }
 
     @Test
@@ -122,12 +141,12 @@ class PlayerControlsTest {
         var applied: Float? = null
         setControls(onSetSpeed = { applied = it })
 
-        composeRule.onNodeWithText("1×").performClick()
-        composeRule.onNodeWithText("1.5×").performClick()
+        composeRule.onNodeWithText(speedLabel(1f)).performClick()
+        composeRule.onNodeWithText(speedLabel(1.5f)).performClick()
 
         assertEquals(1.5f, applied)
         // The menu is gone: none of the other options remain on screen.
-        composeRule.onNodeWithText("0.75×").assertDoesNotExist()
+        composeRule.onNodeWithText(speedLabel(0.75f)).assertDoesNotExist()
     }
 
     @Test
@@ -135,10 +154,10 @@ class PlayerControlsTest {
         var applied: Float? = null
         setControls(onSetSpeed = { applied = it })
 
-        composeRule.onNodeWithText("1×").performClick()
+        composeRule.onNodeWithText(speedLabel(1f)).performClick()
         // Nine options no longer all fit on a phone; the menu scrolls, so the last one is only
         // clickable after scrolling to it.
-        composeRule.onNodeWithText("3×").performScrollTo().performClick()
+        composeRule.onNodeWithText(speedLabel(3f)).performScrollTo().performClick()
 
         assertEquals(3f, applied)
     }
