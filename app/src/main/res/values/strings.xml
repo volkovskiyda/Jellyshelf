@@ -86,7 +86,7 @@
     <!-- Detail -->
     <string name="video_fallback_title">Video</string>
     <string name="video_not_found">Video not found.</string>
-    <string name="play">Play</string>
+    <string name="play" tools:ignore="DuplicateStrings">Play</string>
     <string name="play_with">Play with</string>
     <!-- The split play button's mode menu; picking one saves it app-wide and acts immediately. -->
     <string name="playback_mode_play">Play in app</string>
@@ -122,7 +122,7 @@
     <string name="no_app_found">No app found to handle this</string>
 
     <!-- Player -->
-    <string name="pause">Pause</string>
+    <string name="pause" tools:ignore="DuplicateStrings">Pause</string>
     <string name="seek_back_10">Back 10 seconds</string>
     <string name="seek_forward_30">Forward 30 seconds</string>
     <string name="previous_video">Previous video</string>
@@ -147,8 +147,8 @@
       is), the two buttons' are ordinary content descriptions.
     -->
     <string name="mini_player_open">Open the player</string>
-    <string name="mini_player_play">Play</string>
-    <string name="mini_player_pause">Pause</string>
+    <string name="mini_player_play" tools:ignore="DuplicateStrings">Play</string>
+    <string name="mini_player_pause" tools:ignore="DuplicateStrings">Pause</string>
     <string name="mini_player_stop">Stop playback</string>
 
     <!-- Settings -->
