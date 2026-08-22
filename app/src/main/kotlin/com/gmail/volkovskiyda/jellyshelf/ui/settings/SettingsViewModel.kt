@@ -484,9 +484,18 @@ class SettingsViewModel(
      * connection resets — is close enough to the symptom to be worth one dialog, and the prompt's
      * own gates drop it again for a user who already holds the permission or has locked it.
      *
+     * [automatic] is the third exclusion, and the one that isn't about the exception: the silent
+     * connect this ViewModel starts in `init` runs on *every* visit to this screen, unasked, and a
+     * user whose server is simply unreachable — off the LAN, offline, wrong port — would have their
+     * "Not now" cancelled by it seconds after they tapped it, then again on the next visit, and the
+     * week's snooze would never hold. Only an attempt the user made themselves is evidence they are
+     * trying to reach the server *now*; the automatic one leaves the snooze alone, and a user who
+     * has never answered is still asked by [LocalNetworkPrompt.due] on its own schedule.
+     *
      * Fire and forget: nothing on this screen changes as a result, and the prompt reads the store.
      */
-    private fun rearmLocalNetworkPrompt(e: Throwable) {
+    private fun rearmLocalNetworkPrompt(e: Throwable, automatic: Boolean = false) {
+        if (automatic) return
         if (isUnauthorized(e) || isCleartextBlocked(e)) return
         localNetworkPrompt.rearm()
     }
@@ -855,7 +864,7 @@ class SettingsViewModel(
                         isError = true,
                     ),
                 )
-                rearmLocalNetworkPrompt(e)
+                rearmLocalNetworkPrompt(e, automatic = silent)
             }
         }
     }
