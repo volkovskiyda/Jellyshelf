@@ -346,6 +346,11 @@ private fun MacrobenchmarkScope.unclipped(selector: BySelector): UiObject2? {
  * Swipes the screen's scrollable container [direction] by most of its height over [steps] motion
  * events, and reports whether anything moved.
  *
+ * Only the drag settles afterwards ([awaitContentStill]), not the fling: everything that scrolls to
+ * find something then clicks it goes through the drag, and a control located while the screen is
+ * still moving is a control the click misses. The fling belongs to the benchmark's measured block,
+ * where a wait would sit inside the numbers.
+ *
  * A plain [androidx.test.uiautomator.UiDevice.swipe] between two points worked out from the
  * container's own bounds, rather than [UiObject2.scroll] with gesture margins. The margins are the
  * part that broke: they are one number applied to all four sides, and the number this file used to
@@ -359,7 +364,7 @@ private fun MacrobenchmarkScope.unclipped(selector: BySelector): UiObject2? {
  * needs to tell those apart — [sweepToEnd] has nothing else to stop on.
  */
 private fun MacrobenchmarkScope.scrollScreen(direction: Direction): Boolean =
-    swipeScreen(direction, SCROLL_GESTURE_STEPS)
+    swipeScreen(direction, SCROLL_GESTURE_STEPS).also { awaitContentStill() }
 
 /**
  * Flings the screen's scrollable container [direction], and reports whether anything moved.
@@ -402,6 +407,28 @@ private fun MacrobenchmarkScope.contentOffsets(): List<Int> = device
     .mapNotNull { it.boundsOrGone()?.top }
 
 /**
+ * Waits for the screen to stop moving, i.e. for two consecutive [contentOffsets] readings to agree.
+ *
+ * [androidx.test.uiautomator.UiDevice.waitForIdle] does not cover a fling. It returns as soon as
+ * the accessibility event stream goes quiet, and a list coasting to a stop is quiet between frames
+ * — so a caller can be handed a list that is still moving, and every node it then measures is a
+ * race against the next recomposition.
+ *
+ * Returns quietly when the content never settles, rather than failing: a caller waiting for a
+ * still list has its own answer for one that will not hold still, and a screen with no text on it
+ * at all — two empty readings — is already as still as it will get.
+ */
+internal fun MacrobenchmarkScope.awaitContentStill() {
+    var previous = contentOffsets()
+    repeat(STILL_ATTEMPTS) {
+        Thread.sleep(STILL_POLL_MS)
+        val current = contentOffsets()
+        if (current == previous) return
+        previous = current
+    }
+}
+
+/**
  * [UiObject2.getVisibleBounds], or null if the node has left the tree since it was found.
  *
  * Every read here is a fresh IPC to the app, and the screen these run against is moving — a swipe
@@ -411,7 +438,7 @@ private fun MacrobenchmarkScope.contentOffsets(): List<Int> = device
  * nothing: the run that found this one reported it from `ensureLibrary` with no indication of which
  * step or which node. A node that vanished mid-scan is simply not a candidate.
  */
-private fun UiObject2.boundsOrGone(): Rect? = try {
+internal fun UiObject2.boundsOrGone(): Rect? = try {
     visibleBounds
 } catch (_: StaleObjectException) {
     null
@@ -443,7 +470,7 @@ private fun UiObject2.untaggedText(): String? = try {
  *
  * Tagged nodes are skipped — see [untaggedText] for what that keeps out of the build output.
  */
-private fun MacrobenchmarkScope.diagnose(describe: () -> String): () -> String = {
+internal fun MacrobenchmarkScope.diagnose(describe: () -> String): () -> String = {
     val onScreen = device
         .findObjects(By.pkg(JourneyConfig.targetPackage).clazz(TEXT_VIEW))
         .mapNotNull { it.untaggedText() }
@@ -502,6 +529,10 @@ internal const val MILLIS_PER_SECOND = 1_000L
 /** Kills allowed before a process that keeps coming back is called a failure rather than a race. */
 internal const val STOP_ATTEMPTS = 10
 
+/** A fling settles well inside a second; the polls are only there to notice when it has. */
+private const val STILL_ATTEMPTS = 10
+private const val STILL_POLL_MS = 100L
+
 /** Long enough for WorkManager's ForceStopRunnable to have restarted the process if it is going to. */
 internal const val STOP_SETTLE_MS = 1_500L
 
@@ -515,8 +546,14 @@ internal const val SIGN_IN_TIMEOUT_MS = 35_000L
 /**
  * A real first sync fetches the scoped library, the index and thumbnails over the network; a demo
  * seed writes ~60 videos and their categories to a real database.
+ *
+ * Five minutes rather than the two that fitted one device, because a generation run drives every
+ * attached device at once and they all sync the same library from the same server at the same
+ * moment — while one of them is also streaming a video from it. The Pixel 5 ran past two minutes
+ * doing that and failed the run on the very first test; nothing is lost by waiting longer, since
+ * the budget only ever elapses on a sync that is not going to finish.
  */
-internal const val SYNC_TIMEOUT_MS = 120_000L
+internal const val SYNC_TIMEOUT_MS = 300_000L
 
 /** How many flings a browse is worth, in both the generator and the benchmark. */
 internal const val SCROLLS = 3

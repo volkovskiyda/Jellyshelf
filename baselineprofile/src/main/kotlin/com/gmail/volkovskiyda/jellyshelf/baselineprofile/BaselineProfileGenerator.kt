@@ -102,7 +102,21 @@ class BaselineProfileGenerator {
         // Playback pulls in Media3/ExoPlayer, a large slice of first-use class loading the launch
         // path alone would miss — and against a real server it is the streaming path (HTTP data
         // source, container parsing, codec setup) rather than a bundled file read.
-        await(By.text(PLAY), TIMEOUT_MS) { "The detail screen never offered playback." }.click()
+        // Scrolled to rather than merely looked for: the detail screen is one long scrolling
+        // column headed by a thumbnail that fills the width, so on a landscape tablet the poster
+        // alone is most of the viewport and the button starts below the fold. Every other control
+        // this journey reaches inside a scrolling screen is found the same way, and the failure
+        // names what is on screen instead of only what is missing.
+        scrollTo(By.text(PLAY)) { "The detail screen never offered playback." }
+        // Found, then found again after the screen holds still, because locating it is not the
+        // same as being able to hit it: the thumbnail above the button loads while this screen is
+        // being read and the layout it settles into moves everything below it — 160 px on the
+        // tablet, measured — so a tap aimed at where the button was lands on nothing at all, and
+        // the run then waits out the whole playback timeout in front of a Play button it can see.
+        awaitContentStill()
+        await(By.text(PLAY), TIMEOUT_MS) {
+            "The Play button left the detail screen while it was being reached for."
+        }.click()
         awaitPlaybackUnderway()
 
         // Out of the player and the detail screen — however many steps that takes — then across to
@@ -146,16 +160,43 @@ class BaselineProfileGenerator {
      * clicks a details zone. The *topmost* one, by position rather than by match order: after a
      * scroll the first match can be a row clipped by the top bar, whose centre falls outside both
      * targets and lands on nothing.
+     *
+     * Measuring rows on a list that is still settling is a race rather than a mistake — the node
+     * found one IPC ago can be gone by the next, which UiAutomator reports as a
+     * [androidx.test.uiautomator.StaleObjectException] out of the middle of the journey. Hence the
+     * settle wait and the retry: both are cheaper than a generation run that fails at the last
+     * step, which is what a bare `visibleBounds` read here cost on both devices.
      */
     private fun MacrobenchmarkScope.openFirstVideoDetails() {
         await(By.res(ROW_DETAILS), TIMEOUT_MS) {
             "No details zone to open — the rows rendered but carry no $ROW_DETAILS tag."
         }
-        val first = device.findObjects(By.res(ROW_DETAILS))
-            .filter { it.visibleBounds.height() >= MIN_TAPPABLE_PX }
-            .minByOrNull { it.visibleBounds.top }
-        checkNotNull(first) { "Every library row was clipped — nothing safe to tap." }.click()
-        device.waitForIdle()
+        // The list arrives here still coasting from the fling above, and everything below reads it
+        // over IPC one node at a time — see [awaitContentStill] for why waiting is not politeness.
+        awaitContentStill()
+        repeat(TAP_ATTEMPTS) {
+            val rows = device.findObjects(By.res(ROW_DETAILS)).mapNotNull { it.boundsOrGone() }
+            // The tallest row on screen is the yardstick for a whole one, because a fixed pixel
+            // count only ever fits one device: the same two lines of text measure 96 px on the
+            // Pixel Tablet in landscape and half again as much on the Pixel 5, so a threshold
+            // generous enough to keep the phone's rows rejected every row the tablet had.
+            val whole = rows.maxOfOrNull { it.height() } ?: 0
+            val target = rows.filter { it.height() * UNCLIPPED_PARTS >= whole }.minByOrNull { it.top }
+            if (target != null) {
+                // By coordinate rather than through the node: [UiObject2.click] re-reads the bounds
+                // over IPC and throws StaleObjectException if the row has left the tree since it
+                // was measured. The point is the same pixel either way.
+                device.click(target.centerX(), target.centerY())
+                device.waitForIdle()
+                return
+            }
+            // Every candidate went stale mid-measurement, so the list is still moving after all.
+            awaitContentStill()
+        }
+        error(
+            "No library row stayed still long enough to tap: every $ROW_DETAILS match was either " +
+                "clipped to a fraction of a whole row or left the tree while it was being measured.",
+        )
     }
 
     /**
@@ -183,14 +224,17 @@ class BaselineProfileGenerator {
         }
         // One tap, never a loop: two in quick succession are a double tap, which seeks.
         device.click(device.displayWidth / 2, device.displayHeight / 2)
-        check(playing(TIMEOUT_MS)) {
-            if (JourneyConfig.liveServer) {
-                "Playback never got past 0:00. The server may be refusing to stream this item, or " +
-                    "the playback mode may have been left on an external player."
-            } else {
-                "The bundled demo clip never played."
-            }
-        }
+        check(
+            playing(TIMEOUT_MS),
+            diagnose {
+                if (JourneyConfig.liveServer) {
+                    "Playback never got past 0:00. The server may be refusing to stream this " +
+                        "item, or the playback mode may have been left on an external player."
+                } else {
+                    "The bundled demo clip never played."
+                }
+            },
+        )
     }
 
     /**
@@ -217,7 +261,14 @@ class BaselineProfileGenerator {
         /** A real stream may transcode before the first frame arrives. */
         const val PLAYBACK_TIMEOUT_MS = 30_000L
 
-        /** Below this a row is clipped enough that its centre may miss both click targets. */
-        const val MIN_TAPPABLE_PX = 100
+        /**
+         * How much of a whole row has to be showing for its centre to be a safe tap: one part in
+         * this many, i.e. half of it. Below that the row is being cut by the top bar, and its
+         * centre can fall on the bar rather than on either of the row's two click targets.
+         */
+        const val UNCLIPPED_PARTS = 2
+
+        /** Tries at finding a row that holds still for long enough to be measured and tapped. */
+        const val TAP_ATTEMPTS = 3
     }
 }
