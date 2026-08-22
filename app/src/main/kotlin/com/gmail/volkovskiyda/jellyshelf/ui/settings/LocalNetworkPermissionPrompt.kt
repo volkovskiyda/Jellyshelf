@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.LOCAL_NETWORK_PERMISSION_API
 import com.gmail.volkovskiyda.jellyshelf.domain.LocalNetworkPrompt
+import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.ui.LocalNetworkPermissionDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.PermissionReadout
 import com.gmail.volkovskiyda.jellyshelf.ui.permissionReadout
@@ -42,6 +43,19 @@ import org.koin.compose.koinInject
  * Rather than by [SettingsContent], for the same reason `NotificationPermissionPrompt` sits
  * outside `LibraryContent`: the content stays stateless and its screenshot goldens keep rendering
  * a screen with nothing on top of it.
+ *
+ * ## Why it defers to a requested update offer
+ *
+ * `MainActivity` hosts the update dialog, and on this tab it shows exactly the offers the user
+ * asked for — "Check for updates" is a question posed here, so its answer belongs here. Two
+ * stacked dialogs are one dialog nobody reads, and the offer wins for the same reasons it wins
+ * over the notification rationale: it is rarer, it expires, and it has a download behind it.
+ *
+ * Only a *requested* offer, unlike `NotificationPermissionPrompt`'s flat `update != null`, because
+ * only a requested one is on screen here — and the difference matters more for this prompt than
+ * for that one. A background offer stays pending until it is seen on the library tab, and waiting
+ * it out would leave a user whose LAN is blocked looking at a server that times out with no way to
+ * be asked for the grant that fixes it.
  */
 // InlinedApi: ACCESS_LOCAL_NETWORK is a compile-time constant, only ever *used* behind the
 // permissionExists gate below — on older platforms it is an inert string in the APK, not a call.
@@ -57,6 +71,7 @@ internal fun LocalNetworkPermissionPrompt(
     // carries the same rule as policy; this one keeps the permission machinery out of the
     // composition on a platform that has nothing to ask for.
     permissionExists: Boolean = koinInject<BuildInfo>().isAtLeast(LOCAL_NETWORK_PERMISSION_API),
+    updateChecker: UpdateChecker = koinInject(),
     readPermission: ((Activity) -> PermissionReadout)? = null,
 ) {
     if (!permissionExists) return
@@ -68,6 +83,7 @@ internal fun LocalNetworkPermissionPrompt(
     // Null until the store answers, deliberately: any default here is a guess that shows or hides
     // the dialog for a frame before the truth arrives — the flash this prompt was fixed for.
     val promptState by prompt.state.collectAsStateWithLifecycle(initialValue = null)
+    val update by updateChecker.available.collectAsStateWithLifecycle()
     var visible by rememberSaveable { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -77,10 +93,13 @@ internal fun LocalNetworkPermissionPrompt(
         prompt.record(systemAsked = true)
     }
 
-    LaunchedEffect(promptState) {
+    LaunchedEffect(promptState, update) {
         // Already on screen: re-deciding would only fight the buttons.
         if (visible) return@LaunchedEffect
         val state = promptState ?: return@LaunchedEffect
+        // An offer the user asked for is already on top of this screen — see the KDoc. Keyed above,
+        // so the prompt gets its turn once that offer is answered rather than only on the next visit.
+        if (update?.requested == true) return@LaunchedEffect
         val readout = readPermission?.invoke(activity) ?: activity.permissionReadout(permission)
         visible = prompt.due(
             state = state,

@@ -8,18 +8,33 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
+import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.InstallOutcome
 import com.gmail.volkovskiyda.jellyshelf.domain.LOCAL_NETWORK_PERMISSION_API
 import com.gmail.volkovskiyda.jellyshelf.domain.LocalNetworkPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.FakeUpdateFlags
+import com.gmail.volkovskiyda.jellyshelf.ui.InertApkInstall
+import com.gmail.volkovskiyda.jellyshelf.ui.InertTesterSignIn
 import com.gmail.volkovskiyda.jellyshelf.ui.PermissionReadout
+import com.gmail.volkovskiyda.jellyshelf.ui.RecordingUpdateCheckSchedule
 import com.gmail.volkovskiyda.jellyshelf.ui.TestDispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.ui.inertUpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -71,6 +86,7 @@ class LocalNetworkPermissionPromptTest {
         permissionExists: Boolean = true,
         readout: PermissionReadout = missing,
         permission: String = Manifest.permission.ACCESS_LOCAL_NETWORK,
+        checker: UpdateChecker = inertUpdateChecker(),
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -78,6 +94,7 @@ class LocalNetworkPermissionPromptTest {
                     prompt = prompt(settings),
                     permission = permission,
                     permissionExists = permissionExists,
+                    updateChecker = checker,
                     readPermission = { readout },
                 )
             }
@@ -168,6 +185,7 @@ class LocalNetworkPermissionPromptTest {
                 LocalNetworkPermissionPrompt(
                     prompt = prompt(store),
                     permissionExists = true,
+                    updateChecker = inertUpdateChecker(),
                     readPermission = { missing },
                 )
             }
@@ -220,6 +238,65 @@ class LocalNetworkPermissionPromptTest {
         title.assertDoesNotExist()
         composeRule.waitUntil(WAIT_MS) { settings.savedLocalNetworkPrompt == NOW to true }
     }
+
+    // --- An offer to defer to -----------------------------------------------------------------
+
+    /**
+     * "Check for updates" is answered on this tab, so its dialog is already on screen — and two
+     * stacked dialogs are one dialog nobody reads. [UpdateChecker.checkNow] is the manual check,
+     * which is what marks the offer as requested.
+     */
+    @Test
+    fun anOfferTheUserAskedFor_defersThePrompt() {
+        val checker = checkerWithAnOffer()
+        runBlocking { checker.checkNow() }
+        assertEquals(true, checker.available.value?.requested)
+
+        setContent(checker = checker)
+
+        title.assertDoesNotExist()
+    }
+
+    /**
+     * A background offer is *not* shown on this tab — `MainActivity` holds it back for the library
+     * — so there is nothing to stack under and nothing to wait for. Waiting anyway would strand a
+     * user whose LAN is blocked behind an offer they may not see for days.
+     */
+    @Test
+    fun anOfferNobodyAskedFor_doesNotDeferThePrompt() {
+        val checker = checkerWithAnOffer()
+        runBlocking { checker.checkPeriodic() }
+        // Asserted, or a check that quietly found nothing would make this pass for no reason.
+        assertEquals(false, checker.available.value?.requested)
+
+        setContent(checker = checker)
+
+        title.assertIsDisplayed()
+    }
+
+    /**
+     * A real [UpdateChecker] over stub sources, the same shape as `NotificationPermissionPromptTest`'s:
+     * a release-shaped build at version 100 offered version 200 from the GitHub channel.
+     */
+    private fun checkerWithAnOffer() = UpdateChecker(
+        settingsRepository = FakeSettingsRepository(updateSource = UpdateSource.GITHUB),
+        gitHubSource = object : GitHubReleaseSource(HttpClient(OkHttp), TestDispatcherProvider(), Json) {
+            override suspend fun latestRelease() = UpdateInfo(
+                versionCode = 200,
+                versionName = "1.0.200",
+                releaseNotes = "",
+                downloadUrl = "https://example.invalid/jellyshelf-1.0.200.apk",
+                source = UpdateSource.GITHUB,
+            )
+        },
+        appDistributionSource = AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()),
+        buildInfo = BuildInfo(isDebug = false, sdkInt = LOCAL_NETWORK_PERMISSION_API, versionCode = 100),
+        time = TimeProvider { NOW },
+        dispatchers = TestDispatcherProvider(),
+        updateCheckSchedule = RecordingUpdateCheckSchedule(),
+        apkInstaller = InertApkInstall,
+        installOutcome = InstallOutcome(),
+    )
 }
 
 /**
