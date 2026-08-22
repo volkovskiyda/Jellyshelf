@@ -7,6 +7,14 @@ import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 
 /**
+ * A plausible instant rather than `0`, for the reason the prompt's own tests give: the store's `0`
+ * means "never answered", so a clock at `0` would read a never-answered store as answered this
+ * very moment — and [LocalNetworkPrompt.due] would quietly return false for the whole snooze.
+ * Anything that used this helper to exercise `due` would pass without asking anything.
+ */
+private const val TEST_NOW = 1_800_000_000_000L
+
+/**
  * A [LocalNetworkPrompt] over an in-memory store, for tests about something else entirely — every
  * `SettingsViewModel` needs one, and only the prompt's own tests care what it decides.
  *
@@ -17,7 +25,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
  */
 fun testLocalNetworkPrompt(settings: SettingsRepository = FakeSettingsRepository()) = LocalNetworkPrompt(
     settingsRepository = settings,
-    time = TimeProvider { 0L },
+    time = TimeProvider { TEST_NOW },
     buildInfo = BuildInfo(isDebug = true, sdkInt = LOCAL_NETWORK_PERMISSION_API),
     dispatchers = TestDispatcherProvider(),
 )
