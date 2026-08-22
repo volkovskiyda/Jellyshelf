@@ -26,19 +26,25 @@ import org.koin.compose.koinInject
  * `172.16-31.*`, link-local, `.local` — needs this on top of `INTERNET`. A self-hosted Jellyfin is
  * usually exactly that, so for this app the permission is not an edge case; it is the connection.
  *
- * ## Why it is nearly always silent
+ * ## Why this is load-bearing, not a rare fallback
  *
- * The manifest declares the permission, and the platform grants it at install to an app that asks
- * for it up front (flagged `REVOKE_WHEN_REQUESTED`). So the ordinary first launch already has it
- * and nothing here ever appears. What this covers is the case that grant does not: a user who
- * revoked it in Settings, or a device that hands it out differently. For them the alternative is a
- * sign-in that waits out its timeout and blames the server, and no way back.
+ * Declaring the permission in the manifest is not by itself a grant. `REVOKE_WHEN_REQUESTED` reads
+ * as though the platform hands it over at install — this KDoc used to say exactly that — but
+ * measured on the Android 17 tablet against the shipped APK, a clean install (full uninstall,
+ * install, launch) sits at `granted=false` with the app op on `ignore`, both before and after first
+ * launch. The release install beside it reads `allow` with a `rejectTime` earlier the same day:
+ * blocked first, granted later by an explicit act. So on that device this dialog is *how* the
+ * permission comes to be asked for, and an app that never asks waits out its 30-second timeout and
+ * blames the server, with no way back.
+ *
+ * It is still silent whenever the permission is already there — the `granted` read below returns
+ * early — so a user who has it never sees this.
  *
  * That is also why the trigger is deliberately not "the server URL looks local". Deciding that
  * needs a DNS lookup — this app's own server is a *hostname* that resolves to a private
  * address — and a composable cannot resolve one. Asking whenever the permission is missing and
- * there is no session yet costs a dialog the rare user will understand, and is the only trigger
- * that fires before the 30 seconds are spent rather than after.
+ * there is no session yet costs one dialog, on the screen where the user was about to sign in
+ * anyway, and is the only trigger that fires before the 30 seconds are spent rather than after.
  *
  * ## Why it is hosted here
  *

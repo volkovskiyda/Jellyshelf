@@ -13,10 +13,14 @@
          rather than as a missing permission. On an Android 17 tablet this app spent 30 seconds per
          sign-in doing exactly that while the browser beside it loaded the same URL.
 
-         Unknown on API < 36, where the platform ignores it. Declaring it is what makes the install
-         grant carry: the system hands it to an app that asks for it up front, flagged
-         REVOKE_WHEN_REQUESTED, so a first launch reaches a LAN server without a prompt and the
-         permission only becomes a dialog if the app ever requests it explicitly. -->
+         Unknown on API < 36, where the platform ignores it. Declaring it is necessary but not
+         sufficient, which is the opposite of what this comment used to claim. REVOKE_WHEN_REQUESTED
+         reads as though the system hands the permission over at install; measured on the Android 17
+         tablet against this very APK it does not. A clean install — full uninstall, install, launch
+         — sits at granted=false with the app op on "ignore", before and after first launch. So
+         something has to request it, and ui/settings/LocalNetworkPermissionPrompt is what does,
+         from the screen sign-in lives on. That dialog is how a LAN server becomes reachable on
+         Android 17, not a rare fallback: delete it as dead code and sign-in goes with it. -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <!-- In-app playback runs as a media foreground service (PlaybackService). Its notification
