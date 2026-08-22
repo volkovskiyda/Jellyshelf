@@ -208,10 +208,11 @@ class MainActivity : ComponentActivity() {
      * The aspect ratio is left unset while the size is unknown, so the platform picks its own
      * instead of being handed a degenerate one.
      */
-    fun updatePipParams(eligible: Boolean, aspect: PipAspect?) {
+    fun updatePipParams(eligible: Boolean, aspect: PipAspect?, rect: android.graphics.Rect? = null) {
         val params = PictureInPictureParams.Builder()
             .setAutoEnterEnabled(eligible)
             .apply { aspect?.let { setAspectRatio(Rational(it.numerator, it.denominator)) } }
+            .apply { setSourceRectHint(rect ?: android.graphics.Rect()) }
             .build()
         setPictureInPictureParams(params)
     }
