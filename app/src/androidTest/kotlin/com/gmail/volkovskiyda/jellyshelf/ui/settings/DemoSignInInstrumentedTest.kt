@@ -17,6 +17,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.FakeLibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.emptySettings
 import com.gmail.volkovskiyda.jellyshelf.ui.inertUpdateChecker
+import com.gmail.volkovskiyda.jellyshelf.ui.testLocalNetworkPrompt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -124,6 +125,7 @@ class DemoSignInInstrumentedTest {
         SettingsCache(),
         SyncScheduler(WorkManager.getInstance(app)),
         inertUpdateChecker(),
+        testLocalNetworkPrompt(),
     ).also {
         store.put("settings", it)
         backgroundScope.launch { it.state.collect { } }
@@ -271,6 +273,7 @@ class DemoSignInInstrumentedTest {
             SettingsCache(),
             SyncScheduler(WorkManager.getInstance(app)),
             inertUpdateChecker(),
+            testLocalNetworkPrompt(),
         ).also {
             store.put("settings-unlock", it)
             backgroundScope.launch { it.state.collect { } }

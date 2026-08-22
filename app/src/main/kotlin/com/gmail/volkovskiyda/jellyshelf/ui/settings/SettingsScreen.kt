@@ -143,9 +143,10 @@ fun SettingsScreen(
 
     // Hosted out here rather than inside [SettingsContent] so the content stays stateless and its
     // screenshot goldens keep rendering a screen with nothing on top of it — the same arrangement
-    // LibraryScreen uses for the notification prompt. Gated on there being no session yet, because
-    // the permission it explains is the one that decides whether signing in can work at all.
-    LocalNetworkPermissionPrompt(signedIn = state.signedIn)
+    // LibraryScreen uses for the notification prompt. Passed nothing from this screen's state on
+    // purpose: who is asked is [LocalNetworkPrompt]'s decision, and reading a state that loads
+    // asynchronously is what used to flash the dialog over the library and close it again.
+    LocalNetworkPermissionPrompt()
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

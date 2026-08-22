@@ -3,7 +3,6 @@ package com.gmail.volkovskiyda.jellyshelf.ui.library
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,13 +13,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.NotificationPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.ui.NotificationPermissionDialog
+import com.gmail.volkovskiyda.jellyshelf.ui.PermissionReadout
+import com.gmail.volkovskiyda.jellyshelf.ui.permissionReadout
 import org.koin.compose.koinInject
 
 /**
@@ -109,29 +108,3 @@ internal fun NotificationPermissionPrompt(
         },
     )
 }
-
-/**
- * The two platform answers [NotificationPrompt.due] needs, read together so a caller cannot take
- * one without the other — their *combination* is what tells "never asked" from "locked for good".
- *
- * Exists as a value (and as the `readPermission` seam above) because neither answer can be faked
- * on a device any other way: the permission cannot be un-granted for a test — `pm revoke` kills
- * the app's process, instrumentation included — so without the seam every gate in this file is
- * unreachable on a device that has ever run a test that granted it.
- */
-internal data class PermissionReadout(val granted: Boolean, val shouldShowRationale: Boolean)
-
-/**
- * The real answers for [permission]. Asking about one the platform has never heard of is
- * meaningless but safe — it is the caller's `permissionExists` gate that keeps the question
- * sensible, not a platform requirement to annotate: everything here goes through the compat
- * layer, which answers "denied" and "no rationale" for an unknown permission rather than
- * crashing. With the gate a plain parameter, lint could not verify a `@RequiresApi` here anyway —
- * the `@ChecksSdkIntAtLeast` chain only holds while the API level is checked with a constant in
- * sight.
- */
-private fun Activity.permissionReadout(permission: String): PermissionReadout = PermissionReadout(
-    granted = ContextCompat.checkSelfPermission(this, permission) ==
-        PackageManager.PERMISSION_GRANTED,
-    shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(this, permission),
-)

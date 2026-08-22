@@ -7,6 +7,7 @@ import androidx.work.WorkInfo
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncWorker
+import com.gmail.volkovskiyda.jellyshelf.domain.LocalNetworkPrompt
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_BAD_PASSWORD
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_SERVER
@@ -214,10 +215,10 @@ private data class UpdateUi(
 
 @Suppress(
     "TooManyFunctions", // one handler per settings action — mirrors SettingsActions
-    // Seven collaborators because the Settings screen really does coordinate seven things:
-    // connection, library, preferences, the user cache, sync, updates and string resources.
-    // Bundling any pair would be indirection invented to satisfy a counter, and Koin builds this
-    // — there is no call site bearing the cost.
+    // Eight collaborators because the Settings screen really does coordinate eight things:
+    // connection, library, preferences, the user cache, sync, updates, the local-network prompt
+    // and string resources. Bundling any pair would be indirection invented to satisfy a counter,
+    // and Koin builds this — there is no call site bearing the cost.
     "LongParameterList",
 )
 class SettingsViewModel(
@@ -228,6 +229,9 @@ class SettingsViewModel(
     private val settingsCache: SettingsCache,
     private val syncScheduler: SyncScheduler,
     private val updateChecker: UpdateChecker,
+    // Not for showing anything — the prompt hosts itself on this screen. This is the one collaborator
+    // that knows a failed connection is evidence of a missing grant; see [rearmLocalNetworkPrompt].
+    private val localNetworkPrompt: LocalNetworkPrompt,
 ) : ViewModel() {
 
     /**
@@ -470,6 +474,24 @@ class SettingsViewModel(
     }
 
     /**
+     * Puts the local-network rationale back on the table when a connection attempt failed the way
+     * a missing `ACCESS_LOCAL_NETWORK` fails: Android drops the packets rather than refusing them,
+     * so the request dies of its own timeout and the user is told the server is unreachable.
+     *
+     * Two failures are excluded because they are explained by something else, and re-arming on them
+     * would ask for a permission that would change nothing: a 401 is a server that answered, and a
+     * cleartext block is an `http://` URL that needs `https://`. Everything else — timeouts, DNS,
+     * connection resets — is close enough to the symptom to be worth one dialog, and the prompt's
+     * own gates drop it again for a user who already holds the permission or has locked it.
+     *
+     * Fire and forget: nothing on this screen changes as a result, and the prompt reads the store.
+     */
+    private fun rearmLocalNetworkPrompt(e: Throwable) {
+        if (isUnauthorized(e) || isCleartextBlocked(e)) return
+        localNetworkPrompt.rearm()
+    }
+
+    /**
      * Drops the session when the server rejected the token, so the screen asks for a sign-in
      * rather than leaving a dead credential in place. Never falls back to the advanced API key:
      * silently restoring full-server access is exactly what user login exists to avoid.
@@ -580,6 +602,7 @@ class SettingsViewModel(
                     password = "",
                     authStatus = StatusLine(app.getString(R.string.sign_in_failed, cause), isError = true),
                 )
+                rearmLocalNetworkPrompt(e)
             }
         }
     }
@@ -832,6 +855,7 @@ class SettingsViewModel(
                         isError = true,
                     ),
                 )
+                rearmLocalNetworkPrompt(e)
             }
         }
     }

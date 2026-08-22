@@ -68,6 +68,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val LAST_UPDATE_DIALOG_AT = longPreferencesKey("last_update_dialog_at")
         val NOTIFICATION_PROMPT_AT = longPreferencesKey("notification_prompt_at")
         val NOTIFICATION_SYSTEM_ASKED = booleanPreferencesKey("notification_system_asked")
+        val LOCAL_NETWORK_PROMPT_AT = longPreferencesKey("local_network_prompt_at")
+        val LOCAL_NETWORK_SYSTEM_ASKED = booleanPreferencesKey("local_network_system_asked")
     }
 
     /**
@@ -382,6 +384,22 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         ds.edit {
             it[Keys.NOTIFICATION_PROMPT_AT] = timestamp
             it[Keys.NOTIFICATION_SYSTEM_ASKED] = systemAsked || it[Keys.NOTIFICATION_SYSTEM_ASKED] == true
+        }
+    }
+
+    override val localNetworkPromptAt: Flow<Long> = prefs
+        .map { it[Keys.LOCAL_NETWORK_PROMPT_AT] ?: 0L }
+
+    /** Degrades to "Android has never been asked", for the reason [notificationSystemAsked] gives. */
+    override val localNetworkSystemAsked: Flow<Boolean> = prefs
+        .map { it[Keys.LOCAL_NETWORK_SYSTEM_ASKED] ?: false }
+
+    override suspend fun setLocalNetworkPrompt(timestamp: Long, systemAsked: Boolean) {
+        // Same shape as setNotificationPrompt: one edit, and the flag only ever turns on — which
+        // is also what lets a re-arm pass `false` without un-asking Android's dialog.
+        ds.edit {
+            it[Keys.LOCAL_NETWORK_PROMPT_AT] = timestamp
+            it[Keys.LOCAL_NETWORK_SYSTEM_ASKED] = systemAsked || it[Keys.LOCAL_NETWORK_SYSTEM_ASKED] == true
         }
     }
 

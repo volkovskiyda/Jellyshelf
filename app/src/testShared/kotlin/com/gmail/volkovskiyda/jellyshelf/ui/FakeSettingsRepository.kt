@@ -42,6 +42,8 @@ class FakeSettingsRepository(
     lastUpdateDialogAt: Long = 0L,
     notificationPromptAt: Long = 0L,
     notificationSystemAsked: Boolean = false,
+    localNetworkPromptAt: Long = 0L,
+    localNetworkSystemAsked: Boolean = false,
 ) : SettingsRepository {
     private val _settings = MutableStateFlow(initial)
     private val _backStackJson = MutableStateFlow(backStackJson)
@@ -57,6 +59,8 @@ class FakeSettingsRepository(
     private val _lastUpdateDialogAt = MutableStateFlow(lastUpdateDialogAt)
     private val _notificationPromptAt = MutableStateFlow(notificationPromptAt)
     private val _notificationSystemAsked = MutableStateFlow(notificationSystemAsked)
+    private val _localNetworkPromptAt = MutableStateFlow(localNetworkPromptAt)
+    private val _localNetworkSystemAsked = MutableStateFlow(localNetworkSystemAsked)
 
     // Per source, so a test can snooze GitHub without touching App Distribution — the independence
     // the two key pairs exist for. Absent entries read as 0, matching the real store's "unset".
@@ -218,6 +222,15 @@ class FakeSettingsRepository(
         _notificationSystemAsked.value = systemAsked || _notificationSystemAsked.value
     }
 
+    override val localNetworkPromptAt: Flow<Long> = _localNetworkPromptAt
+    override val localNetworkSystemAsked: Flow<Boolean> = _localNetworkSystemAsked
+
+    /** Both halves together, and the flag only ever turns on — see [SettingsRepository]. */
+    override suspend fun setLocalNetworkPrompt(timestamp: Long, systemAsked: Boolean) {
+        _localNetworkPromptAt.value = timestamp
+        _localNetworkSystemAsked.value = systemAsked || _localNetworkSystemAsked.value
+    }
+
     /** What [setBackStackJson] last persisted. */
     val savedBackStackJson: String? get() = _backStackJson.value
 
@@ -230,4 +243,8 @@ class FakeSettingsRepository(
     /** What [setNotificationPrompt] last persisted, without collecting either flow. */
     val savedNotificationPrompt: Pair<Long, Boolean>
         get() = _notificationPromptAt.value to _notificationSystemAsked.value
+
+    /** What [setLocalNetworkPrompt] last persisted, without collecting either flow. */
+    val savedLocalNetworkPrompt: Pair<Long, Boolean>
+        get() = _localNetworkPromptAt.value to _localNetworkSystemAsked.value
 }

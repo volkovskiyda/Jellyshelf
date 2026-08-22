@@ -216,4 +216,33 @@ interface SettingsRepository {
      * `true` alone, since "we have shown Android's dialog before" cannot become untrue.
      */
     suspend fun setNotificationPrompt(timestamp: Long, systemAsked: Boolean)
+
+    /**
+     * Epoch millis the local-network-permission prompt was last answered, `0` when never — the
+     * same "0 == never == the window has elapsed" convention as [notificationPromptAt], so a fresh
+     * install is asked on its first visit to settings rather than being muted for a week.
+     *
+     * A separate pair of keys from the notification prompt's, not a shared one: the two permissions
+     * are asked for on different screens for different reasons, and sharing a snooze would let one
+     * silence the other.
+     */
+    val localNetworkPromptAt: Flow<Long>
+
+    /**
+     * Whether Android's own `ACCESS_LOCAL_NETWORK` dialog has ever been launched, for the same
+     * reason as [notificationSystemAsked]: `shouldShowRequestPermissionRationale` reads `false`
+     * both before the first ask and after the second denial has locked the permission for good,
+     * and this flag is what tells those apart.
+     */
+    val localNetworkSystemAsked: Flow<Boolean>
+
+    /**
+     * Records an answer to the local-network prompt. Both halves in one write, and [systemAsked]
+     * only ever turns on, exactly as in [setNotificationPrompt].
+     *
+     * A `0` timestamp is how a connection failure re-arms the prompt: it restores the "never
+     * answered" state the store starts in, which cancels a decline without claiming Android has
+     * not been asked.
+     */
+    suspend fun setLocalNetworkPrompt(timestamp: Long, systemAsked: Boolean)
 }
