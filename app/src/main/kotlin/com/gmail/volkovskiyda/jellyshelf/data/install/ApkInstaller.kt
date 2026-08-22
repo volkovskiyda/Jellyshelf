@@ -159,12 +159,7 @@ class ApkInstaller(
         val intent = Intent(context, InstallResultReceiver::class.java)
             .setAction(InstallResultReceiver.ACTION_INSTALL_RESULT)
         val flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT or
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Mutable because the system fills in the status extras it reports back.
-                android.app.PendingIntent.FLAG_MUTABLE
-            } else {
-                0
-            }
+            android.app.PendingIntent.FLAG_MUTABLE
         return android.app.PendingIntent.getBroadcast(context, sessionId, intent, flags).intentSender
     }
 
