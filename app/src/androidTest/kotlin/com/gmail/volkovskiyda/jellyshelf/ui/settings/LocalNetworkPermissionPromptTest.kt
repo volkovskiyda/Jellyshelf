@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
+import android.Manifest
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -30,6 +31,9 @@ private const val NOW = 1_800_000_000_000L
 
 /** Past the week-long snooze, so a stored answer is stale rather than fresh. */
 private val EIGHT_DAYS = TimeUnit.DAYS.toMillis(8)
+
+/** Long enough for a permission result to be posted back and written, short enough to fail fast. */
+private const val WAIT_MS = 5_000L
 
 /**
  * What the settings-screen host does with [LocalNetworkPrompt]'s answers — the glue that
@@ -66,11 +70,13 @@ class LocalNetworkPermissionPromptTest {
         settings: FakeSettingsRepository = FakeSettingsRepository(),
         permissionExists: Boolean = true,
         readout: PermissionReadout = missing,
+        permission: String = Manifest.permission.ACCESS_LOCAL_NETWORK,
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
                 LocalNetworkPermissionPrompt(
                     prompt = prompt(settings),
+                    permission = permission,
                     permissionExists = permissionExists,
                     readPermission = { readout },
                 )
@@ -192,19 +198,27 @@ class LocalNetworkPermissionPromptTest {
     }
 
     /**
-     * "Allow" closes ours and hands over to Android's. Deliberately not asserted any further: the
-     * result callback is what records the hand-over, and unlike `POST_NOTIFICATIONS` this
-     * permission cannot be pre-granted in a test to make Android answer instantly — a real system
-     * dialog would open on top, which no Compose test can reach. The launcher's contract is
-     * `NotificationPermissionPromptTest`'s to pin; the same call shape is used here.
+     * "Allow" closes ours and hands over to Android's — and the *result callback* is what records
+     * the hand-over, so an abandoned system dialog still counts as having reached the platform.
+     *
+     * The permission requested is `INTERNET`, and the substitution is the point. Unlike
+     * `POST_NOTIFICATIONS`, `ACCESS_LOCAL_NETWORK` cannot be pre-granted from a test on the one
+     * kind of device that has it, so requesting it for real raises a system window on top of the
+     * app — which this test cannot see and would not fail on, since `assertDoesNotExist` only
+     * inspects our own composition. It would pass with Android's dialog left standing at teardown,
+     * and take the next test in the run down with it. A permission the app already holds makes the
+     * contract answer synchronously instead, on every API level this suite runs on, through the
+     * same launcher the real string goes through — which is the part worth pinning.
      */
     @Test
-    fun allow_closesOurDialog() {
-        setContent()
+    fun allow_handsOverToAndroidAndRecordsThatItDid() {
+        val settings = FakeSettingsRepository()
+        setContent(settings = settings, permission = Manifest.permission.INTERNET)
 
         composeRule.onNodeWithText(label(R.string.local_network_permission_allow)).performClick()
 
         title.assertDoesNotExist()
+        composeRule.waitUntil(WAIT_MS) { settings.savedLocalNetworkPrompt == NOW to true }
     }
 }
 
