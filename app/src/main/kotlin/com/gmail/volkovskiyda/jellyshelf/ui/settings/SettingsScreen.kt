@@ -569,7 +569,13 @@ private fun AdvancedAuthSection(
         // Inert while a user token is held — [Settings.credential] prefers the token.
         enabled = !state.signedIn,
         visualTransformation = PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // Opted out like the two addresses, though this one *is* a secret: a manager offered
+            // a server-wide admin key as this app's password would be offering the wrong
+            // credential, and expanding Advanced would put a second password-shaped field beside
+            // the real one for the provider to choose between.
+            .semantics { contentDataType = ContentDataType.None },
     )
 
     // Playback handoff. Independent of which credential is in use, so it stays visible when

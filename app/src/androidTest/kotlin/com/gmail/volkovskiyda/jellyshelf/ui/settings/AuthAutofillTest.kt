@@ -8,11 +8,14 @@ import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertNotEquals
 import org.junit.Before
@@ -49,11 +52,16 @@ class AuthAutofillTest {
     /** Held outside the composition, like the real ViewModel's state, so a test can move it. */
     private var state by mutableStateOf(SettingsUiState())
 
-    private fun setContent(initial: SettingsUiState) {
+    private fun setContent(initial: SettingsUiState, advancedExpanded: Boolean = false) {
         state = initial
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
-                SettingsContent(state = state, videoCount = 0, actions = SettingsActions())
+                SettingsContent(
+                    state = state,
+                    videoCount = 0,
+                    actions = SettingsActions(),
+                    advancedExpanded = advancedExpanded,
+                )
             }
         }
     }
@@ -66,8 +74,11 @@ class AuthAutofillTest {
         )
     }
 
-    private fun assertNotAutofillable(tag: String) {
-        composeRule.onNodeWithTag(tag).assert(
+    private fun assertNotAutofillable(tag: String) =
+        assertNotAutofillable(composeRule.onNodeWithTag(tag))
+
+    private fun assertNotAutofillable(node: SemanticsNodeInteraction) {
+        node.assert(
             SemanticsMatcher.expectValue(SemanticsProperties.ContentDataType, ContentDataType.None),
         )
     }
@@ -99,6 +110,23 @@ class AuthAutofillTest {
 
         assertNotAutofillable(SERVER_URL_FIELD_TAG)
         assertNotAutofillable(INDEX_URL_FIELD_TAG)
+    }
+
+    /**
+     * The API key opts out too, though unlike the addresses it *is* a secret.
+     *
+     * It is the wrong secret to offer: a Jellyfin API key is server-wide and admin-scoped, not
+     * this user's password, and an expanded Advanced section otherwise puts a second
+     * password-shaped field beside the real one for the provider to choose between. Selected by
+     * its label — the test tags on this screen belong to the baseline-profile generator.
+     */
+    @Test
+    fun theApiKeyField_isNotOfferedAsThisAppsPassword() {
+        setContent(SettingsUiState(serverUrl = "https://example.org"), advancedExpanded = true)
+
+        assertNotAutofillable(
+            composeRule.onNodeWithText(composeRule.activity.getString(R.string.api_key)),
+        )
     }
 
     /**
