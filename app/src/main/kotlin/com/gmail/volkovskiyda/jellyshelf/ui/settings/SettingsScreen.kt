@@ -391,6 +391,18 @@ internal fun SettingsContent(
 
                 UpdatesSection(state = state, actions = actions, now = now)
             }
+
+            // Truly last, under the Updates section on a release build and under the library
+            // summary on a debug one — it is reference material, not something anyone comes here
+            // to act on. Drawn only when there is a version to name, so a preview or test that
+            // never set one renders no line rather than a bare "Version ".
+            if (state.versionName.isNotBlank()) {
+                Text(
+                    stringResource(R.string.app_version, state.versionName),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 

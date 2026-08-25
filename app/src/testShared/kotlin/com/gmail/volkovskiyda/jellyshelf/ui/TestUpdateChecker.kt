@@ -22,8 +22,14 @@ import kotlinx.serialization.json.Json
  *
  * `isDebug = true` also means the Updates section is hidden, which is what the screens these are
  * handed to already expect to see.
+ *
+ * @param versionName what the settings screen's version line should print. Blank by default, which
+ *   the screen renders as no line at all — set it only in a test that is about that line.
  */
-fun inertUpdateChecker(settings: SettingsRepository = FakeSettingsRepository()) = UpdateChecker(
+fun inertUpdateChecker(
+    settings: SettingsRepository = FakeSettingsRepository(),
+    versionName: String = "",
+) = UpdateChecker(
     settingsRepository = settings,
     // The engine is named rather than left to the ServiceLoader so this resolves identically in
     // the JVM and instrumented source sets. It is never asked for anything.
@@ -34,7 +40,7 @@ fun inertUpdateChecker(settings: SettingsRepository = FakeSettingsRepository()) 
         override fun isTesterSignedIn() = false
         override suspend fun latestRelease(): UpdateInfo? = null
     },
-    buildInfo = BuildInfo(isDebug = true, sdkInt = 36),
+    buildInfo = BuildInfo(isDebug = true, sdkInt = 36, versionName = versionName),
     time = TimeProvider { 0L },
     dispatchers = TestDispatcherProvider(),
     updateCheckSchedule = RecordingUpdateCheckSchedule(),

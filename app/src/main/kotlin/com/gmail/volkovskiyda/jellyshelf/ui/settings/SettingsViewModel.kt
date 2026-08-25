@@ -154,6 +154,14 @@ data class SettingsUiState(
      * from a composable.
      */
     val isDebugBuild: Boolean = false,
+    /**
+     * The installed build's `versionName`, printed as the last line of the screen.
+     *
+     * Blank by default and blank means "print nothing": a test or preview that never set it would
+     * otherwise render "Version " with nothing after it. Injected from `BuildInfo.versionName` in
+     * the ViewModel — never read `BuildConfig` from a composable, which builds debug for previews.
+     */
+    val versionName: String = "",
 ) {
     /** ParentId of the folder currently being browsed ("" == root). */
     val currentParentId: String get() = breadcrumb.lastOrNull()?.id ?: ROOT_SCOPE_ID
@@ -241,8 +249,11 @@ class SettingsViewModel(
      */
     private val isDebugBuild = updateChecker.isDebugBuild
 
+    /** Likewise off the checker rather than `BuildConfig` — see [isDebugBuild]. */
+    private val versionName = updateChecker.versionName
+
     /** Local operations (connect, reset) only — sync lives in [_sync], see [state]. */
-    private val _state = MutableStateFlow(SettingsUiState(isDebugBuild = isDebugBuild))
+    private val _state = MutableStateFlow(SettingsUiState(isDebugBuild = isDebugBuild, versionName = versionName))
     private val _sync = MutableStateFlow<SyncUi?>(null)
 
     /**
@@ -316,7 +327,11 @@ class SettingsViewModel(
             upToDate = update.upToDate,
             lastUpdateCheckAt = update.lastCheckAt,
         )
-    }.stateIn(viewModelScope, WhileUiSubscribed, SettingsUiState(isDebugBuild = isDebugBuild))
+    }.stateIn(
+        viewModelScope,
+        WhileUiSubscribed,
+        SettingsUiState(isDebugBuild = isDebugBuild, versionName = versionName),
+    )
 
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
         .stateIn(viewModelScope, WhileUiSubscribed, 0)
@@ -797,6 +812,7 @@ class SettingsViewModel(
             // slice is merged in by [state] from its own flows and needs no carrying.
             _state.value = SettingsUiState(
                 isDebugBuild = isDebugBuild,
+                versionName = versionName,
                 themeState = _state.value.themeState,
                 authStatus = StatusLine(
                     app.getString(if (leavingDemo) R.string.demo_left else R.string.signed_out),

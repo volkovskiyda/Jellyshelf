@@ -289,6 +289,13 @@
     <string name="update_error_unknown">The update check failed.</string>
 
     <!--
+      The last line of the Settings screen, in every build type. Not part of the Updates block
+      above: it is shown in debug builds too, where that whole section is hidden, and its job is to
+      let a user name the build they are running when reporting something.
+    -->
+    <string name="app_version">Version %1$s</string>
+
+    <!--
       The rationale shown before Android's own POST_NOTIFICATIONS dialog, on API 33+ only. It says
       what the permission buys (the media notification, which is the only way back into a
       backgrounded video) and when declining is the right answer — because the ask now arrives on

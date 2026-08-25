@@ -34,8 +34,17 @@ import com.gmail.volkovskiyda.jellyshelf.ui.settings.StatusLine
 private const val PHONE_WIDTH = 400
 private const val PHONE_HEIGHT = 800
 
-/** Tall enough to hold the whole Updates section, which sits near the foot of the settings list. */
-private const val SETTINGS_UPDATES_HEIGHT = 1000
+/**
+ * Tall enough to hold the whole Updates section and the version line under it, which sit at the
+ * foot of the settings list.
+ */
+private const val SETTINGS_UPDATES_HEIGHT = 1060
+
+/**
+ * A pinned build version for the settings footer. Real in shape — `"1.0.<buildNumber>"` is what CI
+ * stamps — and fixed, so the goldens don't move every time the commit count does.
+ */
+private const val PREVIEW_VERSION_NAME = "1.0.294"
 
 /**
  * A pinned clock for the sync-time labels, which are relative for their first three hours. Read
@@ -560,7 +569,10 @@ private fun SettingsIndexUnavailable() {
 private fun SettingsUpdatesOff() {
     PreviewTheme {
         SettingsContent(
-            state = SettingsUiState(updateSource = UpdateSource.NONE),
+            state = SettingsUiState(
+                updateSource = UpdateSource.NONE,
+                versionName = PREVIEW_VERSION_NAME,
+            ),
             videoCount = 0,
             actions = SettingsActions(),
             now = PREVIEW_NOW,
@@ -577,6 +589,7 @@ private fun SettingsUpdatesGitHub() {
             state = SettingsUiState(
                 updateSource = UpdateSource.GITHUB,
                 lastUpdateCheckAt = PREVIEW_SYNCED_AT,
+                versionName = PREVIEW_VERSION_NAME,
             ),
             videoCount = 0,
             actions = SettingsActions(),
@@ -596,6 +609,7 @@ private fun SettingsUpdatesAppDistribution() {
                 updateSource = UpdateSource.APP_DISTRIBUTION,
                 lastUpdateCheckAt = PREVIEW_SYNCED_AT,
                 updateError = UpdateCheckError.ApiDisabled,
+                versionName = PREVIEW_VERSION_NAME,
             ),
             videoCount = 0,
             actions = SettingsActions(),

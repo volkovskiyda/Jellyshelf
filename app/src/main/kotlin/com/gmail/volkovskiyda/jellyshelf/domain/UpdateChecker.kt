@@ -145,6 +145,17 @@ class UpdateChecker(
     val isDebugBuild: Boolean = buildInfo.isDebug
 
     /**
+     * The installed build's `versionName`, for Settings to print at the bottom of the screen.
+     *
+     * Passed through here for the same reason [isDebugBuild] is: it keeps the UI layer's build
+     * facts arriving from one injected collaborator instead of a `BuildConfig` read in a
+     * composable, which previews and screenshot tests (built as *debug*) would render wrong.
+     * Nothing in this class reads it — the version an update is judged against is
+     * [BuildInfo.versionCode].
+     */
+    val versionName: String = buildInfo.versionName
+
+    /**
      * Brings the daily background check into line with the current channel — scheduled while there
      * is a channel to check, cancelled otherwise.
      *

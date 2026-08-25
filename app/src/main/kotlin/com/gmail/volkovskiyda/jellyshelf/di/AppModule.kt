@@ -96,6 +96,7 @@ val appModule = module {
             isDebug = BuildConfig.DEBUG,
             sdkInt = Build.VERSION.SDK_INT,
             versionCode = BuildConfig.VERSION_CODE,
+            versionName = BuildConfig.VERSION_NAME,
         )
     }
     single {

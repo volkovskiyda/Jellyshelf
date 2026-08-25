@@ -25,6 +25,17 @@ data class BuildInfo(
      * too. The real value is wired in the Koin module beside [isDebug].
      */
     val versionCode: Int = 1,
+    /**
+     * `BuildConfig.VERSION_NAME` — `"1.0.<buildNumber>"` for a CI build, the bare base version
+     * (`"1.0"`) for a locally assembled one, plus the `-debug` / `-benchmark` suffix its build type
+     * appends (`app/build.gradle.kts:44-49`).
+     *
+     * Display only: it is the string the Settings screen shows so a user can name the build they
+     * are running when reporting something. Nothing branches on it — [versionCode] is what the
+     * update check compares. Defaults to blank so tests that don't care inherit "no version to
+     * show" rather than a made-up one; the real value is wired in the Koin module beside [isDebug].
+     */
+    val versionName: String = "",
 ) {
     /**
      * Whether the device runs at least API level [api]. The `@ChecksSdkIntAtLeast` annotation lets

@@ -36,6 +36,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
+/** A build fact, so it has to survive the sign-out rebuild the way the theme does. */
+private const val VERSION_NAME = "1.0.294"
+
 /**
  * What Sign out actually does, through the real [SettingsViewModel].
  *
@@ -120,7 +123,7 @@ class SignOutInstrumentedTest {
             RefusingJellyfin(),
             SettingsCache(),
             SyncScheduler(workManager),
-            inertUpdateChecker(),
+            inertUpdateChecker(versionName = VERSION_NAME),
             testLocalNetworkPrompt(),
         ).also {
             store.put("settings", it)
@@ -171,6 +174,9 @@ class SignOutInstrumentedTest {
         assertFalse(state.authStatus?.isError == true)
         // The theme is the device's, not the server's — it must survive.
         assertEquals(ThemeMode.DARK, state.themeState.mode)
+        // So must the version line: it describes the APK, and a sign-out does not change which
+        // APK is installed. The rebuild here lists every field by hand, so an omission is silent.
+        assertEquals(VERSION_NAME, state.versionName)
     }
 
     /**
