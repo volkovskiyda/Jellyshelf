@@ -44,6 +44,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -219,17 +220,25 @@ internal fun SettingsContent(
             // falls back to guessing from the masked field alone, and a lone password field with no
             // declared username beside it reads as a sign-up form — so the offer is "generate a new
             // password" instead of the one already stored.
-            OutlinedTextField(
-                value = state.username,
-                onValueChange = actions.onUsernameChange,
-                label = { Text(stringResource(R.string.username)) },
-                singleLine = true,
-                enabled = !state.signedIn,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentType = ContentType.Username }
-                    .testTag(USERNAME_FIELD_TAG),
-            )
+            //
+            // Keyed on [SettingsUiState.signedIn] so signing in builds a *new* field rather than
+            // re-labelling this one. A filled field paints itself with the autofill highlight and
+            // only ever drops it on an edit the user makes; the sign-in that replaces the typed
+            // username with the server's is not one, so without the key the field stays washed
+            // yellow for as long as the screen lives.
+            key(state.signedIn) {
+                OutlinedTextField(
+                    value = state.username,
+                    onValueChange = actions.onUsernameChange,
+                    label = { Text(stringResource(R.string.username)) },
+                    singleLine = true,
+                    enabled = !state.signedIn,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentType = ContentType.Username }
+                        .testTag(USERNAME_FIELD_TAG),
+                )
+            }
             if (!state.signedIn) {
                 OutlinedTextField(
                     value = state.password,
