@@ -52,6 +52,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.platform.LocalAutofillManager
 import androidx.compose.ui.platform.LocalContext
@@ -59,6 +60,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDataType
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -221,6 +223,12 @@ internal fun SettingsContent(
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
+                    // Every text field is autofillable by default, and an unlabelled one sitting
+                    // directly above a username and a password is one the provider will guess at:
+                    // Google's filled the saved *password* into this box. [ContentDataType.None]
+                    // is how a Compose field says it holds nothing a password manager wants —
+                    // there is no content type for a server address to declare instead.
+                    .semantics { contentDataType = ContentDataType.None }
                     .testTag(SERVER_URL_FIELD_TAG),
             )
             // The default auth path: a user-scoped token, so nothing the app holds or hands to an
@@ -675,6 +683,8 @@ private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
         },
         modifier = Modifier
             .fillMaxWidth()
+            // Not a credential either — same reasoning as the server URL above.
+            .semantics { contentDataType = ContentDataType.None }
             .testTag(INDEX_URL_FIELD_TAG),
     )
 }

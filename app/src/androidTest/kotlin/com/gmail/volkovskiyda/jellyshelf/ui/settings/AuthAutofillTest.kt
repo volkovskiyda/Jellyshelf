@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -65,6 +66,12 @@ class AuthAutofillTest {
         )
     }
 
+    private fun assertNotAutofillable(tag: String) {
+        composeRule.onNodeWithTag(tag).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.ContentDataType, ContentDataType.None),
+        )
+    }
+
     @Test
     fun theSignInForm_hintsUsernameAndSavedPassword() {
         setContent(SettingsUiState(serverUrl = "https://example.org"))
@@ -72,6 +79,26 @@ class AuthAutofillTest {
         assertContentType(USERNAME_FIELD_TAG, ContentType.Username)
         // Password, not NewPassword: signing in to a server that already has the account.
         assertContentType(PASSWORD_FIELD_TAG, ContentType.Password)
+    }
+
+    /**
+     * The addresses on this screen have to opt *out*.
+     *
+     * Every Compose text field is autofillable by default, and an unhinted one is left to the
+     * provider's own classifier — which, for a box sitting directly above a username and a
+     * password, guessed credential: Google's autofill filled the saved password into the server
+     * URL field. Neither address is anything a password manager should touch, and there is no
+     * content type for "server address" to declare instead, so they declare no autofillable data
+     * at all.
+     */
+    @Test
+    fun theAddressFields_declareNothingForAPasswordManagerToFill() {
+        setContent(
+            SettingsUiState(serverUrl = "https://example.org", signedIn = true, username = "wolf"),
+        )
+
+        assertNotAutofillable(SERVER_URL_FIELD_TAG)
+        assertNotAutofillable(INDEX_URL_FIELD_TAG)
     }
 
     /**
