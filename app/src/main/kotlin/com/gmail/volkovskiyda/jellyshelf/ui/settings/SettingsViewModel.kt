@@ -278,6 +278,19 @@ class SettingsViewModel(
     val demoEntered: SharedFlow<Unit> = _demoEntered.asSharedFlow()
 
     /**
+     * "The server accepted these credentials" — the screen turns it into an autofill commit, which
+     * is what asks the password manager to save them. One-shot for the same reason as the two
+     * above.
+     *
+     * Fired on acceptance rather than on the button tap, which is the other place a form could
+     * commit: a rejected password would otherwise be offered for saving, and the whole point of
+     * the saved credential is that it works. Only a real sign-in emits — the demo's magic
+     * username and password are not a credential anyone should keep.
+     */
+    private val _credentialAccepted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val credentialAccepted: SharedFlow<Unit> = _credentialAccepted.asSharedFlow()
+
+    /**
      * Sync no longer runs in this scope, so its progress can't be held in [_state]: the worker
      * outlives the ViewModel a tab switch clears. Merging the two here keeps the screen's
      * contract unchanged while a sync started on one visit still reports on the next.
@@ -633,6 +646,11 @@ class SettingsViewModel(
         // Re-armed here, with the rest of the post-sign-in state, so "once per sign-in" holds by
         // construction rather than by comparing timestamps.
         settingsRepo.setSyncScopeNudged(false)
+        // Before the state write below, deliberately. That write blanks the password and takes its
+        // field out of the form, and the save offer has to be asked for while the fields the
+        // password manager is being asked to remember are still standing. Emitting first puts the
+        // collector's commit on the main queue ahead of the recomposition this write schedules.
+        _credentialAccepted.emit(Unit)
         _state.value = _state.value.copy(
             busy = false,
             password = "",
