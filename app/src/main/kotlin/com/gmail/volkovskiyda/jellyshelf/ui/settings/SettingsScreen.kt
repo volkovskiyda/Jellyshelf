@@ -51,11 +51,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
@@ -211,6 +213,12 @@ internal fun SettingsContent(
             )
             // The default auth path: a user-scoped token, so nothing the app holds or hands to an
             // external player is a full-server credential.
+            //
+            // [ContentType] on both fields is what makes the password manager offer the *saved*
+            // credential for this app. Without it Compose publishes no autofill hint, the provider
+            // falls back to guessing from the masked field alone, and a lone password field with no
+            // declared username beside it reads as a sign-up form — so the offer is "generate a new
+            // password" instead of the one already stored.
             OutlinedTextField(
                 value = state.username,
                 onValueChange = actions.onUsernameChange,
@@ -219,6 +227,7 @@ internal fun SettingsContent(
                 enabled = !state.signedIn,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .semantics { contentType = ContentType.Username }
                     .testTag(USERNAME_FIELD_TAG),
             )
             if (!state.signedIn) {
@@ -235,6 +244,9 @@ internal fun SettingsContent(
                     keyboardActions = KeyboardActions(onDone = { actions.signIn() }),
                     modifier = Modifier
                         .fillMaxWidth()
+                        // Password, not NewPassword: this form only ever signs in to a server that
+                        // already has the account.
+                        .semantics { contentType = ContentType.Password }
                         .testTag(PASSWORD_FIELD_TAG),
                 )
             }
