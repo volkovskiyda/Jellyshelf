@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -117,45 +118,56 @@ fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
     SnackbarHost(hostState) { data ->
         // Keyed on the data so each snackbar swipes from a fresh, settled state rather than
         // inheriting the dismissed one its predecessor ended in.
-        key(data) {
-            val swipeState = rememberSwipeToDismissBoxState()
-            // A swipe is a dismissal like any other: it resolves showSnackbar, which is what
-            // clears a failure upstream. It is also the only way out of a progress snackbar that
-            // never resolves — an install whose UpdateTask neither succeeds nor fails leaves an
-            // indefinite snackbar with no action on it, which is exactly what happened on device.
-            LaunchedEffect(swipeState.currentValue) {
-                if (swipeState.currentValue != SwipeToDismissBoxValue.Settled) data.dismiss()
-            }
-            SwipeToDismissBox(state = swipeState, backgroundContent = {}) {
-                Snackbar(
-                    action = data.visuals.actionLabel?.let { label ->
-                        {
-                            // A snackbar is drawn on the *inverse* surface — light in a dark app —
-                            // and its action label has its own colour for that reason. A plain
-                            // TextButton overrides it with the theme's `primary`, which is picked
-                            // to sit on the normal surface: in dark mode that is a pale purple on
-                            // a near-white snackbar, and the action all but disappears. Reading
-                            // the colour back out of the composition keeps whatever `Snackbar`
-                            // provides here, rather than pinning a second copy of the default.
-                            val actionColor = LocalContentColor.current
-                            TextButton(
-                                onClick = data::performAction,
-                                colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
-                            ) { Text(label) }
-                        }
-                    },
-                ) {
-                    val isInstall = data.visuals is InstallSnackbarVisuals ||
-                        data.visuals is InstallFailureVisuals
-                    Text(
-                        if (isInstall) {
-                            state?.let { installMessage(it) } ?: data.visuals.message
-                        } else {
-                            data.visuals.message
-                        },
-                    )
+        key(data) { AppSnackbar(data, state) }
+    }
+}
+
+/**
+ * One snackbar, as this app draws every snackbar: swipeable to dismiss, the action coloured for
+ * the inverse surface, the label read from live install [state] when [data] is an install's.
+ *
+ * `internal` and separate from [InstallSnackbarHost] so the screenshot previews can render one
+ * directly — a host only shows what a suspended `showSnackbar` posts to it, which a single
+ * rendered preview frame cannot arrange.
+ */
+@Composable
+internal fun AppSnackbar(data: SnackbarData, state: InstallState?) {
+    val swipeState = rememberSwipeToDismissBoxState()
+    // A swipe is a dismissal like any other: it resolves showSnackbar, which is what
+    // clears a failure upstream. It is also the only way out of a progress snackbar that
+    // never resolves — an install whose UpdateTask neither succeeds nor fails leaves an
+    // indefinite snackbar with no action on it, which is exactly what happened on device.
+    LaunchedEffect(swipeState.currentValue) {
+        if (swipeState.currentValue != SwipeToDismissBoxValue.Settled) data.dismiss()
+    }
+    SwipeToDismissBox(state = swipeState, backgroundContent = {}) {
+        Snackbar(
+            action = data.visuals.actionLabel?.let { label ->
+                {
+                    // A snackbar is drawn on the *inverse* surface — light in a dark app —
+                    // and its action label has its own colour for that reason. A plain
+                    // TextButton overrides it with the theme's `primary`, which is picked
+                    // to sit on the normal surface: in dark mode that is a pale purple on
+                    // a near-white snackbar, and the action all but disappears. Reading
+                    // the colour back out of the composition keeps whatever `Snackbar`
+                    // provides here, rather than pinning a second copy of the default.
+                    val actionColor = LocalContentColor.current
+                    TextButton(
+                        onClick = data::performAction,
+                        colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
+                    ) { Text(label) }
                 }
-            }
+            },
+        ) {
+            val isInstall = data.visuals is InstallSnackbarVisuals ||
+                data.visuals is InstallFailureVisuals
+            Text(
+                if (isInstall) {
+                    state?.let { installMessage(it) } ?: data.visuals.message
+                } else {
+                    data.visuals.message
+                },
+            )
         }
     }
 }
