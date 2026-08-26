@@ -22,6 +22,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.gmail.volkovskiyda.jellyshelf.R
@@ -46,6 +48,12 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
  * [canAct] closes that menu when there is nothing to act on *or* a run is already in flight — the
  * repository takes one selection run at a time, so a second confirmation would otherwise be
  * accepted and then quietly do nothing.
+ *
+ * Both bulk buttons drop the focus first. On the library the list sits under a search field, and a
+ * tap on an icon button leaves that field focused with its keyboard up — over a list that has just
+ * changed underneath, and over the count that is the only evidence of what changed. The overflow
+ * menu already behaves this way for free, because its popup takes focus; these two do it on
+ * purpose so the pair reads the same.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +68,7 @@ internal fun SelectionTopBar(
     /** Null on a list a playlist cannot be built from — see the menu below. */
     onCreatePlaylist: (() -> Unit)? = null,
 ) {
+    val focusManager = LocalFocusManager.current
     TopAppBar(
         // Tinted so selection mode is legible at a glance rather than only from the bar's contents
         // — the surrounding list looks much the same either way.
@@ -76,15 +85,25 @@ internal fun SelectionTopBar(
             }
         },
         actions = {
-            IconButton(onClick = onSelectAll, enabled = canSelectAll) {
+            IconButton(onClick = { focusManager.dismissing(onSelectAll) }, enabled = canSelectAll) {
                 Icon(Icons.Filled.DoneAll, contentDescription = stringResource(R.string.select_all))
             }
-            IconButton(onClick = onDeselectAll, enabled = selectedCount > 0) {
+            IconButton(onClick = { focusManager.dismissing(onDeselectAll) }, enabled = selectedCount > 0) {
                 Icon(Icons.Filled.RemoveDone, contentDescription = stringResource(R.string.deselect_all))
             }
             SelectionActionsMenu(enabled = canAct, onAction = onAction, onCreatePlaylist = onCreatePlaylist)
         },
     )
+}
+
+/**
+ * Runs [action] with nothing focused, which is how the keyboard goes away: clearing focus takes
+ * the search field's IME down with it, rather than hiding a keyboard that a still-focused field
+ * would be entitled to bring back.
+ */
+private fun FocusManager.dismissing(action: () -> Unit) {
+    clearFocus()
+    action()
 }
 
 /**

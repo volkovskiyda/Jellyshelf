@@ -5,7 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -204,6 +206,28 @@ class LibrarySelectionTest {
         composeRule.onNodeWithContentDescription(string(R.string.deselect_all)).performClick()
         assertEquals(1, state.deselectAlls)
         assertEquals(emptySet<String>(), state.selected)
+    }
+
+    @Test
+    fun bothBulkButtons_takeTheKeyboardOffTheSearchField() {
+        val state = Recorder().apply {
+            active = true
+            selected = setOf("a")
+        }
+        setContent(state)
+
+        // Focus is the observable half of "the keyboard went away": the IME is up because the
+        // field holds focus, so a field that still holds it after the tap is a field whose
+        // keyboard is still covering the list the tap just changed.
+        composeRule.onNodeWithText(string(R.string.search)).performClick()
+        composeRule.onNodeWithText(string(R.string.search)).assertIsFocused()
+
+        composeRule.onNodeWithContentDescription(string(R.string.select_all)).performClick()
+        composeRule.onNodeWithText(string(R.string.search)).assertIsNotFocused()
+
+        composeRule.onNodeWithText(string(R.string.search)).performClick()
+        composeRule.onNodeWithContentDescription(string(R.string.deselect_all)).performClick()
+        composeRule.onNodeWithText(string(R.string.search)).assertIsNotFocused()
     }
 
     @Test
