@@ -17,20 +17,32 @@ WorkManager · DataStore · Coil · Koin · bundled yt-dlp (youtubedl-android).
 ## Screenshots
 
 Taken in [demo mode](#demo-mode--try-it-without-a-server), so the library is the seeded one
-rather than a real archive. Both sections are collapsed on purpose — expand one and the images
+rather than a real archive. Each section is collapsed on purpose — expand one and the images
 download then, not on every visit to this page.
 
-<!-- Regenerate: install the debug build, Settings -> Try demo, then `adb exec-out screencap -p`.
-     SystemUI demo mode (`adb shell am broadcast -a com.android.systemui.demo -e command enter`)
-     is what pins the status bar to 12:00 / 100% with no notification icons. -->
+<!-- Regenerate on the Pixel_9 and Pixel_Tablet_API_37 emulators (a physical device brings its own
+     notifications into the status bar, and demo mode cannot hide them on Android 17):
+     install the debug build, Settings -> Try demo, then `adb exec-out screencap -p`.
+     Naming is <device>-<theme>-<screen>.png.
+     SystemUI demo mode pins the status bar to 12:00 / 100% with no icons beside the clock, and
+     needs arming first: `adb shell settings put global sysui_demo_allowed 1`, then
+     `am broadcast -a com.android.systemui.demo -e command enter`, the `clock`/`battery`/`network`
+     commands, and `-e command status` with every slot hidden — without that last one the tablet
+     keeps a shield icon next to the clock.
+     Light and dark come from the app's own theme switch, not the system setting, so both sets can
+     be shot on one device without touching its appearance.
+     The title bar must read "Jellyshelf", not "Jellyshelf Debug" — point app/src/debug/res/values/
+     strings.xml at the release label for the build you shoot with, and revert it after. Do NOT
+     install a release build to avoid that step: it replaces a real install, credentials and all. -->
 
 <details>
-<summary><b>Phone</b> — Pixel 5, 1080×2340</summary>
+<summary><b>Phone</b> — Pixel 9, 1080×2424</summary>
 <br>
 
-| Library | Categories | Video detail | Settings |
-| --- | --- | --- | --- |
-| <img src="docs/screenshots/pixel5-library.png" alt="Library list with search field, thumbnails and a watched marker" width="200"> | <img src="docs/screenshots/pixel5-categories.png" alt="Categories screen with Channels, YouTube categories and Years tabs" width="200"> | <img src="docs/screenshots/pixel5-detail.png" alt="Video detail with play button, mark as watched and chapter list" width="200"> | <img src="docs/screenshots/pixel5-settings-dark.png" alt="Settings in dark theme showing the theme switch and demo mode notice" width="200"> |
+|  | Library | Categories | Video detail | Settings |
+| --- | --- | --- | --- | --- |
+| **Light** | <img src="docs/screenshots/phone-light-library.png" alt="Library in light theme on Phone" width="170"> | <img src="docs/screenshots/phone-light-categories.png" alt="Categories in light theme on Phone" width="170"> | <img src="docs/screenshots/phone-light-detail.png" alt="Detail in light theme on Phone" width="170"> | <img src="docs/screenshots/phone-light-settings.png" alt="Settings in light theme on Phone" width="170"> |
+| **Dark** | <img src="docs/screenshots/phone-dark-library.png" alt="Library in dark theme on Phone" width="170"> | <img src="docs/screenshots/phone-dark-categories.png" alt="Categories in dark theme on Phone" width="170"> | <img src="docs/screenshots/phone-dark-detail.png" alt="Detail in dark theme on Phone" width="170"> | <img src="docs/screenshots/phone-dark-settings.png" alt="Settings in dark theme on Phone" width="170"> |
 
 </details>
 
@@ -38,13 +50,10 @@ download then, not on every visit to this page.
 <summary><b>Tablet</b> — Pixel Tablet, 2560×1600 landscape</summary>
 <br>
 
-| Library | Categories |
-| --- | --- |
-| <img src="docs/screenshots/tablet-library.png" alt="Library list on a tablet in landscape" width="400"> | <img src="docs/screenshots/tablet-categories.png" alt="Categories on a tablet, all six grouping tabs visible at once" width="400"> |
-
-| Video detail | Settings |
-| --- | --- |
-| <img src="docs/screenshots/tablet-detail.png" alt="Video detail on a tablet, scrolled to the play button and description" width="400"> | <img src="docs/screenshots/tablet-settings-dark.png" alt="Settings on a tablet in dark theme" width="400"> |
+|  | Library | Categories | Video detail | Settings |
+| --- | --- | --- | --- | --- |
+| **Light** | <img src="docs/screenshots/tablet-light-library.png" alt="Library in light theme on Tablet" width="300"> | <img src="docs/screenshots/tablet-light-categories.png" alt="Categories in light theme on Tablet" width="300"> | <img src="docs/screenshots/tablet-light-detail.png" alt="Detail in light theme on Tablet" width="300"> | <img src="docs/screenshots/tablet-light-settings.png" alt="Settings in light theme on Tablet" width="300"> |
+| **Dark** | <img src="docs/screenshots/tablet-dark-library.png" alt="Library in dark theme on Tablet" width="300"> | <img src="docs/screenshots/tablet-dark-categories.png" alt="Categories in dark theme on Tablet" width="300"> | <img src="docs/screenshots/tablet-dark-detail.png" alt="Detail in dark theme on Tablet" width="300"> | <img src="docs/screenshots/tablet-dark-settings.png" alt="Settings in dark theme on Tablet" width="300"> |
 
 </details>
 
