@@ -10,11 +10,10 @@ import androidx.room.TypeConverters
         CategoryEntity::class,
         VideoCategoryCrossRef::class,
     ],
-    version = 1,
-    // The app is unreleased, so pre-release schema changes just rewrite version 1 and dev devices
-    // clear app data once. Schemas are checked in under app/schemas so that from the first release
-    // on, every version bump can ship a real migration in the same commit — manual categories and
-    // in-app yt-dlp metadata are user-authored and must survive updates.
+    // 2: dropped the videos.durationSeconds index with the library's duration filter, its only
+    // reader. Schemas are checked in under app/schemas, so every bump is diffable against the one
+    // before it.
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

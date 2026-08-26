@@ -277,10 +277,22 @@ private fun imageHttpClient(buildInfo: BuildInfo): HttpClient = HttpClient(OkHtt
     }
 }
 
-// No destructive fallback: manual categories and in-app yt-dlp metadata are user-authored and not
-// reconstructible, so future schema bumps must ship explicit migrations.
+/**
+ * Destructive **only from version 1**, not in general.
+ *
+ * The 1 → 2 bump drops one unread index and carries no data change, so it could have been a
+ * one-line `DROP INDEX` migration; clearing instead is a deliberate call, taken while the install
+ * base is small. It costs those installs their manual categories and their fetched yt-dlp
+ * metadata, which are user-authored and no re-sync brings back — everything else returns on the
+ * next sync.
+ *
+ * `fallbackToDestructiveMigrationFrom(1)` rather than a blanket fallback so that decision expires
+ * with the version it was made about: 2 → 3 and everything after it still has to ship a real
+ * migration, and an install that reaches this builder with no route forward fails loudly instead
+ * of quietly wiping itself.
+ */
 private fun provideDatabase(context: Context): JellyshelfDatabase = Room.databaseBuilder(
     context,
     JellyshelfDatabase::class.java,
     "jellyshelf.db",
-).build()
+).fallbackToDestructiveMigrationFrom(dropAllTables = true, 1).build()
