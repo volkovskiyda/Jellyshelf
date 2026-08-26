@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.selection
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.MoreVert
@@ -113,6 +114,9 @@ private fun SelectionActionsMenu(
         onCreatePlaylist?.let { create ->
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.create_playlist)) },
+                leadingIcon = {
+                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                },
                 onClick = {
                     expanded = false
                     create()
@@ -130,17 +134,16 @@ private fun SelectionActionsMenu(
 
 @Composable
 private fun SelectionMenuItem(action: SelectionAction, onClick: () -> Unit) {
+    // The destructive row's glyph takes the error colour with its text, so the two say the same
+    // thing; a red label beside a neutral bin would read as a styling accident.
+    val color = if (action.destructive) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
     DropdownMenuItem(
-        text = {
-            Text(
-                stringResource(action.menuLabel),
-                color = if (action.destructive) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
-        },
+        text = { Text(stringResource(action.menuLabel), color = color) },
+        leadingIcon = { Icon(action.menuIcon, contentDescription = null, tint = color) },
         onClick = onClick,
     )
 }
