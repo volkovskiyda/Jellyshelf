@@ -734,6 +734,7 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.ui.compose)
+    implementation(libs.androidx.media3.ui.compose.material3)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
     // Installs the committed baseline profile at runtime on devices where ART does not pick it up
