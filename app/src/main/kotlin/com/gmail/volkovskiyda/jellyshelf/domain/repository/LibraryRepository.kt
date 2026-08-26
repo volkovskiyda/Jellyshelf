@@ -5,6 +5,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +42,14 @@ interface LibraryRepository : PlaystateRepository {
      */
     val bulkRemoveMissing: StateFlow<BulkProgress>
 
+    /**
+     * The multi-selection run in flight, or null when there is none. One runner for all four
+     * [SelectionAction]s and for both video lists: only one selection run can be going at a time,
+     * so a single header describes it and a single Cancel stops it, wherever the user walks to
+     * while it works.
+     */
+    val selectionRun: StateFlow<SelectionRun?>
+
     suspend fun sync(): SyncResult
     suspend fun fetchMetadata(youtubeId: String): FetchResult
     fun startFetchMissing()
@@ -57,6 +67,24 @@ interface LibraryRepository : PlaystateRepository {
     fun startRemoveMissing()
     fun cancelRemoveMissing()
     fun acknowledgeBulkRemoveMissing()
+
+    /**
+     * Runs [action] over the videos the user selected, reporting through [selectionRun]. No-op
+     * while a selection run is already in flight.
+     *
+     * Ids rather than videos, because the selection outlives the emission it was made from: rows
+     * that have gone by the time the run starts are simply not among its targets, and the run's
+     * total counts what was actually found.
+     *
+     * [SelectionAction.REMOVE] deletes on the Jellyfin server, media file included, and only drops
+     * the local row once the server has confirmed it — except for a video the server no longer has
+     * (never matched to an item, or already dropped from its listings), which has nothing to
+     * delete there and is removed locally instead. That is the one destructive action here; the
+     * other three are recoverable by acting again.
+     */
+    fun startSelectionAction(action: SelectionAction, youtubeIds: List<String>)
+    fun cancelSelectionAction()
+    fun acknowledgeSelectionRun()
 
     /**
      * Fills the library with the bundled demo dataset — no server, no network — and records that

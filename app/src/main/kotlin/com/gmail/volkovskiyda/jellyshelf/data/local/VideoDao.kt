@@ -41,6 +41,17 @@ interface VideoDao {
     @Query("SELECT * FROM videos")
     suspend fun getAll(): List<VideoEntity>
 
+    /**
+     * The rows behind a multi-selection, in the file-name order every list on screen is in — so a
+     * bulk run works through them top to bottom, the way the user sees them.
+     *
+     * Callers chunk the id list rather than passing it whole: SQLite caps how many variables one
+     * statement may bind (999 on the platform versions this app supports), and selecting every
+     * video in a real library goes well past that.
+     */
+    @Query("SELECT * FROM videos WHERE youtubeId IN (:youtubeIds) ORDER BY fileName")
+    suspend fun getByIds(youtubeIds: List<String>): List<VideoEntity>
+
     // --- Virtual "Others" filters: live lists ---
 
     @RewriteQueriesToDropUnusedColumns

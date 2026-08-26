@@ -91,6 +91,37 @@
     <string name="remove_missing_dialog_text">This removes %1$s from this device only — nothing is deleted on the Jellyfin server. Any that the server does still have come back on the next sync.</string>
     <string name="empty_missing">No videos are missing from the server.</string>
 
+    <!--
+      Multi-select on the two video lists (Library and one category). "Remove" here is the same
+      destructive act the watched removal performs — a server delete, media file included — with
+      one addition the dialog text has to carry: a selection can hold videos the server no longer
+      has, and those are dropped locally because there is nothing left to delete.
+    -->
+    <string name="select_videos">Select videos</string>
+    <string name="exit_selection">Exit selection</string>
+    <string name="select_video">Select %1$s</string>
+    <string name="select_all">Select all</string>
+    <string name="deselect_all">Deselect all</string>
+    <string name="selection_actions">Actions for the selected videos</string>
+    <!-- The bar's title and the Select all snackbar say the same thing; one string says it. -->
+    <string name="selected_count" tools:ignore="PluralsCandidate">%1$d selected</string>
+    <string name="selection_cleared">Selection cleared</string>
+    <string name="undo">Undo</string>
+    <string name="update">Update</string>
+    <string name="selection_mark">Mark</string>
+    <string name="selection_mark_watched_title">Mark as watched?</string>
+    <string name="selection_mark_watched_text">This marks %1$s as watched, here and on the Jellyfin server.</string>
+    <string name="selection_mark_unwatched_title">Mark as unwatched?</string>
+    <string name="selection_mark_unwatched_text">This marks %1$s as unwatched, here and on the Jellyfin server, and clears any resume position.</string>
+    <string name="selection_update_metadata_title">Update metadata?</string>
+    <string name="selection_update_metadata_text">This fetches metadata for %1$s with the built-in yt-dlp, one at a time. It can take a while, and it needs a working internet connection.</string>
+    <string name="selection_remove_title">Remove videos?</string>
+    <string name="selection_remove_text">This deletes %1$s from the Jellyfin server, media files included. Any the server no longer has are removed from this device only. It cannot be undone.</string>
+    <string name="selection_marking_watched_progress">Marking as watched… %1$d/%2$d</string>
+    <string name="selection_marked_watched_summary">Marked as watched %1$d/%2$d</string>
+    <string name="selection_marking_unwatched_progress">Marking as unwatched… %1$d/%2$d</string>
+    <string name="selection_marked_unwatched_summary">Marked as unwatched %1$d/%2$d</string>
+
     <!-- Detail -->
     <string name="video_fallback_title">Video</string>
     <string name="video_not_found">Video not found.</string>

@@ -31,6 +31,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_CONTINUE
@@ -78,6 +80,14 @@ import androidx.tracing.Trace as SystemTrace
 private val HTTP_CLIENT_ERRORS = 400..499
 private const val HTTP_REQUEST_TIMEOUT = 408
 private const val HTTP_TOO_MANY_REQUESTS = 429
+private const val HTTP_NOT_FOUND = 404
+
+/**
+ * The server says it has no such item. For a delete that is the outcome asked for rather than a
+ * failure — something else already removed it — so the caller drops the local row and moves on.
+ */
+internal fun isNotFound(e: Throwable): Boolean =
+    (e as? ResponseException)?.response?.status?.value == HTTP_NOT_FOUND
 
 /** 4xx means the request itself is wrong (bad key, deleted user/folder) — except the
  *  explicitly transient 408 (timeout) and 429 (throttling). Under Ktor's `expectSuccess = true`,
@@ -320,11 +330,11 @@ internal fun autoAssignmentsOf(video: VideoEntity): List<AutoAssignment> = build
 }
 
 /**
- * Drives one cancellable bulk run and publishes its [BulkProgress]. Both bulk actions (fetch all
- * missing metadata, remove all watched) get their own instance, so starting or cancelling one
- * leaves the other alone.
+ * Drives one cancellable bulk run and publishes its [BulkProgress]. Every bulk action (fetch all
+ * missing metadata, remove all watched, and the multi-selection runs [SelectionBulkRunner] drives)
+ * gets its own instance, so starting or cancelling one leaves the others alone.
  */
-private class BulkRunner(private val scope: CoroutineScope) {
+internal class BulkRunner(private val scope: CoroutineScope) {
     private val _progress = MutableStateFlow<BulkProgress>(BulkProgress.Idle)
     val progress: StateFlow<BulkProgress> = _progress.asStateFlow()
 
@@ -478,6 +488,22 @@ class DefaultLibraryRepository private constructor(
 
     private val removeMissingRunner = BulkRunner(repoScope)
     override val bulkRemoveMissing: StateFlow<BulkProgress> = removeMissingRunner.progress
+
+    /**
+     * The multi-selection runner. Its three collaborators are this class's own private members —
+     * see [SelectionBulkRunner] for why the run lives out there and the per-video work stays here.
+     */
+    private val selectionRunner = SelectionBulkRunner(
+        scope = repoScope,
+        loadTargets = videoDao::getByIds,
+        applyTo = ::applySelectionAction,
+        afterRun = { action ->
+            if (action == SelectionAction.REMOVE) {
+                writes.mutex.withLock { db.withTransaction { pruneCategoryLeftovers() } }
+            }
+        },
+    )
+    override val selectionRun: StateFlow<SelectionRun?> = selectionRunner.run
 
     // Every list flow below ends in `flowOn(dispatchers.default)`: ViewModels collect these through
     // `stateIn(viewModelScope)`, i.e. on Main.immediate, so without it the row→domain mapping —
@@ -1104,6 +1130,84 @@ class DefaultLibraryRepository private constructor(
     override fun cancelRemoveMissing() = removeMissingRunner.cancel()
 
     override fun acknowledgeBulkRemoveMissing() = removeMissingRunner.acknowledge()
+
+    override fun startSelectionAction(action: SelectionAction, youtubeIds: List<String>) =
+        selectionRunner.start(action, youtubeIds)
+
+    override fun cancelSelectionAction() = selectionRunner.cancel()
+
+    override fun acknowledgeSelectionRun() = selectionRunner.acknowledge()
+
+    /**
+     * One selected video's share of [action]. Returns whether it succeeded — a false is counted
+     * and the run carries on to the next video.
+     *
+     * The settings snapshot is read per video rather than once for the run: a selection run can
+     * outlive the screen that started it by minutes, and signing out or reconnecting mid-run must
+     * change what the remaining videos do, not be decided by what was true when the user tapped.
+     */
+    private suspend fun applySelectionAction(action: SelectionAction, video: VideoEntity): Boolean =
+        when (action) {
+            // Local write always sticks; false means only that Jellyfin didn't hear about it, which
+            // is worth reporting because the next sync may revert it to the server's value.
+            SelectionAction.MARK_WATCHED -> setPlayed(video.youtubeId, played = true)
+            SelectionAction.MARK_UNWATCHED -> setPlayed(video.youtubeId, played = false)
+            SelectionAction.UPDATE_METADATA ->
+                fetchAndApply(video.youtubeId, demoMode = settings.snapshot().demoMode) is FetchResult.Success
+            SelectionAction.REMOVE -> removeSelected(settings.snapshot(), video)
+        }
+
+    /**
+     * The removal a multi-selection performs: the server delete [startRemoveWatched] does, with
+     * one addition — a video the server does not have is dropped locally instead of failing.
+     *
+     * That is the difference between the two removals the app already had, decided per video
+     * rather than per screen. Selecting rows by hand mixes them freely: a list can hold videos the
+     * server still serves next to ones it stopped listing weeks ago, and a user who selects both
+     * and asks for them to go means the same thing by each. Refusing the second kind — which is
+     * what [removeFromServer]'s `jellyfinItemId == null` guard does for the watched run, where
+     * every target is by definition a server item — would leave exactly the videos that are
+     * hardest to get rid of sitting in the list, reported as failures.
+     *
+     * A delete the server answers 404 to counts here as well: the item is gone, which is the
+     * outcome asked for, and the local row should follow it rather than be reported as a failure
+     * the user can do nothing about.
+     */
+    private suspend fun removeSelected(s: Settings, video: VideoEntity): Boolean {
+        // Nothing on the server to delete: never matched to an item, or the server has already
+        // stopped listing it. Local only, and the video comes back on the next sync if the server
+        // turns out to still have it — the same bargain [startRemoveMissing] strikes.
+        if (video.jellyfinItemId == null || video.missedSyncs > 0) {
+            deleteLocally(video.youtubeId)
+            return true
+        }
+        // Nothing can be deleted on a server that isn't configured. Reported as a failure rather
+        // than quietly dropped locally, which would read as "the video is gone" while the server
+        // still has it and the next sync puts the row straight back.
+        if (!s.isConnected && !s.demoMode) return false
+
+        return runCatchingCancellable { removeFromServer(s, video) }.getOrElse { e ->
+            if (isNotFound(e)) {
+                Timber.i("Selection remove: ${video.youtubeId} was already gone from the server")
+                deleteLocally(video.youtubeId)
+                true
+            } else {
+                Timber.w(e, "Selection remove: server delete failed for ${video.youtubeId}")
+                false
+            }
+        }
+    }
+
+    /**
+     * Drops one row, without the category prune — the run does that once at the end (see the
+     * `afterRun` [selectionRunner] is built with) rather than after every video.
+     *
+     * NonCancellable for the reason [removeFromServer] gives: a cancel landing between a confirmed
+     * server delete and this write would leave a row for a video that no longer exists.
+     */
+    private suspend fun deleteLocally(youtubeId: String) = withContext(NonCancellable) {
+        writes.mutex.withLock { videoDao.delete(youtubeId) }
+    }
 
     /**
      * Fills the library from the bundled demo dataset, then marks the install as a demo.

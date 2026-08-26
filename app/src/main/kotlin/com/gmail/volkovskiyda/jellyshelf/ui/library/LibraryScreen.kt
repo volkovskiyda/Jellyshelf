@@ -1,11 +1,13 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -32,7 +34,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
@@ -41,6 +46,10 @@ import com.gmail.volkovskiyda.jellyshelf.ui.SearchField
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionActionDialog
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionRunHeader
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionTopBar
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionUndoSnackbar
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -70,6 +79,12 @@ fun LibraryScreen(
     val query by viewModel.query.collectAsStateWithLifecycle()
     val durationFilter by viewModel.durationFilter.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
+    val selection = viewModel.selection
+    val selectionActive by selection.active.collectAsStateWithLifecycle()
+    val selectedIds by selection.selected.collectAsStateWithLifecycle()
+    val selectionRun by selection.run.collectAsStateWithLifecycle()
+    val selectionUndo by selection.undo.collectAsStateWithLifecycle()
+    val demoMode by viewModel.demoMode.collectAsStateWithLifecycle()
 
     LibraryContent(
         videosOrNull = videosOrNull,
@@ -80,13 +95,33 @@ fun LibraryScreen(
         onDurationFilterChange = viewModel::onDurationFilterChange,
         onPlayVideo = onPlayVideo,
         onOpenDetails = onOpenDetails,
+        selectionActive = selectionActive,
+        selectedIds = selectedIds,
+        selectionRun = selectionRun,
+        demoMode = demoMode,
+        onStartSelection = selection::start,
+        onToggleSelection = selection::toggle,
+        onSelectAll = selection::selectAll,
+        onDeselectAll = selection::deselectAll,
+        onExitSelection = selection::exit,
+        onSelectionAction = selection::startAction,
+        onCancelSelectionRun = selection::cancelRun,
+        onAcknowledgeSelectionRun = selection::acknowledgeRun,
         modifier = modifier,
     )
 
-    // Hosted out here rather than inside [LibraryContent] so the content stays stateless and its
-    // screenshot goldens keep rendering a screen with nothing on top of it. Gated on the total,
-    // not on the rendered list: a search that matches nothing is still a library with videos in it.
+    // Both hosted out here rather than inside [LibraryContent], so the content stays renderable on
+    // its own: the prompt keeps the screenshot goldens showing a screen with nothing on top of it,
+    // and the snackbar needs the Scaffold's host, which only exists under MainActivity.
+    //
+    // The prompt is gated on the total, not on the rendered list: a search that matches nothing is
+    // still a library with videos in it.
     NotificationPermissionPrompt(hasVideos = totalCount > 0)
+    SelectionUndoSnackbar(
+        undo = selectionUndo,
+        onUndo = selection::undoBulkChange,
+        onConsumed = selection::consumeUndo,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -100,6 +135,18 @@ internal fun LibraryContent(
     onDurationFilterChange: (DurationBucket?) -> Unit,
     onPlayVideo: (Video) -> Unit,
     onOpenDetails: (Video) -> Unit,
+    selectionActive: Boolean = false,
+    selectedIds: Set<String> = emptySet(),
+    selectionRun: SelectionRun? = null,
+    demoMode: Boolean = false,
+    onStartSelection: (String?) -> Unit = {},
+    onToggleSelection: (String) -> Unit = {},
+    onSelectAll: (List<String>) -> Unit = {},
+    onDeselectAll: () -> Unit = {},
+    onExitSelection: () -> Unit = {},
+    onSelectionAction: (SelectionAction) -> Unit = {},
+    onCancelSelectionRun: () -> Unit = {},
+    onAcknowledgeSelectionRun: () -> Unit = {},
     modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
@@ -115,30 +162,71 @@ internal fun LibraryContent(
     val shownQuery = videosOrNull?.query.orEmpty()
     val shownDurationFilter = videosOrNull?.durationFilter
 
+    // The action a confirmation dialog is currently standing in front of. Local rather than
+    // hoisted: nothing outside this screen opens or closes it — confirming does, and so does
+    // dismissing — unlike the playlist dialog on the category screen, which a finished creation
+    // has to be able to close from the ViewModel.
+    var pendingAction by rememberSaveable { mutableStateOf<SelectionAction?>(null) }
+
+    // Back leaves selection mode instead of the screen. Registered below NavDisplay's own handler,
+    // so it wins while it is enabled and gets out of the way the moment the mode ends.
+    BackHandler(enabled = selectionActive) { onExitSelection() }
+
     Column(modifier = modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.app_name)) },
-            actions = {
-                if (totalCount > 0) {
-                    // Bare total only when nothing narrows the list, shown/all otherwise. Both the
-                    // duration filter and the search are hard filters (SearchRanking drops
-                    // non-matches as well as reordering it), so the shown list is the narrowed set
-                    // and its size is the numerator — matching the contentDescription below.
-                    val label = if (pristine) "$totalCount" else "${videos.size}/$totalCount"
-                    val shownDescription =
-                        pluralStringResource(R.plurals.shown_of_total, totalCount, videos.size, totalCount)
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.semantics { contentDescription = shownDescription },
+        if (selectionActive) {
+            SelectionTopBar(
+                selectedCount = selectedIds.size,
+                // Only the videos on screen — under a search or a duration filter that is not the
+                // whole library, and what the user is looking at is the only thing they can judge
+                // an action against.
+                canSelectAll = videos.any { it.youtubeId !in selectedIds },
+                // Closed while a run is going: the repository takes one at a time.
+                canAct = selectedIds.isNotEmpty() && selectionRun?.progress !is BulkProgress.Running,
+                onExit = onExitSelection,
+                onSelectAll = { onSelectAll(videos.map { it.youtubeId }) },
+                onDeselectAll = onDeselectAll,
+                onAction = { pendingAction = it },
+            )
+        } else {
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                actions = {
+                    if (totalCount > 0) {
+                        // Bare total only when nothing narrows the list, shown/all otherwise. Both
+                        // the duration filter and the search are hard filters (SearchRanking drops
+                        // non-matches as well as reordering it), so the shown list is the narrowed
+                        // set and its size is the numerator — matching the contentDescription below.
+                        val label = if (pristine) "$totalCount" else "${videos.size}/$totalCount"
+                        val shownDescription =
+                            pluralStringResource(R.plurals.shown_of_total, totalCount, videos.size, totalCount)
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.semantics { contentDescription = shownDescription },
+                        )
+                    }
+                    // Offered only once there is something to select. Long-pressing a row is the
+                    // other way in, and the one most users will find first.
+                    if (videos.isNotEmpty()) {
+                        IconButton(onClick = { onStartSelection(null) }) {
+                            Icon(
+                                Icons.Filled.Checklist,
+                                contentDescription = stringResource(R.string.select_videos),
+                            )
+                        }
+                    }
+                    DurationFilterAction(
+                        selected = durationFilter,
+                        onSelect = onDurationFilterChange,
                     )
-                }
-                DurationFilterAction(
-                    selected = durationFilter,
-                    onSelect = onDurationFilterChange,
-                )
-            },
+                },
+            )
+        }
+        SelectionRunHeader(
+            run = selectionRun,
+            onCancel = onCancelSelectionRun,
+            onDismiss = onAcknowledgeSelectionRun,
         )
         SearchField(
             query = query,
@@ -207,10 +295,26 @@ internal fun LibraryContent(
                         onOpenDetails = { onOpenDetails(video) },
                         thumbnailModel = thumbnailModel(video),
                         modifier = Modifier.testTag(LIBRARY_ROW_TAG),
+                        selected = if (selectionActive) video.youtubeId in selectedIds else null,
+                        onToggleSelection = { onToggleSelection(video.youtubeId) },
+                        onStartSelection = { onStartSelection(video.youtubeId) },
                     )
                 }
             }
         }
+    }
+
+    pendingAction?.let { action ->
+        SelectionActionDialog(
+            action = action,
+            videoCount = selectedIds.size,
+            demoMode = demoMode,
+            onDismiss = { pendingAction = null },
+            onConfirm = {
+                pendingAction = null
+                onSelectionAction(action)
+            },
+        )
     }
 }
 

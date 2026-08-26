@@ -57,3 +57,27 @@ sealed interface BulkProgress {
     data class Running(val done: Int, val total: Int, val failed: Int) : BulkProgress
     data class Done(val total: Int, val failed: Int) : BulkProgress
 }
+
+/**
+ * What a multi-selection of videos is being acted on with. One enum rather than four repository
+ * entry points, because a selection run is one runner: only one can be in flight at a time, and
+ * every label its progress header and confirmation dialog need rides on the action.
+ *
+ * [REMOVE] is the destructive one, and the only one whose meaning depends on the video it lands
+ * on: one the server still lists is deleted there, media file included, while one the server has
+ * already stopped listing — or never matched to a Jellyfin item at all — is only dropped locally,
+ * because there is nothing left on the server to delete.
+ */
+enum class SelectionAction {
+    MARK_WATCHED,
+    MARK_UNWATCHED,
+    UPDATE_METADATA,
+    REMOVE,
+}
+
+/**
+ * A selection run and the progress it has reached. One flow rather than two, so a screen can never
+ * pair a progress update with the wrong action — the header labels itself off [action], and the
+ * "did the removal finish?" check the selection UI makes reads both halves of the same value.
+ */
+data class SelectionRun(val action: SelectionAction, val progress: BulkProgress)

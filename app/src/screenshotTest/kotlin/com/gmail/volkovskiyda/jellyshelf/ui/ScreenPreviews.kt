@@ -11,6 +11,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
@@ -142,6 +144,56 @@ private fun LibraryNoMatch() {
             onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
+            scrollStore = FakeScrollPositionRepository(),
+            thumbnailModel = { null },
+        )
+    }
+}
+
+/**
+ * Selection mode: the tinted bar with its count and three controls, tinted rows with a checkbox
+ * apiece, and the progress strip a run reports through. Every visual difference the mode makes,
+ * in one frame — the behavior tests drive the mode but render nothing a golden can compare.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun LibrarySelecting() {
+    PreviewTheme {
+        LibraryContent(
+            videosOrNull = LibraryVideos(librarySample, "", null),
+            query = "",
+            durationFilter = null,
+            totalCount = librarySample.size,
+            onQueryChange = {},
+            onDurationFilterChange = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
+            selectionActive = true,
+            selectedIds = librarySample.take(2).map { it.youtubeId }.toSet(),
+            selectionRun = SelectionRun(SelectionAction.MARK_WATCHED, BulkProgress.Running(1, 2, 0)),
+            scrollStore = FakeScrollPositionRepository(),
+            thumbnailModel = { null },
+        )
+    }
+}
+
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun LibrarySelectingDark() {
+    PreviewTheme(darkTheme = true) {
+        LibraryContent(
+            videosOrNull = LibraryVideos(librarySample, "", null),
+            query = "",
+            durationFilter = null,
+            totalCount = librarySample.size,
+            onQueryChange = {},
+            onDurationFilterChange = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
+            selectionActive = true,
+            selectedIds = librarySample.take(2).map { it.youtubeId }.toSet(),
             scrollStore = FakeScrollPositionRepository(),
             thumbnailModel = { null },
         )

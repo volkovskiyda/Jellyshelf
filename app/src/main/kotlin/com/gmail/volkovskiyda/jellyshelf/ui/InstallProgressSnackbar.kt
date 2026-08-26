@@ -4,6 +4,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -76,14 +77,39 @@ private fun runningMessage(state: InstallState.Running): String = when (state.st
 }
 
 /**
- * The snackbar host to hand to a `Scaffold`, rendering [state] rather than the text the snackbar
- * was shown with.
+ * Marks the one snackbar whose text is read from live state rather than from what it was shown
+ * with. The host is the app's only one, so anything else posted through it — the selection undo,
+ * say — has to keep the message it was given, not inherit an install's percentage.
+ */
+private class InstallSnackbarVisuals(override val message: String) : SnackbarVisuals {
+    override val actionLabel: String? = null
+    override val withDismissAction = false
+    override val duration = SnackbarDuration.Indefinite
+}
+
+/** As above, for the failure snackbar, which does carry an action. */
+private class InstallFailureVisuals(
+    override val message: String,
+    override val actionLabel: String,
+) : SnackbarVisuals {
+    override val withDismissAction = false
+    override val duration = SnackbarDuration.Indefinite
+}
+
+/**
+ * The snackbar host to hand to a `Scaffold`, rendering [state] rather than the text an *install*
+ * snackbar was shown with.
  *
  * Taking the label from live state instead of `data.visuals.message` is what lets the percentage
  * climb in place: the snackbar is shown once per subject (see [installSnackbarKey]) and only this
  * `Text` recomposes as bytes arrive. `visuals.message` stays the fallback for the moment before
  * [state] and the host agree, and is what the accessibility announcement on first show reads.
+ *
+ * Only for the install's own snackbars, which is what [InstallSnackbarVisuals] marks them as. This
+ * is the app's single host — see `LocalSnackbarHostState` — and anything else posted through it
+ * keeps the message it was given.
  */
+
 @Composable
 fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
     SnackbarHost(hostState) { data ->
@@ -106,7 +132,15 @@ fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
                         }
                     },
                 ) {
-                    Text(state?.let { installMessage(it) } ?: data.visuals.message)
+                    val isInstall = data.visuals is InstallSnackbarVisuals ||
+                        data.visuals is InstallFailureVisuals
+                    Text(
+                        if (isInstall) {
+                            state?.let { installMessage(it) } ?: data.visuals.message
+                        } else {
+                            data.visuals.message
+                        },
+                    )
                 }
             }
         }
@@ -143,15 +177,11 @@ fun InstallProgressEffect(
     LaunchedEffect(installSnackbarKey(state)) {
         if (message == null) return@LaunchedEffect
         if (state !is InstallState.Failed) {
-            hostState.showSnackbar(message, duration = SnackbarDuration.Indefinite)
+            hostState.showSnackbar(InstallSnackbarVisuals(message))
             return@LaunchedEffect
         }
         withTimeoutOrNull(FAILURE_VISIBLE_FOR) {
-            hostState.showSnackbar(
-                message = message,
-                actionLabel = dismiss,
-                duration = SnackbarDuration.Indefinite,
-            )
+            hostState.showSnackbar(InstallFailureVisuals(message, dismiss))
         }
         onFailureDismissed()
     }

@@ -12,6 +12,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.VideoSelectionController
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,13 @@ class CategoryVideosViewModel(
     /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
     val videos: StateFlow<List<Video>?> = repo.observeVideosByCategory(categoryId)
         .stateIn(viewModelScope, WhileUiSubscribed, null)
+
+    /**
+     * Multi-select over this category's videos. Scoped to this ViewModel, which is scoped to the
+     * navigation entry — so walking out to a video's detail screen and back keeps the selection,
+     * and leaving the category drops it.
+     */
+    val selection = VideoSelectionController(repo, viewModelScope)
 
     /**
      * Only the removal confirmation reads this, to stop promising a server delete an install with

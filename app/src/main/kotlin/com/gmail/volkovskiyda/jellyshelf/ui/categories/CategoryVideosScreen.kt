@@ -1,24 +1,20 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -29,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -37,17 +32,23 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
-import com.gmail.volkovskiyda.jellyshelf.ui.DestructiveButton
+import com.gmail.volkovskiyda.jellyshelf.ui.BulkActionHeader
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionActionDialog
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionRunHeader
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionTopBar
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionUndoSnackbar
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -71,6 +72,11 @@ fun CategoryVideosScreen(
     val bulkRemove by viewModel.bulkRemove.collectAsStateWithLifecycle()
     val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
     val demoMode by viewModel.demoMode.collectAsStateWithLifecycle()
+    val selection = viewModel.selection
+    val selectionActive by selection.active.collectAsStateWithLifecycle()
+    val selectedIds by selection.selected.collectAsStateWithLifecycle()
+    val selectionRun by selection.run.collectAsStateWithLifecycle()
+    val selectionUndo by selection.undo.collectAsStateWithLifecycle()
 
     // Dialog visibility lives here, not in the content: a finished playlist creation reports via
     // [message], and that same signal is what closes the dialog.
@@ -111,7 +117,26 @@ fun CategoryVideosScreen(
         onCancelRemove = viewModel::cancelRemove,
         onAcknowledgeBulkRemove = viewModel::acknowledgeBulkRemove,
         onCreatePlaylist = viewModel::createPlaylist,
+        selectionActive = selectionActive,
+        selectedIds = selectedIds,
+        selectionRun = selectionRun,
+        onStartSelection = selection::start,
+        onToggleSelection = selection::toggle,
+        onSelectAll = selection::selectAll,
+        onDeselectAll = selection::deselectAll,
+        onExitSelection = selection::exit,
+        onSelectionAction = selection::startAction,
+        onCancelSelectionRun = selection::cancelRun,
+        onAcknowledgeSelectionRun = selection::acknowledgeRun,
         modifier = modifier,
+    )
+
+    // Out here rather than inside the content, which is rendered on its own by previews and by the
+    // behavior tests: the snackbar needs the Scaffold's host, and only MainActivity has one.
+    SelectionUndoSnackbar(
+        undo = selectionUndo,
+        onUndo = selection::undoBulkChange,
+        onConsumed = selection::consumeUndo,
     )
 }
 
@@ -168,6 +193,17 @@ internal fun CategoryVideosContent(
     onCancelRemove: () -> Unit,
     onAcknowledgeBulkRemove: () -> Unit,
     onCreatePlaylist: (String) -> Unit,
+    selectionActive: Boolean = false,
+    selectedIds: Set<String> = emptySet(),
+    selectionRun: SelectionRun? = null,
+    onStartSelection: (String?) -> Unit = {},
+    onToggleSelection: (String) -> Unit = {},
+    onSelectAll: (List<String>) -> Unit = {},
+    onDeselectAll: () -> Unit = {},
+    onExitSelection: () -> Unit = {},
+    onSelectionAction: (SelectionAction) -> Unit = {},
+    onCancelSelectionRun: () -> Unit = {},
+    onAcknowledgeSelectionRun: () -> Unit = {},
     modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
@@ -175,17 +211,40 @@ internal fun CategoryVideosContent(
     thumbnailModel: (Video) -> String? = rememberVideoThumbnailResolver(),
 ) {
     val videos = videosOrNull.orEmpty()
+    // See [LibraryContent] for why this is local state and Back is handled here.
+    var pendingAction by rememberSaveable { mutableStateOf<SelectionAction?>(null) }
+    BackHandler(enabled = selectionActive) { onExitSelection() }
 
     Column(modifier = modifier.fillMaxSize()) {
-        // No playlist offer on Missing from server: a playlist is built from Jellyfin item ids,
-        // and every video here is one the server has stopped listing — the call can only be
-        // rejected. Offering an action that cannot succeed is worse than not offering it.
-        CategoryTopBar(
-            title = title,
-            videoCount = videos.size,
-            canCreatePlaylist = removeKind != RemoveKind.MISSING,
-            onBack = onBack,
-            onShowDialog = onShowDialog,
+        if (selectionActive) {
+            SelectionTopBar(
+                selectedCount = selectedIds.size,
+                canSelectAll = videos.any { it.youtubeId !in selectedIds },
+                // Closed while a run is going: the repository takes one at a time.
+                canAct = selectedIds.isNotEmpty() && selectionRun?.progress !is BulkProgress.Running,
+                onExit = onExitSelection,
+                onSelectAll = { onSelectAll(videos.map { it.youtubeId }) },
+                onDeselectAll = onDeselectAll,
+                onAction = { pendingAction = it },
+            )
+        } else {
+            // No playlist offer on Missing from server: a playlist is built from Jellyfin item ids,
+            // and every video here is one the server has stopped listing — the call can only be
+            // rejected. Offering an action that cannot succeed is worse than not offering it.
+            CategoryTopBar(
+                title = title,
+                videoCount = videos.size,
+                canCreatePlaylist = removeKind != RemoveKind.MISSING,
+                onBack = onBack,
+                onStartSelection = { onStartSelection(null) },
+                onShowDialog = onShowDialog,
+            )
+        }
+
+        SelectionRunHeader(
+            run = selectionRun,
+            onCancel = onCancelSelectionRun,
+            onDismiss = onAcknowledgeSelectionRun,
         )
 
         // The in-app yt-dlp bulk fetch lives only on the Uncategorized filter.
@@ -225,8 +284,25 @@ internal fun CategoryVideosContent(
             scrollKey = scrollKey,
             onPlayVideo = onPlayVideo,
             onOpenDetails = onOpenDetails,
+            selectionActive = selectionActive,
+            selectedIds = selectedIds,
+            onStartSelection = onStartSelection,
+            onToggleSelection = onToggleSelection,
             scrollStore = scrollStore,
             thumbnailModel = thumbnailModel,
+        )
+    }
+
+    pendingAction?.let { action ->
+        SelectionActionDialog(
+            action = action,
+            videoCount = selectedIds.size,
+            demoMode = demoMode,
+            onDismiss = { pendingAction = null },
+            onConfirm = {
+                pendingAction = null
+                onSelectionAction(action)
+            },
         )
     }
 
@@ -252,16 +328,12 @@ internal fun CategoryVideosContent(
 }
 
 /**
- * How far the video count sits from the edge when it is the last thing in the bar. Chosen to match
- * where a trailing [IconButton]'s glyph lands: the actions row supplies 4 dp and the button's own
- * padding the remaining 12, so a bar with the playlist button and one without line up.
- */
-private val COUNT_END_INSET = 12.dp
-
-/**
- * The category's title bar: back, count, and — once there is anything to play, and the category is
- * one a playlist can be built from — Create playlist. The count stays either way; it is what the
- * screen is a list of, not part of the action.
+ * The category's title bar: back, count, Select, and — where the category is one a playlist can be
+ * built from — Create playlist. The count stays either way; it is what the screen is a list of,
+ * not part of the action.
+ *
+ * The count no longer needs an end inset of its own: Select is offered wherever the count is, so
+ * there is always a button after it holding it off the edge of the screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -270,6 +342,7 @@ private fun CategoryTopBar(
     videoCount: Int,
     canCreatePlaylist: Boolean,
     onBack: () -> Unit,
+    onStartSelection: () -> Unit,
     onShowDialog: () -> Unit,
 ) {
     TopAppBar(
@@ -281,12 +354,15 @@ private fun CategoryTopBar(
                     pluralStringResource(R.plurals.video_count, videoCount, videoCount),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    // With the playlist button after it, that button's own internal padding is
-                    // what holds the count off the edge of the screen. Without one the count is
-                    // the last thing in the bar and has to supply that inset itself, or it sits
-                    // flush against the edge.
-                    modifier = if (canCreatePlaylist) Modifier else Modifier.padding(end = COUNT_END_INSET),
                 )
+                // Long-pressing a row is the other way into selection mode; this is the discoverable
+                // one, and it is offered wherever there is a video to select.
+                IconButton(onClick = onStartSelection) {
+                    Icon(
+                        Icons.Filled.Checklist,
+                        contentDescription = stringResource(R.string.select_videos),
+                    )
+                }
                 if (canCreatePlaylist) {
                     IconButton(onClick = onShowDialog) {
                         Icon(
@@ -309,6 +385,10 @@ private fun CategoryVideoList(
     scrollKey: String,
     onPlayVideo: (Video) -> Unit,
     onOpenDetails: (Video) -> Unit,
+    selectionActive: Boolean,
+    selectedIds: Set<String>,
+    onStartSelection: (String?) -> Unit,
+    onToggleSelection: (String) -> Unit,
     scrollStore: ScrollPositionRepository,
     thumbnailModel: (Video) -> String?,
 ) {
@@ -338,97 +418,12 @@ private fun CategoryVideoList(
                     onPlay = { onPlayVideo(video) },
                     onOpenDetails = { onOpenDetails(video) },
                     thumbnailModel = thumbnailModel(video),
+                    selected = if (selectionActive) video.youtubeId in selectedIds else null,
+                    onToggleSelection = { onToggleSelection(video.youtubeId) },
+                    onStartSelection = { onStartSelection(video.youtubeId) },
                 )
             }
         }
-    }
-}
-
-/**
- * Header for a bulk run over the current filter: a button that starts it, live progress with a
- * Cancel while it runs, and a summary with a Dismiss once it finishes. The state comes from the
- * repository, so progress survives leaving the screen and coming back.
- *
- * [runningLabel] and [doneLabel] each take done and total, in that order; [idleLabel] is resolved
- * by the caller because its count is pluralized differently per action. [destructive] renders the
- * start button in the error colour — the caller is expected to confirm before acting on it.
- */
-@Composable
-private fun BulkActionHeader(
-    state: BulkProgress,
-    idleLabel: String,
-    @StringRes runningLabel: Int,
-    @StringRes doneLabel: Int,
-    enabled: Boolean,
-    onStart: () -> Unit,
-    onCancel: () -> Unit,
-    onDismiss: () -> Unit,
-    destructive: Boolean = false,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        when (state) {
-            is BulkProgress.Running -> {
-                val fraction = if (state.total > 0) state.done.toFloat() / state.total else 0f
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                BulkStatusRow(
-                    text = bulkLabel(runningLabel, state.done, state.total, state.failed),
-                    actionLabel = stringResource(R.string.cancel),
-                    onAction = onCancel,
-                )
-            }
-
-            is BulkProgress.Done -> BulkStatusRow(
-                text = bulkLabel(doneLabel, state.total - state.failed, state.total, state.failed),
-                actionLabel = stringResource(R.string.dismiss),
-                onAction = onDismiss,
-            )
-
-            BulkProgress.Idle -> BulkStartButton(idleLabel, enabled, destructive, onStart)
-        }
-    }
-    HorizontalDivider()
-}
-
-/** "N of M" progress or summary text, with the failure count appended once there is one. */
-@Composable
-private fun bulkLabel(@StringRes label: Int, done: Int, total: Int, failed: Int): String = buildString {
-    append(stringResource(label, done, total))
-    if (failed > 0) {
-        append(" • ")
-        append(stringResource(R.string.failed_count, failed))
-    }
-}
-
-@Composable
-private fun BulkStatusRow(text: String, actionLabel: String, onAction: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = onAction) { Text(actionLabel) }
-    }
-}
-
-@Composable
-private fun BulkStartButton(label: String, enabled: Boolean, destructive: Boolean, onStart: () -> Unit) {
-    if (destructive) {
-        DestructiveButton(label = label, onClick = onStart, enabled = enabled)
-    } else {
-        Button(
-            onClick = onStart,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(label) }
     }
 }
 

@@ -2,11 +2,13 @@ package com.gmail.volkovskiyda.jellyshelf.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.ui.debounceSearchQuery
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.VideoSelectionController
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,7 +39,20 @@ class LibraryViewModel(
     private val repo: LibraryRepository,
     // Singleton-owned so query and filter survive tab switches (which clear this ViewModel).
     private val filters: LibraryFilterState,
+    settingsState: AppSettingsState,
 ) : ViewModel() {
+    /**
+     * Multi-select. Owned by the ViewModel and not by the singleton the filters live in: a
+     * selection is a short deliberate mode, and leaving the tab is a clear enough signal that the
+     * user is done with it. The run it starts lives on the repository and outlives both.
+     */
+    val selection = VideoSelectionController(repo, viewModelScope)
+
+    /** Only the removal's confirmation reads this — see the dialog for what it changes. */
+    val demoMode: StateFlow<Boolean> = settingsState.settings
+        .map { it?.demoMode == true }
+        .stateIn(viewModelScope, WhileUiSubscribed, false)
+
     private val _query = filters.query
     val query: StateFlow<String> = _query.asStateFlow()
 

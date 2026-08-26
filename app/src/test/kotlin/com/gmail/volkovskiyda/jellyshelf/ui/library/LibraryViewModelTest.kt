@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
+import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
@@ -73,7 +74,11 @@ class LibraryViewModelTest {
     private fun viewModel(
         repo: FakeLibraryRepository = FakeLibraryRepository(browsed),
         filters: LibraryFilterState = filters(),
-    ) = LibraryViewModel(repo, filters)
+    ) = LibraryViewModel(
+        repo,
+        filters,
+        AppSettingsState(FakeSettingsRepository(), TestDispatcherProvider()),
+    )
 
     /**
      * A ViewModel with the screen's subscription standing in.

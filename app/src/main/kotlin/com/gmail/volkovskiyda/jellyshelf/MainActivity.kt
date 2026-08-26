@@ -69,6 +69,7 @@ import com.gmail.volkovskiyda.jellyshelf.playback.pipAspect
 import com.gmail.volkovskiyda.jellyshelf.playback.pipEligible
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallSnackbarHost
+import com.gmail.volkovskiyda.jellyshelf.ui.LocalSnackbarHostState
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.MiniPlayerBar
 import com.gmail.volkovskiyda.jellyshelf.ui.UpdateDialog
@@ -498,79 +499,83 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             }
         },
     ) { innerPadding ->
-        NavDisplay(
-            backStack = backStack,
-            // consumeWindowInsets keeps each screen's own TopAppBar from applying the status-bar
-            // inset a second time on top of the scaffold padding; imePadding keeps the keyboard
-            // from covering search fields and the lower Settings inputs.
-            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding(),
-            entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
-            onBack = { pop() },
-        ) { key ->
-            when (key) {
-                is AppNavKey.Library -> NavEntry(key) {
-                    LibraryScreen(
-                        // A thumbnail tap goes straight to the player, carrying the same origin the
-                        // detour through Detail would have handed it: the queue is the library as
-                        // the user has it narrowed, either way in.
-                        onPlayVideo = {
-                            navThrottle { openPlayer(it.youtubeId, PlayerOrigin.Library) }
-                        },
-                        onOpenDetails = {
-                            // The origin rides on Detail so that Play, one screen later, still
-                            // knows which list the user was in — Detail itself never reads it.
-                            navThrottle { push(AppNavKey.Detail(it.youtubeId, PlayerOrigin.Library)) }
-                        },
-                    )
-                }
+        // Every screen under here can post to the Scaffold's snackbar host without that host being
+        // threaded through NavDisplay and each entry that happens to want one.
+        CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
+            NavDisplay(
+                backStack = backStack,
+                // consumeWindowInsets keeps each screen's own TopAppBar from applying the status-bar
+                // inset a second time on top of the scaffold padding; imePadding keeps the keyboard
+                // from covering search fields and the lower Settings inputs.
+                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding(),
+                entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
+                onBack = { pop() },
+            ) { key ->
+                when (key) {
+                    is AppNavKey.Library -> NavEntry(key) {
+                        LibraryScreen(
+                            // A thumbnail tap goes straight to the player, carrying the same origin the
+                            // detour through Detail would have handed it: the queue is the library as
+                            // the user has it narrowed, either way in.
+                            onPlayVideo = {
+                                navThrottle { openPlayer(it.youtubeId, PlayerOrigin.Library) }
+                            },
+                            onOpenDetails = {
+                                // The origin rides on Detail so that Play, one screen later, still
+                                // knows which list the user was in — Detail itself never reads it.
+                                navThrottle { push(AppNavKey.Detail(it.youtubeId, PlayerOrigin.Library)) }
+                            },
+                        )
+                    }
 
-                is AppNavKey.Categories -> NavEntry(key) {
-                    CategoriesScreen(onCategoryClick = { id, title ->
-                        navThrottle { push(AppNavKey.CategoryVideos(id, title)) }
-                    })
-                }
+                    is AppNavKey.Categories -> NavEntry(key) {
+                        CategoriesScreen(onCategoryClick = { id, title ->
+                            navThrottle { push(AppNavKey.CategoryVideos(id, title)) }
+                        })
+                    }
 
-                is AppNavKey.Settings -> NavEntry(key) {
-                    SettingsScreen(
-                        // A seeded demo goes straight to the library it just filled. switchTo
-                        // replaces the stack rather than pushing, so Back exits from Library
-                        // instead of walking back into the Settings screen that started it.
-                        onDemoEntered = { switchTo(AppNavKey.Library) },
-                    )
-                }
+                    is AppNavKey.Settings -> NavEntry(key) {
+                        SettingsScreen(
+                            // A seeded demo goes straight to the library it just filled. switchTo
+                            // replaces the stack rather than pushing, so Back exits from Library
+                            // instead of walking back into the Settings screen that started it.
+                            onDemoEntered = { switchTo(AppNavKey.Library) },
+                        )
+                    }
 
-                is AppNavKey.CategoryVideos -> NavEntry(key) {
-                    val origin = PlayerOrigin.Category(key.categoryId)
-                    CategoryVideosScreen(
-                        categoryId = key.categoryId,
-                        title = key.title,
-                        onPlayVideo = {
-                            navThrottle { openPlayer(it.youtubeId, origin) }
-                        },
-                        onOpenDetails = {
-                            navThrottle { push(AppNavKey.Detail(it.youtubeId, origin)) }
-                        },
-                        onBack = { navThrottle { pop() } },
-                    )
-                }
+                    is AppNavKey.CategoryVideos -> NavEntry(key) {
+                        val origin = PlayerOrigin.Category(key.categoryId)
+                        CategoryVideosScreen(
+                            categoryId = key.categoryId,
+                            title = key.title,
+                            onPlayVideo = {
+                                navThrottle { openPlayer(it.youtubeId, origin) }
+                            },
+                            onOpenDetails = {
+                                navThrottle { push(AppNavKey.Detail(it.youtubeId, origin)) }
+                            },
+                            onBack = { navThrottle { pop() } },
+                        )
+                    }
 
-                is AppNavKey.Detail -> NavEntry(key) {
-                    DetailScreen(
-                        youtubeId = key.youtubeId,
-                        onBack = { navThrottle { pop() } },
-                        onPlayInApp = { id -> navThrottle { openPlayer(id, key.origin) } },
-                    )
-                }
+                    is AppNavKey.Detail -> NavEntry(key) {
+                        DetailScreen(
+                            youtubeId = key.youtubeId,
+                            onBack = { navThrottle { pop() } },
+                            onPlayInApp = { id -> navThrottle { openPlayer(id, key.origin) } },
+                        )
+                    }
 
-                is AppNavKey.Player -> NavEntry(key) {
-                    PlayerScreen(
-                        youtubeId = key.youtubeId,
-                        origin = key.origin,
-                        onBack = { navThrottle { pop() } },
-                    )
-                }
+                    is AppNavKey.Player -> NavEntry(key) {
+                        PlayerScreen(
+                            youtubeId = key.youtubeId,
+                            origin = key.origin,
+                            onBack = { navThrottle { pop() } },
+                        )
+                    }
 
-                else -> throw IllegalArgumentException("Unknown key: $key")
+                    else -> throw IllegalArgumentException("Unknown key: $key")
+                }
             }
         }
     }

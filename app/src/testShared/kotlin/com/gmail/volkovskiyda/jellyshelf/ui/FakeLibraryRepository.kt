@@ -6,6 +6,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
@@ -71,6 +73,14 @@ class FakeLibraryRepository(
     override val bulkRemoveMissing: StateFlow<BulkProgress> = MutableStateFlow(BulkProgress.Idle)
 
     /**
+     * The multi-selection run, modelled rather than refused: a test drives it directly to watch
+     * what [com.gmail.volkovskiyda.jellyshelf.ui.selection.VideoSelectionController] does as a run
+     * reaches each stage, which is the whole of that class's behaviour.
+     */
+    val selectionRuns = MutableStateFlow<SelectionRun?>(null)
+    override val selectionRun: StateFlow<SelectionRun?> = selectionRuns
+
+    /**
      * What [sync] returns, and how often it was called. Modelled rather than refused, unlike the
      * rest: a demo sync doesn't go through WorkManager, so the Settings ViewModel calls this
      * directly and reports what it returns.
@@ -95,6 +105,15 @@ class FakeLibraryRepository(
     override fun startRemoveMissing(): Unit = notModelled()
     override fun cancelRemoveMissing(): Unit = notModelled()
     override fun acknowledgeBulkRemoveMissing(): Unit = notModelled()
+    override fun cancelSelectionAction(): Unit = notModelled()
+    override fun acknowledgeSelectionRun(): Unit = notModelled()
+
+    /** Every selection action started, with the ids it was handed. Counted, not performed. */
+    val selectionStarts = mutableListOf<Pair<SelectionAction, List<String>>>()
+
+    override fun startSelectionAction(action: SelectionAction, youtubeIds: List<String>) {
+        selectionStarts += action to youtubeIds
+    }
 
     /** How many times the demo library was seeded. */
     var seeds = 0

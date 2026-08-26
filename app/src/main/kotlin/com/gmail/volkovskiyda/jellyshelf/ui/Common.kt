@@ -2,7 +2,9 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 
 import android.os.SystemClock
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +26,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -253,6 +257,32 @@ private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> Stri
 internal const val VIDEO_ROW_DETAILS_TAG = "video_row_details"
 
 /**
+ * One of [VideoRow]'s two inner targets, in whichever of the row's two modes the list is in.
+ *
+ * While selecting, the target carries no click at all: the row itself is the single accessible
+ * checkbox, and a nested clickable inside it would both steal the tap and give TalkBack a second
+ * node per row to walk past. Otherwise it carries its own click plus — where the list offers one —
+ * the long press that enters selection mode, on the same modifier, because a `clickable` consumes
+ * the gesture before an outer one ever sees it.
+ */
+private fun Modifier.rowTarget(
+    selecting: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    longClickLabel: String,
+    role: Role? = null,
+): Modifier = when {
+    selecting -> this
+    onLongClick == null -> clickable(role = role, onClick = onClick)
+    else -> combinedClickable(
+        role = role,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        onLongClickLabel = longClickLabel,
+    )
+}
+
+/**
  * One video in a list — and two targets rather than one: the thumbnail plays it, the text beside
  * it opens the detail screen. That is what the picture and the title respectively promise, and it
  * spares the common case (watch this) the detour through a screen it was only passing through.
@@ -260,6 +290,16 @@ internal const val VIDEO_ROW_DETAILS_TAG = "video_row_details"
  * A row with nothing playable behind it (no Jellyfin item) sends its thumbnail to the details as
  * well, where Play is disabled and the reason is on screen, rather than into a player that could
  * only fail.
+ *
+ * **In selection mode the row is one target, not two.** [selected] non-null is what puts it there:
+ * both inner targets lose their clicks and the whole row becomes a single checkbox, because a list
+ * being multi-selected has one thing a tap can mean. The two are mutually exclusive by
+ * construction rather than by discipline — there is no arrangement of these parameters that leaves
+ * a row where a tap both plays a video and adds it to a selection.
+ *
+ * [onStartSelection] hangs off the two inner targets rather than off the row, for the same reason:
+ * an inner `clickable` consumes the gesture, so a long press on the row's own modifier would never
+ * fire on the 100% of the row those two cover.
  */
 @Composable
 fun VideoRow(
@@ -271,29 +311,86 @@ fun VideoRow(
     // [rememberVideoThumbnailResolver]; host-side rendering passes null.
     thumbnailModel: String?,
     modifier: Modifier = Modifier,
+    /** Null when the list is not selecting; true or false is this row's place in the selection. */
+    selected: Boolean? = null,
+    onToggleSelection: () -> Unit = {},
+    /** Long-press entry into selection mode. Null on lists that don't offer one. */
+    onStartSelection: (() -> Unit)? = null,
 ) {
+    val selectionLabel = stringResource(R.string.select_video, video.title)
+    val startSelectionLabel = stringResource(R.string.select_videos)
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (selected == null) {
+                    Modifier
+                } else {
+                    // One accessible target for the whole row, announced as a checkbox with this
+                    // video's name — a screenful of rows that all speak "selected" would be
+                    // indistinguishable from one another. `toggleable` rather than `selectable`:
+                    // the row renders a checkbox, and only toggleable publishes the on/off state
+                    // that goes with that role. selectable publishes `Selected` instead, which
+                    // leaves TalkBack describing a checkbox whose state it cannot read.
+                    Modifier
+                        .toggleable(
+                            value = selected,
+                            role = Role.Checkbox,
+                            onValueChange = { onToggleSelection() },
+                        )
+                        .semantics { contentDescription = selectionLabel }
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                },
+            )
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (selected != null) {
+            // Display-only (onCheckedChange = null): the row above is the single accessible
+            // target, rather than TalkBack finding two nested clickables per video.
+            Checkbox(checked = selected, onCheckedChange = null)
+        }
+
         val playable = video.jellyfinItemId != null
         // Names the video rather than saying a bare "Play": TalkBack reads a screenful of these in
         // a row, and clickables that all speak the same words are indistinguishable from one
         // another (which is also what the duplicate-speakable-text check flags).
-        val thumbnailLabel = stringResource(
-            if (playable) R.string.play_video else R.string.open_video_details,
-            video.title,
-        )
+        //
+        // Null while selecting: the row merges its descendants, so a thumbnail still labelled
+        // "Play First video" would have the row announce both that and "Select First video" — one
+        // of them describing something a tap here can no longer do.
+        val thumbnailLabel = if (selected != null) {
+            null
+        } else {
+            stringResource(
+                if (playable) R.string.play_video else R.string.open_video_details,
+                video.title,
+            )
+        }
         Box(
             modifier = Modifier
                 .width(120.dp)
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(role = Role.Button, onClick = if (playable) onPlay else onOpenDetails)
-                .semantics { contentDescription = thumbnailLabel },
+                .rowTarget(
+                    selecting = selected != null,
+                    onClick = if (playable) onPlay else onOpenDetails,
+                    onLongClick = onStartSelection,
+                    longClickLabel = startSelectionLabel,
+                    role = Role.Button,
+                )
+                .then(
+                    thumbnailLabel?.let { label ->
+                        Modifier.semantics { contentDescription = label }
+                    } ?: Modifier,
+                ),
             contentAlignment = Alignment.BottomCenter,
         ) {
             AsyncImage(
@@ -320,7 +417,12 @@ fun VideoRow(
                 // the user. The thumbnail beside it is taller than that either way, so the minimum
                 // costs no height; centring keeps the short case where it already sat.
                 .heightIn(min = 48.dp)
-                .clickable(onClick = onOpenDetails)
+                .rowTarget(
+                    selecting = selected != null,
+                    onClick = onOpenDetails,
+                    onLongClick = onStartSelection,
+                    longClickLabel = startSelectionLabel,
+                )
                 .testTag(VIDEO_ROW_DETAILS_TAG),
             verticalArrangement = Arrangement.Center,
         ) {
