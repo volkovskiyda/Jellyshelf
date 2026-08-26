@@ -148,6 +148,11 @@ androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplaye
 # HLS support is only reachable through the transcoding fallback (util/Playback.hlsUrl).
 androidx-media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
 androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
+# media3's Ktor-backed HttpDataSource, so video streams go over the same stack as the API and
+# the images rather than over HttpURLConnection. Its POM drags ktor-client-android in as a
+# default engine; KtorDataSource.Factory requires a client from us, so that engine is
+# unreachable and is excluded at the dependency rather than left to ship.
+androidx-media3-datasource-ktor = { group = "androidx.media3", name = "media3-datasource-ktor", version.ref = "media3" }
 androidx-media3-ui-compose = { group = "androidx.media3", name = "media3-ui-compose", version.ref = "media3" }
 # The Material3 half of the same Compose UI: media3-ui-compose has the surface and the state
 # holders, this has the opinionated widgets built on them (PlayerDefaults' control layouts,

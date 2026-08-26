@@ -20,13 +20,14 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ktor.KtorDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.tracing.traceAsync
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
+import com.gmail.volkovskiyda.jellyshelf.di.MEDIA_HTTP_CLIENT
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
@@ -42,6 +43,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.firebase.perf.FirebasePerformance
 import com.google.firebase.perf.metrics.Trace
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,6 +56,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import org.koin.core.qualifier.named
 import timber.log.Timber
 import androidx.tracing.Trace as SystemTrace
 
@@ -101,6 +104,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val dispatchers: DispatcherProvider by inject()
     private val resumable: ResumableCache by inject()
     private val buildInfo: BuildInfo by inject()
+    private val mediaHttpClient: HttpClient by inject(named(MEDIA_HTTP_CLIENT))
 
     // The player's application thread is this service's main thread; session callbacks, the
     // listener and the periodic saver all stay on it, which is also what makes the plain-var
@@ -143,8 +147,20 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         super.onCreate()
         // A source per stream, reading the credential at creation time so a re-login between
         // plays is picked up without restarting the service.
+        //
+        // The outer DataSource.Factory lambda is what preserves that, and is the reason this is not
+        // simply a KtorDataSource.Factory held as a field: that class captures its default request
+        // properties once, when the factory is built, and createDataSource() hands out a copy of
+        // the already-captured map. Building a fresh factory per source keeps the old semantics
+        // exactly; the factory itself is a trivial object.
+        //
+        // Ktor rather than DefaultHttpDataSource (media3's HttpURLConnection one), so streams go
+        // over the same stack as the API calls and the thumbnails. Note this moves media *onto*
+        // OkHttp rather than off it — our Ktor engine is OkHttp — and onto its own client, since a
+        // stream is one long request that neither the API client's whole-request timeout nor its
+        // expectSuccess contract suits. See AppModule.provideMediaHttpClient.
         val httpFactory = DataSource.Factory {
-            DefaultHttpDataSource.Factory()
+            KtorDataSource.Factory(mediaHttpClient)
                 .setDefaultRequestProperties(
                     mapOf(Playback.TOKEN_HEADER to settingsState.settings.value?.credential.orEmpty()),
                 )

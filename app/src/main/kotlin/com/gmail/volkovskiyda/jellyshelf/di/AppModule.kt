@@ -80,6 +80,7 @@ import org.koin.androidx.workmanager.dsl.workerOf
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import timber.log.Timber
 
@@ -117,6 +118,7 @@ val appModule = module {
     single { provideJson() }
     single { provideHttpClient(get(), get()) }
     single { provideImageLoader(androidContext(), get()) }
+    single(named(MEDIA_HTTP_CLIENT)) { provideMediaHttpClient() }
     single { provideDatabase(androidContext()) }
     // Resolvable only after startKoin's workManagerFactory() has initialized WorkManager — Koin
     // singles are lazy, so the first injection happens well after that.
@@ -198,12 +200,34 @@ internal fun provideJson(): Json = Json {
 }
 
 /**
+ * Qualifier for the streaming [HttpClient] — see `provideMediaHttpClient` for why video does not
+ * share either of the other two. Named rather than a distinct type because it is an `HttpClient`
+ * like the others; `PlaybackService` is its only consumer.
+ */
+const val MEDIA_HTTP_CLIENT = "mediaHttpClient"
+
+/**
  * The network budget shared by the API client and image loading — generous, for a slow LAN over
  * which a Jellyfin server can take its time. One value, so the two halves of the app's traffic
- * can't drift into behaving differently on the same connection.
+ * can't drift into behaving differently on the same connection. Only the API client applies it to
+ * the whole request; the image client caps connect and socket alone. Media streaming deliberately
+ * runs a tighter budget — see [MEDIA_TIMEOUT_MILLIS].
  */
 private const val NETWORK_TIMEOUT_SECONDS = 30L
 private const val NETWORK_TIMEOUT_MILLIS = NETWORK_TIMEOUT_SECONDS * 1000
+
+/**
+ * The streaming client's connect and socket budget: 8 s, matching media3's own
+ * `DefaultHttpDataSource` defaults the Ktor datasource replaced, not the API's 30 s.
+ *
+ * A stream is the one connection someone is watching live. When the server or the Wi-Fi dies
+ * mid-video, ExoPlayer sits on a frozen buffering spinner until the socket gives up, and only then
+ * can the error surface and the HLS-fallback and stale-id paths run — at 30 s that read as a hang
+ * (and quadrupled the wait the old datasource imposed); at 8 s it is a hiccup. The API's slow-LAN
+ * argument does not carry over: an established media read either delivers bytes continuously or is
+ * dead, and 8 s of genuine silence on one already means stalled playback.
+ */
+private const val MEDIA_TIMEOUT_MILLIS = 8_000L
 
 // The base Ktor client on the OkHttp engine. expectSuccess makes non-2xx throw
 // Client/ServerResponseException (see LibraryRepository.isPermanentFailure). Request URLs are logged
@@ -244,6 +268,29 @@ private fun provideImageLoader(context: Context, buildInfo: BuildInfo): ImageLoa
         .serviceLoaderEnabled(false)
         .components { add(KtorNetworkFetcherFactory(httpClient = { imageHttpClient(buildInfo) })) }
         .build()
+
+/**
+ * The video half of the app's traffic: what `KtorDataSource` streams through.
+ *
+ * A third [HttpClient], and each of the two reasons it is not one of the existing ones is enough on
+ * its own. Not [provideHttpClient]: `expectSuccess` would turn a status code the datasource wants to
+ * read into a `ClientRequestException` thrown from the repository layer's contract, and that
+ * client's `requestTimeoutMillis` is a *whole-request* budget — a video stream is one long request,
+ * so it would be cut off at 30 seconds. Not [imageHttpClient] either, for the reason that one is
+ * separate at all: each Ktor OkHttp engine owns an OkHttp dispatcher allowing 5 concurrent requests
+ * per host, and a stream holds its slot for the length of the video, which is strictly worse than
+ * the thumbnail case that argument was written for.
+ *
+ * Timeouts are connect and socket only, for the same reason the image client omits the third.
+ * Logging is left off even in debug: every seek is a fresh ranged GET, so a scrubbing session would
+ * bury the log.
+ */
+private fun provideMediaHttpClient(): HttpClient = HttpClient(OkHttp) {
+    install(HttpTimeout) {
+        connectTimeoutMillis = MEDIA_TIMEOUT_MILLIS
+        socketTimeoutMillis = MEDIA_TIMEOUT_MILLIS
+    }
+}
 
 /**
  * The image half of the app's traffic. Unlike [provideHttpClient] this deliberately leaves

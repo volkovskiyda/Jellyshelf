@@ -733,6 +733,12 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.datasource.ktor) {
+        // The HttpURLConnection engine it declares as a default. KtorDataSource.Factory
+        // takes our client, so this is unreachable code — and shipping it would undo the
+        // point of 52218e3, which removed a dependency the app does not actually use.
+        exclude(group = "io.ktor", module = "ktor-client-android")
+    }
     implementation(libs.androidx.media3.ui.compose)
     implementation(libs.androidx.media3.ui.compose.material3)
     implementation(libs.androidx.navigation3.runtime)
