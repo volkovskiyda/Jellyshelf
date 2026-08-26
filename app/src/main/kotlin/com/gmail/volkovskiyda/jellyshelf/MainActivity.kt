@@ -460,11 +460,13 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         title = playing.title,
                         artworkUri = playing.artworkUri,
                         isPlaying = playing.isPlaying,
+                        hasNext = playing.hasNext,
                         // Same dedupe the notification path uses: compare on the video, since a
                         // player opened from a list carries an origin the bar knows nothing about
                         // and re-pushing it would stack two player entries for one video.
                         onOpen = { navThrottle { push(AppNavKey.Player(playing.youtubeId)) } },
                         onPlayPause = nowPlayingState::playPause,
+                        onNext = nowPlayingState::next,
                         onStop = nowPlayingState::stop,
                         // The horizontal inset always, the bottom one only when the bar is the
                         // lowest thing in the slot. In landscape with three-button navigation the

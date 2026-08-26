@@ -17,6 +17,11 @@ data class NowPlaying(
     val artworkUri: String?,
     val isPlaying: Boolean,
     /**
+     * Whether the queue has an item after this one, so the bar can dim its next button at the end.
+     * Read off the player rather than derived here: the bar has no player and no timeline.
+     */
+    val hasNext: Boolean = false,
+    /**
      * The decoded video's pixel size, for Picture-in-Picture's aspect ratio; zero until the first
      * frame has been decoded, and zero forever for a stream that turns out to have no video.
      * Here rather than in a flow of its own because the activity reads it in the same breath as
@@ -45,12 +50,13 @@ class NowPlayingState {
     val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
 
     /**
-     * What the bar's buttons reach. Registered by the service so both actions land on the real
+     * What the bar's buttons reach. Registered by the service so every action lands on the real
      * player rather than on a copy of its rules — [stop] in particular has to be the exact
      * sequence the player screen's back uses, or the server gets the wrong stop report.
      */
     interface Transport {
         fun playPause()
+        fun next()
         fun stop()
     }
 
@@ -76,6 +82,11 @@ class NowPlayingState {
         _nowPlaying.value = _nowPlaying.value?.copy(isPlaying = isPlaying)
     }
 
+    /** The timeline moved or landed. A no-op when nothing is showing. */
+    fun setHasNext(hasNext: Boolean) {
+        _nowPlaying.value = _nowPlaying.value?.copy(hasNext = hasNext)
+    }
+
     /** The decoder reported the video's size. A no-op when nothing is showing. */
     fun setVideoSize(width: Int, height: Int) {
         _nowPlaying.value = _nowPlaying.value?.copy(videoWidth = width, videoHeight = height)
@@ -83,6 +94,10 @@ class NowPlayingState {
 
     fun playPause() {
         transport.value?.playPause()
+    }
+
+    fun next() {
+        transport.value?.next()
     }
 
     fun stop() {

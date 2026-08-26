@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -19,7 +20,7 @@ import org.junit.runner.RunWith
 /**
  * The mini-player row on its own — stateless content, so the same harness as PlayerControlsTest.
  *
- * The accessibility checks matter more here than usual: every one of the row's three targets is an
+ * The accessibility checks matter more here than usual: every one of the row's four targets is an
  * icon or the row itself, so none of them has a visible label to fall back on.
  */
 @RunWith(AndroidJUnit4::class)
@@ -36,8 +37,10 @@ class MiniPlayerBarTest {
     private fun setBar(
         title: String? = "Sample video",
         isPlaying: Boolean = true,
+        hasNext: Boolean = true,
         onOpen: () -> Unit = {},
         onPlayPause: () -> Unit = {},
+        onNext: () -> Unit = {},
         onStop: () -> Unit = {},
     ) {
         composeRule.setContent {
@@ -46,8 +49,10 @@ class MiniPlayerBarTest {
                     title = title,
                     artworkUri = null,
                     isPlaying = isPlaying,
+                    hasNext = hasNext,
                     onOpen = onOpen,
                     onPlayPause = onPlayPause,
+                    onNext = onNext,
                     onStop = onStop,
                 )
             }
@@ -92,18 +97,52 @@ class MiniPlayerBarTest {
     fun eachControl_firesItsOwnCallback() {
         var opens = 0
         var playPauses = 0
+        var nexts = 0
         var stops = 0
-        setBar(onOpen = { opens++ }, onPlayPause = { playPauses++ }, onStop = { stops++ })
+        setBar(
+            onOpen = { opens++ },
+            onPlayPause = { playPauses++ },
+            onNext = { nexts++ },
+            onStop = { stops++ },
+        )
 
         onDescription(R.string.mini_player_pause).performClick()
-        assertEquals(listOf(0, 1, 0), listOf(opens, playPauses, stops))
+        assertEquals(listOf(0, 1, 0, 0), listOf(opens, playPauses, nexts, stops))
+
+        onDescription(R.string.next_video).performClick()
+        assertEquals(listOf(0, 1, 1, 0), listOf(opens, playPauses, nexts, stops))
 
         onDescription(R.string.mini_player_stop).performClick()
-        assertEquals(listOf(0, 1, 1), listOf(opens, playPauses, stops))
+        assertEquals(listOf(0, 1, 1, 1), listOf(opens, playPauses, nexts, stops))
+    }
+
+    /** Dimmed rather than hidden at the end of the queue, so Stop never moves under a finger. */
+    @Test
+    fun theNextButton_isDisabled_onTheLastVideo() {
+        setBar(hasNext = false)
+
+        onDescription(R.string.next_video).assertIsNotEnabled()
     }
 
     /**
-     * The row is the large target for the common action. The two buttons sit inside it, so the
+     * The dimmed button sits inside the row's own `clickable`, so the obvious worry is that a tap
+     * on it falls through and opens the player — the opposite of what dimming promises. Foundation
+     * consumes the down event before checking `enabled`, so it does not; this pins that, because it
+     * is one line of library behaviour standing between "dimmed" and "navigates unexpectedly".
+     */
+    @Test
+    fun aDisabledNextButton_doesNotOpenThePlayer() {
+        var opens = 0
+        var nexts = 0
+        setBar(hasNext = false, onOpen = { opens++ }, onNext = { nexts++ })
+
+        onDescription(R.string.next_video).performClick()
+
+        assertEquals(listOf(0, 0), listOf(opens, nexts))
+    }
+
+    /**
+     * The row is the large target for the common action. The three buttons sit inside it, so the
      * risk runs the other way as well: a button press that also opened the player would pause and
      * navigate at once.
      */

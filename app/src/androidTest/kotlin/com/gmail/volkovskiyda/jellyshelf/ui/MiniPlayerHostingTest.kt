@@ -1,6 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -61,13 +63,14 @@ class MiniPlayerHostingTest {
 
     private fun label(resId: Int) = composeRule.activity.getString(resId)
 
-    private fun startPlaying(isPlaying: Boolean = true) {
+    private fun startPlaying(isPlaying: Boolean = true, hasNext: Boolean = true) {
         nowPlaying.show(
             NowPlaying(
                 youtubeId = "aaaaaaaaaaa",
                 title = TITLE,
                 artworkUri = null,
                 isPlaying = isPlaying,
+                hasNext = hasNext,
             ),
         )
         composeRule.waitForIdle()
@@ -144,6 +147,9 @@ class MiniPlayerHostingTest {
             override fun playPause() {
                 calls += "playPause"
             }
+            override fun next() {
+                calls += "next"
+            }
             override fun stop() {
                 calls += "stop"
             }
@@ -153,9 +159,32 @@ class MiniPlayerHostingTest {
 
         composeRule.onNodeWithContentDescription(label(R.string.mini_player_pause)).performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(label(R.string.next_video)).performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription(label(R.string.mini_player_stop)).performClick()
         composeRule.waitForIdle()
 
-        assertEquals(listOf("playPause", "stop"), calls)
+        assertEquals(listOf("playPause", "next", "stop"), calls)
+    }
+
+    /**
+     * The queue's far end reaches the button through [NowPlaying.hasNext] alone — the bar has no
+     * player to ask, by design. Asserting only the enabled state, not a tap: no service is running
+     * here, so the transport is unattached and `next()` is a no-op.
+     *
+     * One test flipping the field rather than two, because `show` may be called repeatedly on a
+     * rule whose content was set once by [MainActivity] itself.
+     */
+    @Test
+    fun theNextButton_followsTheQueuesFarEnd() {
+        startPlaying(hasNext = false)
+        awaitBar()
+
+        composeRule.onNodeWithContentDescription(label(R.string.next_video)).assertIsNotEnabled()
+
+        nowPlaying.setHasNext(true)
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription(label(R.string.next_video)).assertIsEnabled()
     }
 }

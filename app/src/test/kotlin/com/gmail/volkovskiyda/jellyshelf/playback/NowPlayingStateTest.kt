@@ -70,21 +70,26 @@ class NowPlayingStateTest {
             override fun playPause() {
                 calls += "playPause"
             }
+            override fun next() {
+                calls += "next"
+            }
             override fun stop() {
                 calls += "stop"
             }
         })
 
         state.playPause()
+        state.next()
         state.stop()
 
-        assertEquals(listOf("playPause", "stop"), calls)
+        assertEquals(listOf("playPause", "next", "stop"), calls)
     }
 
     /** No service, no player to command — a tap on a stale bar must not throw. */
     @Test
     fun theButtonsAreInertWithNoTransport() {
         state.playPause()
+        state.next()
         state.stop()
     }
 
@@ -99,6 +104,9 @@ class NowPlayingStateTest {
             override fun playPause() {
                 calls += "playPause"
             }
+            override fun next() {
+                calls += "next"
+            }
             override fun stop() {
                 calls += "stop"
             }
@@ -109,7 +117,29 @@ class NowPlayingStateTest {
 
         assertNull(state.nowPlaying.value)
         state.playPause()
+        state.next()
         state.stop()
         assertEquals(emptyList<String>(), calls)
+    }
+
+    /** The same rule [setPlaying] follows: a late timeline report must not resurrect a cleared bar. */
+    @Test
+    fun setHasNextOnAnEmptySlotStaysEmpty() {
+        state.setHasNext(true)
+
+        assertNull(state.nowPlaying.value)
+    }
+
+    /**
+     * The queue arrives after the first item does, so the field the bar's next button reads is
+     * normally set by a timeline report rather than by the [show] that raised the bar.
+     */
+    @Test
+    fun setHasNextUpdatesTheShowingItem() {
+        state.show(playing())
+
+        state.setHasNext(true)
+
+        assertEquals(true, state.nowPlaying.value?.hasNext)
     }
 }

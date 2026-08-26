@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,17 +39,24 @@ import com.gmail.volkovskiyda.jellyshelf.R
  * already under way.
  *
  * [onOpen] is the whole row rather than a button, so the large target is the common action; the
- * two icon buttons carve their own targets out of it. Each of the three announces itself, since
+ * three icon buttons carve their own targets out of it. Each of the four announces itself, since
  * none of them has a visible label — and the accessibility checks that run in every Compose test
  * fail on an unlabelled clickable.
+ *
+ * Next but not previous: at 48 dp a fourth icon target would take most of what is readable of the
+ * title on a narrow phone, and previous is the rarer action, one tap away inside the player. It is
+ * dimmed rather than hidden at the end of the queue so that [onStop]'s button never moves sideways
+ * under a finger between videos.
  */
 @Composable
 fun MiniPlayerBar(
     title: String?,
     artworkUri: String?,
     isPlaying: Boolean,
+    hasNext: Boolean,
     onOpen: () -> Unit,
     onPlayPause: () -> Unit,
+    onNext: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -94,6 +102,15 @@ fun MiniPlayerBar(
                         contentDescription = stringResource(
                             if (isPlaying) R.string.mini_player_pause else R.string.mini_player_play,
                         ),
+                    )
+                }
+                // No explicit tint, unlike PlayerControls' transportTint: that exists because the
+                // player's buttons sit on raw video. Here IconButton is on surfaceContainer and
+                // its own disabledContentColor already dims a disabled button.
+                IconButton(onClick = onNext, enabled = hasNext) {
+                    Icon(
+                        Icons.Filled.SkipNext,
+                        contentDescription = stringResource(R.string.next_video),
                     )
                 }
                 IconButton(onClick = onStop) {

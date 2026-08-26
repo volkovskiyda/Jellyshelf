@@ -13,6 +13,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
@@ -161,13 +162,29 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         // Last, so a transition has already been reported and re-tracked before this seeks.
         player.addListener(ResumeSeedingListener())
         this.player = player
-        // The mini-player bar's two buttons, on the real player. Registered here rather than
+        // The mini-player bar's three buttons, on the real player. Registered here rather than
         // handed a controller, because a controller is what *starts* this service.
         nowPlaying.attach(object : NowPlayingState.Transport {
             override fun playPause() {
                 // media3's own helper, the one the player screen's button state uses, so the bar
                 // and the screen cannot disagree about what a play tap does to an ended video.
                 this@PlaybackService.player?.let(Util::handlePlayPauseButtonAction)
+            }
+
+            override fun next() {
+                // Deliberately seekToNextMediaItem, not seekToNext: the latter restarts the
+                // current video once past its threshold, which is a different button entirely.
+                val p = this@PlaybackService.player ?: return
+                // The guard is what makes the play() below safe. seekToNextMediaItem is already a
+                // no-op at the end of the queue, but play() is not: without this, a tap that
+                // arrived through a stale hasNext would resume the *current* paused video.
+                if (!p.hasNextMediaItem()) return
+                p.seekToNextMediaItem()
+                // The bar's next starts playback rather than carrying a pause forward: on a
+                // glanceable surface with no other feedback, loading the next video paused reads
+                // as a dead tap. Deliberately unlike the player screen's next, where the full
+                // transport is visible and a paused seek is legible.
+                p.play()
             }
 
             override fun stop() {
@@ -425,9 +442,24 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                         title = it.mediaMetadata.title?.toString(),
                         artworkUri = it.mediaMetadata.artworkUri?.toString(),
                         isPlaying = player?.isPlaying == true,
+                        hasNext = player?.hasNextMediaItem() == true,
                     )
                 },
             )
+        }
+
+        /**
+         * The queue's far end, for the mini-player bar's next button. Here as well as in
+         * [onMediaItemTransition] because the queue arrives asynchronously — the session resolves
+         * every id before the timeline exists — so the transition that first showed the bar can
+         * precede the timeline that says whether anything follows.
+         *
+         * hasNextMediaItem() respects shuffle order and repeat mode, neither of which this app
+         * sets. Using the player's own accessor is the right call rather than a shortcut: the
+         * bar's button calls seekToNextMediaItem(), whose behaviour tracks the same two settings.
+         */
+        override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+            nowPlaying.setHasNext(player?.hasNextMediaItem() == true)
         }
 
         override fun onPositionDiscontinuity(
