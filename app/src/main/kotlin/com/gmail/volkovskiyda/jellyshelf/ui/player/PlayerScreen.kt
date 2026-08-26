@@ -338,6 +338,16 @@ private fun PlayerWithControls(
     val playbackSpeed = rememberPlaybackSpeedState(controller)
     val presentationState = rememberPresentationState(controller)
 
+    // Press-and-hold forces 3× until the finger lifts; PlaybackSpeedState remembers the speed to
+    // go back to, so a hold started at 1.5× returns to 1.5×. Its release half runs in the pointer
+    // handler below, which only exists while this composition does — so a hold interrupted by the
+    // composable going away (rotating with the finger still down recreates the activity) would
+    // leave the *session* at 3× with nothing holding it there. The player outlives this screen,
+    // so undoing the hold has to be tied to the screen's lifetime as well as to the finger's.
+    DisposableEffect(playbackSpeed) {
+        onDispose { playbackSpeed.restoreOverriddenSpeed() }
+    }
+
     // The surface's one drag gesture: horizontal scrubbing (see PlayerGestureHandler). The pill
     // lingers briefly after the finger lifts, then hides.
     var gestureIndicator by remember { mutableStateOf<GestureIndicator?>(null) }
@@ -371,18 +381,6 @@ private fun PlayerWithControls(
         }
     }
 
-    // Press-and-hold forces 3× until the finger lifts. The speed to go back to is read off the
-    // controller at press time, not assumed to be 1× — a hold started at 1.5× returns to 1.5×.
-    var speedBeforeHold by remember { mutableStateOf<Float?>(null) }
-    // The release half runs in the pointer handler below, which only exists while this composition
-    // does — so a hold interrupted by the composable going away (rotating with the finger still
-    // down recreates the activity) would leave the *session* at 3× with nothing holding it there.
-    // The player outlives this screen, so undoing the hold has to be tied to the screen's lifetime
-    // as well as to the finger's.
-    DisposableEffect(controller) {
-        onDispose { speedBeforeHold?.let(controller::setPlaybackSpeed) }
-    }
-
     Box(
         Modifier
             .fillMaxSize()
@@ -406,8 +404,7 @@ private fun PlayerWithControls(
                                 }
                             },
                             onLongPress = {
-                                speedBeforeHold = controller.playbackParameters.speed
-                                controller.setPlaybackSpeed(HOLD_SPEED)
+                                playbackSpeed.temporarilyOverrideSpeedWith(HOLD_SPEED)
                                 gestureActive = true
                                 gestureIndicator = GestureIndicator.Speed(HOLD_SPEED)
                             },
@@ -417,12 +414,8 @@ private fun PlayerWithControls(
                     // onLongPress has no release half; this supplies it.
                     launch {
                         awaitGestureReleases {
-                            val restore = speedBeforeHold
-                            if (restore != null) {
-                                speedBeforeHold = null
-                                controller.setPlaybackSpeed(restore)
-                                gestureActive = false
-                            }
+                            playbackSpeed.restoreOverriddenSpeed()
+                            gestureActive = false
                         }
                     }
                 }
@@ -463,8 +456,8 @@ private fun PlayerWithControls(
                 onSeek = controller::seekTo,
                 onSetSpeed = { speed ->
                     playbackSpeed.updatePlaybackSpeed(speed)
-                    // Only a menu pick is a choice worth keeping. Press-and-hold's 3× goes
-                    // straight to the controller in the gesture handler above, and is never saved.
+                    // Only a menu pick is a choice worth keeping. Press-and-hold's 3× is a
+                    // temporary override on the same state, and is never saved.
                     onSpeedPicked(speed)
                 },
                 onScrubbingChanged = { scrubbing = it },
