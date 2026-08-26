@@ -92,6 +92,7 @@ import androidx.media3.ui.compose.state.rememberPlaybackSpeedState
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
+import coil3.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.LocalIsInPip
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
@@ -100,6 +101,7 @@ import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import kotlinx.coroutines.coroutineScope
@@ -155,6 +157,11 @@ fun PlayerScreen(
     val video by viewModel.video.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val isInPip = LocalIsInPip.current
+    // The cover to stand in for the video until it has a frame of its own — see [PlayerPoster].
+    // Keyed on the video the screen is *for*, so it is on screen before the controller has even
+    // connected, and it follows the queue when that advances (the flow tracks the current id).
+    val thumbnail = rememberVideoThumbnailResolver()
+    val poster = video?.let(thumbnail)
 
     ImmersiveWhileHere(enabled = !isInPip)
 
@@ -170,6 +177,7 @@ fun PlayerScreen(
         if (c == null) {
             // Still connecting to the service. The back arrow stays reachable regardless — with
             // no controller yet there is nothing to stop, so this is a plain leave.
+            PlayerPoster(poster, Modifier.matchParentSize())
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
             BackButton(
                 onClick = leave,
@@ -183,6 +191,7 @@ fun PlayerScreen(
             PlayerWithControls(
                 controller = c,
                 title = video?.title,
+                poster = poster,
                 chapters = chapters,
                 onSpeedPicked = viewModel::savePlaybackSpeed,
                 isInPip = isInPip,
@@ -200,6 +209,7 @@ fun PlayerScreen(
 private fun PlayerWithControls(
     controller: MediaController,
     title: String?,
+    poster: String?,
     chapters: List<Chapter>,
     onSpeedPicked: (Float) -> Unit,
     isInPip: Boolean,
@@ -428,6 +438,7 @@ private fun PlayerWithControls(
         if (presentationState.coverSurface) {
             // Shutter until the first frame renders: solid black beats a stale/blank surface.
             Box(Modifier.matchParentSize().background(Color.Black))
+            PlayerPoster(poster, Modifier.matchParentSize())
         }
         if (isBuffering) {
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
@@ -484,6 +495,34 @@ private fun PlayerWithControls(
             )
         }
     }
+}
+
+/**
+ * The video's own cover, shown wherever the surface has nothing to show yet.
+ *
+ * Opening a video is not instant — a controller connects, the session resolves the id, the server
+ * is asked for the stream, and only then does a frame decode — and for all of it the surface is
+ * covered. Black is the honest answer, but the *thumbnail* is a better one: it is the same image
+ * the row the user just tapped was showing, already in Coil's cache, so the tap reads as that
+ * thumbnail growing to fill the screen rather than as a wait. There is nothing to generate for
+ * this and no frame to extract — every video carries the cover yt-dlp fetched with it.
+ *
+ * Drawn over the shutter rather than instead of it, and letterboxed like the video it stands in
+ * for, so a cover of a different shape does not crop or stretch to fill. Null (a video with no
+ * thumbnail, or settings not yet loaded) simply leaves the black in place.
+ *
+ * It also outlasts the wait for an audio-only stream, where no video track is ever selected and
+ * the surface stays covered for the whole playback — a cover there beats a black rectangle.
+ */
+@Composable
+private fun PlayerPoster(model: String?, modifier: Modifier = Modifier) {
+    if (model == null) return
+    AsyncImage(
+        model = model,
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.Fit,
+    )
 }
 
 /**
