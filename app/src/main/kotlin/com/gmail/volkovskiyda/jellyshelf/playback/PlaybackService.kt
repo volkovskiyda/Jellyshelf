@@ -149,6 +149,12 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             .setSeekBackIncrementMs(SEEK_BACK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
             .build()
+        // A few seconds of the *next* queued video, buffered while this one plays: pressing Next
+        // and reaching the end of a video both then start on a stream that is already open, which
+        // is the whole wait for anything the user did not have to choose. Only the next item is
+        // touched, however long the queue is, so a library-sized queue costs the same as a
+        // single-video one — and nothing at all when there is no next item.
+        player.preloadConfiguration = ExoPlayer.PreloadConfiguration(PRELOAD_TARGET_DURATION_US)
         player.addListener(WatchStateListener())
         player.addListener(StartupTraceListener())
         player.addListener(TranscodeFallbackListener())
@@ -664,6 +670,17 @@ class PlaybackService : MediaSessionService(), KoinComponent {
 
         // Unrelated to the seek increments despite matching one of them today.
         private const val POSITION_SAVE_INTERVAL_MS = 10_000L
+
+        /**
+         * How much of the next queued video to buffer ahead of reaching it.
+         *
+         * Enough to cover opening the stream and decoding a first frame, which is what the wait
+         * at a queue advance is actually made of; more would be paid for on every video, in
+         * traffic and in memory, to shorten a wait that is already gone. Three seconds of a
+         * direct-played 1080p stream is a few megabytes against a server that is usually on the
+         * same network.
+         */
+        private const val PRELOAD_TARGET_DURATION_US = 3_000_000L
 
         /**
          * How often a paused session tells the server it is still there.
