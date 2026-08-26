@@ -42,7 +42,9 @@ data class NowPlaying(
  *
  * Everything here runs on the main thread — the service's player lives there and composition reads
  * there — and the state is held in [MutableStateFlow]s rather than plain fields so a reader that
- * is *not* on that thread still sees a consistent value.
+ * is *not* on that thread still sees a consistent value. Since media3 1.11.0 the player half of
+ * that is enforced rather than merely tidy: its state accessors throw when read off the player's
+ * application looper, so a [Transport] call made from anywhere else is a crash, not a race.
  */
 class NowPlayingState {
 
@@ -53,6 +55,10 @@ class NowPlayingState {
      * What the bar's buttons reach. Registered by the service so every action lands on the real
      * player rather than on a copy of its rules — [stop] in particular has to be the exact
      * sequence the player screen's back uses, or the server gets the wrong stop report.
+     *
+     * Implementations run on the player's application looper, and every caller must already be on
+     * it: these are called straight from a Compose `onClick`, so nothing here posts. The service's
+     * implementation asserts that in debug builds.
      */
     interface Transport {
         fun playPause()

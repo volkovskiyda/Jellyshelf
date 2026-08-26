@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Looper
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -27,6 +28,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.tracing.traceAsync
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
@@ -97,10 +99,13 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val settingsRepository: SettingsRepository by inject()
     private val dispatchers: DispatcherProvider by inject()
     private val resumable: ResumableCache by inject()
+    private val buildInfo: BuildInfo by inject()
 
     // The player's application thread is this service's main thread; session callbacks, the
     // listener and the periodic saver all stay on it, which is also what makes the plain-var
-    // bookkeeping below safe.
+    // bookkeeping below safe. Since media3 1.11.0 that is a hard rule rather than a convention —
+    // its state accessors throw when read from another thread, where void methods still auto-post
+    // — so [checkOnApplicationLooper] pins it on the one entry point that comes from outside.
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(serviceJob + Dispatchers.Main)
 
@@ -168,13 +173,17 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             override fun playPause() {
                 // media3's own helper, the one the player screen's button state uses, so the bar
                 // and the screen cannot disagree about what a play tap does to an ended video.
-                this@PlaybackService.player?.let(Util::handlePlayPauseButtonAction)
+                this@PlaybackService.player?.let {
+                    it.checkOnApplicationLooper(buildInfo.isDebug)
+                    Util.handlePlayPauseButtonAction(it)
+                }
             }
 
             override fun next() {
                 // Deliberately seekToNextMediaItem, not seekToNext: the latter restarts the
                 // current video once past its threshold, which is a different button entirely.
                 val p = this@PlaybackService.player ?: return
+                p.checkOnApplicationLooper(buildInfo.isDebug)
                 // The guard is what makes the play() below safe. seekToNextMediaItem is already a
                 // no-op at the end of the queue, but play() is not: without this, a tap that
                 // arrived through a stale hasNext would resume the *current* paused video.
@@ -193,6 +202,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 // and clearing the queue is what fires the single stop report. Anything else here
                 // either loses the position or reports twice.
                 val p = this@PlaybackService.player ?: return
+                p.checkOnApplicationLooper(buildInfo.isDebug)
                 p.pause()
                 p.clearMediaItems()
             }
@@ -752,4 +762,29 @@ private fun Context.sessionActivity(youtubeId: String?): PendingIntent {
         intent,
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
+}
+
+/**
+ * Fails fast, in debug only, when something reaches the player off its application looper.
+ *
+ * media3 1.11.0 made the session/controller state accessors throw from the wrong thread, where
+ * void methods still auto-post — and [NowPlayingState.Transport.playPause] is on the reading side:
+ * `Util.handlePlayPauseButtonAction` reads `playbackState` and `playWhenReady` to decide what a
+ * play tap means on an ended video. Checking here rather than letting media3 throw puts the failure
+ * at the call site, where the wrong thread actually entered.
+ *
+ * Every caller today is on the main thread, which is the service's and the player's application
+ * looper (audited 2026-08-21: the bar's buttons come from Compose via MainActivity, and the one
+ * application-scope launch in that file touches no player state). This is what keeps that true as
+ * coroutines are added to it.
+ *
+ * Debug-only on purpose: a release build should not crash someone's playback over it, and media3's
+ * own accessors already throw if it ever matters. Top-level rather than a member because it needs
+ * nothing from the service but the flag, and the class is at detekt's function threshold.
+ */
+private fun ExoPlayer.checkOnApplicationLooper(isDebug: Boolean) {
+    if (!isDebug) return
+    check(Looper.myLooper() == applicationLooper) {
+        "Player reached off its application looper from ${Thread.currentThread().name}"
+    }
 }
