@@ -54,6 +54,8 @@ internal fun SelectionTopBar(
     onSelectAll: () -> Unit,
     onDeselectAll: () -> Unit,
     onAction: (SelectionAction) -> Unit,
+    /** Null on a list a playlist cannot be built from — see the menu below. */
+    onCreatePlaylist: (() -> Unit)? = null,
 ) {
     TopAppBar(
         // Tinted so selection mode is legible at a glance rather than only from the bar's contents
@@ -77,37 +79,70 @@ internal fun SelectionTopBar(
             IconButton(onClick = onDeselectAll, enabled = selectedCount > 0) {
                 Icon(Icons.Filled.Deselect, contentDescription = stringResource(R.string.deselect_all))
             }
-            SelectionActionsMenu(enabled = canAct, onAction = onAction)
+            SelectionActionsMenu(enabled = canAct, onAction = onAction, onCreatePlaylist = onCreatePlaylist)
         },
     )
 }
 
+/**
+ * The menu itself, built in three passes rather than one loop over the enum: everything
+ * recoverable, then Create playlist, then the destructive one.
+ *
+ * The order is the point, not the source of it — the destructive row is last because that is the
+ * furthest from the thumb that opened the menu, and writing the pass that way means it stays last
+ * whatever is added between. Create playlist sits with the recoverable actions because it is one:
+ * it builds something new beside the videos and changes none of them.
+ */
 @Composable
-private fun SelectionActionsMenu(enabled: Boolean, onAction: (SelectionAction) -> Unit) {
+private fun SelectionActionsMenu(
+    enabled: Boolean,
+    onAction: (SelectionAction) -> Unit,
+    onCreatePlaylist: (() -> Unit)?,
+) {
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }, enabled = enabled) {
         Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.selection_actions))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        for (action in SelectionAction.entries) {
+        for (action in SelectionAction.entries.filterNot { it.destructive }) {
+            SelectionMenuItem(action) {
+                expanded = false
+                onAction(action)
+            }
+        }
+        onCreatePlaylist?.let { create ->
             DropdownMenuItem(
-                text = {
-                    Text(
-                        stringResource(action.menuLabel),
-                        color = if (action.destructive) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
-                },
+                text = { Text(stringResource(R.string.create_playlist)) },
                 onClick = {
                     expanded = false
-                    onAction(action)
+                    create()
                 },
             )
         }
+        for (action in SelectionAction.entries.filter { it.destructive }) {
+            SelectionMenuItem(action) {
+                expanded = false
+                onAction(action)
+            }
+        }
     }
+}
+
+@Composable
+private fun SelectionMenuItem(action: SelectionAction, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                stringResource(action.menuLabel),
+                color = if (action.destructive) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+        },
+        onClick = onClick,
+    )
 }
 
 /**

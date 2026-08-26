@@ -1,6 +1,5 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
-import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
@@ -24,7 +23,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class CategoryVideosViewModel(
-    private val app: Application,
     private val repo: LibraryRepository,
     settingsState: AppSettingsState,
     private val categoryId: String,
@@ -74,46 +72,6 @@ class CategoryVideosViewModel(
         RemoveKind.WATCHED -> repo.bulkRemove
         RemoveKind.MISSING -> repo.bulkRemoveMissing
         null -> MutableStateFlow(BulkProgress.Idle)
-    }
-
-    private val _creatingPlaylist = MutableStateFlow(false)
-    val creatingPlaylist: StateFlow<Boolean> = _creatingPlaylist.asStateFlow()
-
-    /** One-shot outcome message for playlist creation; consume after showing. */
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message.asStateFlow()
-
-    fun consumeMessage() {
-        _message.value = null
-    }
-
-    /**
-     * Creates the playlist. The repository call runs non-cancellable so neither rotation nor
-     * popping the screen aborts it mid-flight; the creating flag is cleared afterwards so the
-     * dialog can never get stuck if something outside the repository's own handling throws.
-     */
-    fun createPlaylist(name: String) {
-        if (_creatingPlaylist.value) return
-        _creatingPlaylist.value = true
-        viewModelScope.launch {
-            runCatchingCancellable {
-                val result = withContext(NonCancellable) {
-                    repo.createPlaylistFromCategory(categoryId, name)
-                }
-                val resources = app.resources
-                _message.value = when (result) {
-                    is PlaylistResult.Success -> resources.getString(
-                        R.string.playlist_created,
-                        result.name,
-                        resources.getQuantityString(R.plurals.video_count, result.count, result.count),
-                    )
-                    is PlaylistResult.Error -> result.message
-                }
-            }.onFailure { e ->
-                _message.value = e.message ?: e.javaClass.simpleName
-            }
-            _creatingPlaylist.value = false
-        }
     }
 
     fun startFetchMissing() = repo.startFetchMissing()

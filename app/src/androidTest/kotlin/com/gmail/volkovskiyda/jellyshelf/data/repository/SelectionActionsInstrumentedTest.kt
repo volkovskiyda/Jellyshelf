@@ -14,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
@@ -96,6 +97,9 @@ class SelectionActionsInstrumentedTest {
     /** Every played-state write the fake server received, as item id to played. */
     private val playedWrites = mutableListOf<Pair<String, Boolean>>()
 
+    /** The item ids the fake server was asked to put in a playlist. */
+    private val playlistItemIds = mutableListOf<String>()
+
     /** Never called here — every video gets index metadata, so no auto-fill pass has work to do. */
     private class UnusedYtDlp(context: Context, dispatchers: DispatcherProvider) :
         YtDlpMetadataSource(context, dispatchers, provideJson()) {
@@ -150,6 +154,16 @@ class SelectionActionsInstrumentedTest {
                         in unknownDeletes -> respondError(HttpStatusCode.NotFound)
                         else -> respond(content = "", status = HttpStatusCode.NoContent)
                     }
+                }
+                url.contains("/Playlists") -> {
+                    val body = (request.body as io.ktor.http.content.TextContent).text
+                    playlistItemIds += Regex("\"Ids\":\\[([^]]*)]").find(body)
+                        ?.groupValues?.get(1).orEmpty()
+                        .split(",").map { it.trim('"', ' ') }.filter { it.isNotBlank() }
+                    respond(
+                        content = """{"Id":"playlist-1"}""",
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
                 }
                 url.contains("jellyshelf-index.json") -> respond(
                     content = json.encodeToString(index),
@@ -335,6 +349,44 @@ class SelectionActionsInstrumentedTest {
         assertEquals(0, awaitDone(repo).failed)
 
         assertEquals(false, db.videoDao().get(a)?.played)
+    }
+
+    /**
+     * A playlist is built from the selection rather than from a whole category — the point of
+     * building one by hand. Videos the server has no item for are left out rather than failing the
+     * call, since there is nothing to put in a playlist for them.
+     */
+    @Test
+    fun createPlaylist_usesTheSelectedVideosAndSkipsOnesTheServerHasNoItemFor() = runBlocking {
+        val repo = repository(
+            serverIds = listOf(a, b, c),
+            index = listOf(indexEntry(a, "Channel A"), indexEntry(b, "Channel B"), indexEntry(c, "Channel C")),
+            settings = FakeSettingsRepository(connected),
+        )
+        repo.sync()
+        // As an unmatched local row would be: in the library, with nothing on the server behind it.
+        db.videoDao().upsert(db.videoDao().get(c)!!.copy(jellyfinItemId = null))
+
+        val result = repo.createPlaylistFromVideos(listOf(a, c), "Two of them")
+
+        assertEquals(PlaylistResult.Success("Two of them", 1), result)
+        assertEquals(listOf("jf-$a"), playlistItemIds)
+    }
+
+    @Test
+    fun createPlaylist_refusesASelectionWithNothingTheServerCanHold() = runBlocking {
+        val repo = repository(
+            serverIds = listOf(a),
+            index = listOf(indexEntry(a, "Channel A")),
+            settings = FakeSettingsRepository(connected),
+        )
+        repo.sync()
+        db.videoDao().upsert(db.videoDao().get(a)!!.copy(jellyfinItemId = null))
+
+        val result = repo.createPlaylistFromVideos(listOf(a), "Empty")
+
+        assertTrue("$result", result is PlaylistResult.Error)
+        assertTrue("no server call", playlistItemIds.isEmpty())
     }
 
     /**

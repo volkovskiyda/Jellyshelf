@@ -19,8 +19,10 @@ import timber.log.Timber
  * How many ids one `IN (...)` query may carry. SQLite's own ceiling on bound variables is 999 on
  * the platform versions this app supports; the round number below it leaves room for the query's
  * other parameters and makes the chunking obvious in a stack trace.
+ *
+ * Shared with the playlist build, which resolves the same selection to the same rows.
  */
-private const val ID_CHUNK = 900
+internal const val ID_CHUNK = 900
 
 /**
  * Runs one action over the videos a user selected, publishing progress as a [SelectionRun].

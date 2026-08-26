@@ -371,7 +371,7 @@ class DemoActionsInstrumentedTest {
     fun createPlaylist_reportsSuccessWithNoServerToCreateOneOn() = runBlocking {
         val repo = demoRepository()
 
-        val result = repo.createPlaylistFromCategory(VIRTUAL_CATEGORY_WATCHED, "Watched")
+        val result = repo.createPlaylistFromVideos(db.videoDao().getWatched().map { it.youtubeId }, "Watched")
 
         assertTrue("$result", result is PlaylistResult.Success)
         result as PlaylistResult.Success
@@ -383,7 +383,7 @@ class DemoActionsInstrumentedTest {
     fun createPlaylist_reportsTheFakeServersRefusal() = runBlocking {
         val repo = demoRepository(failCall = { true })
 
-        val result = repo.createPlaylistFromCategory(VIRTUAL_CATEGORY_WATCHED, "Watched")
+        val result = repo.createPlaylistFromVideos(db.videoDao().getWatched().map { it.youtubeId }, "Watched")
 
         assertTrue("$result", result is PlaylistResult.Error)
         assertEquals(

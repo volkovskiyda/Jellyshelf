@@ -99,5 +99,11 @@ interface LibraryRepository : PlaystateRepository {
 
     suspend fun clearLocalData()
     suspend fun removeVideo(youtubeId: String)
-    suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult
+
+    /**
+     * Creates a Jellyfin playlist named [name] from the selected videos, in the order the list they
+     * were picked from was showing. Videos the server has no item for are left out; a selection
+     * with none at all is an error rather than an empty playlist.
+     */
+    suspend fun createPlaylistFromVideos(youtubeIds: List<String>, name: String): PlaylistResult
 }

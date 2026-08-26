@@ -45,10 +45,12 @@ import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.CreatePlaylistDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionActionDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionRunHeader
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionTopBar
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionUndoSnackbar
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.playlistMessage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -70,37 +72,28 @@ fun CategoryVideosScreen(
     val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
     val bulkRemove by viewModel.bulkRemove.collectAsStateWithLifecycle()
-    val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
     val demoMode by viewModel.demoMode.collectAsStateWithLifecycle()
     val selection = viewModel.selection
     val selectionActive by selection.active.collectAsStateWithLifecycle()
     val selectedIds by selection.selected.collectAsStateWithLifecycle()
     val selectionRun by selection.run.collectAsStateWithLifecycle()
     val selectionUndo by selection.undo.collectAsStateWithLifecycle()
+    val playlistDialogOpen by selection.playlistDialogOpen.collectAsStateWithLifecycle()
+    val creatingPlaylist by selection.creatingPlaylist.collectAsStateWithLifecycle()
 
-    // Dialog visibility lives here, not in the content: a finished playlist creation reports via
-    // [message], and that same signal is what closes the dialog.
-    var showDialog by rememberSaveable { mutableStateOf(false) }
     var showRemoveDialog by rememberSaveable { mutableStateOf(false) }
-    val message by viewModel.message.collectAsStateWithLifecycle()
-    ToastOnMessage(message) {
-        showDialog = false
-        viewModel.consumeMessage()
-    }
+    val playlistResult by selection.playlistResult.collectAsStateWithLifecycle()
+    ToastOnMessage(playlistResult?.let { playlistMessage(it) }, selection::consumePlaylistResult)
 
     CategoryVideosContent(
         title = title,
         videosOrNull = videosOrNull,
         bulkFetch = bulkFetch,
         bulkRemove = bulkRemove,
-        creating = creating,
         demoMode = demoMode,
         isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
         removeKind = viewModel.removeKind,
         scrollKey = "category.$categoryId",
-        showDialog = showDialog,
-        onShowDialog = { showDialog = true },
-        onDismissDialog = { if (!creating) showDialog = false },
         showRemoveDialog = showRemoveDialog,
         onShowRemoveDialog = { showRemoveDialog = true },
         onDismissRemoveDialog = { showRemoveDialog = false },
@@ -116,7 +109,6 @@ fun CategoryVideosScreen(
         },
         onCancelRemove = viewModel::cancelRemove,
         onAcknowledgeBulkRemove = viewModel::acknowledgeBulkRemove,
-        onCreatePlaylist = viewModel::createPlaylist,
         selectionActive = selectionActive,
         selectedIds = selectedIds,
         selectionRun = selectionRun,
@@ -128,6 +120,12 @@ fun CategoryVideosScreen(
         onSelectionAction = selection::startAction,
         onCancelSelectionRun = selection::cancelRun,
         onAcknowledgeSelectionRun = selection::acknowledgeRun,
+        onCreatePlaylist = selection::openPlaylistDialog,
+        playlistDialogOpen = playlistDialogOpen,
+        creatingPlaylist = creatingPlaylist,
+        playlistDefaultName = title,
+        onDismissPlaylistDialog = selection::dismissPlaylistDialog,
+        onConfirmPlaylist = selection::createPlaylist,
         modifier = modifier,
     )
 
@@ -172,14 +170,10 @@ internal fun CategoryVideosContent(
     videosOrNull: List<Video>?,
     bulkFetch: BulkProgress,
     bulkRemove: BulkProgress,
-    creating: Boolean,
     demoMode: Boolean,
     isUncategorized: Boolean,
     removeKind: RemoveKind?,
     scrollKey: String,
-    showDialog: Boolean,
-    onShowDialog: () -> Unit,
-    onDismissDialog: () -> Unit,
     showRemoveDialog: Boolean,
     onShowRemoveDialog: () -> Unit,
     onDismissRemoveDialog: () -> Unit,
@@ -192,7 +186,6 @@ internal fun CategoryVideosContent(
     onConfirmRemove: () -> Unit,
     onCancelRemove: () -> Unit,
     onAcknowledgeBulkRemove: () -> Unit,
-    onCreatePlaylist: (String) -> Unit,
     selectionActive: Boolean = false,
     selectedIds: Set<String> = emptySet(),
     selectionRun: SelectionRun? = null,
@@ -204,6 +197,12 @@ internal fun CategoryVideosContent(
     onSelectionAction: (SelectionAction) -> Unit = {},
     onCancelSelectionRun: () -> Unit = {},
     onAcknowledgeSelectionRun: () -> Unit = {},
+    onCreatePlaylist: (() -> Unit)? = null,
+    playlistDialogOpen: Boolean = false,
+    creatingPlaylist: Boolean = false,
+    playlistDefaultName: String = "",
+    onDismissPlaylistDialog: () -> Unit = {},
+    onConfirmPlaylist: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
@@ -241,18 +240,19 @@ internal fun CategoryVideosContent(
                 onSelectAll = { onSelectAll(videos.map { it.youtubeId }) },
                 onDeselectAll = onDeselectAll,
                 onAction = { pendingAction = it },
+                // No playlist offer on Missing from server: a playlist is built from Jellyfin item
+                // ids, and every video here is one the server has stopped listing — the call can
+                // only be rejected. Offering an action that cannot succeed is worse than not
+                // offering it. Decided here rather than by the caller so the rule sits with the
+                // `removeKind` it reads, where the behaviour tests can reach it.
+                onCreatePlaylist = onCreatePlaylist?.takeIf { removeKind != RemoveKind.MISSING },
             )
         } else {
-            // No playlist offer on Missing from server: a playlist is built from Jellyfin item ids,
-            // and every video here is one the server has stopped listing — the call can only be
-            // rejected. Offering an action that cannot succeed is worse than not offering it.
             CategoryTopBar(
                 title = title,
                 videoCount = videos.size,
-                canCreatePlaylist = removeKind != RemoveKind.MISSING,
                 onBack = onBack,
                 onStartSelection = { onStartSelection(null) },
-                onShowDialog = onShowDialog,
             )
         }
 
@@ -321,13 +321,13 @@ internal fun CategoryVideosContent(
         )
     }
 
-    if (showDialog) {
+    if (playlistDialogOpen) {
         CreatePlaylistDialog(
-            defaultName = title,
-            videoCount = videos.size,
-            creating = creating,
-            onDismiss = onDismissDialog,
-            onCreate = onCreatePlaylist,
+            defaultName = playlistDefaultName,
+            videoCount = selectedIds.size,
+            creating = creatingPlaylist,
+            onDismiss = onDismissPlaylistDialog,
+            onCreate = onConfirmPlaylist,
         )
     }
 
@@ -343,22 +343,20 @@ internal fun CategoryVideosContent(
 }
 
 /**
- * The category's title bar: back, count, Select, and — where the category is one a playlist can be
- * built from — Create playlist. The count stays either way; it is what the screen is a list of,
- * not part of the action.
+ * The category's title bar: back, count, Select. Create playlist used to sit here too and now
+ * lives in the selection menu — building one from four chosen videos is what people wanted from
+ * it, and a whole category was only ever the coarsest version of that.
  *
- * The count no longer needs an end inset of its own: Select is offered wherever the count is, so
- * there is always a button after it holding it off the edge of the screen.
+ * The count needs no end inset of its own: Select is offered wherever the count is, so there is
+ * always a button after it holding the count off the edge of the screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CategoryTopBar(
     title: String,
     videoCount: Int,
-    canCreatePlaylist: Boolean,
     onBack: () -> Unit,
     onStartSelection: () -> Unit,
-    onShowDialog: () -> Unit,
 ) {
     TopAppBar(
         title = { Text(title) },
@@ -377,14 +375,6 @@ private fun CategoryTopBar(
                         Icons.Filled.Checklist,
                         contentDescription = stringResource(R.string.select_videos),
                     )
-                }
-                if (canCreatePlaylist) {
-                    IconButton(onClick = onShowDialog) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.PlaylistAdd,
-                            contentDescription = stringResource(R.string.create_playlist),
-                        )
-                    }
                 }
             }
         },
@@ -483,52 +473,6 @@ private fun RemoveVideosDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
-}
-
-@Composable
-private fun CreatePlaylistDialog(
-    defaultName: String,
-    videoCount: Int,
-    creating: Boolean,
-    onDismiss: () -> Unit,
-    onCreate: (name: String) -> Unit,
-) {
-    var name by rememberSaveable { mutableStateOf(defaultName) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.create_playlist)) },
-        text = {
-            Column {
-                Text(
-                    stringResource(
-                        R.string.playlist_dialog_summary,
-                        pluralStringResource(R.plurals.video_count, videoCount, videoCount),
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier.padding(top = 12.dp),
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.playlist_name)) },
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !creating && name.isNotBlank(),
-                onClick = { onCreate(name.trim()) },
-            ) { Text(stringResource(if (creating) R.string.creating else R.string.create)) }
-        },
-        dismissButton = {
-            TextButton(enabled = !creating, onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
         },
     )
 }

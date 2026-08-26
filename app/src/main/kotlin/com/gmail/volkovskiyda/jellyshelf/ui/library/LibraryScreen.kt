@@ -43,13 +43,16 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionReposit
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.SearchField
+import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.CreatePlaylistDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionActionDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionRunHeader
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionTopBar
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionUndoSnackbar
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.playlistMessage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -84,7 +87,11 @@ fun LibraryScreen(
     val selectedIds by selection.selected.collectAsStateWithLifecycle()
     val selectionRun by selection.run.collectAsStateWithLifecycle()
     val selectionUndo by selection.undo.collectAsStateWithLifecycle()
+    val playlistDialogOpen by selection.playlistDialogOpen.collectAsStateWithLifecycle()
+    val creatingPlaylist by selection.creatingPlaylist.collectAsStateWithLifecycle()
     val demoMode by viewModel.demoMode.collectAsStateWithLifecycle()
+    val playlistResult by selection.playlistResult.collectAsStateWithLifecycle()
+    ToastOnMessage(playlistResult?.let { playlistMessage(it) }, selection::consumePlaylistResult)
 
     LibraryContent(
         videosOrNull = videosOrNull,
@@ -107,6 +114,13 @@ fun LibraryScreen(
         onSelectionAction = selection::startAction,
         onCancelSelectionRun = selection::cancelRun,
         onAcknowledgeSelectionRun = selection::acknowledgeRun,
+        // Always offered here. Every list this screen shows is one a playlist can be built from —
+        // the one filter that cannot (Missing from server) lives on the Categories tab.
+        onCreatePlaylist = selection::openPlaylistDialog,
+        playlistDialogOpen = playlistDialogOpen,
+        creatingPlaylist = creatingPlaylist,
+        onDismissPlaylistDialog = selection::dismissPlaylistDialog,
+        onConfirmPlaylist = selection::createPlaylist,
         modifier = modifier,
     )
 
@@ -147,6 +161,11 @@ internal fun LibraryContent(
     onSelectionAction: (SelectionAction) -> Unit = {},
     onCancelSelectionRun: () -> Unit = {},
     onAcknowledgeSelectionRun: () -> Unit = {},
+    onCreatePlaylist: (() -> Unit)? = null,
+    playlistDialogOpen: Boolean = false,
+    creatingPlaylist: Boolean = false,
+    onDismissPlaylistDialog: () -> Unit = {},
+    onConfirmPlaylist: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
@@ -186,6 +205,7 @@ internal fun LibraryContent(
                 onSelectAll = { onSelectAll(videos.map { it.youtubeId }) },
                 onDeselectAll = onDeselectAll,
                 onAction = { pendingAction = it },
+                onCreatePlaylist = onCreatePlaylist,
             )
         } else {
             TopAppBar(
@@ -302,6 +322,18 @@ internal fun LibraryContent(
                 }
             }
         }
+    }
+
+    if (playlistDialogOpen) {
+        CreatePlaylistDialog(
+            // No default: a selection out of the whole library is not named by anything on screen,
+            // unlike a category, and a wrong suggestion is worse than an empty field.
+            defaultName = "",
+            videoCount = selectedIds.size,
+            creating = creatingPlaylist,
+            onDismiss = onDismissPlaylistDialog,
+            onCreate = onConfirmPlaylist,
+        )
     }
 
     pendingAction?.let { action ->

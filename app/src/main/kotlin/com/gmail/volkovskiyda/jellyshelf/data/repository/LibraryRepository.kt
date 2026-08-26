@@ -1286,10 +1286,17 @@ class DefaultLibraryRepository private constructor(
     }
 
     /**
-     * Creates a Jellyfin playlist named [name] from every video in [categoryId] that has a
-     * Jellyfin item, ordered by file name. Works for stored categories and "Others" filters alike.
+     * Creates a Jellyfin playlist named [name] from the videos the user selected, ordered by file
+     * name — the order [VideoDao.getByIds] returns them in, which is the order the list they were
+     * picked from was showing.
+     *
+     * Ids rather than a category, because the selection is the subject: a playlist of the four
+     * videos someone actually wants is the point of building one by hand, and a whole category was
+     * only ever the coarsest version of that. Videos with no Jellyfin item are dropped — a
+     * playlist is a list of server items, and there is nothing to put in it for a video the server
+     * does not have.
      */
-    override suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult {
+    override suspend fun createPlaylistFromVideos(youtubeIds: List<String>, name: String): PlaylistResult {
         val s = settings.snapshot()
         if (!s.isConnected && !s.demoMode) {
             return PlaylistResult.Error("Not connected. Configure Jellyfin in Settings.")
@@ -1298,8 +1305,10 @@ class DefaultLibraryRepository private constructor(
         val playlistName = name.trim()
         if (playlistName.isBlank()) return PlaylistResult.Error("Playlist name can't be empty.")
 
-        val itemIds = videosForCategory(categoryId).mapNotNull { it.jellyfinItemId }
-        if (itemIds.isEmpty()) return PlaylistResult.Error("No playable videos in this category.")
+        val itemIds = youtubeIds.chunked(ID_CHUNK)
+            .flatMap { videoDao.getByIds(it) }
+            .mapNotNull { it.jellyfinItemId }
+        if (itemIds.isEmpty()) return PlaylistResult.Error("No playable videos selected.")
 
         return runCatchingCancellable {
             // The demo's playlist is write-only, exactly like the real one from this app's side:
@@ -1313,15 +1322,5 @@ class DefaultLibraryRepository private constructor(
         }.getOrElse { e ->
             PlaylistResult.Error("Failed to create playlist: ${e.message}")
         }
-    }
-
-    /** Videos in [categoryId], ordered by file name — routes the "Others" virtual filters. */
-    private suspend fun videosForCategory(categoryId: String): List<VideoEntity> = when (categoryId) {
-        VIRTUAL_CATEGORY_UNCATEGORIZED -> videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
-        VIRTUAL_CATEGORY_CONTINUE -> videoDao.getContinueWatching()
-        VIRTUAL_CATEGORY_UNWATCHED -> videoDao.getUnwatched()
-        VIRTUAL_CATEGORY_WATCHED -> videoDao.getWatched()
-        VIRTUAL_CATEGORY_MISSING -> videoDao.getMissing()
-        else -> videoDao.getByCategory(categoryId)
     }
 }

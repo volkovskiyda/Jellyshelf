@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -28,6 +29,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryVideos
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -91,6 +93,7 @@ class LibrarySelectionTest {
         var selected by mutableStateOf(setOf<String>())
         var run by mutableStateOf<SelectionRun?>(null)
         var startedAction: SelectionAction? = null
+        var playlistOpened = false
         var selectAlls = 0
         var deselectAlls = 0
         var played: Video? = null
@@ -133,6 +136,7 @@ class LibrarySelectionTest {
                         state.selected = emptySet()
                     },
                     onSelectionAction = { state.startedAction = it },
+                    onCreatePlaylist = { state.playlistOpened = true },
                     scrollStore = FakeScrollPositionRepository(),
                     thumbnailModel = { null },
                 )
@@ -276,6 +280,48 @@ class LibrarySelectionTest {
             composeRule.onNodeWithText(string(R.string.cancel)).performClick()
         }
         assertNull(state.startedAction)
+    }
+
+    /**
+     * The library never offered playlists before; selection mode is what makes it possible, since
+     * a playlist of "everything" was never the useful thing to build. Every list this screen shows
+     * is one a playlist can be made from — the one filter that cannot is on the Categories tab.
+     */
+    @Test
+    fun theLibrary_offersToBuildAPlaylistFromTheSelection() {
+        val state = Recorder().apply {
+            active = true
+            selected = setOf("a")
+        }
+        setContent(state)
+
+        composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
+
+        composeRule.onNodeWithText(string(R.string.create_playlist)).assertIsDisplayed()
+
+        composeRule.onNodeWithText(string(R.string.create_playlist)).performClick()
+        assertTrue("the entry opens the name prompt", state.playlistOpened)
+    }
+
+    /**
+     * The destructive row stays last however the menu grows — it is the furthest from the thumb
+     * that opened it, and Create playlist was inserted above it rather than appended.
+     */
+    @Test
+    fun theDestructiveRow_isTheLastThingInTheMenu() {
+        val state = Recorder().apply {
+            active = true
+            selected = setOf("a")
+        }
+        setContent(state)
+
+        composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
+
+        val playlist = composeRule.onNodeWithText(string(R.string.create_playlist))
+            .getUnclippedBoundsInRoot()
+        val delete = composeRule.onNodeWithText(string(R.string.selection_delete_from_server))
+            .getUnclippedBoundsInRoot()
+        assertTrue("delete sits above create playlist", delete.top > playlist.top)
     }
 
     @Test

@@ -90,6 +90,7 @@ class CategoryVideosContentTest {
         demoMode: Boolean = false,
         showRemoveDialog: Boolean = false,
         selectionActive: Boolean = false,
+        playlistDialogOpen: Boolean = false,
         onConfirmRemove: () -> Unit = {},
         onPlayVideo: (Video) -> Unit = {},
         onOpenDetails: (Video) -> Unit = {},
@@ -101,14 +102,10 @@ class CategoryVideosContentTest {
                     videosOrNull = videosOrNull,
                     bulkFetch = bulkFetch,
                     bulkRemove = bulkRemove,
-                    creating = false,
                     demoMode = demoMode,
                     isUncategorized = isUncategorized,
                     removeKind = removeKind,
                     scrollKey = "category-test",
-                    showDialog = false,
-                    onShowDialog = {},
-                    onDismissDialog = {},
                     showRemoveDialog = showRemoveDialog,
                     onShowRemoveDialog = {},
                     onDismissRemoveDialog = {},
@@ -122,6 +119,7 @@ class CategoryVideosContentTest {
                     onCancelRemove = {},
                     onAcknowledgeBulkRemove = {},
                     onCreatePlaylist = {},
+                    playlistDialogOpen = playlistDialogOpen,
                     selectionActive = selectionActive,
                     selectedIds = if (selectionActive) setOf(videos.first().youtubeId) else emptySet(),
                     scrollStore = FakeScrollPositionRepository(),
@@ -219,32 +217,46 @@ class CategoryVideosContentTest {
 
     /**
      * A playlist is built from Jellyfin item ids, and every video on this filter is one the server
-     * has stopped listing — the call can only be rejected. The count beside it stays: that is what
-     * the screen is a list of, not part of the action.
+     * has stopped listing — the call can only be rejected. Offering an action that cannot succeed
+     * is worse than not offering it, so the entry is absent from the selection menu entirely
+     * rather than present and failing.
      */
     @Test
     fun theMissingFilter_doesNotOfferToBuildAPlaylist() {
         val missing = listOf(video("a", "First video", missedSyncs = 1))
-        setContent(missing, removeKind = RemoveKind.MISSING)
+        setContent(missing, removeKind = RemoveKind.MISSING, selectionActive = true)
 
-        composeRule.onNodeWithContentDescription(string(R.string.create_playlist)).assertDoesNotExist()
-        composeRule.onNodeWithText(videoCount(missing.size)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
+
+        composeRule.onNodeWithText(string(R.string.create_playlist)).assertDoesNotExist()
     }
 
     @Test
     fun everyOtherCategory_stillOffersThePlaylist() {
-        setContent(videos)
+        setContent(videos, selectionActive = true)
 
-        composeRule.onNodeWithContentDescription(string(R.string.create_playlist)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
+
+        composeRule.onNodeWithText(string(R.string.create_playlist)).assertIsDisplayed()
+    }
+
+    /** The prompt is named for the category, and counts the selection rather than the category. */
+    @Test
+    fun thePlaylistPrompt_isNamedForTheCategoryAndCountsTheSelection() {
+        setContent(videos, selectionActive = true, playlistDialogOpen = true)
+
+        // The harness selects exactly one video; the category holds more.
+        composeRule.onNodeWithText(videoCount(1), substring = true).assertIsDisplayed()
     }
 
     /**
-     * Hiding the playlist button took away the thing that was holding the count off the edge of
-     * the screen, which left it flush against it. The count has to keep its own inset either way —
-     * this asserts the geometry rather than the modifier, so it holds however the inset is applied.
+     * The count sits at the end of the bar with a button after it, and that button's own padding is
+     * what holds it off the edge of the screen. Create playlist used to be that button and is now
+     * in the selection menu; Select took its place, and is offered wherever the count is. This
+     * asserts the geometry rather than the modifier, so it holds however the inset is applied.
      */
     @Test
-    fun theCount_keepsItsInsetWithNoPlaylistButtonToProvideOne() {
+    fun theCount_keepsItsInsetFromTheEdgeOfTheScreen() {
         val missing = listOf(video("a", "First video", missedSyncs = 1))
         setContent(missing, removeKind = RemoveKind.MISSING)
 

@@ -161,7 +161,7 @@ class FakeLibraryRepository(
     ): Unit = notModelled()
 
     override fun savePlaybackPosition(youtubeId: String, positionMs: Long): Unit = notModelled()
-    override suspend fun createPlaylistFromCategory(categoryId: String, name: String): PlaylistResult =
+    override suspend fun createPlaylistFromVideos(youtubeIds: List<String>, name: String): PlaylistResult =
         notModelled()
 
     private fun notModelled(): Nothing =
