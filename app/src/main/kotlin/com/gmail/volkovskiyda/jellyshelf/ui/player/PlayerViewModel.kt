@@ -103,6 +103,19 @@ class PlayerViewModel(
             // playback. Anything else starts it — bare mediaIds, no URIs: the service resolves
             // the stream URL and seeds the saved resume position (see PlaybackService).
             if (controller.currentMediaItem?.mediaId != youtubeId) {
+                // Whatever else was playing ends before the queue is even assembled: the origin
+                // snapshot and the session's resolve of every queued id both take long enough
+                // that the previous video would otherwise keep playing — and, since the surface
+                // above is already attached to it, keep *rendering* — over the one being opened.
+                // The same pause-then-clear as [stopPlayback]: the pause is what makes the old
+                // video's stop report carry its real position, the clear is what files it.
+                // Usually a no-op, because the tap that got here has already done it (see
+                // MainActivity's openPlayer); this covers the ways in that did not, such as a
+                // player restored into a process where playback was already under way.
+                if (controller.currentMediaItem != null) {
+                    controller.pause()
+                    controller.clearMediaItems()
+                }
                 val queue = playbackQueue(originIds(), youtubeId)
                 controller.setMediaItems(
                     queue.ids.map { MediaItem.Builder().setMediaId(it).build() },

@@ -64,6 +64,7 @@ import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
 import com.gmail.volkovskiyda.jellyshelf.playback.PipAspect
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
+import com.gmail.volkovskiyda.jellyshelf.playback.endsCurrentPlayback
 import com.gmail.volkovskiyda.jellyshelf.playback.pipAspect
 import com.gmail.volkovskiyda.jellyshelf.playback.pipEligible
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
@@ -417,6 +418,20 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         backStack.add(key)
     }
 
+    /**
+     * Opening the player on a *chosen* video — the one navigation that also ends what is playing.
+     *
+     * The stop is the bar's own, so a handover files exactly the report an explicit stop does, and
+     * it happens on the tap rather than when the new queue eventually reaches the session; see
+     * [endsCurrentPlayback] for which taps count and why the timing is the point. The three
+     * selection sites below route through here; reopening the player from the bar or from a
+     * notification pushes directly, having nothing to hand over.
+     */
+    fun openPlayer(youtubeId: String, origin: PlayerOrigin) {
+        if (endsCurrentPlayback(nowPlaying, youtubeId)) nowPlayingState.stop()
+        push(AppNavKey.Player(youtubeId, origin))
+    }
+
     // One throttle for every user-driven navigation on this screen: a double-tap landing on two
     // different rows, or on a row and then the back arrow, must not navigate twice either. The
     // system back gesture below stays unthrottled — pressing it twice quickly is deliberate.
@@ -499,7 +514,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         // detour through Detail would have handed it: the queue is the library as
                         // the user has it narrowed, either way in.
                         onPlayVideo = {
-                            navThrottle { push(AppNavKey.Player(it.youtubeId, PlayerOrigin.Library)) }
+                            navThrottle { openPlayer(it.youtubeId, PlayerOrigin.Library) }
                         },
                         onOpenDetails = {
                             // The origin rides on Detail so that Play, one screen later, still
@@ -530,7 +545,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         categoryId = key.categoryId,
                         title = key.title,
                         onPlayVideo = {
-                            navThrottle { push(AppNavKey.Player(it.youtubeId, origin)) }
+                            navThrottle { openPlayer(it.youtubeId, origin) }
                         },
                         onOpenDetails = {
                             navThrottle { push(AppNavKey.Detail(it.youtubeId, origin)) }
@@ -543,7 +558,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     DetailScreen(
                         youtubeId = key.youtubeId,
                         onBack = { navThrottle { pop() } },
-                        onPlayInApp = { id -> navThrottle { push(AppNavKey.Player(id, key.origin)) } },
+                        onPlayInApp = { id -> navThrottle { openPlayer(id, key.origin) } },
                     )
                 }
 
