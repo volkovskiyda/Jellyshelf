@@ -89,6 +89,7 @@ class CategoryVideosContentTest {
         bulkRemove: BulkProgress = BulkProgress.Idle,
         demoMode: Boolean = false,
         showRemoveDialog: Boolean = false,
+        selectionActive: Boolean = false,
         onConfirmRemove: () -> Unit = {},
         onPlayVideo: (Video) -> Unit = {},
         onOpenDetails: (Video) -> Unit = {},
@@ -121,6 +122,8 @@ class CategoryVideosContentTest {
                     onCancelRemove = {},
                     onAcknowledgeBulkRemove = {},
                     onCreatePlaylist = {},
+                    selectionActive = selectionActive,
+                    selectedIds = if (selectionActive) setOf(videos.first().youtubeId) else emptySet(),
                     scrollStore = FakeScrollPositionRepository(),
                     thumbnailModel = { null },
                 )
@@ -137,6 +140,38 @@ class CategoryVideosContentTest {
         composeRule.onNodeWithText(CATEGORY_TITLE).assertIsDisplayed()
         composeRule.onNodeWithText("First video").assertIsDisplayed()
         composeRule.onNodeWithText("Second video").assertIsDisplayed()
+    }
+
+    /**
+     * The category's own bulk runs act on the whole filter, not on a selection — and they sit one
+     * strip below the selection bar, where "Remove 12 watched videos" under "12 selected" reads as
+     * the button for those 12. On the Watched filter the two counts even agree. One of them
+     * deletes media on the server, so the offer is withdrawn for as long as the resemblance could
+     * be acted on.
+     */
+    @Test
+    fun whileSelecting_theCategorysOwnBulkOfferIsWithdrawn() {
+        setContent(videos, removeKind = RemoveKind.WATCHED, selectionActive = true)
+
+        composeRule.onNodeWithText(removeLabel(RemoveKind.WATCHED, videos.size)).assertDoesNotExist()
+    }
+
+    /**
+     * A run already under way keeps its header even while selecting: that strip is the only place
+     * to watch it or cancel it, and entering selection mode must not strand a removal of the whole
+     * filter with no way to stop it.
+     */
+    @Test
+    fun whileSelecting_aRunningCategoryRemovalKeepsItsProgressAndCancel() {
+        setContent(
+            videos,
+            removeKind = RemoveKind.WATCHED,
+            bulkRemove = BulkProgress.Running(done = 1, total = 2, failed = 0),
+            selectionActive = true,
+        )
+
+        composeRule.onNodeWithText(string(R.string.removing_progress, 1, 2)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.cancel)).assertIsDisplayed()
     }
 
     @Test

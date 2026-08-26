@@ -244,7 +244,7 @@ class LibrarySelectionTest {
         setContent(state)
 
         composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
-        composeRule.onNodeWithText(string(R.string.remove)).performClick()
+        composeRule.onNodeWithText(string(R.string.selection_delete_from_server)).performClick()
 
         // The dialog is up and nothing has run.
         composeRule.onNodeWithText(string(R.string.selection_remove_title)).assertIsDisplayed()
@@ -254,8 +254,7 @@ class LibrarySelectionTest {
         assertNull("dismissing must not start the run", state.startedAction)
 
         composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
-        composeRule.onNodeWithText(string(R.string.remove)).performClick()
-        // The menu closed on that tap, so the only "Remove" left is the dialog's confirm button.
+        composeRule.onNodeWithText(string(R.string.selection_delete_from_server)).performClick()
         composeRule.onNodeWithText(string(R.string.remove)).performClick()
 
         assertEquals(SelectionAction.REMOVE, state.startedAction)

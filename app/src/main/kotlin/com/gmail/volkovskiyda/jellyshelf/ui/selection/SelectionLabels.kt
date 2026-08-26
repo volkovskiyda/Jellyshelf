@@ -15,7 +15,10 @@ internal val SelectionAction.menuLabel: Int
         SelectionAction.MARK_WATCHED -> R.string.mark_watched
         SelectionAction.MARK_UNWATCHED -> R.string.mark_unwatched
         SelectionAction.UPDATE_METADATA -> R.string.update_metadata
-        SelectionAction.REMOVE -> R.string.remove
+        // Names the server delete rather than saying a bare "Remove": it is the one row here that
+        // destroys something no re-sync brings back, and the menu is where that has to be legible
+        // — the confirmation it opens is already past the point of deciding.
+        SelectionAction.REMOVE -> R.string.selection_delete_from_server
     }
 
 internal val SelectionAction.dialogTitle: Int

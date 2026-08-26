@@ -215,6 +215,21 @@ internal fun CategoryVideosContent(
     var pendingAction by rememberSaveable { mutableStateOf<SelectionAction?>(null) }
     BackHandler(enabled = selectionActive) { onExitSelection() }
 
+    /**
+     * Whether to *offer* one of this category's own bulk runs — the ones that act on the whole
+     * filter rather than on a selection.
+     *
+     * Withdrawn while selecting, because the two are one strip apart and read as one thing:
+     * "Remove 12 watched videos" sitting under "12 selected" looks like the button that acts on
+     * those 12, and on the Watched filter the counts even agree. One of them deletes media on the
+     * server, so the resemblance is not one to leave standing.
+     *
+     * Only the offer. A run already under way keeps its header (the conditions above test the
+     * progress separately), because that header is the only place to watch it or cancel it, and
+     * entering selection mode must not strand a removal with no way to stop it.
+     */
+    val offerCategoryWideRun = videos.isNotEmpty() && !selectionActive
+
     Column(modifier = modifier.fillMaxSize()) {
         if (selectionActive) {
             SelectionTopBar(
@@ -248,7 +263,7 @@ internal fun CategoryVideosContent(
         )
 
         // The in-app yt-dlp bulk fetch lives only on the Uncategorized filter.
-        if (isUncategorized && (bulkFetch !is BulkProgress.Idle || videos.isNotEmpty())) {
+        if (isUncategorized && (bulkFetch !is BulkProgress.Idle || offerCategoryWideRun)) {
             BulkActionHeader(
                 state = bulkFetch,
                 idleLabel = stringResource(R.string.fetch_missing, videos.size),
@@ -263,7 +278,7 @@ internal fun CategoryVideosContent(
 
         // Bulk removal lives only on the two filters that have one (see [RemoveKind]). Either way
         // it is irreversible, so the button opens a confirmation rather than starting the run.
-        if (removeKind != null && (bulkRemove !is BulkProgress.Idle || videos.isNotEmpty())) {
+        if (removeKind != null && (bulkRemove !is BulkProgress.Idle || offerCategoryWideRun)) {
             BulkActionHeader(
                 state = bulkRemove,
                 idleLabel = pluralStringResource(removeKind.idleLabel, videos.size, videos.size),

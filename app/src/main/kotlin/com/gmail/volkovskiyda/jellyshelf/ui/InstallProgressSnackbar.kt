@@ -1,5 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -128,7 +130,18 @@ fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
                 Snackbar(
                     action = data.visuals.actionLabel?.let { label ->
                         {
-                            TextButton(onClick = data::performAction) { Text(label) }
+                            // A snackbar is drawn on the *inverse* surface — light in a dark app —
+                            // and its action label has its own colour for that reason. A plain
+                            // TextButton overrides it with the theme's `primary`, which is picked
+                            // to sit on the normal surface: in dark mode that is a pale purple on
+                            // a near-white snackbar, and the action all but disappears. Reading
+                            // the colour back out of the composition keeps whatever `Snackbar`
+                            // provides here, rather than pinning a second copy of the default.
+                            val actionColor = LocalContentColor.current
+                            TextButton(
+                                onClick = data::performAction,
+                                colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
+                            ) { Text(label) }
                         }
                     },
                 ) {
