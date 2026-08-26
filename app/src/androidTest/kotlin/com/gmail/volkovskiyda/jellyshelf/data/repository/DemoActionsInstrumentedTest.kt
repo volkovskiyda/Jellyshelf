@@ -255,6 +255,90 @@ class DemoActionsInstrumentedTest {
         assertEquals(done.failed, db.videoDao().getWatched().size)
     }
 
+    // --- removing videos missing from the server ---
+
+    /**
+     * The demo's other removal, and the opposite of the one above: this one is local, so the fake
+     * server is never asked and cannot refuse. Every video goes, whatever the dice would have said.
+     */
+    @Test
+    fun removeMissing_dropsEveryMissingRowWithoutConsultingTheFakeServer() = runBlocking {
+        // Every call refused — which is exactly what must not matter here.
+        val repo = demoRepository(failCall = { true })
+        val missing = db.videoDao().getMissing()
+        assertTrue("the seed must produce missing videos", missing.isNotEmpty())
+        val before = db.videoDao().getAll().size
+
+        repo.startRemoveMissing()
+        val done = awaitDone(repo.bulkRemoveMissing)
+
+        assertEquals(missing.size, done.total)
+        assertEquals("a local delete has nothing that can refuse it", 0, done.failed)
+        assertEquals(
+            emptyList<String>(),
+            missing.map { it.youtubeId }.filter { db.videoDao().get(it) != null },
+        )
+        assertEquals("and nothing else went with them", before - missing.size, db.videoDao().getAll().size)
+        assertEquals(
+            "no category may be left empty",
+            emptyList<String>(),
+            db.categoryDao().observeWithCounts().first()
+                .filter { it.videoCount == 0 }.map { it.category.id },
+        )
+    }
+
+    /**
+     * The two removals must not reach into each other's set. Removing the missing videos leaves
+     * every watched one alone, and a watched removal afterwards still has its full set to work on
+     * — which is what makes both actions demonstrable in one sitting.
+     */
+    @Test
+    fun removeMissing_leavesTheWatchedVideosForTheOtherRemoval() = runBlocking {
+        val repo = demoRepository()
+        val watched = db.videoDao().getWatched().map { it.youtubeId }
+
+        repo.startRemoveMissing()
+        awaitDone(repo.bulkRemoveMissing)
+
+        assertEquals(watched.sorted(), db.videoDao().getWatched().map { it.youtubeId }.sorted())
+        assertEquals(emptyList<Any>(), db.videoDao().getMissing())
+    }
+
+    /**
+     * A demo sync must leave the filter standing. The fake server has not started listing these
+     * videos again, and a Sync now that silently cleared their miss counts would make the whole
+     * filter vanish on the first press — the demo-mode mirror of
+     * [sync_fillsMissingMetadataAndLeavesRemovedVideosRemoved].
+     */
+    @Test
+    fun sync_leavesTheMissingVideosMissing() = runBlocking {
+        val repo = demoRepository()
+        val missing = db.videoDao().getMissing().map { it.youtubeId }.sorted()
+
+        repo.sync()
+        repo.sync()
+
+        assertEquals(missing, db.videoDao().getMissing().map { it.youtubeId }.sorted())
+        // Nor does it advance them: two more syncs at the grace limit would delete the rows.
+        assertTrue(
+            "the miss count must not creep toward the grace limit",
+            db.videoDao().getMissing().all { it.missedSyncs == 1 },
+        )
+    }
+
+    /** And once they are removed, a sync does not bring them back — like any other removal. */
+    @Test
+    fun sync_doesNotResurrectTheMissingVideosOnceRemoved() = runBlocking {
+        val repo = demoRepository()
+        val missing = db.videoDao().getMissing().map { it.youtubeId }
+        repo.startRemoveMissing()
+        awaitDone(repo.bulkRemoveMissing)
+
+        repo.sync()
+
+        assertEquals(emptyList<String>(), missing.filter { db.videoDao().get(it) != null })
+    }
+
     // --- sync and playlists ---
 
     @Test

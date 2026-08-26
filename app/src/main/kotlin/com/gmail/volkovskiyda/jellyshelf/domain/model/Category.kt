@@ -19,6 +19,14 @@ const val VIRTUAL_CATEGORY_WATCHED = "virtual:watched"
 const val VIRTUAL_CATEGORY_UNWATCHED = "virtual:unwatched"
 const val VIRTUAL_CATEGORY_CONTINUE = "virtual:continue"
 
+/**
+ * Videos the server has stopped listing — see [Video.missingFromServer]. Almost always videos
+ * deleted on the server that the app hasn't been told about: sync counts missed appearances
+ * rather than deleting on the first one, so they sit in the library looking real until the grace
+ * period runs out. This filter is where they can be seen together and dropped in one go.
+ */
+const val VIRTUAL_CATEGORY_MISSING = "virtual:missing"
+
 /** A category as the UI sees it. The data layer maps its Room row (`CategoryEntity`) onto this. */
 data class Category(
     val id: String,

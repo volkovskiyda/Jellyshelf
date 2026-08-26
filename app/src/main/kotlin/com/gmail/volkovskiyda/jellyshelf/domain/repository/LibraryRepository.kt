@@ -32,6 +32,14 @@ interface LibraryRepository : PlaystateRepository {
     val bulkFetch: StateFlow<BulkProgress>
     val bulkRemove: StateFlow<BulkProgress>
 
+    /**
+     * Progress of the local-only removal offered on the "Missing from server" filter. A separate
+     * runner from [bulkRemove] because the two mean opposite things — that one deletes media on
+     * the server, this one only drops rows the server has already stopped listing — and either can
+     * be left running while the user walks to the other filter.
+     */
+    val bulkRemoveMissing: StateFlow<BulkProgress>
+
     suspend fun sync(): SyncResult
     suspend fun fetchMetadata(youtubeId: String): FetchResult
     fun startFetchMissing()
@@ -40,6 +48,15 @@ interface LibraryRepository : PlaystateRepository {
     fun startRemoveWatched()
     fun cancelRemoveWatched()
     fun acknowledgeBulkRemove()
+
+    /**
+     * Drops every video the server has stopped listing from the local library, without waiting out
+     * the missed-sync grace period. Local only: nothing is deleted on the server, and a video that
+     * turns out to still be there comes back on the next sync.
+     */
+    fun startRemoveMissing()
+    fun cancelRemoveMissing()
+    fun acknowledgeBulkRemoveMissing()
 
     /**
      * Fills the library with the bundled demo dataset — no server, no network — and records that

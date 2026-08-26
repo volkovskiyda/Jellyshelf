@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,7 +38,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
-import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
@@ -90,7 +90,7 @@ fun CategoryVideosScreen(
         creating = creating,
         demoMode = demoMode,
         isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
-        isWatched = categoryId == VIRTUAL_CATEGORY_WATCHED,
+        removeKind = viewModel.removeKind,
         scrollKey = "category.$categoryId",
         showDialog = showDialog,
         onShowDialog = { showDialog = true },
@@ -104,15 +104,41 @@ fun CategoryVideosScreen(
         onStartFetchMissing = viewModel::startFetchMissing,
         onCancelFetchMissing = viewModel::cancelFetchMissing,
         onAcknowledgeBulkFetch = viewModel::acknowledgeBulkFetch,
-        onConfirmRemoveWatched = {
+        onConfirmRemove = {
             showRemoveDialog = false
-            viewModel.startRemoveWatched()
+            viewModel.startRemove()
         },
-        onCancelRemoveWatched = viewModel::cancelRemoveWatched,
+        onCancelRemove = viewModel::cancelRemove,
         onAcknowledgeBulkRemove = viewModel::acknowledgeBulkRemove,
         onCreatePlaylist = viewModel::createPlaylist,
         modifier = modifier,
     )
+}
+
+/**
+ * The bulk removal a category offers, if any — the "Others" tab has two filters that offer one,
+ * and they mean opposite things. [WATCHED] deletes the media on the Jellyfin server; [MISSING]
+ * only drops rows for videos the server has already stopped listing, and touches no server at all.
+ * Every label rides on the enum so the two can never be confused at a call site.
+ */
+internal enum class RemoveKind(
+    @param:PluralsRes val idleLabel: Int,
+    @param:StringRes val dialogTitle: Int,
+    @param:StringRes val dialogText: Int,
+    @param:StringRes val emptyLabel: Int,
+) {
+    WATCHED(
+        idleLabel = R.plurals.remove_watched,
+        dialogTitle = R.string.remove_watched_dialog_title,
+        dialogText = R.string.remove_watched_dialog_text,
+        emptyLabel = R.string.empty_category,
+    ),
+    MISSING(
+        idleLabel = R.plurals.remove_missing,
+        dialogTitle = R.string.remove_missing_dialog_title,
+        dialogText = R.string.remove_missing_dialog_text,
+        emptyLabel = R.string.empty_missing,
+    ),
 }
 
 @Composable
@@ -124,7 +150,7 @@ internal fun CategoryVideosContent(
     creating: Boolean,
     demoMode: Boolean,
     isUncategorized: Boolean,
-    isWatched: Boolean,
+    removeKind: RemoveKind?,
     scrollKey: String,
     showDialog: Boolean,
     onShowDialog: () -> Unit,
@@ -138,8 +164,8 @@ internal fun CategoryVideosContent(
     onStartFetchMissing: () -> Unit,
     onCancelFetchMissing: () -> Unit,
     onAcknowledgeBulkFetch: () -> Unit,
-    onConfirmRemoveWatched: () -> Unit,
-    onCancelRemoveWatched: () -> Unit,
+    onConfirmRemove: () -> Unit,
+    onCancelRemove: () -> Unit,
     onAcknowledgeBulkRemove: () -> Unit,
     onCreatePlaylist: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -151,7 +177,16 @@ internal fun CategoryVideosContent(
     val videos = videosOrNull.orEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
-        CategoryTopBar(title, videos.size, onBack, onShowDialog)
+        // No playlist offer on Missing from server: a playlist is built from Jellyfin item ids,
+        // and every video here is one the server has stopped listing — the call can only be
+        // rejected. Offering an action that cannot succeed is worse than not offering it.
+        CategoryTopBar(
+            title = title,
+            videoCount = videos.size,
+            canCreatePlaylist = removeKind != RemoveKind.MISSING,
+            onBack = onBack,
+            onShowDialog = onShowDialog,
+        )
 
         // The in-app yt-dlp bulk fetch lives only on the Uncategorized filter.
         if (isUncategorized && (bulkFetch !is BulkProgress.Idle || videos.isNotEmpty())) {
@@ -167,17 +202,17 @@ internal fun CategoryVideosContent(
             )
         }
 
-        // Bulk removal lives only on the Watched filter. It deletes on the server, so the button
-        // opens a confirmation rather than starting the run.
-        if (isWatched && (bulkRemove !is BulkProgress.Idle || videos.isNotEmpty())) {
+        // Bulk removal lives only on the two filters that have one (see [RemoveKind]). Either way
+        // it is irreversible, so the button opens a confirmation rather than starting the run.
+        if (removeKind != null && (bulkRemove !is BulkProgress.Idle || videos.isNotEmpty())) {
             BulkActionHeader(
                 state = bulkRemove,
-                idleLabel = pluralStringResource(R.plurals.remove_watched, videos.size, videos.size),
+                idleLabel = pluralStringResource(removeKind.idleLabel, videos.size, videos.size),
                 runningLabel = R.string.removing_progress,
                 doneLabel = R.string.removed_summary,
                 enabled = videos.isNotEmpty(),
                 onStart = onShowRemoveDialog,
-                onCancel = onCancelRemoveWatched,
+                onCancel = onCancelRemove,
                 onDismiss = onAcknowledgeBulkRemove,
                 destructive = true,
             )
@@ -186,6 +221,7 @@ internal fun CategoryVideosContent(
         CategoryVideoList(
             videosOrNull = videosOrNull,
             isUncategorized = isUncategorized,
+            removeKind = removeKind,
             scrollKey = scrollKey,
             onPlayVideo = onPlayVideo,
             onOpenDetails = onOpenDetails,
@@ -204,20 +240,38 @@ internal fun CategoryVideosContent(
         )
     }
 
-    if (showRemoveDialog) {
-        RemoveWatchedDialog(
+    if (showRemoveDialog && removeKind != null) {
+        RemoveVideosDialog(
+            kind = removeKind,
             videoCount = videos.size,
             demoMode = demoMode,
             onDismiss = onDismissRemoveDialog,
-            onConfirm = onConfirmRemoveWatched,
+            onConfirm = onConfirmRemove,
         )
     }
 }
 
-/** The category's title bar: back, count, and — once there is anything to play — Create playlist. */
+/**
+ * How far the video count sits from the edge when it is the last thing in the bar. Chosen to match
+ * where a trailing [IconButton]'s glyph lands: the actions row supplies 4 dp and the button's own
+ * padding the remaining 12, so a bar with the playlist button and one without line up.
+ */
+private val COUNT_END_INSET = 12.dp
+
+/**
+ * The category's title bar: back, count, and — once there is anything to play, and the category is
+ * one a playlist can be built from — Create playlist. The count stays either way; it is what the
+ * screen is a list of, not part of the action.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategoryTopBar(title: String, videoCount: Int, onBack: () -> Unit, onShowDialog: () -> Unit) {
+private fun CategoryTopBar(
+    title: String,
+    videoCount: Int,
+    canCreatePlaylist: Boolean,
+    onBack: () -> Unit,
+    onShowDialog: () -> Unit,
+) {
     TopAppBar(
         title = { Text(title) },
         navigationIcon = { BackButton(onClick = onBack) },
@@ -227,12 +281,19 @@ private fun CategoryTopBar(title: String, videoCount: Int, onBack: () -> Unit, o
                     pluralStringResource(R.plurals.video_count, videoCount, videoCount),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // With the playlist button after it, that button's own internal padding is
+                    // what holds the count off the edge of the screen. Without one the count is
+                    // the last thing in the bar and has to supply that inset itself, or it sits
+                    // flush against the edge.
+                    modifier = if (canCreatePlaylist) Modifier else Modifier.padding(end = COUNT_END_INSET),
                 )
-                IconButton(onClick = onShowDialog) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.PlaylistAdd,
-                        contentDescription = stringResource(R.string.create_playlist),
-                    )
+                if (canCreatePlaylist) {
+                    IconButton(onClick = onShowDialog) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.PlaylistAdd,
+                            contentDescription = stringResource(R.string.create_playlist),
+                        )
+                    }
                 }
             }
         },
@@ -244,6 +305,7 @@ private fun CategoryTopBar(title: String, videoCount: Int, onBack: () -> Unit, o
 private fun CategoryVideoList(
     videosOrNull: List<Video>?,
     isUncategorized: Boolean,
+    removeKind: RemoveKind?,
     scrollKey: String,
     onPlayVideo: (Video) -> Unit,
     onOpenDetails: (Video) -> Unit,
@@ -257,7 +319,12 @@ private fun CategoryVideoList(
     } else if (videos.isEmpty()) {
         EmptyState(
             stringResource(
-                if (isUncategorized) R.string.empty_uncategorized else R.string.empty_category,
+                when {
+                    isUncategorized -> R.string.empty_uncategorized
+                    // Reachable by emptying the filter from the screen itself: the Others tab
+                    // hides a filter whose count is zero, so it is never entered empty.
+                    else -> removeKind?.emptyLabel ?: R.string.empty_category
+                },
             ),
         )
     } else {
@@ -366,14 +433,19 @@ private fun BulkStartButton(label: String, enabled: Boolean, destructive: Boolea
 }
 
 /**
- * Confirms the bulk removal. Spelled out rather than a plain "are you sure": this deletes the
- * media on the server, which no re-sync can bring back.
+ * Confirms the bulk removal. Spelled out rather than a plain "are you sure", and spelled out
+ * differently per [kind]: [RemoveKind.WATCHED] deletes the media on the server, which no re-sync
+ * can bring back, while [RemoveKind.MISSING] only drops local rows and a video the server turns
+ * out to still have returns on the next sync. Getting those two the wrong way round is exactly
+ * the mistake this dialog exists to prevent.
  *
- * A demo says what a demo can honestly say instead. The removal is just as real there — the rows
- * go — but there is no server and no media file, and re-entering the demo restores the dataset.
+ * A demo says what a demo can honestly say instead — of the watched removal only, which is the
+ * one that claims to reach a server. The removal is just as real there — the rows go — but there
+ * is no server and no media file, and re-entering the demo restores the dataset.
  */
 @Composable
-private fun RemoveWatchedDialog(
+private fun RemoveVideosDialog(
+    kind: RemoveKind,
     videoCount: Int,
     demoMode: Boolean,
     onDismiss: () -> Unit,
@@ -381,14 +453,14 @@ private fun RemoveWatchedDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.remove_watched_dialog_title)) },
+        title = { Text(stringResource(kind.dialogTitle)) },
         text = {
             Text(
                 stringResource(
-                    if (demoMode) {
+                    if (demoMode && kind == RemoveKind.WATCHED) {
                         R.string.remove_watched_dialog_text_demo
                     } else {
-                        R.string.remove_watched_dialog_text
+                        kind.dialogText
                     },
                     pluralStringResource(R.plurals.video_count, videoCount, videoCount),
                 ),

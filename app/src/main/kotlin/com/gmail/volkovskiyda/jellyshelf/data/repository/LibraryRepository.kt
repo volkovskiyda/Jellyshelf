@@ -34,6 +34,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_CONTINUE
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNWATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
@@ -130,6 +131,19 @@ private const val VIDEO_NOT_FOUND_ERROR = "Video not found locally."
 private const val DEMO_PLAYED_EVERY = 4
 private const val DEMO_IN_PROGRESS_EVERY = 7
 
+/**
+ * Every nth seeded video is one the fake server has stopped listing, so a demo install has a
+ * "Missing from server" filter with real members and something for its removal to act on. A real
+ * library only reaches that state by syncing against a server that dropped a video, which a demo
+ * has no way to stage.
+ *
+ * Prime and larger than the two cycles above, which is what makes the three rows it marks (17th,
+ * 34th and 51st of the bundled 60) land on videos that are neither watched nor part-watched: the
+ * Watched removal cannot quietly empty this filter before the user gets to it, and the two
+ * removals stay demonstrable independently of each other.
+ */
+private const val DEMO_MISSING_EVERY = 17
+
 /** How far into a part-watched demo video its resume point sits. */
 private const val DEMO_RESUME_PERCENT = 40
 private const val PERCENT = 100
@@ -175,6 +189,9 @@ internal fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
         lastSyncedAt = now,
         metadataSource = if (indexed) METADATA_SOURCE_INDEX else METADATA_SOURCE_JELLYFIN,
         metadataUpdatedAt = if (indexed) (entry.updatedAtMillis ?: now) else 0L,
+        // One miss, not the grace limit: the row has to still be there to be seen and removed,
+        // which is the whole point of the filter it seeds.
+        missedSyncs = if (index % DEMO_MISSING_EVERY == DEMO_MISSING_EVERY - 1) 1 else 0,
     )
 }
 
@@ -459,6 +476,9 @@ class DefaultLibraryRepository private constructor(
     private val removeRunner = BulkRunner(repoScope)
     override val bulkRemove: StateFlow<BulkProgress> = removeRunner.progress
 
+    private val removeMissingRunner = BulkRunner(repoScope)
+    override val bulkRemoveMissing: StateFlow<BulkProgress> = removeMissingRunner.progress
+
     // Every list flow below ends in `flowOn(dispatchers.default)`: ViewModels collect these through
     // `stateIn(viewModelScope)`, i.e. on Main.immediate, so without it the row→domain mapping —
     // and, worse, SearchRanking scanning the title, channel, description, tags and categories of a
@@ -550,6 +570,7 @@ class DefaultLibraryRepository private constructor(
         VIRTUAL_CATEGORY_CONTINUE -> videoDao.observeContinueWatchingBrowse()
         VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatchedBrowse()
         VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatchedBrowse()
+        VIRTUAL_CATEGORY_MISSING -> videoDao.observeMissingBrowse()
         else -> videoDao.observeByCategoryBrowse(categoryId)
     }.mapToDomainTraced().flowOn(dispatchers.default)
 
@@ -567,19 +588,22 @@ class DefaultLibraryRepository private constructor(
 
     /**
      * The "Others" tab's virtual filters with live counts: Uncategorized (no yt-dlp/index metadata),
-     * Continue watching, Unwatched, Watched. Empty filters are dropped.
+     * Continue watching, Unwatched, Watched, Missing from server. Empty filters are dropped, so
+     * the last one only appears once the server has actually stopped listing something.
      */
     override fun observeOthers(): Flow<List<CategoryWithCount>> = combine(
         videoDao.countBySource(METADATA_SOURCE_JELLYFIN),
         videoDao.countContinueWatching(),
         videoDao.countUnwatched(),
         videoDao.countWatched(),
-    ) { uncategorized, continueWatching, unwatched, watched ->
+        videoDao.countMissing(),
+    ) { uncategorized, continueWatching, unwatched, watched, missing ->
         listOf(
             virtualRow(VIRTUAL_CATEGORY_UNCATEGORIZED, "Uncategorized", uncategorized),
             virtualRow(VIRTUAL_CATEGORY_CONTINUE, "Continue watching", continueWatching),
             virtualRow(VIRTUAL_CATEGORY_UNWATCHED, "Unwatched", unwatched),
             virtualRow(VIRTUAL_CATEGORY_WATCHED, "Watched", watched),
+            virtualRow(VIRTUAL_CATEGORY_MISSING, "Missing from server", missing),
         ).filter { it.videoCount > 0 }
     }
 
@@ -681,9 +705,15 @@ class DefaultLibraryRepository private constructor(
         demo.sync()
         val now = time.now()
         val synced = writes.mutex.withLock {
-            // missedSyncs reset with the stamp: this listing "saw" every stored row, so a row part
-            // way through its grace period from an earlier real library must not keep that count.
-            val rows = videoDao.getAll().map { it.copy(lastSyncedAt = now, missedSyncs = 0) }
+            // The stamp moves, but the miss counts stay: the fake server has stopped listing the
+            // rows the seed marked missing (see [DEMO_MISSING_EVERY]) and re-listing them here
+            // would contradict that, exactly as resurrecting a removed video would. It does not
+            // advance them either — a demo has no grace clock to run down, and a filter that
+            // emptied itself after two presses of Sync would demonstrate nothing.
+            //
+            // A count carried in from an earlier *real* library cannot reach this: signing into
+            // the demo wipes the library first, so every row here was written by [demoVideo].
+            val rows = videoDao.getAll().map { it.copy(lastSyncedAt = now) }
             val (autoCategories, crossRefs) = autoAssignments(rows, now)
             persistSync(Prune.NOTHING, now, rows, autoCategories.values, crossRefs)
             settings.setLastSync(now, "")
@@ -1029,6 +1059,53 @@ class DefaultLibraryRepository private constructor(
     override fun acknowledgeBulkRemove() = removeRunner.acknowledge()
 
     /**
+     * Drops every video the server has stopped listing, one at a time, publishing progress via
+     * [bulkRemoveMissing]. No-op if already running.
+     *
+     * The mirror image of [startRemoveWatched]: nothing is sent to the server, because the whole
+     * point of this set is that the server no longer has it. So there is no connection to check
+     * and nothing that can fail — the summary always reports zero failures. What it saves is the
+     * wait: sync only deletes these rows after [MAX_MISSED_SYNCS] consecutive misses, and until
+     * then they sit in the library looking like videos that can still be played.
+     *
+     * A video that is in fact still on the server comes straight back on the next sync, with its
+     * watch state intact (the server owns that); only local-only data — manual category
+     * memberships and fetched yt-dlp metadata — is actually lost, which is the same trade the
+     * per-video Remove from library button on the detail screen makes.
+     */
+    override fun startRemoveMissing() = removeMissingRunner.start { publish ->
+        val targets = videoDao.getMissing()
+        if (targets.isEmpty()) {
+            publish(BulkProgress.Done(0, 0))
+            return@start
+        }
+
+        publish(BulkProgress.Running(0, targets.size, 0))
+        try {
+            targets.forEachIndexed { i, video ->
+                // Per row rather than one transaction over the lot, so Cancel keeps what has
+                // already gone — the same bargain Remove watched strikes, and the only one that
+                // makes the live progress mean anything.
+                withContext(NonCancellable) {
+                    writes.mutex.withLock { videoDao.delete(video.youtubeId) }
+                }
+                publish(BulkProgress.Running(i + 1, targets.size, 0))
+            }
+        } finally {
+            // In a `finally` because a cancelled run has still deleted rows, and what they left
+            // behind has to go with them.
+            withContext(NonCancellable) {
+                writes.mutex.withLock { db.withTransaction { pruneCategoryLeftovers() } }
+            }
+        }
+        publish(BulkProgress.Done(targets.size, 0))
+    }
+
+    override fun cancelRemoveMissing() = removeMissingRunner.cancel()
+
+    override fun acknowledgeBulkRemoveMissing() = removeMissingRunner.acknowledge()
+
+    /**
      * Fills the library from the bundled demo dataset, then marks the install as a demo.
      *
      * Deliberately built out of the sync path's own parts — [autoAssignments] and [persistSync] —
@@ -1140,6 +1217,7 @@ class DefaultLibraryRepository private constructor(
         VIRTUAL_CATEGORY_CONTINUE -> videoDao.getContinueWatching()
         VIRTUAL_CATEGORY_UNWATCHED -> videoDao.getUnwatched()
         VIRTUAL_CATEGORY_WATCHED -> videoDao.getWatched()
+        VIRTUAL_CATEGORY_MISSING -> videoDao.getMissing()
         else -> videoDao.getByCategory(categoryId)
     }
 }

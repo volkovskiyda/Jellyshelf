@@ -82,6 +82,14 @@
     <string name="remove_watched_dialog_text">This deletes %1$s from the Jellyfin server, media files included. It cannot be undone.</string>
     <!-- Same action in demo mode, where there is no server and the dataset can be seeded again. -->
     <string name="remove_watched_dialog_text_demo">This removes %1$s from the demo library. Sign out and start the demo again to bring them back.</string>
+    <plurals name="remove_missing">
+        <item quantity="one">Remove %d missing video</item>
+        <item quantity="other">Remove %d missing videos</item>
+    </plurals>
+    <string name="remove_missing_dialog_title">Remove missing videos?</string>
+    <!-- The opposite of the watched removal above: this one never touches the server. -->
+    <string name="remove_missing_dialog_text">This removes %1$s from this device only — nothing is deleted on the Jellyfin server. Any that the server does still have come back on the next sync.</string>
+    <string name="empty_missing">No videos are missing from the server.</string>
 
     <!-- Detail -->
     <string name="video_fallback_title">Video</string>

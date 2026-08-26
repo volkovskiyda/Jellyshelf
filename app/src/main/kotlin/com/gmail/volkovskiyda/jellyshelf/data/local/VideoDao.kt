@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
  * partially-selected [VideoEntity].
  *
  * Two of them, [observeAll] and [observeByDurationRange], keep a full-row version beside the
- * projected one: those two also feed ranked search, which scores `description`. The other five
+ * projected one: those two also feed ranked search, which scores `description`. The other six
  * have no full-row version at all — nothing was left to read one.
  *
  * The projected queries are `SELECT *` plus [RewriteQueriesToDropUnusedColumns] rather than
@@ -71,6 +71,23 @@ interface VideoDao {
     @Query("SELECT * FROM videos WHERE played = 0 AND playbackPositionTicks > 0 ORDER BY fileName")
     suspend fun getContinueWatching(): List<VideoEntity>
 
+    /**
+     * Videos the last syncs stopped seeing on the server — the same predicate as
+     * [com.gmail.volkovskiyda.jellyshelf.domain.model.Video.missingFromServer].
+     *
+     * The one browse query here with no index behind it: `missedSyncs` is 0 for all but a handful
+     * of rows, so this and [countMissing] scan the table. That is deliberate — an index would mean
+     * a schema version bump and a migration for a filter that is only ever mounted on the
+     * Categories screen and the screen it opens, both of which stop observing seconds after they
+     * leave. Revisit it if either ever moves somewhere always-on.
+     */
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE missedSyncs > 0 ORDER BY fileName")
+    fun observeMissingBrowse(): Flow<List<VideoBrowseRow>>
+
+    @Query("SELECT * FROM videos WHERE missedSyncs > 0 ORDER BY fileName")
+    suspend fun getMissing(): List<VideoEntity>
+
     // --- Virtual "Others" filters: live counts ---
 
     @Query("SELECT COUNT(*) FROM videos WHERE metadataSource = :source")
@@ -84,6 +101,10 @@ interface VideoDao {
 
     @Query("SELECT COUNT(*) FROM videos WHERE played = 0 AND playbackPositionTicks > 0")
     fun countContinueWatching(): Flow<Int>
+
+    /** See [observeMissingBrowse] for why this one has no index behind it. */
+    @Query("SELECT COUNT(*) FROM videos WHERE missedSyncs > 0")
+    fun countMissing(): Flow<Int>
 
     /**
      * Videos whose duration is in [[minSeconds], [maxSeconds]) — a hard filter — ordered by file

@@ -68,6 +68,7 @@ class FakeLibraryRepository(
 
     override val bulkFetch: StateFlow<BulkProgress> = MutableStateFlow(BulkProgress.Idle)
     override val bulkRemove: StateFlow<BulkProgress> = MutableStateFlow(BulkProgress.Idle)
+    override val bulkRemoveMissing: StateFlow<BulkProgress> = MutableStateFlow(BulkProgress.Idle)
 
     /**
      * What [sync] returns, and how often it was called. Modelled rather than refused, unlike the
@@ -91,6 +92,9 @@ class FakeLibraryRepository(
     override fun startRemoveWatched(): Unit = notModelled()
     override fun cancelRemoveWatched(): Unit = notModelled()
     override fun acknowledgeBulkRemove(): Unit = notModelled()
+    override fun startRemoveMissing(): Unit = notModelled()
+    override fun cancelRemoveMissing(): Unit = notModelled()
+    override fun acknowledgeBulkRemoveMissing(): Unit = notModelled()
 
     /** How many times the demo library was seeded. */
     var seeds = 0

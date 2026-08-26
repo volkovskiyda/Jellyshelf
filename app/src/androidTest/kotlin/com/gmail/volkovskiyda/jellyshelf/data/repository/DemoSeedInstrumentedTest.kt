@@ -162,6 +162,31 @@ class DemoSeedInstrumentedTest {
         )
     }
 
+    /**
+     * The Missing from server filter needs members too, and a demo has no way to reach that state
+     * on its own — no server, so nothing can ever stop listing a video. The seed stages it.
+     *
+     * The count matters as much as the presence: one miss, not the grace limit, or the very next
+     * sync would delete the rows the filter exists to show. And they must be *some* of the library,
+     * not all of it — a demo where every video is missing is not a demo of anything.
+     */
+    @Test
+    fun seed_marksAFewVideosAsMissingFromTheServer() = runBlocking {
+        repository().seedDemoLibrary()
+
+        val rows = db.videoDao().getAll()
+        val missing = db.videoDao().getMissing()
+        assertTrue("the Missing from server filter needs members", missing.isNotEmpty())
+        assertTrue("but only a few of them: got ${missing.size} of ${rows.size}", missing.size < rows.size / 4)
+        assertTrue(
+            "one miss, so sync cannot delete them out from under the filter",
+            missing.all { it.missedSyncs == 1 },
+        )
+        // Both removals have to be demonstrable, and the watched one deletes what it is given —
+        // an overlap would let it empty the missing filter before the user ever opened it.
+        assertTrue("the seeded missing rows must not also be watched", missing.none { it.played })
+    }
+
     @Test
     fun seed_carriesChaptersFromBothSources() = runBlocking {
         repository().seedDemoLibrary()

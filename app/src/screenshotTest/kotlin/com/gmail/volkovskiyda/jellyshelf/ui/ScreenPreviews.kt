@@ -3,8 +3,10 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
+import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
@@ -13,8 +15,12 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesContent
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryList
+import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosContent
+import com.gmail.volkovskiyda.jellyshelf.ui.categories.RemoveKind
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailContent
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.VideoDetailState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryContent
@@ -412,6 +418,147 @@ private fun CategoriesEmpty() {
             scrollStore = FakeScrollPositionRepository(),
         )
     }
+}
+
+// --- The "Missing from server" filter (Others tab) and its local-only bulk removal ---
+
+/**
+ * The three videos the sync has stopped seeing on the server, and the one action the filter adds.
+ *
+ * Three things this state and no other shows, which is what makes it worth a golden: the removal
+ * button is red (it is destructive, even though it destroys nothing on the server), every row
+ * carries the missing-from-server notice, and the top bar has *no* playlist button — a playlist
+ * is built from Jellyfin item ids and these are exactly the ids the server no longer has.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun CategoryVideosMissingFromServer() {
+    PreviewTheme { MissingFromServerPreview() }
+}
+
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun CategoryVideosMissingFromServerDark() {
+    PreviewTheme(darkTheme = true) { MissingFromServerPreview() }
+}
+
+/**
+ * The confirmation, which is the one screen in the app where a wrong word costs real data: its
+ * sibling on the Watched filter deletes the media off the Jellyfin server irrecoverably, and this
+ * one has to be unmistakably the other thing.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun CategoryVideosMissingConfirm() {
+    PreviewTheme { MissingFromServerPreview(showRemoveDialog = true) }
+}
+
+/** Mid-run: the shared bulk header's progress bar, count and Cancel. */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun CategoryVideosMissingRemoving() {
+    PreviewTheme {
+        MissingFromServerPreview(bulkRemove = BulkProgress.Running(done = 1, total = 3, failed = 0))
+    }
+}
+
+/**
+ * Where the run leaves you: the summary with its Dismiss, over the filter's own empty state. Worth
+ * pinning because it is the one empty state reached by emptying the list from this very screen —
+ * the Others tab hides a filter whose count is zero, so it is never *entered* empty.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun CategoryVideosMissingRemoved() {
+    PreviewTheme {
+        MissingFromServerPreview(
+            videos = emptyList(),
+            bulkRemove = BulkProgress.Done(total = 3, failed = 0),
+        )
+    }
+}
+
+/** The Others tab with the new filter listed beside the four it joins. */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun CategoriesOthersWithMissing() {
+    PreviewTheme {
+        CategoriesContent(
+            categoriesOrNull = CategoryList(emptyList(), pristine = true),
+            others = sampleOthers,
+            query = "",
+            searchAll = false,
+            selectedType = CATEGORY_TYPE_OTHERS,
+            selectionLoaded = true,
+            onQueryChange = {},
+            onSearchAllChange = {},
+            onSelectedTypeChange = {},
+            onCategoryClick = { _, _ -> },
+            scrollStore = FakeScrollPositionRepository(),
+        )
+    }
+}
+
+private val sampleOthers = listOf(
+    category("virtual:uncategorized", "Uncategorized", CATEGORY_TYPE_OTHERS, 4),
+    category("virtual:continue", "Continue watching", CATEGORY_TYPE_OTHERS, 6),
+    category("virtual:unwatched", "Unwatched", CATEGORY_TYPE_OTHERS, 45),
+    category("virtual:watched", "Watched", CATEGORY_TYPE_OTHERS, 15),
+    category(VIRTUAL_CATEGORY_MISSING, "Missing from server", CATEGORY_TYPE_OTHERS, 3),
+)
+
+private val missingSample = listOf(
+    missingVideo,
+    missingVideo.copy(youtubeId = "b", title = "Second video the server dropped"),
+    missingVideo.copy(youtubeId = "c", title = "Third video the server dropped"),
+)
+
+/**
+ * Every state above differs only in the bulk-run state and whether the list still has rows, so
+ * they share one call rather than five near-identical ones — a golden that drifts because a
+ * preview was edited and its siblings weren't proves nothing.
+ */
+@Composable
+private fun MissingFromServerPreview(
+    videos: List<Video> = missingSample,
+    bulkRemove: BulkProgress = BulkProgress.Idle,
+    showRemoveDialog: Boolean = false,
+) {
+    CategoryVideosContent(
+        title = "Missing from server",
+        videosOrNull = videos,
+        bulkFetch = BulkProgress.Idle,
+        bulkRemove = bulkRemove,
+        creating = false,
+        demoMode = false,
+        isUncategorized = false,
+        removeKind = RemoveKind.MISSING,
+        scrollKey = "preview.missing",
+        showDialog = false,
+        onShowDialog = {},
+        onDismissDialog = {},
+        showRemoveDialog = showRemoveDialog,
+        onShowRemoveDialog = {},
+        onDismissRemoveDialog = {},
+        onPlayVideo = {},
+        onOpenDetails = {},
+        onBack = {},
+        onStartFetchMissing = {},
+        onCancelFetchMissing = {},
+        onAcknowledgeBulkFetch = {},
+        onConfirmRemove = {},
+        onCancelRemove = {},
+        onAcknowledgeBulkRemove = {},
+        onCreatePlaylist = {},
+        scrollStore = FakeScrollPositionRepository(),
+        thumbnailModel = { null },
+    )
 }
 
 @PreviewTest
