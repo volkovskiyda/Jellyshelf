@@ -20,8 +20,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
  * write cost is these five B-trees per upsert, which is a sync-time cost paid once against a read
  * win paid continuously.
  *
- * Every index here is asserted on in `VideoDaoInstrumentedTest`, by `EXPLAIN QUERY PLAN` rather
- * than by assumption — one the planner declines to use would be pure write cost.
+ * Every index with a reader is asserted on in `VideoDaoInstrumentedTest`, by `EXPLAIN QUERY PLAN`
+ * rather than by assumption — one the planner declines to use would be pure write cost. The one
+ * exception is noted below.
  */
 @Entity(
     tableName = "videos",
@@ -34,8 +35,10 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
         Index(value = ["played", "playbackPositionTicks", "fileName"]),
         // The Uncategorized filter and countBySource.
         Index(value = ["metadataSource", "fileName"]),
-        // Duration-bucket range scan. A range cannot also deliver fileName order, so this one
-        // still sorts — it just sorts a bucket instead of the library.
+        // No reader since the library's duration filter was removed — duration categories are
+        // assigned in Kotlin at sync time and read through video_category. Kept because dropping
+        // an index changes the schema's identity hash, which v1.0–v1.2 installs would fail to
+        // open; it goes with the next version bump that ships a migration anyway.
         Index("durationSeconds"),
     ],
 )

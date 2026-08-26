@@ -107,20 +107,15 @@ class DemoLibrarySearchTest {
     }
 
     /**
-     * The two figures `DemoLibrarySearchFlowTest` reads off the app's own top bar ("8/60"). They are
-     * properties of the content rather than of the code, so they are pinned here: an edit to the
-     * asset then fails in seconds with a message about the dataset, instead of surfacing later as a
+     * The figure `DemoLibrarySearchFlowTest` reads off the app's own top bar ("2/60"). It is a
+     * property of the content rather than of the code, so it is pinned here: an edit to the asset
+     * then fails in seconds with a message about the dataset, instead of surfacing later as a
      * count mismatch in a UI test that looks like a broken screen.
      */
     @Test
     fun `the dataset still has the shape the UI flow test asserts on`() {
         assertEquals("demo library size", 60, videos.size)
-        assertEquals(
-            "videos under ten minutes",
-            8,
-            videos.count { DurationBucket.UNDER_10.contains(it.durationSeconds) },
-        )
-        // The query that test types, and the two videos it expects either side of the boundary.
+        // The query that test types, and the two videos it expects to match.
         assertEquals(
             listOf("Ferry Timetables of the Outer Sound", "Night Ferry to Kirkwall"),
             search("ferry"),

@@ -2,7 +2,6 @@ package com.gmail.volkovskiyda.jellyshelf.domain.repository
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
@@ -23,7 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 @Suppress("TooManyFunctions") // the app's single library-domain facade
 interface LibraryRepository : PlaystateRepository {
     fun observeVideos(): Flow<List<Video>>
-    fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>>
+    fun searchVideos(query: String): Flow<List<Video>>
     fun observeVideosByCategory(categoryId: String): Flow<List<Video>>
     fun observeVideo(youtubeId: String): Flow<Video?>
     fun observeCategories(): Flow<List<CategoryWithCount>>

@@ -11,9 +11,9 @@ import kotlinx.coroutines.flow.Flow
  * renders, and nothing else. See [VideoBrowseRow] for why that is a distinct type rather than a
  * partially-selected [VideoEntity].
  *
- * Two of them, [observeAll] and [observeByDurationRange], keep a full-row version beside the
- * projected one: those two also feed ranked search, which scores `description`. The other six
- * have no full-row version at all — nothing was left to read one.
+ * One of them, [observeAll], keeps a full-row version beside the projected one: it also feeds
+ * ranked search, which scores `description`. The others have no full-row version at all — nothing
+ * was left to read one.
  *
  * The projected queries are `SELECT *` plus [RewriteQueriesToDropUnusedColumns] rather than
  * hand-written column lists, so the projection cannot drift out of sync with [VideoBrowseRow] when
@@ -116,27 +116,6 @@ interface VideoDao {
     /** See [observeMissingBrowse] for why this one has no index behind it. */
     @Query("SELECT COUNT(*) FROM videos WHERE missedSyncs > 0")
     fun countMissing(): Flow<Int>
-
-    /**
-     * Videos whose duration is in [[minSeconds], [maxSeconds]) — a hard filter — ordered by file
-     * name. Relevance ranking against the search query is applied in Kotlin on the result (see
-     * [com.gmail.volkovskiyda.jellyshelf.data.repository.SearchRanking]), so the query itself lives
-     * outside SQL.
-     */
-    @Query(
-        "SELECT * FROM videos " +
-            "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
-            "ORDER BY fileName",
-    )
-    fun observeByDurationRange(minSeconds: Long, maxSeconds: Long): Flow<List<VideoEntity>>
-
-    @RewriteQueriesToDropUnusedColumns
-    @Query(
-        "SELECT * FROM videos " +
-            "WHERE durationSeconds >= :minSeconds AND durationSeconds < :maxSeconds " +
-            "ORDER BY fileName",
-    )
-    fun observeByDurationRangeBrowse(minSeconds: Long, maxSeconds: Long): Flow<List<VideoBrowseRow>>
 
     @RewriteQueriesToDropUnusedColumns
     @Query(

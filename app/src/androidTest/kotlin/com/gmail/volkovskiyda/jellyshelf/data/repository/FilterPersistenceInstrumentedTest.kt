@@ -2,13 +2,10 @@ package com.gmail.volkovskiyda.jellyshelf.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesFilterState
-import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,22 +16,19 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The duration filter and the search-all toggle across a process restart, against the real
- * DataStore — the state holders are process-lifetime singletons, so "restart" here means building
- * a fresh holder over the same store, which is exactly what a cold launch does.
+ * The Categories search-all toggle across a process restart, against the real DataStore — the state
+ * holder is a process-lifetime singleton, so "restart" here means building a fresh holder over the
+ * same store, which is exactly what a cold launch does.
  *
- * The interesting cases are the two that are not a plain round-trip: an id this version no longer
- * knows must degrade to "no filter" rather than fail a launch, and a value the user set before the
- * async read landed must win over the one coming off disk.
+ * The interesting part is not the round-trip but the restore's own signal: the Categories pager
+ * waits on `selectionLoaded`, so the toggle has to be in place by the time that flips.
  */
 @RunWith(AndroidJUnit4::class)
 class FilterPersistenceInstrumentedTest {
@@ -87,62 +81,6 @@ class FilterPersistenceInstrumentedTest {
     }
 
     @Test
-    fun theDurationFilter_survivesARestart() = runBlocking {
-        val repo = repository()
-        LibraryFilterState(repo, dispatchers).setDurationFilter(DurationBucket.FROM_10_TO_30)
-        awaitPersisted(repo.libraryDurationFilter, DurationBucket.FROM_10_TO_30)
-
-        // A fresh holder over the same store is what a cold launch builds. Its restore is async
-        // too, so wait for it rather than reading .value out from under the disk read.
-        val restored = LibraryFilterState(repository(), dispatchers)
-        assertEquals(
-            DurationBucket.FROM_10_TO_30,
-            withTimeout(WRITE_TIMEOUT_MS) { restored.durationFilter.first { it != null } },
-        )
-    }
-
-    @Test
-    fun clearingTheDurationFilter_removesItFromDisk() = runBlocking {
-        // Asserted at the repository rather than through a holder: "restores as null" and "has
-        // not restored yet" look identical from outside, so only the store can answer exactly.
-        val repo = repository()
-        LibraryFilterState(repo, dispatchers).setDurationFilter(DurationBucket.OVER_60)
-        awaitPersisted(repo.libraryDurationFilter, DurationBucket.OVER_60)
-
-        LibraryFilterState(repo, dispatchers).setDurationFilter(null)
-        awaitPersisted(repo.libraryDurationFilter, null)
-        assertNull(repo.libraryDurationFilter.first())
-    }
-
-    @Test
-    fun anUnknownBucketId_readsBackAsNoFilterInsteadOfThrowing() = runBlocking {
-        // What a bucket removed or renumbered in a later version leaves behind on disk.
-        context.dataStore.edit { it[stringPreferencesKey("library_duration_filter")] = "99" }
-
-        assertNull(repository().libraryDurationFilter.first())
-    }
-
-    @Test
-    fun aFilterPickedBeforeTheReadLands_isNotClobberedByTheRestore() = runBlocking {
-        // A different bucket on disk to the one the user picks, so the two outcomes are
-        // distinguishable: guard working → the pick stands; guard missing → the disk value wins.
-        context.dataStore.edit { it[stringPreferencesKey("library_duration_filter")] = "0" }
-
-        val holder = LibraryFilterState(repository(), dispatchers)
-        // Straight after construction, so the disk read cannot have landed yet — this is the user
-        // reaching the filter menu before the restore does.
-        holder.durationFilter.value = DurationBucket.OVER_60
-
-        // An absence assertion, so the timeout is the bug detector rather than a synchronisation
-        // point: it waits for the clobber to happen, and passes because it never does.
-        val clobbered = withTimeoutOrNull(CLOBBER_WATCH_MS) {
-            holder.durationFilter.first { it == DurationBucket.UNDER_10 }
-        }
-        assertNull("the restore overwrote a filter the user had already picked", clobbered)
-        assertEquals(DurationBucket.OVER_60, holder.durationFilter.value)
-    }
-
-    @Test
     fun theSearchAllToggle_survivesARestart() = runBlocking {
         val repo = repository()
         CategoriesFilterState(repo, dispatchers).setSearchAll(true)
@@ -170,8 +108,5 @@ class FilterPersistenceInstrumentedTest {
     private companion object {
         const val WRITE_TIMEOUT_MS = 5_000L
         const val POLL_INTERVAL_MS = 20L
-
-        /** Generous next to a preferences read, which is what the clobber would ride in on. */
-        const val CLOBBER_WATCH_MS = 2_000L
     }
 }

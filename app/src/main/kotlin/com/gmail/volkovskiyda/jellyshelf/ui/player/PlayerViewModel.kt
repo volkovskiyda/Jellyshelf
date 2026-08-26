@@ -177,11 +177,10 @@ class PlayerViewModel(
      * player is the caller's job — media3's speed-button state does that — so this is only the
      * write. Press-and-hold's temporary 3× never comes through here.
      *
-     * On [DispatcherProvider.applicationScope] rather than [viewModelScope] for the reason
-     * [LibraryFilterState.setDurationFilter] gives: picking a speed and leaving is one gesture —
-     * 2×, then Back — and a `viewModelScope` write would be cancelled by [onCleared] before it
-     * reached disk. Fire-and-forget; a failed write just means the next launch starts at the
-     * previously saved speed.
+     * On [DispatcherProvider.applicationScope] rather than [viewModelScope] because picking a
+     * speed and leaving is one gesture — 2×, then Back — and a `viewModelScope` write would be
+     * cancelled by [onCleared] before it reached disk. Fire-and-forget; a failed write just means
+     * the next launch starts at the previously saved speed.
      */
     fun savePlaybackSpeed(speed: Float) {
         dispatchers.applicationScope.launch { settingsRepository.setPlaybackSpeed(speed) }

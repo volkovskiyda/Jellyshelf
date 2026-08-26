@@ -24,16 +24,12 @@
     <!-- Library -->
     <string name="search">Search</string>
     <string name="clear_search">Clear search</string>
-    <string name="filter_by_duration">Filter by duration</string>
-    <string name="any_duration">Any duration</string>
     <plurals name="shown_of_total">
         <item quantity="one">%1$d of %2$d video shown</item>
         <item quantity="other">%1$d of %2$d videos shown</item>
     </plurals>
     <string name="empty_library">No videos yet. Connect to Jellyfin in Settings and run a sync.</string>
-    <string name="empty_duration_filter">No videos with a %1$s duration.</string>
     <string name="no_videos_match">No videos match “%1$s”.</string>
-    <string name="no_videos_match_duration">No videos with a %1$s duration match “%2$s”.</string>
 
     <!-- Categories -->
     <string name="search_categories">Search categories</string>

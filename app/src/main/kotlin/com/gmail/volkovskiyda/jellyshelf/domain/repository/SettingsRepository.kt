@@ -1,6 +1,5 @@
 package com.gmail.volkovskiyda.jellyshelf.domain.repository
 
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
@@ -88,18 +87,6 @@ interface SettingsRepository {
     /** The serialized navigation back stack, or null if none has been saved yet. */
     val backStackJson: Flow<String?>
     suspend fun setBackStackJson(json: String)
-
-    /**
-     * The library's duration filter, or null for no filter. Stored as [DurationBucket.id] — the
-     * key already documented as stable and persistable — and restored leniently: a bucket that no
-     * longer exists reads back as null (no filter) rather than failing a launch.
-     *
-     * Persisted for the same reason as [selectedCategoryType]: it is a deliberate mode with a
-     * visible affordance, and the app already restores where you were and which dimension tab you
-     * had open. The search query deliberately is *not* persisted — users expect it to reset.
-     */
-    val libraryDurationFilter: Flow<DurationBucket?>
-    suspend fun setLibraryDurationFilter(bucket: DurationBucket?)
 
     /** Whether Categories search spans every dimension rather than the open tab. */
     val categoriesSearchAll: Flow<Boolean>

@@ -543,46 +543,24 @@ class DefaultLibraryRepository private constructor(
             .flowOn(dispatchers.default)
 
     /**
-     * Videos filtered to [bucket] (all durations when null) and, for a non-blank [query], narrowed
-     * to relevance matches sorted most-relevant first (see [SearchRanking]). A blank query just
-     * returns the duration-filtered list by file name.
+     * The library narrowed to [query]'s relevance matches, most-relevant first (see
+     * [SearchRanking]).
      *
-     * The branch is on the *query*, not the bucket, because it decides whether anything reads
-     * `description`. A blank query is a browse read that happens to be filtered — [SearchRanking]
-     * returns the list untouched when the query tokenizes to nothing — so it must not pay to read a
-     * column it throws away; it is also where a user with a sticky duration filter permanently
-     * lives, not an edge case. A non-blank query keeps full rows because
-     * [SearchRanking.rankVideos] scores `description`, `tags` and `youtubeCategories`, and
-     * projecting that path would silently narrow what search matches.
-     *
-     * On the blank branch, rows carry only what a list renders: `description`, `chapters`, `tags`
-     * and `youtubeCategories` come back empty whatever the stored row holds. Read a video through
-     * [observeVideo] for those.
+     * Whole rows, unlike every other list read here: [SearchRanking.rankVideos] scores
+     * `description`, `tags` and `youtubeCategories`, and projecting this path would silently
+     * narrow what search matches. The library's list is not paying for that — a blank query never
+     * arrives here, because [com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryViewModel] sends
+     * it to [observeVideos] instead. One that did would still come back whole and in file-name
+     * order, since [SearchRanking] returns the list untouched when a query tokenizes to nothing.
      */
-    override fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>> =
-        if (query.isBlank()) {
-            browseSource(bucket).mapToDomainTraced()
-        } else {
-            rankedSource(bucket).map { rows ->
+    override fun searchVideos(query: String): Flow<List<Video>> =
+        videoDao.observeAll()
+            .map { rows ->
                 trace(Traces.LIBRARY_SEARCH) {
                     SearchRanking.rankVideos(query, rows).map(VideoEntity::toDomain)
                 }
             }
-        }.flowOn(dispatchers.default)
-
-    private fun browseSource(bucket: DurationBucket?): Flow<List<VideoBrowseRow>> =
-        if (bucket == null) {
-            videoDao.observeAllBrowse()
-        } else {
-            videoDao.observeByDurationRangeBrowse(bucket.minSeconds, bucket.maxSeconds)
-        }
-
-    private fun rankedSource(bucket: DurationBucket?): Flow<List<VideoEntity>> =
-        if (bucket == null) {
-            videoDao.observeAll()
-        } else {
-            videoDao.observeByDurationRange(bucket.minSeconds, bucket.maxSeconds)
-        }
+            .flowOn(dispatchers.default)
 
     /**
      * Videos in [categoryId], routing the "Others" virtual filters to live queries.

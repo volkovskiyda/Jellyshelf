@@ -10,7 +10,6 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
@@ -77,10 +76,8 @@ private fun LibraryLoading() {
         LibraryContent(
             videosOrNull = null,
             query = "",
-            durationFilter = null,
             totalCount = 0,
             onQueryChange = {},
-            onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
@@ -95,12 +92,10 @@ private fun LibraryLoading() {
 private fun LibraryEmpty() {
     PreviewTheme {
         LibraryContent(
-            videosOrNull = LibraryVideos(emptyList(), "", null),
+            videosOrNull = LibraryVideos(emptyList(), ""),
             query = "",
-            durationFilter = null,
             totalCount = 0,
             onQueryChange = {},
-            onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
@@ -115,12 +110,10 @@ private fun LibraryEmpty() {
 private fun LibraryPopulated() {
     PreviewTheme {
         LibraryContent(
-            videosOrNull = LibraryVideos(librarySample, "", null),
+            videosOrNull = LibraryVideos(librarySample, ""),
             query = "",
-            durationFilter = null,
             totalCount = librarySample.size,
             onQueryChange = {},
-            onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
@@ -136,12 +129,10 @@ private fun LibraryPopulated() {
 private fun LibraryNoMatch() {
     PreviewTheme {
         LibraryContent(
-            videosOrNull = LibraryVideos(emptyList(), "mafia", DurationBucket.entries.first()),
+            videosOrNull = LibraryVideos(emptyList(), "mafia"),
             query = "mafia",
-            durationFilter = DurationBucket.entries.first(),
             totalCount = 879,
             onQueryChange = {},
-            onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
@@ -161,12 +152,10 @@ private fun LibraryNoMatch() {
 private fun LibrarySelecting() {
     PreviewTheme {
         LibraryContent(
-            videosOrNull = LibraryVideos(librarySample, "", null),
+            videosOrNull = LibraryVideos(librarySample, ""),
             query = "",
-            durationFilter = null,
             totalCount = librarySample.size,
             onQueryChange = {},
-            onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
             selectionActive = true,
@@ -184,12 +173,10 @@ private fun LibrarySelecting() {
 private fun LibrarySelectingDark() {
     PreviewTheme(darkTheme = true) {
         LibraryContent(
-            videosOrNull = LibraryVideos(librarySample, "", null),
+            videosOrNull = LibraryVideos(librarySample, ""),
             query = "",
-            durationFilter = null,
             totalCount = librarySample.size,
             onQueryChange = {},
-            onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
             selectionActive = true,
@@ -206,12 +193,10 @@ private fun LibrarySelectingDark() {
 private fun LibraryPopulatedDark() {
     PreviewTheme(darkTheme = true) {
         LibraryContent(
-            videosOrNull = LibraryVideos(librarySample, "", null),
+            videosOrNull = LibraryVideos(librarySample, ""),
             query = "",
-            durationFilter = null,
             totalCount = librarySample.size,
             onQueryChange = {},
-            onDurationFilterChange = {},
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),

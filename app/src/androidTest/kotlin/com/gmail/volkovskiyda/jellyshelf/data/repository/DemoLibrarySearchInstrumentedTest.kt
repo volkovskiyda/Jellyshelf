@@ -12,7 +12,6 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import io.ktor.client.HttpClient
@@ -30,21 +29,16 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Library search and duration filtering end to end over the seeded demo library: the real
- * repository, the real Room database and the real bundled asset.
+ * Library search end to end over the seeded demo library: the real repository, the real Room
+ * database and the real bundled asset.
  *
  * This is the half [DemoLibrarySearchTest] cannot reach. That one runs the ranking host-side over
- * the same dataset; the filter it models is Kotlin. In production the bucket is a **SQL range**
- * (`observeByDurationRange`) and the query is ranking applied to whatever those rows are, so the
- * two only meet on a device. What can go wrong here is invisible host-side: an inclusive upper
- * bound in the SQL, a bucket that silently sweeps up the unknown-duration rows, or a filter that
- * ranking then re-widens.
+ * the same dataset, on rows it builds itself. In production those rows come out of SQL, so the two
+ * only meet on a device — a read that returned the wrong columns would leave the ranking scoring
+ * blanks, and score them consistently enough to look like a working search.
  *
- * The duration assertions compare the SQL result against [DurationBucket.contains] — the pure
- * definition of the same range — rather than against copied-out expected counts, so they keep
- * their meaning when the demo dataset is edited. The search assertions do name titles: the demo
- * dataset is a committed fixture, and an edit that removed the video a search is built on should
- * fail loudly rather than pass vacuously.
+ * The assertions name titles: the demo dataset is a committed fixture, and an edit that removed the
+ * video a search is built on should fail loudly rather than pass vacuously.
  *
  * `runBlocking` rather than `runTest`, and a MockEngine that refuses every request, for the reasons
  * [DemoSeedInstrumentedTest] gives.
@@ -91,12 +85,11 @@ class DemoLibrarySearchInstrumentedTest {
     @After
     fun tearDown() = db.close()
 
-    /** One emission of the search/filter flow — what the library screen renders for these terms. */
-    private fun results(query: String = "", bucket: DurationBucket? = null): List<Video> =
-        runBlocking { repo.searchVideos(query, bucket).first() }
+    /** One emission of the search flow — what the library screen renders for this query. */
+    private fun results(query: String = ""): List<Video> =
+        runBlocking { repo.searchVideos(query).first() }
 
-    private fun titles(query: String = "", bucket: DurationBucket? = null): List<String> =
-        results(query, bucket).map { it.title }
+    private fun titles(query: String = ""): List<String> = results(query).map { it.title }
 
     @Test
     fun search_overTheSeededLibrary_returnsTheMatchesRanked() {
@@ -112,84 +105,15 @@ class DemoLibrarySearchInstrumentedTest {
         assertEquals(emptyList<String>(), titles(query = "zeppelin"))
     }
 
-    @Test
-    fun aDurationBucket_returnsExactlyTheVideosInItsRange() {
-        val all = results()
-        for (bucket in DurationBucket.entries) {
-            val expected = all.filter { bucket.contains(it.durationSeconds) }.map { it.youtubeId }.toSet()
-            val actual = results(bucket = bucket).map { it.youtubeId }.toSet()
-
-            assertTrue("${bucket.label} needs members in the demo dataset", expected.isNotEmpty())
-            // The SQL range against the enum's own definition of it: an inclusive upper bound, or a
-            // boundary video counted twice, shows up here as a set difference.
-            assertEquals("${bucket.label} filtered the wrong videos", expected, actual)
-        }
-    }
-
-    @Test
-    fun theDurationBuckets_neverReturnAVideoOfUnknownLength() {
-        val unknown = results().filter { it.durationSeconds <= 0 }.map { it.youtubeId }.toSet()
-        assertTrue("the demo dataset needs entries with no duration", unknown.isNotEmpty())
-
-        for (bucket in DurationBucket.entries) {
-            val filtered = results(bucket = bucket).map { it.youtubeId }.toSet()
-            assertEquals(
-                "${bucket.label} swept up videos of unknown length",
-                emptySet<String>(),
-                filtered intersect unknown,
-            )
-        }
-    }
-
-    @Test
-    fun aQueryAndABucket_narrowTogether() {
-        // The two "ferry" videos sit either side of the ten-minute boundary (486s and 1580s), so
-        // each bucket keeps exactly one of them — a filter applied after ranking, or a query
-        // applied to the unfiltered table, both fail here.
-        assertEquals(listOf("Ferry Timetables of the Outer Sound"), titles("ferry", DurationBucket.UNDER_10))
-        assertEquals(listOf("Night Ferry to Kirkwall"), titles("ferry", DurationBucket.FROM_10_TO_30))
-        assertEquals(emptyList<String>(), titles("ferry", DurationBucket.OVER_60))
-    }
-
     /**
-     * The SQL range is half-open, `[min, max)`, and no demo video happens to sit on a boundary — so
-     * an inclusive upper bound in the query would pass every assertion above. This adds the video
-     * the dataset lacks: exactly ten minutes long, which belongs to the bucket that *starts* there.
-     *
-     * The row is a copy of a seeded one so it is a realistic row rather than a hand-built stub;
-     * only the id, the file name and the duration are its own.
+     * The search path with a blank query must agree with the plain browse path — same videos, same
+     * order. They are different queries (`observeAll` versus the projected browse read), and the
+     * agreement is what makes the blank query safe to fall through: nothing in the library sends
+     * one here, and one that arrived would come back whole and in file-name order rather than
+     * ranked into some arbitrary shape.
      */
     @Test
-    fun aVideoExactlyOnABoundary_belongsToTheBucketThatStartsThere() = runBlocking {
-        val boundarySeconds = DurationBucket.FROM_10_TO_30.minSeconds
-        val id = "boundary-10m"
-        db.videoDao().upsert(
-            db.videoDao().getAll().first().copy(
-                youtubeId = id,
-                // Sorts last, so it cannot displace any title an assertion above names.
-                fileName = "zzz-boundary.mp4",
-                title = "Exactly Ten Minutes",
-                durationSeconds = boundarySeconds,
-            ),
-        )
-
-        assertTrue(
-            "the lower bound is inclusive: ${boundarySeconds}s is in ${DurationBucket.FROM_10_TO_30.label}",
-            results(bucket = DurationBucket.FROM_10_TO_30).any { it.youtubeId == id },
-        )
-        assertTrue(
-            "the upper bound is exclusive: ${boundarySeconds}s is not in ${DurationBucket.UNDER_10.label}",
-            results(bucket = DurationBucket.UNDER_10).none { it.youtubeId == id },
-        )
-    }
-
-    /**
-     * The unfiltered search path must agree with the plain browse path — same videos, same order.
-     * They are different queries (`observeAll` versus the browse read), and a blank query is the
-     * state the library spends most of its life in.
-     */
-    @Test
-    fun aBlankQueryWithNoBucket_matchesThePlainBrowseList() {
+    fun aBlankQuery_matchesThePlainBrowseList() {
         val browsed = runBlocking { repo.observeVideos().first() }
 
         assertEquals(browsed.map { it.youtubeId }, results().map { it.youtubeId })

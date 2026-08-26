@@ -1,6 +1,5 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
@@ -34,7 +33,6 @@ class FakeSettingsRepository(
     backStackJson: String? = null,
     selectedCategoryType: String? = null,
     themeState: ThemeState = ThemeState(),
-    libraryDurationFilter: DurationBucket? = null,
     categoriesSearchAll: Boolean = false,
     syncScopeNudged: Boolean = false,
     updateSource: UpdateSource = UpdateSource.NONE,
@@ -49,7 +47,6 @@ class FakeSettingsRepository(
     private val _backStackJson = MutableStateFlow(backStackJson)
     private val _selectedCategoryType = MutableStateFlow(selectedCategoryType)
     private val _themeState = MutableStateFlow(themeState)
-    private val _libraryDurationFilter = MutableStateFlow(libraryDurationFilter)
     private val _categoriesSearchAll = MutableStateFlow(categoriesSearchAll)
     private val _syncScopeNudged = MutableStateFlow(syncScopeNudged)
     private val _updateSource = MutableStateFlow(updateSource)
@@ -154,11 +151,6 @@ class FakeSettingsRepository(
     override val backStackJson: Flow<String?> = _backStackJson
     override suspend fun setBackStackJson(json: String) {
         _backStackJson.value = json
-    }
-
-    override val libraryDurationFilter: Flow<DurationBucket?> = _libraryDurationFilter
-    override suspend fun setLibraryDurationFilter(bucket: DurationBucket?) {
-        _libraryDurationFilter.value = bucket
     }
 
     override val categoriesSearchAll: Flow<Boolean> = _categoriesSearchAll

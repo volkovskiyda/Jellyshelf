@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeLibraryRepository
@@ -26,14 +25,13 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The library's flow assembly: a debounced query combined with an undebounced duration filter,
- * routed to one of two repository calls, and tagged with the terms that produced it.
+ * The library's flow assembly: a debounced query routed to one of two repository calls, and tagged
+ * with the query that produced it.
  *
- * Each of those is a decision that can silently invert. Routing a blank query to the search path
- * would work — and quietly cost every browse the full-row read that search needs. Debouncing the
- * duration chip would make a deliberate single tap feel broken. And tagging an emission with the
- * *live* terms rather than the ones behind it is what the `LibraryVideos` KDoc explains at length,
- * because it is what makes the scroll restore fire against the wrong contents.
+ * Both are decisions that can silently invert. Routing a blank query to the search path would work
+ * — and quietly cost every browse the full-row read that search needs. And tagging an emission
+ * with the *live* query rather than the one behind it is what the `LibraryVideos` KDoc explains at
+ * length, because it is what makes the scroll restore fire against the wrong contents.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModelTest {
@@ -69,7 +67,7 @@ class LibraryViewModelTest {
     private val browsed = listOf(video("a"), video("b"))
     private val matched = listOf(video("b"))
 
-    private fun filters() = LibraryFilterState(FakeSettingsRepository(), TestDispatcherProvider())
+    private fun filters() = LibraryFilterState()
 
     private fun viewModel(
         repo: FakeLibraryRepository = FakeLibraryRepository(browsed),
@@ -84,8 +82,8 @@ class LibraryViewModelTest {
      * A ViewModel with the screen's subscription standing in.
      *
      * `videos` shares `WhileUiSubscribed`, so with no collector the whole assembly — debounce,
-     * combine, repository call — never runs and every assertion below would read a null that
-     * proves nothing.
+     * repository call — never runs and every assertion below would read a null that proves
+     * nothing.
      */
     private fun TestScope.collectingViewModel(
         repo: FakeLibraryRepository = FakeLibraryRepository(browsed),
@@ -111,7 +109,7 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `a non-blank query takes the search path, with the query and filter`() = runTest {
+    fun `a non-blank query takes the search path, with the query`() = runTest {
         val repo = FakeLibraryRepository(browsed)
         repo.searchResults.value = matched
         val vm = collectingViewModel(repo)
@@ -120,24 +118,11 @@ class LibraryViewModelTest {
         advanceUntilIdle()
 
         assertEquals(matched, vm.videos.value?.items)
-        assertEquals(listOf("bee" to null), repo.searches)
+        assertEquals(listOf("bee"), repo.searches)
     }
 
     @Test
-    fun `a duration filter alone is enough to leave the browse path`() = runTest {
-        val repo = FakeLibraryRepository(browsed)
-        repo.searchResults.value = matched
-        val vm = collectingViewModel(repo)
-        repo.searches.clear()
-
-        vm.onDurationFilterChange(DurationBucket.OVER_60)
-        advanceUntilIdle()
-
-        assertEquals(listOf("" to DurationBucket.OVER_60), repo.searches)
-    }
-
-    @Test
-    fun `the query is debounced but the duration chip is not`() = runTest {
+    fun `the query is debounced`() = runTest {
         val repo = FakeLibraryRepository(browsed)
         val vm = collectingViewModel(repo)
 
@@ -149,17 +134,11 @@ class LibraryViewModelTest {
         assertTrue("a keystroke queried before the debounce elapsed", repo.searches.isEmpty())
 
         advanceUntilIdle()
-        assertEquals("only the settled query should be queried", listOf("bee" to null), repo.searches)
-
-        // A chip tap is one deliberate event, so it applies at once rather than a debounce later.
-        repo.searches.clear()
-        vm.onDurationFilterChange(DurationBucket.UNDER_10)
-        advanceTimeBy(SHORT_PAUSE_MS)
-        assertEquals(listOf("bee" to DurationBucket.UNDER_10), repo.searches)
+        assertEquals("only the settled query should be queried", listOf("bee"), repo.searches)
     }
 
     @Test
-    fun `an emission carries the terms that produced it, not the live ones`() = runTest {
+    fun `an emission carries the query that produced it, not the live one`() = runTest {
         val repo = FakeLibraryRepository(browsed)
         repo.searchResults.value = matched
         val vm = collectingViewModel(repo)
@@ -179,13 +158,15 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun `pristine means no query and no filter`() = runTest {
-        val vm = collectingViewModel()
+    fun `pristine means no query`() = runTest {
+        val repo = FakeLibraryRepository(browsed)
+        repo.searchResults.value = matched
+        val vm = collectingViewModel(repo)
         assertTrue(vm.videos.value?.pristine == true)
 
-        vm.onDurationFilterChange(DurationBucket.OVER_60)
+        vm.onQueryChange("bee")
         advanceUntilIdle()
-        assertTrue("a filtered list is not pristine", vm.videos.value?.pristine == false)
+        assertTrue("a searched list is not pristine", vm.videos.value?.pristine == false)
     }
 
     @Test

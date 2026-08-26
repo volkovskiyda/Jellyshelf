@@ -2,7 +2,6 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
@@ -17,8 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 
 /**
- * A [LibraryRepository] covering the **browse reads** only: the video list, the search/filter
- * query and the count. Everything else — syncing, metadata fetches, playlists, watch-state writes
+ * A [LibraryRepository] covering the **browse reads** only: the video list, the search query and
+ * the count. Everything else — syncing, metadata fetches, playlists, watch-state writes
  * — throws, deliberately: a test that reaches one of them has wandered outside what this fake
  * models, and a silent no-op would let it pass while proving nothing.
  *
@@ -45,13 +44,13 @@ class FakeLibraryRepository(
     /** What the search/filter flow emits, whatever the terms. */
     val searchResults = MutableStateFlow(initial)
 
-    /** Every (query, bucket) pair [searchVideos] has been asked for, in order. */
-    val searches = mutableListOf<Pair<String, DurationBucket?>>()
+    /** Every query [searchVideos] has been asked for, in order. */
+    val searches = mutableListOf<String>()
 
     override fun observeVideos(): Flow<List<Video>> = videos
 
-    override fun searchVideos(query: String, bucket: DurationBucket?): Flow<List<Video>> {
-        searches += query to bucket
+    override fun searchVideos(query: String): Flow<List<Video>> {
+        searches += query
         return searchResults
     }
 

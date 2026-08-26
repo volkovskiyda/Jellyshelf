@@ -10,7 +10,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
@@ -51,7 +50,6 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val THEME_TOWARD_DARK = booleanPreferencesKey("theme_toward_dark")
-        val LIBRARY_DURATION_FILTER = stringPreferencesKey("library_duration_filter")
         val CATEGORIES_SEARCH_ALL = booleanPreferencesKey("categories_search_all")
         val SYNC_SCOPE_NUDGED = booleanPreferencesKey("sync_scope_nudged")
         val DEMO_MODE = booleanPreferencesKey("demo_mode")
@@ -201,7 +199,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
     /**
      * Stored as a float, not as a name like [PlaybackMode]: this is a number the player consumes
      * directly, and every option is a binary fraction, so the round trip is exact. Validation is on
-     * the read side only, matching [setLibraryDurationFilter].
+     * the read side only, like every other stored preference here.
      */
     override suspend fun setPlaybackSpeed(speed: Float) {
         ds.edit { it[Keys.PLAYBACK_SPEED] = speed }
@@ -263,28 +261,6 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setBackStackJson(json: String) {
         ds.edit { it[Keys.BACK_STACK] = json }
-    }
-
-    /**
-     * Matched by [DurationBucket.id], so an id this version no longer knows — a bucket removed or
-     * renumbered later — reads back as "no filter" instead of throwing on the launch that restores
-     * it. Same degrade-to-default contract as [settings] and [selectedCategoryType].
-     */
-    override val libraryDurationFilter: Flow<DurationBucket?> = prefs
-        .map { p ->
-            p[Keys.LIBRARY_DURATION_FILTER]
-                ?.let { stored -> DurationBucket.entries.firstOrNull { it.id == stored } }
-        }
-
-    /** Null clears the key rather than storing a sentinel for "no filter". */
-    override suspend fun setLibraryDurationFilter(bucket: DurationBucket?) {
-        ds.edit {
-            if (bucket == null) {
-                it.remove(Keys.LIBRARY_DURATION_FILTER)
-            } else {
-                it[Keys.LIBRARY_DURATION_FILTER] = bucket.id
-            }
-        }
     }
 
     override val categoriesSearchAll: Flow<Boolean> = prefs

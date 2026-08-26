@@ -106,12 +106,10 @@ class LibrarySelectionTest {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
                 LibraryContent(
-                    videosOrNull = LibraryVideos(videos, "", null),
+                    videosOrNull = LibraryVideos(videos, ""),
                     query = "",
-                    durationFilter = null,
                     totalCount = videos.size,
                     onQueryChange = {},
-                    onDurationFilterChange = {},
                     onPlayVideo = { state.played = it },
                     onOpenDetails = { state.opened = it },
                     selectionActive = state.active,
