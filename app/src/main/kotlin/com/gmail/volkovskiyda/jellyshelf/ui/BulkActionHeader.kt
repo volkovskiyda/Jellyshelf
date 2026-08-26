@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gmail.volkovskiyda.jellyshelf.R
@@ -69,9 +71,11 @@ internal fun BulkRunHeader(
     @StringRes doneLabel: Int,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
+    /** The selection tint, while the list is selecting — see [BulkHeaderFrame]. */
+    containerColor: Color = Color.Transparent,
 ) {
     if (state is BulkProgress.Idle) return
-    BulkHeaderFrame {
+    BulkHeaderFrame(containerColor) {
         when (state) {
             is BulkProgress.Running -> BulkRunningRow(state, runningLabel, onCancel)
 
@@ -86,16 +90,27 @@ internal fun BulkRunHeader(
     }
 }
 
+/**
+ * The strip a bulk header occupies, divider included.
+ *
+ * [containerColor] is how the multi-selection run carries the selection tint through this strip:
+ * it sits between the tinted bar and the tinted rows, and left on the plain surface it reads as a
+ * gap in the mode rather than a part of it. Transparent for the category's own headers, which
+ * appear on a screen that is not selecting. The divider is inside the tinted column so the band is
+ * unbroken down to the content below it.
+ */
 @Composable
-private fun BulkHeaderFrame(content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        content = { content() },
-    )
-    HorizontalDivider()
+private fun BulkHeaderFrame(containerColor: Color = Color.Transparent, content: @Composable () -> Unit) {
+    Column(modifier = Modifier.background(containerColor)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            content = { content() },
+        )
+        HorizontalDivider()
+    }
 }
 
 @Composable

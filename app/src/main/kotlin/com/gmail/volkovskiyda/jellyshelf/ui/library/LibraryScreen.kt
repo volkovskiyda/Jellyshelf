@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -247,11 +248,23 @@ internal fun LibraryContent(
             run = selectionRun,
             onCancel = onCancelSelectionRun,
             onDismiss = onAcknowledgeSelectionRun,
+            selecting = selectionActive,
         )
         SearchField(
             query = query,
             onQueryChange = onQueryChange,
             placeholder = stringResource(R.string.search),
+            // Selection mode tints the bar above and every selected row below, which left the
+            // strip the search sits in as a band of plain surface between the two — reading as a
+            // gap in the mode rather than a part of it. Only the surface changes: the modifier
+            // sits ahead of SearchField's own padding, so the tint fills the strip and the field
+            // drawn inside it is untouched. Search stays usable while selecting, which is how a
+            // selection gets made across a narrowed list in the first place.
+            modifier = if (selectionActive) {
+                Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
+            } else {
+                Modifier
+            },
         )
         if (videosOrNull == null) {
             // First Room emission still pending — don't flash the empty-state guidance.

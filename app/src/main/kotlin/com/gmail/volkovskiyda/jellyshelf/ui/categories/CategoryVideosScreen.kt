@@ -260,6 +260,7 @@ internal fun CategoryVideosContent(
             run = selectionRun,
             onCancel = onCancelSelectionRun,
             onDismiss = onAcknowledgeSelectionRun,
+            selecting = selectionActive,
         )
 
         // The in-app yt-dlp bulk fetch lives only on the Uncategorized filter.
