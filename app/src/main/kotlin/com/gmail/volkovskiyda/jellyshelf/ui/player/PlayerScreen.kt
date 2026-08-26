@@ -79,16 +79,15 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.C
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
 import androidx.media3.ui.compose.state.rememberPlaybackSpeedState
+import androidx.media3.ui.compose.state.rememberPlaylistState
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
@@ -223,10 +222,6 @@ private fun PlayerWithControls(
     var isBuffering by remember { mutableStateOf(controller.playbackState == Player.STATE_BUFFERING) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var transcodingNotice by remember { mutableStateOf(false) }
-    // Where in the queue we are. Only the ends matter to the UI, and they move whenever the queue
-    // advances, so they are listened for rather than polled with the position.
-    var hasPrevious by remember { mutableStateOf(controller.hasPreviousMediaItem()) }
-    var hasNext by remember { mutableStateOf(controller.hasNextMediaItem()) }
 
     DisposableEffect(controller) {
         // The first decode failure isn't terminal — the service is already swapping in the HLS
@@ -236,18 +231,6 @@ private fun PlayerWithControls(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
-            }
-
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                hasPrevious = controller.hasPreviousMediaItem()
-                hasNext = controller.hasNextMediaItem()
-            }
-
-            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
-                // The queue itself arrives asynchronously — the session resolves every id before
-                // the timeline exists, so the first read above is of an empty one.
-                hasPrevious = controller.hasPreviousMediaItem()
-                hasNext = controller.hasNextMediaItem()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -337,6 +320,19 @@ private fun PlayerWithControls(
     val seekForward = rememberSeekForwardButtonState(controller)
     val playbackSpeed = rememberPlaybackSpeedState(controller)
     val presentationState = rememberPresentationState(controller)
+
+    // Where in the queue we are. Off the timeline rather than hand-tracked: the queue arrives
+    // asynchronously (the session resolves every id before the timeline exists), and PlaylistState
+    // already listens for both the timeline landing and each transition. currentMediaItemIndex is
+    // C.INDEX_UNSET until then, so both ends read false — as an empty-timeline read did before.
+    //
+    // hasPreviousMediaItem()/hasNextMediaItem() respect shuffle order and repeat mode; an index
+    // comparison does not. Neither is exposed anywhere — no shuffle or repeat button, and
+    // PlaybackService sets neither mode — so the two are equivalent here. Adding a repeat mode is
+    // what would make this derivation wrong.
+    val playlist = rememberPlaylistState(controller)
+    val hasPrevious = playlist.currentMediaItemIndex > 0
+    val hasNext = playlist.currentMediaItemIndex in 0..<playlist.mediaItemCount - 1
 
     // Press-and-hold forces 3× until the finger lifts; PlaybackSpeedState remembers the speed to
     // go back to, so a hold started at 1.5× returns to 1.5×. Its release half runs in the pointer
