@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
@@ -26,6 +27,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailContent
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.VideoDetailState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryContent
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryVideos
+import com.gmail.volkovskiyda.jellyshelf.ui.player.FakePlayer
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicator
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicatorPill
 import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerControls
@@ -291,8 +293,9 @@ private fun DetailMissingFromServerDark() {
 private fun PlayerControlsWithChapters() {
     PreviewTheme(darkTheme = true) {
         PlayerControls(
+            player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
+            visible = true,
             title = "A reasonably long video title that wraps onto a second line",
-            showPlay = false,
             positionMs = 200_000L,
             durationMs = 754_000L,
             chapters = listOf(
@@ -303,9 +306,6 @@ private fun PlayerControlsWithChapters() {
             speed = 1f,
             hasPrevious = true,
             hasNext = true,
-            onPlayPause = {},
-            onSeekBack = {},
-            onSeekForward = {},
             onPrevious = {},
             onNext = {},
             onSeek = {},
@@ -329,17 +329,15 @@ private fun PlayerControlsWithChapters() {
 private fun PlayerControlsSingleVideo() {
     PreviewTheme(darkTheme = true) {
         PlayerControls(
+            player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
+            visible = true,
             title = "The only video in the queue",
-            showPlay = false,
             positionMs = 200_000L,
             durationMs = 754_000L,
             chapters = emptyList(),
             speed = 1f,
             hasPrevious = false,
             hasNext = false,
-            onPlayPause = {},
-            onSeekBack = {},
-            onSeekForward = {},
             onPrevious = {},
             onNext = {},
             onSeek = {},

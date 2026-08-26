@@ -1,6 +1,9 @@
-// All of media3-ui-compose (PlayerSurface, rememberPresentationState, the button-state
-// holders) is @UnstableApi, so the whole file opts in rather than annotating every function.
-@file:androidx.annotation.OptIn(UnstableApi::class)
+// All of media3-ui-compose (PlayerSurface, rememberPresentationState, the button-state holders)
+// and of media3-ui-compose-material3 (PlayerDefaults, ProgressSlider, the time labels) is
+// @UnstableApi, so the whole file opts in rather than annotating every function. ExperimentalApi is
+// a second opt-in ProgressSlider needs: only the overload carrying onValueChange — the one that
+// lets the scrub drive our chapter-step row — is marked, and it is @RequiresOptIn at ERROR level.
+@file:androidx.annotation.OptIn(UnstableApi::class, ExperimentalApi::class)
 
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
@@ -25,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Check
@@ -59,7 +63,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -68,6 +74,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,9 +88,15 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.session.MediaController
 import androidx.media3.ui.compose.PlayerSurface
+import androidx.media3.ui.compose.material3.PlayerDefaults
+import androidx.media3.ui.compose.material3.indicator.DurationText
+import androidx.media3.ui.compose.material3.indicator.PositionText
+import androidx.media3.ui.compose.material3.indicator.ProgressSlider
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
 import androidx.media3.ui.compose.state.rememberPlaybackSpeedState
@@ -109,6 +122,8 @@ import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.text.NumberFormat
+import java.util.Formatter
+import java.util.Locale
 
 /**
  * The elapsed-position label, tagged so the baseline-profile generator can read it: it is the only
@@ -315,7 +330,8 @@ private fun PlayerWithControls(
     // the screen), and otherwise Back is the explicit leave that stops playback.
     BackHandler { if (chaptersOpen) chaptersOpen = false else onBack() }
 
-    val playPause = rememberPlayPauseButtonState(controller)
+    // Only the double-tap gesture reads these here; the transport buttons hold their own,
+    // remembered against the same controller inside their slot composables.
     val seekBack = rememberSeekBackButtonState(controller)
     val seekForward = rememberSeekForwardButtonState(controller)
     val playbackSpeed = rememberPlaybackSpeedState(controller)
@@ -432,23 +448,26 @@ private fun PlayerWithControls(
         if (isBuffering) {
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
         }
-        if (controlsVisible && !isInPip) {
+        // PiP stays a hard `if` — a PiP window must not compose controls at all — while
+        // controlsVisible moves inside, because PlayerDefaults' layouts animate on it and gating
+        // the whole call would skip the fade.
+        if (!isInPip) {
             PlayerControls(
+                player = controller,
+                visible = controlsVisible,
                 title = title,
-                showPlay = playPause.showPlay,
                 positionMs = positionMs,
                 durationMs = durationMs,
                 chapters = chapters,
                 speed = playbackSpeed.playbackSpeed,
                 hasPrevious = hasPrevious,
                 hasNext = hasNext,
-                onPlayPause = playPause::onClick,
-                onSeekBack = seekBack::onClick,
-                onSeekForward = seekForward::onClick,
                 // The explicit *MediaItem* variants: seekToPrevious() would restart the current
                 // video once past its threshold, which is a different button entirely.
                 onPrevious = controller::seekToPreviousMediaItem,
                 onNext = controller::seekToNextMediaItem,
+                // Only the chapter row and the chapters panel seek through us now; the seek bar's
+                // own seek is ProgressSlider's, fired just before its onValueChangeFinished.
                 onSeek = controller::seekTo,
                 onSetSpeed = { speed ->
                     playbackSpeed.updatePlaybackSpeed(speed)
@@ -515,26 +534,33 @@ private fun PlayerPoster(model: String?, modifier: Modifier = Modifier) {
 }
 
 /**
- * The controls overlay, stateless so previews and tests can render it without a player: top bar
- * (back + minimize + title + speed menu + chapters), centre transport row, bottom chapter-step row and
- * position–seek–duration bar with chapter tick markers. Its only internal state is transient
- * interaction — the in-flight scrub and the open speed menu — each reported via its `on*Changed`
- * callback so the caller can pin the overlay open while the user is mid-gesture.
+ * The controls overlay: top bar (back + minimize + title + speed menu + chapters), centre transport
+ * row, bottom chapter-step row and position–seek–duration bar with chapter tick markers.
+ *
+ * The three rows are media3's [PlayerDefaults] layouts filled with our own buttons — we take the
+ * layouts, the fade and the bottom gradient, not the default slot contents, whose icons and
+ * generic content descriptions would replace ours and lose the asymmetric 10 s/30 s seek labels.
+ * Everything transport reads its state off [player] rather than off parameters, which is why
+ * previews and tests hand it a `FakePlayer` instead of plain values; [positionMs] and [durationMs]
+ * stay as parameters because the chapter-step row and the tick markers need a *scrub-aware*
+ * position the player itself does not have.
+ *
+ * Its only internal state is transient interaction — the in-flight scrub and the open speed menu —
+ * each reported via its `on*Changed` callback so the caller can pin the overlay open while the user
+ * is mid-gesture.
  */
 @Composable
 @Suppress("LongParameterList") // A stateless overlay: every control it renders is one more pair.
 internal fun PlayerControls(
+    player: Player?,
+    visible: Boolean,
     title: String?,
-    showPlay: Boolean,
     positionMs: Long,
     durationMs: Long,
     chapters: List<Chapter>,
     speed: Float,
     hasPrevious: Boolean,
     hasNext: Boolean,
-    onPlayPause: () -> Unit,
-    onSeekBack: () -> Unit,
-    onSeekForward: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -546,146 +572,251 @@ internal fun PlayerControls(
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // The scrim covers the full screen; the controls inside stay clear of the display cutout,
-    // whose insets — unlike the hidden system bars' — never drop to zero on notched devices.
+    // While dragging, the chapter row shows the scrub target. Unlike before, the seek itself is
+    // ProgressSlider's — it calls seekTo internally just before onValueChangeFinished — so scrubMs
+    // exists only to feed ChapterStepRow and to report scrubbing upward.
+    var scrubMs by remember { mutableStateOf<Long?>(null) }
+    val shownMs = scrubMs ?: positionMs
+
+    // No full-screen scrim: BottomControls paints its own gradient behind the seek bar, so more of
+    // the video stays visible while the controls are up. The centre buttons and the top bar then
+    // sit on raw video and carry their own backings instead. The controls stay clear of the display
+    // cutout, whose insets — unlike the hidden system bars' — never drop to zero on notched devices.
     Box(
         modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = SCRIM_ALPHA))
             .windowInsetsPadding(WindowInsets.displayCutout),
     ) {
-        Row(
-            Modifier.align(Alignment.TopStart).fillMaxWidth().padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BackButton(onClick = onBack, tint = Color.White)
-            IconButton(onClick = onMinimize) {
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
-                    contentDescription = stringResource(R.string.player_minimize),
-                    tint = Color.White,
-                )
-            }
-            Text(
-                title.orEmpty(),
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            SpeedMenuButton(speed = speed, onSetSpeed = onSetSpeed, onMenuChanged = onSpeedMenuChanged)
-            if (chapters.isNotEmpty()) {
-                IconButton(onClick = onOpenChapters) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.FormatListBulleted,
-                        contentDescription = stringResource(R.string.chapters),
-                        tint = Color.White,
+        // Each PlayerDefaults layout goes inside its own aligned Box rather than being handed a
+        // Modifier.align: they apply the modifier they are given to the content *inside* their
+        // AnimatedVisibility, so the parent data never reaches this Box and all three would stack
+        // in the top-start corner.
+        Box(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
+            PlayerDefaults.TopControls(player = player, visible = visible) {
+                // The bar itself is unchanged; it only moves into the slot, so it fades with the
+                // rest rather than popping. Its own gradient stands in for the scrim that used to
+                // back it — without one the white title and icons wash out over a bright frame.
+                Row(
+                    Modifier.fillMaxWidth().background(topControlsGradient()).padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BackButton(onClick = onBack, tint = Color.White)
+                    IconButton(onClick = onMinimize) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.player_minimize),
+                            tint = Color.White,
+                        )
+                    }
+                    Text(
+                        title.orEmpty(),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
+                    SpeedMenuButton(
+                        speed = speed,
+                        onSetSpeed = onSetSpeed,
+                        onMenuChanged = onSpeedMenuChanged,
+                    )
+                    if (chapters.isNotEmpty()) {
+                        IconButton(onClick = onOpenChapters) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.FormatListBulleted,
+                                contentDescription = stringResource(R.string.chapters),
+                                tint = Color.White,
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // Five buttons at the old 40.dp spacing overflow a portrait phone (the play button alone
-        // is 72.dp and the rest carry 48.dp touch targets), so the gaps shrink rather than the
-        // targets.
-        Row(
-            Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onPrevious, enabled = hasPrevious) {
-                Icon(
-                    Icons.Filled.SkipPrevious,
-                    contentDescription = stringResource(R.string.previous_video),
-                    tint = transportTint(hasPrevious),
-                    modifier = Modifier.size(36.dp),
-                )
-            }
-            IconButton(onClick = onSeekBack) {
-                Icon(
-                    Icons.Filled.Replay10,
-                    contentDescription = stringResource(R.string.seek_back_10),
-                    tint = Color.White,
-                    modifier = Modifier.size(40.dp),
-                )
-            }
-            IconButton(onClick = onPlayPause, modifier = Modifier.size(72.dp)) {
-                Icon(
-                    if (showPlay) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                    contentDescription = stringResource(if (showPlay) R.string.play else R.string.pause),
-                    tint = Color.White,
-                    modifier = Modifier.size(56.dp),
-                )
-            }
-            IconButton(onClick = onSeekForward) {
-                Icon(
-                    Icons.Filled.Forward30,
-                    contentDescription = stringResource(R.string.seek_forward_30),
-                    tint = Color.White,
-                    modifier = Modifier.size(40.dp),
-                )
-            }
-            IconButton(onClick = onNext, enabled = hasNext) {
-                Icon(
-                    Icons.Filled.SkipNext,
-                    contentDescription = stringResource(R.string.next_video),
-                    tint = transportTint(hasNext),
-                    modifier = Modifier.size(36.dp),
-                )
-            }
+        // media3's layout, our buttons. Five buttons at the default CenterControlsSpacing overflow
+        // a portrait phone (the play button alone is 72.dp and the rest carry 48.dp touch targets),
+        // so the gaps shrink rather than the targets — hence the explicit 20.dp.
+        Box(Modifier.align(Alignment.Center)) {
+            PlayerDefaults.CenterControls(
+                player = player,
+                visible = visible,
+                horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+                backSecondary = {
+                    TransportButton(
+                        onClick = onPrevious,
+                        enabled = hasPrevious,
+                        icon = Icons.Filled.SkipPrevious,
+                        descriptionRes = R.string.previous_video,
+                    )
+                },
+                back = { SeekBackControl(it) },
+                central = { PlayPauseControl(it) },
+                forward = { SeekForwardControl(it) },
+                forwardSecondary = {
+                    TransportButton(
+                        onClick = onNext,
+                        enabled = hasNext,
+                        icon = Icons.Filled.SkipNext,
+                        descriptionRes = R.string.next_video,
+                    )
+                },
+            )
         }
 
-        // While dragging, the labels and thumb show the scrub target; the seek fires on release.
-        var scrubMs by remember { mutableStateOf<Long?>(null) }
-        val shownMs = scrubMs ?: positionMs
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 12.dp)) {
-            if (chapters.isNotEmpty()) ChapterStepRow(chapters, shownMs, onSeek)
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    formatPosition(shownMs),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.testTag(PLAYER_POSITION_TAG),
-                )
-                Slider(
-                    value = if (durationMs > 0) {
-                        (shownMs.toFloat() / durationMs).coerceIn(0f, 1f)
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            PlayerDefaults.BottomControls(
+                player = player,
+                visible = visible,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                above = { if (chapters.isNotEmpty()) ChapterStepRow(chapters, shownMs, onSeek) },
+                left = {
+                    // The tag the baseline profile's playback leg waits on. PositionText formats
+                    // through Util.getStringForTime — "%02d:%02d" below an hour, so zero reads
+                    // "00:00", not the "0:00" our own formatPosition produces. That is what
+                    // BaselineProfileGenerator.ZERO_POSITION has to match.
+                    //
+                    // While the thumb is down the label previews where it will land instead:
+                    // PositionText reads only the player's live position and ProgressSlider seeks
+                    // on release, so on a chapterless video it is the one numeric feedback of
+                    // where the finger is headed. Same format, colour and tabular figures as
+                    // PositionText renders, so nothing jumps when a drag begins or ends.
+                    val previewMs = scrubMs
+                    if (previewMs != null) {
+                        Text(
+                            formatPlayerTime(previewMs),
+                            Modifier.testTag(PLAYER_POSITION_TAG).padding(end = 12.dp),
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
+                        )
                     } else {
-                        0f
-                    },
-                    onValueChange = { fraction ->
-                        if (durationMs > 0) {
-                            if (scrubMs == null) onScrubbingChanged(true)
-                            scrubMs = (fraction * durationMs).toLong()
-                        }
-                    },
-                    onValueChangeFinished = {
-                        scrubMs?.let(onSeek)
-                        scrubMs = null
-                        onScrubbingChanged(false)
-                    },
-                    modifier = Modifier.weight(1f).chapterTicks(chapters, durationMs),
-                    enabled = durationMs > 0,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color.White,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                    ),
-                )
-                Text(
-                    formatDuration(durationMs / MILLIS_PER_SECOND),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
+                        PositionText(
+                            it,
+                            Modifier.testTag(PLAYER_POSITION_TAG).padding(end = 12.dp),
+                            color = Color.White,
+                        )
+                    }
+                },
+                right = { DurationText(it, Modifier.padding(start = 12.dp), color = Color.White) },
+                progressSlider = {
+                    ProgressSlider(
+                        player = it,
+                        modifier = Modifier.chapterTicks(chapters, durationMs),
+                        onValueChange = { fraction ->
+                            if (durationMs > 0) {
+                                if (scrubMs == null) onScrubbingChanged(true)
+                                scrubMs = (fraction * durationMs).toLong()
+                            }
+                        },
+                        onValueChangeFinished = {
+                            scrubMs = null
+                            onScrubbingChanged(false)
+                        },
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color.White,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                        ),
+                    )
+                },
+            )
         }
     }
 }
+
+/**
+ * A transport arrow that dims rather than disappears at its end of the queue.
+ *
+ * Previous and next keep their own callbacks and their own enabled state rather than reading the
+ * player: they call the explicit `seekTo*MediaItem` variants, not the `COMMAND_SEEK_TO_*` ones
+ * media3's own buttons bind to, and binding to those would light the previous arrow up on a
+ * single-item queue.
+ */
+@Composable
+private fun TransportButton(
+    onClick: () -> Unit,
+    enabled: Boolean,
+    icon: ImageVector,
+    descriptionRes: Int,
+) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.controlBacking()) {
+        Icon(
+            icon,
+            contentDescription = stringResource(descriptionRes),
+            tint = transportTint(enabled),
+            modifier = Modifier.size(36.dp),
+        )
+    }
+}
+
+/**
+ * The asymmetric seek buttons. The increments themselves live on the player — media3's own state
+ * holders read `seekBackIncrement`/`seekForwardIncrement` — but the labels are the only place the
+ * 10 s/30 s split is visible to a screen reader, so they stay ours rather than media3's generic
+ * ones.
+ */
+@Composable
+private fun SeekBackControl(player: Player?) {
+    val state = rememberSeekBackButtonState(player)
+    IconButton(onClick = state::onClick, modifier = Modifier.controlBacking()) {
+        Icon(
+            Icons.Filled.Replay10,
+            contentDescription = stringResource(R.string.seek_back_10),
+            tint = Color.White,
+            modifier = Modifier.size(40.dp),
+        )
+    }
+}
+
+@Composable
+private fun SeekForwardControl(player: Player?) {
+    val state = rememberSeekForwardButtonState(player)
+    IconButton(onClick = state::onClick, modifier = Modifier.controlBacking()) {
+        Icon(
+            Icons.Filled.Forward30,
+            contentDescription = stringResource(R.string.seek_forward_30),
+            tint = Color.White,
+            modifier = Modifier.size(40.dp),
+        )
+    }
+}
+
+/** The centre button, larger than the rest, off media3's own play/pause state. */
+@Composable
+private fun PlayPauseControl(player: Player?) {
+    val state = rememberPlayPauseButtonState(player)
+    IconButton(onClick = state::onClick, modifier = Modifier.size(72.dp).controlBacking()) {
+        Icon(
+            if (state.showPlay) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+            contentDescription = stringResource(
+                if (state.showPlay) R.string.play else R.string.pause,
+            ),
+            tint = Color.White,
+            modifier = Modifier.size(56.dp),
+        )
+    }
+}
+
+/**
+ * The circular translucent disc behind each centre button.
+ *
+ * With the full-screen scrim gone the transport sits on raw video, and white-on-white is
+ * unreadable over a bright frame. media3's own `PlayerDefaults.mediumButtonModifier` does exactly
+ * this and is `internal`, so this replicates the idea rather than calling it.
+ */
+private fun Modifier.controlBacking(): Modifier =
+    background(Color.Black.copy(alpha = CONTROL_BACKING_ALPHA), CircleShape)
+
+/**
+ * The gradient behind the top bar, mirroring the one [PlayerDefaults.BottomControls] paints for
+ * itself: dark enough at the very top for white text, gone by the bottom of the row.
+ */
+@Composable
+private fun topControlsGradient(): Brush = Brush.verticalGradient(
+    listOf(Color.Black.copy(alpha = TOP_GRADIENT_ALPHA), Color.Transparent),
+)
 
 /**
  * The current chapter's name with a step arrow on either side, above the seek bar.
@@ -933,6 +1064,17 @@ private fun ImmersiveWhileHere(enabled: Boolean) {
 internal fun formatPosition(ms: Long): String =
     if (ms <= 0) "0:00" else formatDuration(ms / MILLIS_PER_SECOND)
 
+/**
+ * [ms] in the "%02d:%02d" shape media3's [PositionText] shows, through the same
+ * [Util.getStringForTime], so the scrub preview neither changes width nor style against the label
+ * it temporarily replaces. [formatPosition]'s single-digit minutes belong to the gesture overlay's
+ * large indicator, which never sits beside a media3-formatted duration.
+ */
+private fun formatPlayerTime(ms: Long): String {
+    val builder = StringBuilder()
+    return Util.getStringForTime(builder, Formatter(builder, Locale.getDefault()), ms)
+}
+
 /** What press-and-hold temporarily forces the speed to, until the finger lifts. */
 private const val HOLD_SPEED = 3f
 
@@ -940,7 +1082,12 @@ private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L
 private const val INDICATOR_LINGER_MS = 800L
 private const val MILLIS_PER_SECOND = 1_000L
-private const val SCRIM_ALPHA = 0.4f
+
+/** The disc behind each centre transport button, now that no full-screen scrim backs them. */
+private const val CONTROL_BACKING_ALPHA = 0.35f
+
+/** The top bar's own gradient, standing in for the scrim BottomControls replaced below. */
+private const val TOP_GRADIENT_ALPHA = 0.5f
 private const val DISABLED_ALPHA = 0.35f
 private const val PANEL_SCRIM_ALPHA = 0.6f
 private const val PANEL_BACKGROUND_ALPHA = 0.92f

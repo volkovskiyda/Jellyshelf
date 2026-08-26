@@ -1,20 +1,32 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -30,8 +42,19 @@ import java.text.NumberFormat
 @RunWith(AndroidJUnit4::class)
 class PlayerControlsTest {
 
+    /**
+     * [UnconfinedTestDispatcher] rather than the v2 default of `StandardTestDispatcher`, for the
+     * reason MiniPlayerHostingTest and LiveUiJourneyTest give: the default drains composition
+     * coroutines on the thread running the test rather than the main one, and every media3 state
+     * holder the controls now use observes its player from a `LaunchedEffect` — `SimpleBasePlayer`
+     * throws "Player is accessed on the wrong thread" from there. Unconfined resumes inline on the
+     * thread that composed, which is the main thread. Needed since the controls took a `Player`.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
     @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    val composeRule = createAndroidComposeRule<ComponentActivity>(
+        effectContext = UnconfinedTestDispatcher(),
+    )
 
     /**
      * Fails this class's tests on unlabelled clickables, undersized touch targets and unreadable
@@ -59,17 +82,17 @@ class PlayerControlsTest {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
                 PlayerControls(
+                    // Everything transport reads its state off the player now, so the harness
+                    // hands it one frozen at a fixed position rather than plain values.
+                    player = remember { FakePlayer(durationMs = 600_000L, positionMs = positionMs) },
+                    visible = true,
                     title = "Sample video",
-                    showPlay = false,
                     positionMs = positionMs,
                     durationMs = 600_000L,
                     chapters = chapters,
                     speed = speed,
                     hasPrevious = hasPrevious,
                     hasNext = hasNext,
-                    onPlayPause = {},
-                    onSeekBack = {},
-                    onSeekForward = {},
                     onPrevious = onPrevious,
                     onNext = onNext,
                     onSeek = onSeek,
@@ -126,6 +149,40 @@ class PlayerControlsTest {
 
         assertEquals(1, backs)
         assertEquals(1, minimizes)
+    }
+
+    /**
+     * While the thumb is down the position label previews the scrub target: media3's
+     * `PositionText` reads only the player's live position and `ProgressSlider` seeks on release,
+     * so without the preview the label sits on the old time for the whole drag — and on a
+     * chapterless video it is the only numeric feedback of where the finger will land. The shape
+     * assertion is the other half of the contract: the preview renders in `PositionText`'s own
+     * "%02d:%02d" figures, so nothing jumps when a drag begins.
+     */
+    @Test
+    fun draggingTheSlider_previewsTheScrubTargetInThePositionLabel() {
+        setControls(positionMs = 10_000L)
+        val label = composeRule.onNodeWithTag(PLAYER_POSITION_TAG)
+        label.assertTextEquals("00:10")
+
+        val slider = composeRule.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
+        // A real drag rather than one long jump: several timed moves past touch slop, the shape
+        // a finger produces, with the pointer still down when the label is read.
+        slider.performTouchInput {
+            down(center)
+            repeat(6) { moveBy(Offset(width / 16f, 0f), delayMillis = 32L) }
+        }
+        composeRule.waitForIdle()
+
+        val dragged = label.fetchSemanticsNode().config[SemanticsProperties.Text]
+            .joinToString("") { it.text }
+        assertNotEquals("00:10", dragged)
+        assertTrue(
+            "label \"$dragged\" left the media3 time shape",
+            dragged.matches(Regex("""\d{2,}:\d{2}""")),
+        )
+
+        slider.performTouchInput { up() }
     }
 
     @Test
@@ -235,6 +292,26 @@ class PlayerControlsTest {
         onDescription(R.string.next_chapter).assertIsNotEnabled()
         // Past the restart threshold into the last chapter, so previous still has work to do.
         onDescription(R.string.previous_chapter).assertIsEnabled()
+    }
+
+    /**
+     * The position label reads `"00:00"` at zero, not `"0:00"`.
+     *
+     * This is the one assertion standing under the baseline profile's whole playback leg.
+     * `BaselineProfileGenerator.playing()` waits for this label to say anything *other* than
+     * `ZERO_POSITION`, so if that constant and this format ever disagree the wait passes the
+     * instant the label appears — before a byte has streamed — and the profile silently stops
+     * covering playback while still generating cleanly.
+     *
+     * The format is media3's: `PositionText` goes through `Util.getStringForTime`, which pads to
+     * `"%02d:%02d"` below an hour, unlike our own `formatPosition`. Checking it here rather than
+     * only on a real profile run is what makes a media3 change to it fail loudly in CI.
+     */
+    @Test
+    fun theZeroPositionLabel_matchesWhatTheBaselineProfileWaitsOn() {
+        setControls(positionMs = 0L)
+
+        composeRule.onNodeWithTag(PLAYER_POSITION_TAG).assertTextEquals("00:00")
     }
 
     private companion object {

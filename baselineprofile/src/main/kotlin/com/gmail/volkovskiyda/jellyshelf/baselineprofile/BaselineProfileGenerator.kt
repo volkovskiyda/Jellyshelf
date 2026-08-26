@@ -251,7 +251,19 @@ class BaselineProfileGenerator {
     private companion object {
         /** The player's elapsed-position label, and what it reads before anything has played. */
         const val PLAYER_POSITION = "player_position"
-        const val ZERO_POSITION = "0:00"
+
+        /**
+         * Two digits, not one. The label is media3's `PositionText`, which formats through
+         * `Util.getStringForTime` — `"%02d:%02d"` below an hour, so zero reads `"00:00"`, not the
+         * `"0:00"` our own `formatPosition` produces elsewhere.
+         *
+         * This is the whole playback leg's tripwire and it fails silently: [playing]'s negative
+         * lookahead would *match* `"00:00"` against a stale `"0:00"` here, returning true the
+         * instant the label appears and before a byte has streamed. Profiles would still generate,
+         * just without playback exercised. The tell, per docs/BASELINE-PROFILE.md, is
+         * `grep -c Lokhttp3 startup-prof.txt` collapsing from >1000 toward the demo figure.
+         */
+        const val ZERO_POSITION = "00:00"
 
         const val PLAY = "Play"
 
