@@ -10,7 +10,9 @@ import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.TraceSectionMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.Until
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -168,6 +170,101 @@ class JourneyBenchmark {
         repeat(SCROLLS - 1) { flingScreen(Direction.DOWN) }
     }
 
+    /**
+     * Opening a video and advancing to the next one, which is the whole of what this app's playback
+     * performance is: a tap to the first frame, and a queue advance to the next first frame.
+     *
+     * Three sections, and they answer different questions. [PLAYER_RESOLVE] is our own work — a
+     * settings read and a Room read per item — and is the only one that is not mostly waiting.
+     * [PLAYER_STARTUP] is the whole tap-to-first-frame window `player_startup` reports in the
+     * field. [PLAYER_TRANSITION] is the queue advance, and is the only one an ExoPlayer flag about
+     * per-stream media progression can move; measuring startup alone would return a clean null
+     * result and be believed.
+     *
+     * **Live and demo numbers are not comparable to each other.** With a filled `.test.env` this
+     * streams from a real Jellyfin over the network; without one it reads a bundled `asset:` clip
+     * with no network at all, which is a different measurement wearing the same name. Compare a
+     * number only against another taken in the same mode, on the same device, in the same sitting.
+     *
+     * Cold, like [startup], because a queue's first item is a cold start in practice — the user
+     * came from the library, not from another video.
+     */
+    @OptIn(ExperimentalMetricApi::class)
+    @Test
+    fun playback() = rule.measureRepeated(
+        packageName = targetPackage,
+        metrics = listOf(
+            TraceSectionMetric(PLAYER_STARTUP, TraceSectionMetric.Mode.Sum),
+            TraceSectionMetric(PLAYER_RESOLVE, TraceSectionMetric.Mode.Sum),
+            TraceSectionMetric(PLAYER_TRANSITION, TraceSectionMetric.Mode.Sum),
+        ),
+        compilationMode = CompilationMode.Partial(BaselineProfileMode.Require),
+        startupMode = StartupMode.COLD,
+        iterations = ITERATIONS,
+        setupBlock = { pressHome() },
+    ) {
+        startActivityAndWait()
+        awaitLibrary(LIBRARY_TIMEOUT_MS)
+        openFirstVideoDetails()
+
+        // The same reach-then-settle-then-reach the generator documents: the thumbnail above the
+        // button loads while this screen is being read, and the layout it settles into moves
+        // everything below it, so a tap aimed at where the button was lands on nothing.
+        scrollTo(By.text(PLAY)) { "The detail screen never offered playback." }
+        awaitContentStill()
+        await(By.text(PLAY), TIMEOUT_MS) {
+            "The Play button left the detail screen while it was being reached for."
+        }.click()
+        awaitPlaybackUnderway()
+
+        advanceToNextItem()
+
+        // Back out to the library before the iteration ends, which is not tidiness: the app is
+        // otherwise left sitting in the player, and the next iteration's cold start does not land
+        // on the library — its [awaitLibrary] then fails and takes the whole run with it. Measured
+        // on a Pixel 5: iteration 1 passed, iteration 2 died on exactly that.
+        //
+        // Inside the measured block rather than in [setupBlock] because setupBlock runs before the
+        // process kill, and because the three metrics here are named trace sections — work after
+        // the last of them closes costs wall-clock, not accuracy. Backing out also stops playback,
+        // which is what keeps a foreground media session from surviving into the next iteration.
+        returnToTopLevel()
+    }
+
+    /**
+     * Drives one queue advance with the next button, and waits for the new item to really be
+     * playing before the measurement ends.
+     *
+     * Driven explicitly rather than by waiting out a whole video, for the obvious reason.
+     *
+     * The enabled check is what stops a queue of one from silently measuring nothing. The button
+     * dims at the end of the queue, so on a single-item queue the tap would land on a dead control,
+     * [PLAYER_TRANSITION] would never open, and the metric would report zero — which reads as
+     * "free" rather than as "never happened". Failing loudly here is the whole point of the check;
+     * per this benchmark's own rule, a zero is to be chased, not recorded.
+     *
+     * The controls hide three seconds into playing, so the button usually is not on screen when
+     * this arrives. One tap to reveal them, never a loop: two in quick succession are a double tap,
+     * which seeks.
+     */
+    private fun MacrobenchmarkScope.advanceToNextItem() {
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
+        val next = device.wait(Until.findObject(By.desc(NEXT_VIDEO)), TIMEOUT_MS)
+        checkNotNull(next) {
+            "The player never offered a next button, so there is no transition here to measure."
+        }
+        check(next.isEnabled) {
+            "The next button is disabled, so this queue holds one video. A transition benchmark " +
+                "needs a row that opens as a multi-video queue — check the library has more than " +
+                "one video and that the row was opened rather than a single video played directly."
+        }
+        next.click()
+
+        // The advance is not the measurement; the new item's first frame is. Reuse the same
+        // position-label signal the first item was waited on with.
+        awaitPlaybackUnderway()
+    }
+
     private companion object {
         /**
          * The section names, repeated from `:app`'s `util/Traces.kt`.
@@ -177,11 +274,18 @@ class JourneyBenchmark {
          * its own copies of the resource ids it steers by. That makes these a contract rather than a
          * reference, and a one-sided rename does not fail to compile, it silently measures nothing.
          * `Traces` says so on the other side too.
+         *
+         * That applies to the three player sections as much as to the launch ones — more so, since
+         * [playback] is the only thing that reads them and a zero there is indistinguishable from a
+         * fast transition until someone opens the trace.
          */
         const val APP_ON_CREATE = "Jellyshelf.app.onCreate"
         const val START_KOIN = "Jellyshelf.app.startKoin"
         const val ACTIVITY_ON_CREATE = "Jellyshelf.activity.onCreate"
         const val LIBRARY_BROWSE = "Jellyshelf.library.browse"
+        const val PLAYER_RESOLVE = "Jellyshelf.player.resolve"
+        const val PLAYER_STARTUP = "Jellyshelf.player.startup"
+        const val PLAYER_TRANSITION = "Jellyshelf.player.transition"
 
         /**
          * Enough for a median to mean something without the device heating up, which changes the

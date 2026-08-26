@@ -67,4 +67,33 @@ object Traces {
      * thread other than the one it began on, and `beginSection`/`endSection` are thread-confined.
      */
     const val PLAYER_RESOLVE = "Jellyshelf.player.resolve"
+
+    /**
+     * A tap to the first frame it produces: the same window Firebase's `player_startup` trace
+     * covers, as a system-trace section so a macrobenchmark can read it without a release build and
+     * a week of field data. [PLAYER_RESOLVE] is the first slice of this one.
+     *
+     * Async, and for the same reason [PLAYER_RESOLVE] is — it spans a suspend-and-decode, so it
+     * neither begins nor ends on one known thread.
+     *
+     * Unlike the Firebase trace it does *not* skip the bundled demo clip. That skip exists to keep
+     * demo runs out of production analytics, which does not apply to a local measurement — and a
+     * section that vanished on a device with no server would make the benchmark silently
+     * unmeasurable rather than obviously wrong.
+     */
+    const val PLAYER_STARTUP = "Jellyshelf.player.startup"
+
+    /**
+     * One media item to the first frame of the next: what a queue advance costs, whether it came
+     * from the next button or from an item simply ending.
+     *
+     * Separate from [PLAYER_STARTUP] because the two are moved by different things — a transition
+     * reuses a prepared player and a warm connection — and because the queue's *first* item fires a
+     * transition too (`MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED`). That one is deliberately not
+     * measured here: counting it would make every startup also report a transition, and the two
+     * metrics would stop being independent.
+     *
+     * Async, like the two above, and for the same reason.
+     */
+    const val PLAYER_TRANSITION = "Jellyshelf.player.transition"
 }

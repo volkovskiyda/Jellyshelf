@@ -13,6 +13,7 @@ import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
+import java.util.regex.Pattern
 
 // Getting the app from *just installed* to *a populated library on screen*, and the handles that
 // steer it there.
@@ -579,3 +580,139 @@ internal const val TEXT_VIEW = "android.widget.TextView"
 
 /** Deep enough for player → detail → library, with room to spare. */
 internal const val MAX_BACK_PRESSES = 5
+
+/**
+ * Opens the first video's detail screen.
+ *
+ * A row is two targets — the thumbnail plays, the text beside it opens the details — so this
+ * clicks a details zone. The *topmost* one, by position rather than by match order: after a
+ * scroll the first match can be a row clipped by the top bar, whose centre falls outside both
+ * targets and lands on nothing.
+ *
+ * Measuring rows on a list that is still settling is a race rather than a mistake — the node
+ * found one IPC ago can be gone by the next, which UiAutomator reports as a
+ * [androidx.test.uiautomator.StaleObjectException] out of the middle of the journey. Hence the
+ * settle wait and the retry: both are cheaper than a generation run that fails at the last
+ * step, which is what a bare `visibleBounds` read here cost on both devices.
+ */
+internal fun MacrobenchmarkScope.openFirstVideoDetails() {
+    await(By.res(ROW_DETAILS), TIMEOUT_MS) {
+        "No details zone to open — the rows rendered but carry no $ROW_DETAILS tag."
+    }
+    // The list arrives here still coasting from the fling above, and everything below reads it
+    // over IPC one node at a time — see [awaitContentStill] for why waiting is not politeness.
+    awaitContentStill()
+    repeat(TAP_ATTEMPTS) {
+        val rows = device.findObjects(By.res(ROW_DETAILS)).mapNotNull { it.boundsOrGone() }
+        // The tallest row on screen is the yardstick for a whole one, because a fixed pixel
+        // count only ever fits one device: the same two lines of text measure 96 px on the
+        // Pixel Tablet in landscape and half again as much on the Pixel 5, so a threshold
+        // generous enough to keep the phone's rows rejected every row the tablet had.
+        val whole = rows.maxOfOrNull { it.height() } ?: 0
+        val target = rows.filter { it.height() * UNCLIPPED_PARTS >= whole }.minByOrNull { it.top }
+        if (target != null) {
+            // By coordinate rather than through the node: [UiObject2.click] re-reads the bounds
+            // over IPC and throws StaleObjectException if the row has left the tree since it
+            // was measured. The point is the same pixel either way.
+            device.click(target.centerX(), target.centerY())
+            device.waitForIdle()
+            return
+        }
+        // Every candidate went stale mid-measurement, so the list is still moving after all.
+        awaitContentStill()
+    }
+    error(
+        "No library row stayed still long enough to tap: every $ROW_DETAILS match was either " +
+            "clipped to a fraction of a whole row or left the tree while it was being measured.",
+    )
+}
+
+/**
+ * Waits for playback to actually start, rather than for the player screen to appear: the point
+ * of this step is the streaming path, and a player sitting on a failed load would profile none
+ * of it.
+ *
+ * The signal is the *elapsed-position label*, once it reads something other than zero. The
+ * pause button is not enough and used to be what this waited for: the icon follows the
+ * play/pause intent, so it appears the moment the tap lands — before a byte is fetched, with
+ * the seek bar still disabled for want of a duration. A run could pass this check and profile a
+ * player that never streamed, which is the one failure the whole live-server setup exists to
+ * avoid. The position only moves when frames do.
+ */
+internal fun MacrobenchmarkScope.awaitPlaybackUnderway() {
+    if (playing(PLAYBACK_TIMEOUT_MS)) return
+
+    // Two things hide a playing video's controls, and they need opposite handling: a permission
+    // dialog sits *over* them, so dismissing it reveals controls that were there all along,
+    // while the player's own auto-hide needs a tap to bring them back. Tapping blind would
+    // switch the controls off in the first case, so try the dialog first and re-check between.
+    device.findObject(By.res(ALLOW_PERMISSION_BUTTON))?.let { allow ->
+        allow.click()
+        if (playing(TIMEOUT_MS)) return
+    }
+    // One tap, never a loop: two in quick succession are a double tap, which seeks.
+    device.click(device.displayWidth / 2, device.displayHeight / 2)
+    check(
+        playing(TIMEOUT_MS),
+        diagnose {
+            if (JourneyConfig.liveServer) {
+                "Playback never got past 0:00. The server may be refusing to stream this " +
+                    "item, or the playback mode may have been left on an external player."
+            } else {
+                "The bundled demo clip never played."
+            }
+        },
+    )
+}
+
+/**
+ * Whether the player's position label has moved off zero, i.e. the video is really rolling.
+ *
+ * Absent while the controls are hidden — they go three seconds into playing — which is a false
+ * negative the caller answers with a tap, not with a retry loop of its own.
+ */
+internal fun MacrobenchmarkScope.playing(timeoutMs: Long): Boolean = device.wait(
+    Until.hasObject(By.res(PLAYER_POSITION).text(Pattern.compile("(?!^$ZERO_POSITION$).+"))),
+    timeoutMs,
+)
+
+/** The player's elapsed-position label, and what it reads before anything has played. */
+internal const val PLAYER_POSITION = "player_position"
+
+/**
+ * Two digits, not one. The label is media3's `PositionText`, which formats through
+ * `Util.getStringForTime` — `"%02d:%02d"` below an hour, so zero reads `"00:00"`, not the `"0:00"`
+ * our own `formatPosition` produces elsewhere.
+ *
+ * This is the whole playback leg's tripwire and it fails silently: [playing]'s negative lookahead
+ * would *match* `"00:00"` against a stale `"0:00"` here, returning true the instant the label
+ * appears and before a byte has streamed. Profiles would still generate, just without playback
+ * exercised. The tell, per docs/BASELINE-PROFILE.md, is `grep -c Lokhttp3 startup-prof.txt`
+ * collapsing from >1000 toward the demo figure.
+ *
+ * Here rather than in either caller because both the generator and the benchmark wait on it, and
+ * two copies of a constant whose whole failure mode is silence is exactly one copy too many.
+ */
+internal const val ZERO_POSITION = "00:00"
+
+internal const val PLAY = "Play"
+
+/** The player's next-video button, by its content description. */
+internal const val NEXT_VIDEO = "Next video"
+
+/** The system permission dialog's grant button, by id so it does not depend on locale. */
+internal const val ALLOW_PERMISSION_BUTTON =
+    "com.android.permissioncontroller:id/permission_allow_button"
+
+/** A real stream may transcode before the first frame arrives. */
+internal const val PLAYBACK_TIMEOUT_MS = 30_000L
+
+/**
+ * How much of a whole row has to be showing for its centre to be a safe tap: one part in this many,
+ * i.e. half of it. Below that the row is being cut by the top bar, and its centre can fall on the
+ * bar rather than on either of the row's two click targets.
+ */
+internal const val UNCLIPPED_PARTS = 2
+
+/** Tries at finding a row that holds still for long enough to be measured and tapped. */
+internal const val TAP_ATTEMPTS = 3
