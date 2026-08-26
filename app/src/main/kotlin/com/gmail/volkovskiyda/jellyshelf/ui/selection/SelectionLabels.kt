@@ -2,10 +2,10 @@ package com.gmail.volkovskiyda.jellyshelf.ui.selection
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.RemoveDone
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
@@ -28,18 +28,18 @@ internal val SelectionAction.menuLabel: Int
     }
 
 /**
- * The glyph beside each row. Double ticks for the two watch-state actions, because that is what
- * they are — a mark applied to many videos at once — and the struck-through one is the only pair
- * member that differs in shape rather than only in fill, which is what stops two adjacent rows
- * meaning opposite things from looking alike.
+ * The glyph beside each row. The watch-state pair is the same tick filled and outlined, which is
+ * the app's own vocabulary for that state rather than a new one invented for this menu — it is
+ * what a video row already wears to say whether it has been watched, so the menu row and the
+ * result it produces look like each other.
  *
  * Decorative: every row is already named by the text beside it, and a description here would have
  * TalkBack read each one twice.
  */
 internal val SelectionAction.menuIcon: ImageVector
     get() = when (this) {
-        SelectionAction.MARK_WATCHED -> Icons.Filled.DoneAll
-        SelectionAction.MARK_UNWATCHED -> Icons.Filled.RemoveDone
+        SelectionAction.MARK_WATCHED -> Icons.Filled.CheckCircle
+        SelectionAction.MARK_UNWATCHED -> Icons.Outlined.CheckCircle
         SelectionAction.UPDATE_METADATA -> Icons.Filled.CloudDownload
         SelectionAction.REMOVE -> Icons.Filled.DeleteForever
     }

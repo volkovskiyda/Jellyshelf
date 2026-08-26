@@ -3,9 +3,9 @@ package com.gmail.volkovskiyda.jellyshelf.ui.selection
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.RemoveDone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -35,7 +35,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
  * Select all and Deselect all are two buttons rather than one that toggles, which is what the
  * screen was asked for and also what makes them safe: a toggle's meaning depends on state the user
  * has to read off the screen first, and getting it wrong here throws away a selection. Each is
- * disabled when it would do nothing, so the pair is self-describing.
+ * disabled when it would do nothing, so the pair is self-describing. Their glyphs are the double
+ * tick and its struck-through twin: a pair that differs in shape rather than only in fill, which
+ * is what keeps two adjacent buttons meaning opposite things from looking alike.
  *
  * The four actions sit behind the overflow rather than on the bar. Three of them are recoverable
  * by acting again; the fourth deletes media on the Jellyfin server, and a one-tap target for that
@@ -75,10 +77,10 @@ internal fun SelectionTopBar(
         },
         actions = {
             IconButton(onClick = onSelectAll, enabled = canSelectAll) {
-                Icon(Icons.Filled.SelectAll, contentDescription = stringResource(R.string.select_all))
+                Icon(Icons.Filled.DoneAll, contentDescription = stringResource(R.string.select_all))
             }
             IconButton(onClick = onDeselectAll, enabled = selectedCount > 0) {
-                Icon(Icons.Filled.Deselect, contentDescription = stringResource(R.string.deselect_all))
+                Icon(Icons.Filled.RemoveDone, contentDescription = stringResource(R.string.deselect_all))
             }
             SelectionActionsMenu(enabled = canAct, onAction = onAction, onCreatePlaylist = onCreatePlaylist)
         },
