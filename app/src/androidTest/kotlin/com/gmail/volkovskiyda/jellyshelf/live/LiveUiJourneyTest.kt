@@ -29,6 +29,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
+import com.gmail.volkovskiyda.jellyshelf.DisableAutofillRule
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinApi
@@ -123,8 +124,17 @@ class LiveUiJourneyTest : KoinTest {
      * its effect is resumed. Unconfined resumes inline on the thread that composed, which is the
      * main thread — the behaviour the deprecated v1 factories had.
      */
+    /**
+     * The journey types the real `.test.env` password into an autofill-aware form, and a device
+     * with Google Password Manager answers the successful sign-in with its full-screen save
+     * sheet — see [DisableAutofillRule] for why it is prevented rather than dismissed. Outermost,
+     * so the service is off before anything composes and back on however the test ends.
+     */
+    @get:Rule(order = 0)
+    val disableAutofill = DisableAutofillRule()
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    @get:Rule
+    @get:Rule(order = 1)
     val composeRule = createEmptyComposeRule(UnconfinedTestDispatcher())
 
     private val config by inject<JellyfinTestConfig>()
