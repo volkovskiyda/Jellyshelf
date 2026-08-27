@@ -147,6 +147,11 @@ material = { group = "com.google.android.material", name = "material", version.r
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 # HLS support is only reachable through the transcoding fallback (util/Playback.hlsUrl).
 androidx-media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
+# The container parsers, declared rather than left transitive because we name one of its classes:
+# Chapter (androidx.media3.extractor.metadata) is how 1.11.0 surfaces chapters read out of MP4 and
+# Matroska. It arrives with media3-exoplayer either way; declaring it means a future exoplayer that
+# stops depending on it fails the build here rather than at the one call site.
+androidx-media3-extractor = { group = "androidx.media3", name = "media3-extractor", version.ref = "media3" }
 androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 # media3's Ktor-backed HttpDataSource, so video streams go over the same stack as the API and
 # the images rather than over HttpURLConnection. Its POM drags ktor-client-android in as a

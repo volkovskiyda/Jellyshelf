@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
@@ -20,6 +21,7 @@ import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.util.embeddedChapters
 import com.gmail.volkovskiyda.jellyshelf.util.parseTimecodes
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.google.common.util.concurrent.ListenableFuture
@@ -27,6 +29,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -75,14 +78,26 @@ class PlayerViewModel(
         .stateIn(viewModelScope, WhileUiSubscribed, null)
 
     /**
-     * The player's chapters: description-parsed timecodes first ([parseTimecodes]), structured
-     * yt-dlp chapters filling the gap — description wins when both exist (locked priority).
+     * Chapters the media file carries itself, read by media3's extractors — empty for everything
+     * this app streams from a server. Last in [chapters]' order, and see [embeddedChapters].
      */
-    val chapters: StateFlow<List<Chapter>> = video
-        .map { video ->
-            parseTimecodes(video?.description, video?.durationSeconds ?: 0L)
-                .ifEmpty { video?.chapters.orEmpty() }
-        }
+    private val embeddedChapters = MutableStateFlow<List<Chapter>>(emptyList())
+
+    /**
+     * The player's chapters: description-parsed timecodes first ([parseTimecodes]), structured
+     * yt-dlp chapters filling the gap — description wins when both exist (locked priority) —
+     * and, only when neither exists, whatever the container itself declares ([embeddedChapters]).
+     *
+     * The container goes last deliberately: it is the source we know least about. A Jellyfin video
+     * has chapters that came from the uploader's own description or from yt-dlp, and a remuxed file
+     * can carry stale ones from whatever produced it. This changes nothing for a synced video and
+     * everything for a local file that has no other source.
+     */
+    val chapters: StateFlow<List<Chapter>> = combine(video, embeddedChapters) { video, embedded ->
+        parseTimecodes(video?.description, video?.durationSeconds ?: 0L)
+            .ifEmpty { video?.chapters.orEmpty() }
+            .ifEmpty { embedded }
+    }
         .stateIn(viewModelScope, WhileUiSubscribed, emptyList())
 
     private val _controller = MutableStateFlow<MediaController?>(null)
@@ -131,8 +146,23 @@ class PlayerViewModel(
             controller.addListener(object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     currentId.value = mediaItem?.mediaId ?: currentId.value
+                    // The new item's tracks have not been read yet, and the old item's chapters
+                    // must not survive into it — a stale list is worse than none, since every
+                    // entry seeks to the wrong place.
+                    embeddedChapters.value = emptyList()
+                }
+
+                override fun onTracksChanged(tracks: Tracks) {
+                    embeddedChapters.value = tracks.embeddedChapters()
                 }
             })
+            // A listener replays no history: attaching to playback already under way — reopened
+            // from the bar or the notification — means the current item's tracks were read before
+            // this controller connected, and no onTracksChanged for them will ever arrive. Seeding
+            // from the snapshot is what keeps a container's chapters on screen across a
+            // minimize-and-reopen; for a queue this init just started, currentTracks is still
+            // empty and this writes the emptyList it already holds.
+            embeddedChapters.value = controller.currentTracks.embeddedChapters()
             _controller.value = controller
         }
     }

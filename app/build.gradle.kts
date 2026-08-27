@@ -732,6 +732,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.extractor)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.datasource.ktor) {
         // The HttpURLConnection engine it declares as a default. KtorDataSource.Factory
