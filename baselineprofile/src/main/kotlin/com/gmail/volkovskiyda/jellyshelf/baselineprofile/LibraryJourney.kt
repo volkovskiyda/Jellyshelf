@@ -687,8 +687,11 @@ internal const val PLAYER_POSITION = "player_position"
  * This is the whole playback leg's tripwire and it fails silently: [playing]'s negative lookahead
  * would *match* `"00:00"` against a stale `"0:00"` here, returning true the instant the label
  * appears and before a byte has streamed. Profiles would still generate, just without playback
- * exercised. The tell, per docs/BASELINE-PROFILE.md, is `grep -c Lokhttp3 startup-prof.txt`
- * collapsing from >1000 toward the demo figure.
+ * exercised. The tell is `grep -c Landroidx/media3 baseline-prof.txt` and `grep -c MediaCodec`
+ * beside it collapsing — 5,819 and 417 on a profile whose playback leg ran. That says playback
+ * *happened*, not that it streamed: a demo run plays a bundled clip and scores the same (5,848 and
+ * 431, measured 2026-08-27). Liveness is a different question with a different check — see
+ * docs/BASELINE-PROFILE.md, whose okhttp row this used to point at wrongly.
  *
  * Here rather than in either caller because both the generator and the benchmark wait on it, and
  * two copies of a constant whose whole failure mode is silence is exactly one copy too many.

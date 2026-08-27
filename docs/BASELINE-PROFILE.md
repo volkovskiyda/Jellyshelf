@@ -148,8 +148,10 @@ itself.
 ## Verify before committing
 
 Both failure modes below produce a *plausible-looking* file, so check rather than assume. Figures in
-the last column come from a healthy run — successive runs vary by a few hundred entries either way,
-so a new profile should land in the same ballpark rather than match exactly.
+the last column were measured on **the profile currently committed** (generated live on the Pixel 5,
+2026-08-26) — successive runs vary by a few hundred entries either way, so a new profile should land
+in the same ballpark rather than match exactly. Refresh them here when you commit a profile that
+moves them materially.
 
 Start with what the run itself prints — the plugin compares the new profile against the one it
 replaces:
@@ -174,28 +176,71 @@ cd app/src/release/generated/baselineProfiles
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| Not obfuscated | `head -3 baseline-prof.txt` | readable names (`PLandroidx/activity/ActivityFlags;-><clinit>()V`) — **not** `La0;` / `Lzz0;` |
-| App code is in it | `grep -c Lcom/gmail/volkovskiyda baseline-prof.txt` | thousands (2,960) |
-| …and in the startup profile | `grep -c Lcom/gmail/volkovskiyda startup-prof.txt` | hundreds to low thousands (1,097) |
-| The two differ | `cmp -s baseline-prof.txt startup-prof.txt && echo IDENTICAL` | prints nothing (47,203 vs 31,525 lines) |
-| Startup is startup-shaped | `grep -c ui/library startup-prof.txt` then `ui/player` | the library dominates (140) and the player is absent (1) |
-| Playback was profiled | `grep -c Landroidx/media3 baseline-prof.txt` | thousands (5,346), with `grep -c MediaCodec` in the hundreds (386) |
-| The real network path landed | `grep -c Lokhttp3 startup-prof.txt` | **over a thousand** (1,402) — a *demo* run leaves this around 110, and that gap is the whole reason the reference profile wants a live server |
+| Not obfuscated | `head -3 baseline-prof.txt` | readable names (`SPLandroidx/activity/ActivityFlags;-><clinit>()V`) — **not** `La0;` / `Lzz0;` |
+| App code is in it | `grep -c Lcom/gmail/volkovskiyda baseline-prof.txt` | thousands (3,843) |
+| …and in the startup profile | `grep -c Lcom/gmail/volkovskiyda startup-prof.txt` | hundreds to low thousands (1,491) |
+| The two differ | `cmp -s baseline-prof.txt startup-prof.txt && echo IDENTICAL` | prints nothing (50,294 vs 31,089 lines) |
+| Startup is startup-shaped | `grep -c ui/player startup-prof.txt` then the same on `baseline-prof.txt` | the player is **absent** from startup (1) and heavily present in the full profile (259); `ui/library` is in the hundreds either way (202 and 208) |
+| Playback was profiled | `grep -c Landroidx/media3 baseline-prof.txt` then the same on `startup-prof.txt` | thousands in the full profile (5,819) and single digits at startup (5), with `grep -c MediaCodec` in the hundreds (417) against 0. Proves playback *ran* — not that it streamed: demo plays a bundled clip and scores the same (5,848/431) |
+| The real network path landed | `grep -c Lokhttp3 baseline-prof.txt` then `grep -ci ktor` | **thousands** — 1,512 and 2,183 live, against **96 and 688** for demo. Note the file: this is `baseline-prof.txt`, **not** `startup-prof.txt`, which reads 96/672 either way and cannot tell them apart at all |
 | LFS-tracked | `git check-attr filter -- baseline-prof.txt startup-prof.txt` | `filter: lfs` on both |
 | Release still builds device-free | `./gradlew :app:assembleRelease` (device unplugged) | succeeds |
 
-The last row is the one that tells a live-server profile from a demo one at a glance. Launching into
-a *real* library loads the HTTP stack and Coil's network fetcher on the cold-start path; launching
-into a bundled asset barely touches them, and the startup profile is read on every launch.
+**The network row, and what it can and cannot tell you.** It used to read
+`grep -c Lokhttp3 startup-prof.txt`, expecting *"over a thousand (1,402), where a demo run leaves
+around 110"*. **That was wrong, and it failed in the direction that matters: it reads a live run as a
+demo one.** Corrected 2026-08-27 after two separate live runs on the Pixel 5 — real sign-in, real
+sync, real stream — left that count at **96** and **98**. The profile committed before them, also
+generated live, has 98. The >1,000 figure belongs to `baseline-prof.txt` (1,512 on the current
+reference, 1,527 on the one before it), so the row simply named the wrong file.
+
+`grep -ci ktor` sits beside it because since `1801dbd` every byte the app moves — API, thumbnails
+and now video — goes over Ktor on the OkHttp engine. Moving media onto it took `baseline-prof.txt`
+from 2,098 to 2,183, so that count is the one that tracks the app's whole network surface now. The
+okhttp count barely moves when a third consumer joins an engine the other two had already profiled
+in full.
 
 Then commit both files. They are regenerated wholesale rather than edited, which is why
 `.gitattributes` sends them to LFS.
+
+### Telling a live profile from a demo one
+
+Measured 2026-08-27 by generating both on the same Pixel 5, same commit, `.test.env` moved aside for
+the demo half. **Only the network counts on `baseline-prof.txt` separate them**; everything else is
+either identical or within run-to-run noise.
+
+| `grep -c` on `baseline-prof.txt` | Live | Demo | Separates? |
+|---|---|---|---|
+| `Lokhttp3` | 1,512 | 96 | **yes — 16×** |
+| `ktor` (`-i`) | 2,183 | 688 | **yes — 3×** |
+| total rules | 50,294 | 43,807 | roughly — 13% fewer |
+| `Lcom/gmail/volkovskiyda` | 3,843 | 3,235 | weakly |
+| `Landroidx/media3` | 5,819 | 5,848 | **no** |
+| `MediaCodec` | 417 | 431 | **no** |
+| `ui/player` | 259 | 243 | **no** |
+| `ui/library` | 208 | 206 | **no** |
+
+Two consequences worth keeping straight:
+
+**`startup-prof.txt` can never answer this.** Live and demo both leave it at 96 okhttp3 and 672 ktor
+— the same numbers, not merely similar ones. The cold launch it profiles reads an already-synced
+library from disk with thumbnails already in Coil's cache, so it barely touches the network whatever
+the run was pointed at. Any liveness check against that file is measuring nothing.
+
+**Playback rules do not prove a stream.** Demo mode plays a bundled clip, so media3 and `MediaCodec`
+land in the profile just as heavily as a real stream does. Those rows prove the playback leg *ran*,
+which is the failure they exist to catch — they say nothing about where the bytes came from.
+
+So: to prove a profile is live, use `grep -c Lokhttp3 baseline-prof.txt` and expect four figures.
+The demo seed and bundled-clip paths that a live run drops instead of gaining are visible in the
+plugin's own summary — the demo run above reported `6850 Removed rules (13.52%)` against the live
+profile it replaced.
 
 ## When to regenerate
 
 When the **startup path changes shape** — a different first screen, a reworked navigation stack, a
 new library pulled onto the launch path, a major Compose or Media3 bump. Not on every commit: a
-profile that is a few weeks stale still compiles the right code, and the diff is 68k lines of LFS
+profile that is a few weeks stale still compiles the right code, and the diff is 81k lines of LFS
 object either way.
 
 After an **AGP or `androidx.baselineprofile` upgrade**, regenerate once and re-check the obfuscation
