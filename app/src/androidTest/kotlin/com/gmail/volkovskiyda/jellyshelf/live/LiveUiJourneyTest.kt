@@ -112,6 +112,15 @@ import java.util.UUID
 class LiveUiJourneyTest : KoinTest {
 
     /**
+     * The journey types the real `.test.env` password into an autofill-aware form, and a device
+     * with Google Password Manager answers the successful sign-in with its full-screen save
+     * sheet — see [DisableAutofillRule] for why it is prevented rather than dismissed. Outermost,
+     * so the service is off before anything composes and back on however the test ends.
+     */
+    @get:Rule(order = 0)
+    val disableAutofill = DisableAutofillRule()
+
+    /**
      * Empty rather than `createAndroidComposeRule<MainActivity>()`: that launches the activity as
      * the rule is applied, which is *before* [setUp] can sign in and wipe the persisted state the
      * launch reads.
@@ -124,15 +133,6 @@ class LiveUiJourneyTest : KoinTest {
      * its effect is resumed. Unconfined resumes inline on the thread that composed, which is the
      * main thread — the behaviour the deprecated v1 factories had.
      */
-    /**
-     * The journey types the real `.test.env` password into an autofill-aware form, and a device
-     * with Google Password Manager answers the successful sign-in with its full-screen save
-     * sheet — see [DisableAutofillRule] for why it is prevented rather than dismissed. Outermost,
-     * so the service is off before anything composes and back on however the test ends.
-     */
-    @get:Rule(order = 0)
-    val disableAutofill = DisableAutofillRule()
-
     @OptIn(ExperimentalCoroutinesApi::class)
     @get:Rule(order = 1)
     val composeRule = createEmptyComposeRule(UnconfinedTestDispatcher())
