@@ -152,7 +152,8 @@ jobs:
             --device model=MediumTablet.arm,version=31,orientation=landscape \
             --device model=MediumPhone.arm,version=36 \
             --device model=frankel,version=36 \
-            --timeout 25m
+            --timeout 25m \
+            --num-flaky-test-attempts 1
 
   # Every green main push reaches testers, with no manual step. PRs never get here.
   distribute:

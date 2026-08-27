@@ -96,7 +96,8 @@ jobs:
             --device model=MediumPhone.arm,version=31 \
             --device model=MediumTablet.arm,version=35 \
             --device model=tangorpro,version=33 \
-            --timeout 25m
+            --timeout 25m \
+            --num-flaky-test-attempts 1
 
   release:
     needs: [testlab]   # nothing reaches the Releases page until the matrix above is green
