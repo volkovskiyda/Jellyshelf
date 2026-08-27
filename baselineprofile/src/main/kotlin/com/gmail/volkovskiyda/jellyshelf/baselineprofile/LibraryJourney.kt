@@ -353,7 +353,7 @@ private fun MacrobenchmarkScope.sweep(direction: Direction, selector: BySelector
 }
 
 /** Scrolls [direction] until the content stops moving, i.e. to that end of the container. */
-private fun MacrobenchmarkScope.sweepToEnd(direction: Direction) {
+internal fun MacrobenchmarkScope.sweepToEnd(direction: Direction) {
     repeat(MAX_SCROLLS) { if (!scrollScreen(direction)) return }
 }
 
@@ -734,6 +734,13 @@ internal const val PLAY = "Play"
 
 /** The player's next-video button, by its content description. */
 internal const val NEXT_VIDEO = "Next video"
+
+/**
+ * The player top bar's minimize button, by content description — the one affordance that leaves
+ * the player with the session alive. Back is the stop sequence, so a journey that wants the
+ * mini-player bar on screen goes through this and nothing else.
+ */
+internal const val MINIMIZE_PLAYER = "Minimize player"
 
 /** The mini-player bar's stop button, by content description — the bar's presence marker. */
 internal const val MINI_PLAYER_STOP = "Stop playback"

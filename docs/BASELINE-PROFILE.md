@@ -352,7 +352,8 @@ network at all.
 ## Is it earning its place?
 
 `JourneyBenchmark`, beside the generator in this module, is where that question is answered. It
-replays a cold launch and a library scroll against the same `benchmarkRelease` variant — minified,
+replays a cold launch, a library scroll (bare, and again with a video playing on in the mini-player
+bar), and a playback journey against the same `benchmarkRelease` variant — minified,
 so it stays release-like, and carrying the same `.benchmark` application id for the same reason the
 profiling variant does: a measurement run must not cost you the app you actually use.
 

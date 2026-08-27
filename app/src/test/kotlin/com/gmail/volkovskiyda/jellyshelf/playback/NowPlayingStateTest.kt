@@ -182,4 +182,22 @@ class NowPlayingStateTest {
 
         assertNull(state.nowPlaying.value)
     }
+
+    /**
+     * A queue advance publishes a fresh item through [NowPlayingState.show], and the fresh item
+     * must not inherit the outgoing one's position: the service's [show] call carries no
+     * progress, so the line disappears until the new video's first tick rather than standing at
+     * the old video's fraction — which would be a confident claim about a video it never
+     * measured, for up to a whole tick. Pinned because the tempting refactor is a `copy` that
+     * preserves "unrelated" fields, and progress is exactly the field that must not survive.
+     */
+    @Test
+    fun aQueueAdvanceDoesNotInheritTheOldItemsProgress() {
+        state.show(playing(id = "aaaaaaaaaaa"))
+        state.setProgress(positionMs = 60_000L, durationMs = 120_000L)
+
+        state.show(playing(id = "bbbbbbbbbbb"))
+
+        assertNull(state.nowPlaying.value?.progress)
+    }
 }

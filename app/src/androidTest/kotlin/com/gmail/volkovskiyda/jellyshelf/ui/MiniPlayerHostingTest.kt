@@ -1,5 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -187,4 +190,35 @@ class MiniPlayerHostingTest {
 
         composeRule.onNodeWithContentDescription(label(R.string.next_video)).assertIsEnabled()
     }
+
+    /**
+     * The service's progress ticks reach the bar's line through the real hosting — the same
+     * [NowPlayingState.setProgress] path the playback service's ticker writes once a second.
+     * MiniPlayerBarTest pins what the stateless bar draws for a given fraction; this pins that a
+     * *changing* fraction actually redraws it here, which is the half a stateless test cannot see.
+     *
+     * The fractions are deliberately odd ones, and the matcher is by exact value: the library
+     * behind the bar draws its own watched-progress lines on video rows, so "any progress bar"
+     * would be ambiguous on a populated install. A row does not move between the two assertions,
+     * and only the bar is being fed these two values.
+     */
+    @Test
+    fun theProgressLine_followsTheServiceTicks() {
+        startPlaying()
+        awaitBar()
+
+        nowPlaying.setProgress(positionMs = 37_000L, durationMs = 100_000L)
+        composeRule.waitForIdle()
+        composeRule.onNode(progressAt(0.37f)).assertExists()
+
+        nowPlaying.setProgress(positionMs = 83_000L, durationMs = 100_000L)
+        composeRule.waitForIdle()
+        composeRule.onNode(progressAt(0.83f)).assertExists()
+        composeRule.onNode(progressAt(0.37f)).assertDoesNotExist()
+    }
+
+    private fun progressAt(fraction: Float) = SemanticsMatcher.expectValue(
+        SemanticsProperties.ProgressBarRangeInfo,
+        ProgressBarRangeInfo(fraction, 0f..1f),
+    )
 }

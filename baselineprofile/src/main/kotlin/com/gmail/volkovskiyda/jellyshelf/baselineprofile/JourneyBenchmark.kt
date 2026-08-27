@@ -18,6 +18,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.Until
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -215,17 +216,7 @@ class JourneyBenchmark {
     ) {
         startActivityAndWait()
         awaitLibrary(LIBRARY_TIMEOUT_MS)
-        openFirstVideoDetails()
-
-        // The same reach-then-settle-then-reach the generator documents: the thumbnail above the
-        // button loads while this screen is being read, and the layout it settles into moves
-        // everything below it, so a tap aimed at where the button was lands on nothing.
-        scrollTo(By.text(PLAY)) { "The detail screen never offered playback." }
-        awaitContentStill()
-        await(By.text(PLAY), TIMEOUT_MS) {
-            "The Play button left the detail screen while it was being reached for."
-        }.click()
-        awaitPlaybackUnderway()
+        startFirstVideo()
 
         advanceToNextItem()
 
@@ -246,6 +237,108 @@ class JourneyBenchmark {
     }
 
     /**
+     * Scrolling the library while a video plays on in the mini-player bar — [libraryScroll] with
+     * everything the bar adds: a video decoding in the background, a service ticking its position
+     * once a second, and a progress line redrawn on every tick under the list being flung. The
+     * number to read is the delta against [libraryScroll]: the two fling the same list the same
+     * way, so anything this one loses is what live playback plus the ticking bar cost the scroll.
+     *
+     * No `startupMode` and no kill between iterations, deliberately: playback has to survive from
+     * one iteration to the next for the bar to be on screen at all, and the launch is [startup]'s
+     * subject. The setup is state-driven the way [ensureLibrary] is — the first iteration pays for
+     * starting and minimizing playback, the later ones find the bar already there and only rewind
+     * the list. A queue that runs out mid-run takes the bar with it, and the same check then
+     * restarts playback rather than timing a bare list under the wrong name.
+     */
+    @Test
+    fun libraryScrollDuringPlayback() = rule.measureRepeated(
+        packageName = targetPackage,
+        metrics = listOf(FrameTimingMetric()),
+        compilationMode = CompilationMode.Partial(BaselineProfileMode.Require),
+        iterations = ITERATIONS,
+        setupBlock = {
+            if (!device.hasObject(By.desc(MINI_PLAYER_STOP))) {
+                pressHome()
+                startActivityAndWait()
+                awaitLibrary(LIBRARY_TIMEOUT_MS)
+                startFirstVideo()
+                minimizePlayer()
+            }
+            // Back to the top, so every iteration has the same list below it to fling through —
+            // without this the run drifts toward the bottom and the later iterations time a list
+            // with nowhere left to go.
+            sweepToEnd(Direction.UP)
+        },
+    ) {
+        check(flingScreen(Direction.DOWN)) {
+            "The library did not scroll under the mini-player bar, so there are no frames here " +
+                "worth timing — see libraryScroll for what a refused gesture reads as."
+        }
+        repeat(SCROLLS - 1) { flingScreen(Direction.DOWN) }
+    }
+
+    /**
+     * [libraryScrollDuringPlayback] leaves its video playing on purpose — stopping it is no part
+     * of any iteration, and the bar must survive between them. Stopped here instead, so a finished
+     * run does not walk away from a live media session holding a foreground service and a stream.
+     * A no-op after every other test: [awaitPlaybackStopped] returns quietly when no bar is up.
+     */
+    @After
+    fun stopLingeringPlayback() {
+        val scope = MacrobenchmarkScope(targetPackage, launchWithClearTask = true)
+        scope.device.findObject(By.desc(MINI_PLAYER_STOP))?.click()
+        scope.awaitPlaybackStopped()
+    }
+
+    /**
+     * Opens the first video's details and gets it really playing — the tap half of [playback],
+     * shared with [libraryScrollDuringPlayback], which needs the same state without the metrics.
+     */
+    private fun MacrobenchmarkScope.startFirstVideo() {
+        openFirstVideoDetails()
+
+        // The same reach-then-settle-then-reach the generator documents: the thumbnail above the
+        // button loads while this screen is being read, and the layout it settles into moves
+        // everything below it, so a tap aimed at where the button was lands on nothing.
+        scrollTo(By.text(PLAY)) { "The detail screen never offered playback." }
+        awaitContentStill()
+        await(By.text(PLAY), TIMEOUT_MS) {
+            "The Play button left the detail screen while it was being reached for."
+        }.click()
+        awaitPlaybackUnderway()
+    }
+
+    /**
+     * Leaves the player for the library with the session alive, through the top bar's minimize
+     * button — the one affordance that does that, since back is the stop sequence.
+     *
+     * The controls hide three seconds into playing, so the button may or may not be on screen
+     * when this arrives — and [awaitPlaybackUnderway] can return inside that window, with them
+     * still up. Ask first: a reveal tap thrown while they are up would *hide* them instead. When
+     * they are hidden, one tap brings them back — one, never a loop: two in quick succession are
+     * a double tap, which seeks.
+     *
+     * Minimizing lands where the player was opened from — the detail screen — so the walk back to
+     * the library is explicit rather than assumed.
+     */
+    private fun MacrobenchmarkScope.minimizePlayer() {
+        if (!device.hasObject(By.desc(MINIMIZE_PLAYER))) {
+            device.click(device.displayWidth / 2, device.displayHeight / 2)
+        }
+        val minimize = device.wait(Until.findObject(By.desc(MINIMIZE_PLAYER)), TIMEOUT_MS)
+        checkNotNull(minimize) {
+            "The player never offered its minimize button, with or without a reveal tap."
+        }
+        minimize.click()
+        check(device.wait(Until.hasObject(By.desc(MINI_PLAYER_STOP)), TIMEOUT_MS)) {
+            "Minimizing the player never raised the mini-player bar."
+        }
+        returnToTopLevel()
+        openTab(TAB_LIBRARY)
+        awaitLibrary(LIBRARY_TIMEOUT_MS)
+    }
+
+    /**
      * Drives one queue advance with the next button, and waits for the new item to really be
      * playing before the measurement ends.
      *
@@ -257,12 +350,19 @@ class JourneyBenchmark {
      * "free" rather than as "never happened". Failing loudly here is the whole point of the check;
      * per this benchmark's own rule, a zero is to be chased, not recorded.
      *
-     * The controls hide three seconds into playing, so the button usually is not on screen when
-     * this arrives. One tap to reveal them, never a loop: two in quick succession are a double tap,
-     * which seeks.
+     * The controls hide three seconds into playing, so the button is often off screen when this
+     * arrives — but not always: [awaitPlaybackUnderway] returns the moment the position label
+     * moves, which is *inside* that three-second window, with the controls still up. Ask first,
+     * exactly as [minimizePlayer] does, because the blind "reveal" tap lands dead centre — on the
+     * play/pause button — pausing the very playback the advance is about to measure: the next
+     * button then advances to an item that loads paused, and the wait for its first frame either
+     * burns its timeout or passes vacuously off a seeded resume position. When the controls are
+     * hidden, one tap, never a loop: two in quick succession are a double tap, which seeks.
      */
     private fun MacrobenchmarkScope.advanceToNextItem() {
-        device.click(device.displayWidth / 2, device.displayHeight / 2)
+        if (!device.hasObject(By.desc(NEXT_VIDEO))) {
+            device.click(device.displayWidth / 2, device.displayHeight / 2)
+        }
         val next = device.wait(Until.findObject(By.desc(NEXT_VIDEO)), TIMEOUT_MS)
         checkNotNull(next) {
             "The player never offered a next button, so there is no transition here to measure."
