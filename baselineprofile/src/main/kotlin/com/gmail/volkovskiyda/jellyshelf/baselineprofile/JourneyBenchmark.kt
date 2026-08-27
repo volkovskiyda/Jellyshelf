@@ -239,6 +239,10 @@ class JourneyBenchmark {
         // the last of them closes costs wall-clock, not accuracy. Backing out also stops playback,
         // which is what keeps a foreground media session from surviving into the next iteration.
         returnToTopLevel()
+        // Backing out starts the stop; this is where the iteration waits for the app to say it
+        // finished. It reduces — but does not eliminate — the next iteration failing its cold-start
+        // check on a process that came back. See [awaitPlaybackStopped] for what was measured.
+        awaitPlaybackStopped()
     }
 
     /**

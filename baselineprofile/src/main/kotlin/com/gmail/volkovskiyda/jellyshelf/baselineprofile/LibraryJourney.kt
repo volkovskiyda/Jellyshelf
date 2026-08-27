@@ -268,6 +268,38 @@ internal fun MacrobenchmarkScope.returnToTopLevel() {
     }
 }
 
+/**
+ * Waits until nothing is playing any more, using the mini-player bar as the signal: the bar is shown
+ * exactly when `NowPlayingState.nowPlaying` is non-null, so its stop button leaving the screen is
+ * the app itself saying the session is over.
+ *
+ * **What this is actually worth, measured rather than assumed.** It was added to fix iterations
+ * dying on `check(!Shell.isPackageAlive(packageName))` — "Package must not be running prior to cold
+ * start!" — where the theory was that a stop still in flight left a live session for the system to
+ * restart. Adding it took a failing variant from 1 completed iteration to 4.
+ *
+ * **But the check itself never fires.** The bar is already gone every time it is asked, so playback
+ * had stopped; what helped was the moment spent asking. Read this as a settling point with an
+ * assertion attached, not as the cure — and note it is **not sufficient**: a run still failed on the
+ * fifth iteration with the same message, so something else restarts the process. The likeliest
+ * remaining suspect is the system re-binding the session for its media-resumption UI, which is
+ * exactly what `PlaybackService.onPlaybackResumption` exists to answer.
+ *
+ * The assertion earns its place regardless: if a stop ever genuinely hangs, this fails the iteration
+ * that caused it instead of the next one, which is what made the original fault cost three runs to
+ * find.
+ *
+ * Returns quietly if the bar was never there — a journey that stopped playback by other means, or
+ * one that never started any.
+ */
+internal fun MacrobenchmarkScope.awaitPlaybackStopped() {
+    check(device.wait(Until.gone(By.desc(MINI_PLAYER_STOP)), PLAYBACK_STOP_TIMEOUT_MS)) {
+        "Playback was still running $PLAYBACK_STOP_TIMEOUT_MS ms after backing out to the library. " +
+            "The mini-player bar is still on screen, so the session never ended — the next " +
+            "iteration's cold start will fail on a process that restarted itself."
+    }
+}
+
 /** Sets a text field found by its published test tag, without opening the IME. */
 internal fun MacrobenchmarkScope.setText(tag: String, value: String) {
     await(By.res(tag), TIMEOUT_MS) {
@@ -702,6 +734,15 @@ internal const val PLAY = "Play"
 
 /** The player's next-video button, by its content description. */
 internal const val NEXT_VIDEO = "Next video"
+
+/** The mini-player bar's stop button, by content description — the bar's presence marker. */
+internal const val MINI_PLAYER_STOP = "Stop playback"
+
+/**
+ * Long enough for a pause, a `clearMediaItems` and the stop report behind them; short enough that a
+ * session which is never going to end fails the iteration that caused it rather than the next one.
+ */
+internal const val PLAYBACK_STOP_TIMEOUT_MS = 10_000L
 
 /** The system permission dialog's grant button, by id so it does not depend on locale. */
 internal const val ALLOW_PERMISSION_BUTTON =
