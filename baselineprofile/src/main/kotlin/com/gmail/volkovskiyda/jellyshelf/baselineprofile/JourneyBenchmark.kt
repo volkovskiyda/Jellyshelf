@@ -1,5 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.baselineprofile
 
+import androidx.benchmark.ExperimentalBenchmarkConfigApi
+import androidx.benchmark.ExperimentalConfig
 import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.ExperimentalMetricApi
@@ -9,7 +11,10 @@ import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.TraceSectionMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
+import androidx.benchmark.perfetto.ExperimentalPerfettoCaptureApi
+import androidx.benchmark.perfetto.PerfettoConfig
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.Until
@@ -189,7 +194,11 @@ class JourneyBenchmark {
      * Cold, like [startup], because a queue's first item is a cold start in practice — the user
      * came from the library, not from another video.
      */
-    @OptIn(ExperimentalMetricApi::class)
+    @OptIn(
+        ExperimentalMetricApi::class,
+        ExperimentalBenchmarkConfigApi::class,
+        ExperimentalPerfettoCaptureApi::class,
+    )
     @Test
     fun playback() = rule.measureRepeated(
         packageName = targetPackage,
@@ -198,9 +207,10 @@ class JourneyBenchmark {
             TraceSectionMetric(PLAYER_RESOLVE, TraceSectionMetric.Mode.Sum),
             TraceSectionMetric(PLAYER_TRANSITION, TraceSectionMetric.Mode.Sum),
         ),
+        iterations = ITERATIONS,
+        experimentalConfig = ExperimentalConfig(perfettoConfig = playbackTraceConfig()),
         compilationMode = CompilationMode.Partial(BaselineProfileMode.Require),
         startupMode = StartupMode.COLD,
-        iterations = ITERATIONS,
         setupBlock = { pressHome() },
     ) {
         startActivityAndWait()
@@ -263,6 +273,84 @@ class JourneyBenchmark {
         // The advance is not the measurement; the new item's first frame is. Reuse the same
         // position-label signal the first item was waited on with.
         awaitPlaybackUnderway()
+    }
+
+    /**
+     * The Perfetto config [playback] records with, replacing Macrobenchmark's default.
+     *
+     * **Without this the benchmark reports zero for all three sections, and the zero is a lie.**
+     * The default config stops delivering data about 0.7 s into the measured block: the session
+     * itself stays up — it goes on asking for flushes — but its data stops reaching the file, and
+     * the trace ends with Macrobenchmark's own `measureBlock` slice still open (`dur = -1`). A
+     * launch fits in that window, which is why [startup] and [libraryScroll] were never affected
+     * and why this went unnoticed until something was measured 30 s in. Measured on a Pixel 5
+     * (API 34) on 2026-08-27: `traced_flushes_requested = 6`, `traced_flushes_failed = 4`,
+     * 572 chunks discarded, and every app slice inside the first 523 ms.
+     *
+     * Two differences from the default, both taken from a hand-driven `adb shell perfetto` capture
+     * that recorded the same APK on the same device for 45 s without losing anything:
+     *
+     *  - **One large in-memory ring buffer, and no `write_into_file`.** The default dumps to file
+     *    every 2.5 s and flushes every 5 s, and it is those periodic flushes that fail here. A
+     *    buffer big enough to hold the whole block removes the need for them, and with none
+     *    requested none can fail. The measured block runs about 10 s and a 45 s hand capture of
+     *    the same journey came to 46 MB, so 256 MB is several times the headroom needed.
+     *  - **Named apps rather than `atrace_apps: "*"`.** The default asks the framework to enable
+     *    app tracing for every process on the device; only two matter here, and asking for two is
+     *    the shape that was verified working.
+     *
+     * The data sources are the minimum [TraceSectionMetric] needs. It matches slices by name and
+     * filters them by process, so app atrace sections plus process names is the whole requirement
+     * — it never reads `sched`, and it does not restrict itself to the measured window either.
+     * That last part is why playback must stay in the measure block rather than move to
+     * `setupBlock`: sections written during setup would be counted just the same.
+     *
+     * With this config the same run reports `measureBlock` closed at 10.0 s and all three sections
+     * present, `Count = 1` each — against a `dur = -1` block and three zeros without it.
+     *
+     * One cosmetic cost: dropping the `sched` events means late-created threads never get named, so
+     * the app's `ExoPlayer:*` threads do not appear by name in these traces. Nothing here reads
+     * thread names; add `sched/sched_switch` back if a future metric does.
+     *
+     * Keep this in sync with nothing — it is deliberately standalone. If a future Macrobenchmark
+     * fixes the flush failure, delete this and the [ExperimentalConfig] argument with it, and
+     * confirm the sections still report non-zero.
+     */
+    @OptIn(ExperimentalPerfettoCaptureApi::class)
+    private fun playbackTraceConfig(): PerfettoConfig {
+        val instrumentation = InstrumentationRegistry.getInstrumentation().context.packageName
+        return PerfettoConfig.Text(
+            """
+            buffers {
+                size_kb: 262144
+                fill_policy: RING_BUFFER
+            }
+            data_sources {
+                config {
+                    name: "linux.ftrace"
+                    ftrace_config {
+                        ftrace_events: "task/task_newtask"
+                        ftrace_events: "task/task_rename"
+                        ftrace_events: "sched/sched_process_exit"
+                        ftrace_events: "sched/sched_process_free"
+                        atrace_categories: "am"
+                        atrace_categories: "view"
+                        atrace_categories: "wm"
+                        atrace_apps: "$targetPackage"
+                        atrace_apps: "$instrumentation"
+                    }
+                }
+            }
+            data_sources {
+                config {
+                    name: "linux.process_stats"
+                    process_stats_config {
+                        scan_all_processes_on_start: true
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
     }
 
     private companion object {
