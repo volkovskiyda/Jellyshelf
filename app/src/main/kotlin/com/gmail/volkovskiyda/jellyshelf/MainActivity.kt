@@ -461,6 +461,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         artworkUri = playing.artworkUri,
                         isPlaying = playing.isPlaying,
                         hasNext = playing.hasNext,
+                        progress = playing.progress,
                         // Same dedupe the notification path uses: compare on the video, since a
                         // player opened from a list carries an origin the bar knows nothing about
                         // and re-pushing it would stack two player entries for one video.

@@ -142,4 +142,44 @@ class NowPlayingStateTest {
 
         assertEquals(true, state.nowPlaying.value?.hasNext)
     }
+
+    /**
+     * The whole point of [NowPlaying.progress] returning null: a zero duration is "not known yet",
+     * and a bar drawing it as 0f would claim the video is at its start.
+     */
+    @Test
+    fun progressIsNullUntilTheDurationIsKnown() {
+        state.show(playing())
+        state.setProgress(positionMs = 30_000L, durationMs = 0L)
+
+        assertNull(state.nowPlaying.value?.progress)
+    }
+
+    @Test
+    fun progressIsThePositionOverTheDuration() {
+        state.show(playing())
+        state.setProgress(positionMs = 30_000L, durationMs = 120_000L)
+
+        assertEquals(0.25f, state.nowPlaying.value?.progress)
+    }
+
+    /**
+     * A position past the duration is not hypothetical: the player reports position and duration
+     * independently, and a report taken across the end of a video can arrive with the two out of
+     * step. Clamped, because a progress bar handed 1.4f draws past its own track.
+     */
+    @Test
+    fun progressPastTheEndIsClamped() {
+        state.show(playing())
+        state.setProgress(positionMs = 130_000L, durationMs = 120_000L)
+
+        assertEquals(1f, state.nowPlaying.value?.progress)
+    }
+
+    @Test
+    fun progressIsIgnoredWhenNothingIsPlaying() {
+        state.setProgress(positionMs = 30_000L, durationMs = 120_000L)
+
+        assertNull(state.nowPlaying.value)
+    }
 }

@@ -125,6 +125,14 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private var pausedJob: Job? = null
 
     /**
+     * Ticks the mini-player bar's progress line while playing. Separate from [saveJob] even though
+     * both run only while playing: that one reports to the server every
+     * [POSITION_SAVE_INTERVAL_MS] and a line moving in ten-second steps would read as broken, and
+     * pulling the server's interval down to match would multiply its traffic for nothing.
+     */
+    private var progressJob: Job? = null
+
+    /**
      * The user-perceived startup being timed: set when a controller hands the session a queue,
      * consumed by [StartupTraceListener] at the first rendered frame. A trace that is replaced
      * or abandoned is deliberately never stopped — an unstopped trace is never reported.
@@ -547,6 +555,11 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 newMediaId = newPosition.mediaItem?.mediaId,
                 newPositionMs = newPosition.positionMs,
             )
+            // A seek moves the bar's line too. The tick job runs only while playing, so without
+            // this a scrub made while paused leaves the mini-player bar holding the pre-seek
+            // fraction for as long as the pause lasts; while playing this is merely one tick
+            // early, which costs nothing.
+            nowPlaying.pushProgress(player)
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -558,8 +571,15 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 pausedJob?.cancel()
                 watch.onPlaying(player?.currentPosition ?: 0L).perform()
                 startPeriodicSave()
+                progressJob?.cancel()
+                progressJob = scope.progressTicks(nowPlaying) { player }
             } else {
                 saveJob?.cancel()
+                // Cancel first, then push once: the final value is the position playback actually
+                // stopped at, and a tick still in flight would otherwise overwrite it with a
+                // slightly older one.
+                progressJob?.cancel()
+                nowPlaying.pushProgress(player)
                 val p = player
                 val ready = p?.playbackState == Player.STATE_READY
                 watch.onPaused(positionMs = p?.currentPosition ?: 0L, ready = ready).perform()
@@ -885,4 +905,54 @@ private fun ExoPlayer.checkOnApplicationLooper(isDebug: Boolean) {
 private fun endSection(name: String, cookie: Int?): Int? {
     cookie?.let { SystemTrace.endAsyncSection(name, it) }
     return null
+}
+
+/**
+ * Pushes the player's current position into [NowPlayingState] so the mini-player bar can draw a
+ * progress line.
+ *
+ * Reads the player rather than counting elapsed time: a line driven by a clock keeps advancing
+ * through a buffering stall, which is precisely when someone looks at it to find out whether
+ * anything is still happening.
+ *
+ * An unknown duration is pushed as zero, which `NowPlaying.progress` renders as no line at all
+ * rather than as a line at the start.
+ *
+ * Top-level rather than a member of `PlaybackService` for the same reason
+ * [checkOnApplicationLooper] is: detekt's `TooManyFunctions` threshold for a class is 11, and the
+ * service is at it.
+ */
+private fun NowPlayingState.pushProgress(player: ExoPlayer?) {
+    val p = player ?: return
+    setProgress(
+        positionMs = p.currentPosition,
+        durationMs = p.duration.takeIf { it != C.TIME_UNSET } ?: 0L,
+    )
+}
+
+/**
+ * How often the mini-player bar's progress line moves. One second, not the player screen's 500 ms:
+ * this draws a 2 dp line a phone-width wide, where one second of a ten-minute video is well under a
+ * pixel, so a faster tick would buy nothing and wake the service twice as often.
+ */
+private const val PROGRESS_TICK_MS = 1_000L
+
+/**
+ * A job that pushes the playing position into [NowPlayingState] every [PROGRESS_TICK_MS] until it
+ * is cancelled, so the mini-player bar's progress line advances while the video does.
+ *
+ * The player is passed as a lambda rather than as a value: the service's `player` is null between
+ * sessions, and a job holding the instance it started with would tick a player that has been torn
+ * down.
+ *
+ * Top-level for the same reason [NowPlayingState.pushProgress] is — see its KDoc.
+ */
+private fun CoroutineScope.progressTicks(
+    nowPlaying: NowPlayingState,
+    player: () -> ExoPlayer?,
+): Job = launch {
+    while (isActive) {
+        nowPlaying.pushProgress(player())
+        delay(PROGRESS_TICK_MS)
+    }
 }

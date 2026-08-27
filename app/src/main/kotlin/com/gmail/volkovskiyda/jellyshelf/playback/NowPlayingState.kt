@@ -29,7 +29,30 @@ data class NowPlaying(
      */
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
-)
+    /**
+     * Where the video has got to, for the bar's progress line. Pushed on a tick while playing
+     * rather than derived from a clock here: the bar has no player to ask, and a line that
+     * advanced on its own would keep advancing through a buffering stall.
+     *
+     * Both are zero until the player reports them. [durationMs] stays zero for a stream whose
+     * length is not known yet, which is what [progress] reads as "do not draw a line" rather than
+     * as "at the start" — the two look identical in a progress bar and only one of them is true.
+     */
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
+) {
+
+    /**
+     * The fraction to draw, or null when there is nothing honest to draw — no duration yet, so no
+     * denominator. Computed here rather than at the call site so the "unknown is not zero" rule
+     * lives in one place; [MiniPlayerBar][com.gmail.volkovskiyda.jellyshelf.ui.MiniPlayerBar]
+     * takes the answer, not the inputs.
+     */
+    val progress: Float?
+        get() = durationMs
+            .takeIf { it > 0L }
+            ?.let { (positionMs.toFloat() / it).coerceIn(0f, 1f) }
+}
 
 /**
  * App-scoped "something is playing", written by [PlaybackService] and read by whatever is on
@@ -96,6 +119,19 @@ class NowPlayingState {
     /** The decoder reported the video's size. A no-op when nothing is showing. */
     fun setVideoSize(width: Int, height: Int) {
         _nowPlaying.value = _nowPlaying.value?.copy(videoWidth = width, videoHeight = height)
+    }
+
+    /**
+     * The playing position moved. A no-op when nothing is showing.
+     *
+     * Pushed on a tick while playing, and once more when playback stops, so a paused bar shows
+     * where it was paused rather than freezing one tick short of it.
+     */
+    fun setProgress(positionMs: Long, durationMs: Long) {
+        _nowPlaying.value = _nowPlaying.value?.copy(
+            positionMs = positionMs,
+            durationMs = durationMs,
+        )
     }
 
     fun playPause() {

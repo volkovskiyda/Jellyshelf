@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +49,12 @@ import com.gmail.volkovskiyda.jellyshelf.R
  * title on a narrow phone, and previous is the rarer action, one tap away inside the player. It is
  * dimmed rather than hidden at the end of the queue so that [onStop]'s button never moves sideways
  * under a finger between videos.
+ *
+ * [progress] draws a line along the bottom edge, and **null draws nothing**: a video whose duration
+ * the player has not reported yet has no honest fraction, and a zero-width line is indistinguishable
+ * from one at the very start. The line is the one idea worth taking from media3's `MiniController`,
+ * which is otherwise rejected — that composable's own progress line takes a `Player`, and this bar
+ * deliberately has none.
  */
 @Composable
 fun MiniPlayerBar(
@@ -54,6 +62,7 @@ fun MiniPlayerBar(
     artworkUri: String?,
     isPlaying: Boolean,
     hasNext: Boolean,
+    progress: Float?,
     onOpen: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -120,8 +129,28 @@ fun MiniPlayerBar(
                     )
                 }
             }
+            // Below the row, so it reads as the bar's own bottom edge rather than as a control:
+            // there is nothing to drag here, and the player screen one tap away is where scrubbing
+            // belongs. Height is fixed rather than left to the default, which is thicker than a
+            // 56 dp row can carry without looking like a second divider.
+            if (progress != null) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(PROGRESS_HEIGHT),
+                    // No gap and a butt cap: the default rounded cap with its gap is drawn for a
+                    // standalone indicator, and at 2 dp across a whole screen it reads as a dashed
+                    // line rather than as progress.
+                    strokeCap = StrokeCap.Butt,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
+            }
         }
     }
 }
+
+private val PROGRESS_HEIGHT = 2.dp
 
 private val BAR_HEIGHT = 56.dp

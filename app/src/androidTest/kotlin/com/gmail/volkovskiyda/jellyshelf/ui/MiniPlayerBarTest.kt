@@ -1,8 +1,12 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertRangeInfoEquals
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -38,6 +42,7 @@ class MiniPlayerBarTest {
         title: String? = "Sample video",
         isPlaying: Boolean = true,
         hasNext: Boolean = true,
+        progress: Float? = null,
         onOpen: () -> Unit = {},
         onPlayPause: () -> Unit = {},
         onNext: () -> Unit = {},
@@ -50,6 +55,7 @@ class MiniPlayerBarTest {
                     artworkUri = null,
                     isPlaying = isPlaying,
                     hasNext = hasNext,
+                    progress = progress,
                     onOpen = onOpen,
                     onPlayPause = onPlayPause,
                     onNext = onNext,
@@ -168,4 +174,36 @@ class MiniPlayerBarTest {
         onDescription(R.string.mini_player_stop).performClick()
         assertEquals(0, opens)
     }
+
+    /**
+     * A duration the player has not reported yet must draw **no line at all**, not a line at zero.
+     *
+     * The two are one `?:` apart in the caller and look identical in a screenshot — an empty track
+     * reads as "this video is at the very start", which is a confident lie about a video that may
+     * be halfway through and merely still opening. Pinned here because nothing else would catch it.
+     */
+    @Test
+    fun unknownDuration_drawsNoProgressLine() {
+        setBar(progress = null)
+
+        composeRule.onNode(progressBar).assertDoesNotExist()
+    }
+
+    @Test
+    fun knownDuration_drawsTheProgressLine() {
+        setBar(progress = 0.5f)
+
+        composeRule.onNode(progressBar).assertRangeInfoEquals(ProgressBarRangeInfo(0.5f, 0f..1f))
+    }
+
+    /** Past the end — a position report that outran the duration — clamps rather than overflowing. */
+    @Test
+    fun progressIsClampedToTheTrack() {
+        setBar(progress = 1f)
+
+        composeRule.onNode(progressBar).assertRangeInfoEquals(ProgressBarRangeInfo(1f, 0f..1f))
+    }
+
+    private val progressBar =
+        SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 }
