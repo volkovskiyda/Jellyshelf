@@ -27,6 +27,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.tracing.traceAsync
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
+import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.di.MEDIA_HTTP_CLIENT
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
@@ -106,6 +107,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val dispatchers: DispatcherProvider by inject()
     private val resumable: ResumableCache by inject()
     private val buildInfo: BuildInfo by inject()
+    private val syncScheduler: SyncScheduler by inject()
     private val mediaHttpClient: HttpClient by inject(named(MEDIA_HTTP_CLIENT))
 
     // The player's application thread is this service's main thread; session callbacks, the
@@ -738,6 +740,23 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             // decodes everywhere; this is about never converting an impossible state into a lie.)
             if (uri?.scheme == DEMO_SAMPLE_SCHEME) {
                 Timber.tag(Playback.TAG).e(error, "demo clip failed to play: ${error.errorCodeName}")
+                return
+            }
+            // The server does not have this item any more, so our stored jellyfinItemId is stale.
+            // Retrying cannot help and neither can the HLS fallback, which is addressed by the same
+            // id — but a sync can, because it is what rewrites the id (or removes the row when the
+            // video really is gone). Left alone this is silent: the row renders correctly from
+            // local metadata and simply never plays. The repair variant, not syncNow: this is an
+            // unattended background fix, and the manual path would light the Settings sync row,
+            // surface its failure snackbar, refuse transient-failure retries and re-arm the
+            // periodic worker — all policies written for a user who tapped a button.
+            if (error.isMissingOnServer()) {
+                Timber.tag(Playback.TAG).w(
+                    error,
+                    "stale item id for mediaId=${failed.mediaId}: the server has no such item. " +
+                        "Requesting a sync to refresh it.",
+                )
+                syncScheduler.repairSync()
                 return
             }
             if (!error.isDecodeFailure() || uri == null || uri.lastPathSegment == Playback.HLS_PLAYLIST) {

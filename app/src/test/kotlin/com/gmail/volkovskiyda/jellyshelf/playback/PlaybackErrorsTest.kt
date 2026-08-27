@@ -38,4 +38,54 @@ class PlaybackErrorsTest {
             PlaybackException.ERROR_CODE_DRM_PROVISIONING_FAILED,
         ).forEach { code -> assertFalse("code $code should surface", isDecodeFailureCode(code)) }
     }
+
+    /**
+     * The stale-id case: the row looks healthy, only the stream 404s. Measured against a real
+     * server on 2026-08-27 — 18 retries for one dead id, none of which could ever have worked.
+     */
+    @Test
+    fun `a 404 on the stream means the item is gone from the server`() {
+        assertTrue(
+            isMissingOnServerCode(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, responseCode = 404),
+        )
+        assertTrue(
+            isMissingOnServerCode(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, responseCode = 410),
+        )
+    }
+
+    /**
+     * Other HTTP failures must **not** be read as a stale id: a 401 is a signed-out session and a
+     * 5xx is the server having a bad moment. Both are worth retrying or surfacing; neither means
+     * the item has gone, and treating them as stale would fire a pointless sync every time.
+     */
+    @Test
+    fun `other http statuses are not a stale id`() {
+        listOf(401, 403, 429, 500, 502, 503).forEach { code ->
+            assertFalse(
+                "HTTP $code must not be read as a missing item",
+                isMissingOnServerCode(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, code),
+            )
+        }
+    }
+
+    /**
+     * A network error carries no status at all. Without the null guard this would depend on
+     * whatever the comparison did with a missing code.
+     */
+    @Test
+    fun `an error with no http status is not a stale id`() {
+        assertFalse(
+            isMissingOnServerCode(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED, null),
+        )
+        assertFalse(isMissingOnServerCode(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, null))
+    }
+
+    /**
+     * The two decisions must stay disjoint. A stale id routed into the transcode fallback would ask
+     * the *same absent item* for an HLS rendition — the fallback URL is built from the same id.
+     */
+    @Test
+    fun `a stale id is not a decode failure`() {
+        assertFalse(isDecodeFailureCode(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+    }
 }

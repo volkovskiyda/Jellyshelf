@@ -87,6 +87,25 @@ class SyncScheduler(private val workManager: WorkManager) {
         schedulePeriodic()
     }
 
+    /**
+     * Enqueue a background repair sync: playback found local state the server contradicts —
+     * today, a stream 404 on a stale item id — and a sync is what rewrites it.
+     *
+     * Deliberately not [syncNow], which models a user watching the screen: that one enqueues
+     * under the name the Settings row and the failure snackbar watch, marks the work manual so a
+     * transient failure surfaces immediately instead of retrying, and re-creates the periodic
+     * worker. None of that fits an unattended repair — this one keeps its own name so no UI
+     * lights up on its behalf, lets a transient failure retry with backoff since nobody is
+     * looking at an error, and leaves the periodic schedule exactly as the user last set it.
+     */
+    fun repairSync() {
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(constraints)
+            .build()
+        // KEEP: every queued item that 404s asks again, and one repair answers them all.
+        workManager.enqueueUniqueWork(REPAIR_WORK_NAME, ExistingWorkPolicy.KEEP, request)
+    }
+
     /** UPDATE so a changed period/constraint reaches an already-enqueued worker. */
     fun schedulePeriodic() {
         val request = PeriodicWorkRequestBuilder<SyncWorker>(SYNC_PERIOD_HOURS, TimeUnit.HOURS)
@@ -102,6 +121,7 @@ class SyncScheduler(private val workManager: WorkManager) {
     /** Stop all syncing — paired with wiping local data, which a sync would otherwise refill. */
     fun cancelAll() {
         workManager.cancelUniqueWork(MANUAL_WORK_NAME)
+        workManager.cancelUniqueWork(REPAIR_WORK_NAME)
         workManager.cancelUniqueWork(PERIODIC_WORK_NAME)
     }
 
@@ -116,6 +136,7 @@ class SyncScheduler(private val workManager: WorkManager) {
     companion object {
         private const val PERIODIC_WORK_NAME = "jellyshelf-periodic-sync"
         private const val MANUAL_WORK_NAME = "jellyshelf-manual-sync"
+        private const val REPAIR_WORK_NAME = "jellyshelf-repair-sync"
         private const val SYNC_PERIOD_HOURS = 2L
     }
 }
