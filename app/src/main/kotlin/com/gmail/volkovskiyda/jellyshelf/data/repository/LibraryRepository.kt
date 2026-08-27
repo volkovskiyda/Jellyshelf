@@ -581,6 +581,18 @@ class DefaultLibraryRepository private constructor(
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }
 
+    override suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video> =
+        withContext(dispatchers.default) {
+            // Lists rather than a Sequence: `Sequence.flatMap` is not inline, so the DAO call
+            // could not suspend inside it. The chunking prevents a failure only a large real
+            // library shows — a whole-library queue is thousands of bind variables against
+            // SQLite's 999 ceiling, while the demo seed and every fixture pass unchunked.
+            youtubeIds.distinct()
+                .chunked(ID_CHUNK)
+                .flatMap { videoDao.getByIds(it) }
+                .associate { it.youtubeId to it.toDomain() }
+        }
+
     override fun observeCategories(): Flow<List<CategoryWithCount>> =
         categoryDao.observeWithCounts().map { rows -> rows.map { it.toDomain() } }
             .flowOn(dispatchers.default)

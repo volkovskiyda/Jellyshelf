@@ -34,6 +34,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
@@ -314,7 +316,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> =
-            scope.future { mediaItems.map { resolve(it) }.toMutableList() }
+            scope.future { resolveAll(mediaItems).items.toMutableList() }
 
         override fun onSetMediaItems(
             mediaSession: MediaSession,
@@ -349,13 +351,13 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                     Traces.PLAYER_RESOLVE,
                     mediaItems.firstOrNull()?.mediaId.hashCode(),
                 ) {
-                    mediaItems.map { resolve(it) }
+                    resolveAll(mediaItems)
                 }
-                if (startPositionMs != C.TIME_UNSET || resolved.isEmpty()) {
+                if (startPositionMs != C.TIME_UNSET || resolved.items.isEmpty()) {
                     // A controller that wants a specific position passes one — the transcode
                     // fallback, which must land exactly where the failed decode left off.
                     return@future MediaSession.MediaItemsWithStartPosition(
-                        resolved,
+                        resolved.items,
                         startIndex,
                         startPositionMs,
                     )
@@ -366,10 +368,16 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 // a position from a different video (or, before this branch covered an explicit
                 // index at all, start every queued video at 0).
                 val index =
-                    if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.indices)
-                val resumeTicks =
-                    repo.observeVideo(resolved[index].mediaId).first()?.playbackPositionTicks ?: 0L
-                MediaSession.MediaItemsWithStartPosition(resolved, index, ticksToMillis(resumeTicks))
+                    if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.items.indices)
+                // Out of the batch resolveAll already read — this used to be a second Room round
+                // trip for a row the resolve was holding, on the tap-to-first-frame path.
+                val startId = resolved.items[index].mediaId
+                val resumeTicks = resolved.videos[startId]?.playbackPositionTicks ?: 0L
+                MediaSession.MediaItemsWithStartPosition(
+                    resolved.items,
+                    index,
+                    ticksToMillis(resumeTicks),
+                )
             }
         }
 
@@ -409,7 +417,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             // signed out, or a demo row left behind by a half-cleared demo. Playing that would
             // surface as an ExoPlayer source error with no screen to show it on.
             val item = request
-                ?.let { resolve(MediaItem.Builder().setMediaId(it.youtubeId).build()) }
+                ?.let { resolveAll(listOf(MediaItem.Builder().setMediaId(it.youtubeId).build())) }
+                ?.items
+                ?.singleOrNull()
                 ?.takeIf { it.localConfiguration != null }
             if (request == null || item == null) {
                 // Reached only when [MediaButtonGate] said yes and the answer turned out to be
@@ -428,39 +438,33 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         }
     }
 
-    private suspend fun resolve(item: MediaItem): MediaItem {
+    /**
+     * A whole queue of bare ids to playable items: **one** settings read and **one** Room read for
+     * the batch, where this used to do one of each per item. A library tap queues the whole
+     * filtered library, so that was hundreds of serial Room round trips on the tap-to-first-frame
+     * path — measured at ~600 ms, 47% of `Jellyshelf.player.startup`, before this.
+     *
+     * Three things here are load-bearing and each fails silently if undone:
+     *
+     *  - **[ResolvedQueue.items] is the input list, mapped.** [LibraryRepository.videosByIds] returns rows in
+     *    arbitrary order and omits ids it has no row for, so this walks [items] and looks each id
+     *    up. Iterating the query result instead would reorder and shorten the queue — and
+     *    `MediaItemsWithStartPosition` names the item to start on **by index**, so a queue one
+     *    element short starts the wrong video.
+     *  - **A missing row stays a queue entry.** [resolve] returns the item URI-less when there is
+     *    no playable row, which surfaces as a source error on the player screen. Dropping it would
+     *    shift every index after it.
+     *  - **Same length as the input, always** — which is what the two above add up to, and what
+     *    `PlaybackResolveTest` pins.
+     */
+    private suspend fun resolveAll(items: List<MediaItem>): ResolvedQueue {
         // Suspends until the first DataStore read lands; null only in the first process moments.
         val settings = settingsState.settings.filterNotNull().first()
-        val video = repo.observeVideo(item.mediaId).first()
-        val jellyfinItemId = video?.jellyfinItemId
-        if (video == null || jellyfinItemId == null) {
-            // Left URI-less on purpose: ExoPlayer raises a source error the player screen shows.
-            Timber.tag(Playback.TAG).w("resolve: no playable row for mediaId=${item.mediaId}")
-            return item
-        }
-        val artworkUrl = authorizedImageUrl(video.thumbnailUrl, settings.serverUrl, settings.credential)
-        // Demo rows have no server behind them, so there is no stream URL to build — every one of
-        // them plays the bundled clip. Keyed off the sentinel item id rather than the demoMode
-        // setting: it is the row that is or isn't playable, and a row outliving the flag (a demo
-        // half-cleared by a crash) must not turn into a request against a blank server URL.
-        val uri = if (jellyfinItemId == DEMO_ITEM_ID) {
-            DEMO_SAMPLE_URI
-        } else {
-            Playback.streamUrl(settings.serverUrl, jellyfinItemId, credential = null)
-        }
-        return item.buildUpon()
-            .setUri(uri)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(video.title)
-                    .setArtist(video.channel)
-                    // Query-credentialed: the session's bitmap loader fetches it with no headers.
-                    // A demo row's artwork is a `file:///android_asset/` URL, which the loader
-                    // reads directly — verified on device; the notification shows the thumbnail.
-                    .setArtworkUri(artworkUrl?.toUri())
-                    .build(),
-            )
-            .build()
+        val videos = repo.videosByIds(items.map { it.mediaId })
+        // The rows ride along with the items: onSetMediaItems still needs the start item's resume
+        // ticks, and handing the map back is what keeps that from being a second Room round trip
+        // for a row this batch already read.
+        return ResolvedQueue(resolveQueue(items, videos, settings), videos)
     }
 
     /**
@@ -800,14 +804,6 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         const val EXTRA_OPEN_PLAYER = "com.gmail.volkovskiyda.jellyshelf.playback.OPEN_PLAYER"
 
         /**
-         * The bundled clip every demo video plays — a Big Buck Bunny excerpt, CC-BY 3.0, credited
-         * in the README. `asset:///` is media3's own scheme for APK assets, served by
-         * [DefaultDataSource] rather than over HTTP.
-         */
-        private const val DEMO_SAMPLE_SCHEME = "asset"
-        private const val DEMO_SAMPLE_URI = "$DEMO_SAMPLE_SCHEME:///demo/sample.mp4"
-
-        /**
          * Deliberately asymmetric: skipping filler is the common case, re-hearing a line the rare
          * one. The player screen's buttons and its double-tap read these through media3's
          * seek-button states, so the two can never drift apart.
@@ -956,3 +952,79 @@ private fun CoroutineScope.progressTicks(
         delay(PROGRESS_TICK_MS)
     }
 }
+
+/**
+ * A resolved queue and the rows it was resolved from, keyed by id — so a caller that still needs
+ * one row (the start item's resume ticks) reads the batch instead of asking Room again.
+ */
+private class ResolvedQueue(val items: List<MediaItem>, val videos: Map<String, Video>)
+
+/**
+ * One id to one playable item, given the row and settings the caller has already read.
+ *
+ * Takes both rather than reading them so a queue pays for them once instead of once per item.
+ */
+internal fun resolve(item: MediaItem, video: Video?, settings: Settings): MediaItem {
+    val jellyfinItemId = video?.jellyfinItemId
+    if (video == null || jellyfinItemId == null) {
+        // Left URI-less on purpose: ExoPlayer raises a source error the player screen shows.
+        Timber.tag(Playback.TAG).w("resolve: no playable row for mediaId=${item.mediaId}")
+        return item
+    }
+    val artworkUrl = authorizedImageUrl(video.thumbnailUrl, settings.serverUrl, settings.credential)
+    // Demo rows have no server behind them, so there is no stream URL to build — every one of
+    // them plays the bundled clip. Keyed off the sentinel item id rather than the demoMode
+    // setting: it is the row that is or isn't playable, and a row outliving the flag (a demo
+    // half-cleared by a crash) must not turn into a request against a blank server URL.
+    val uri = if (jellyfinItemId == DEMO_ITEM_ID) {
+        DEMO_SAMPLE_URI
+    } else {
+        Playback.streamUrl(settings.serverUrl, jellyfinItemId, credential = null)
+    }
+    return item.buildUpon()
+        .setUri(uri)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(video.title)
+                .setArtist(video.channel)
+                // Query-credentialed: the session's bitmap loader fetches it with no headers.
+                // A demo row's artwork is a `file:///android_asset/` URL, which the loader
+                // reads directly — verified on device; the notification shows the thumbnail.
+                .setArtworkUri(artworkUrl?.toUri())
+                .build(),
+        )
+        .build()
+}
+
+/**
+ * The scheme a demo row's stream carries. Top-level rather than in the companion so [resolve], which
+ * is top-level too, can build [DEMO_SAMPLE_URI] from it — the listeners inside the class still see
+ * it, since a private top-level declaration is visible across the whole file.
+ */
+private const val DEMO_SAMPLE_SCHEME = "asset"
+
+/**
+ * The bundled clip every demo video plays — a Big Buck Bunny excerpt, CC-BY 3.0, credited in the
+ * README. `asset:///` is media3's own scheme for APK assets, served by [DefaultDataSource] rather
+ * than over HTTP. There is no server behind a demo row to stream from.
+ */
+private const val DEMO_SAMPLE_URI = "$DEMO_SAMPLE_SCHEME:///demo/sample.mp4"
+
+/**
+ * A queue of bare ids to playable items, given every row the batch could find.
+ *
+ * The whole of the queue's index safety is this one line, which is why it is a function with a
+ * test rather than a `map` inline in the service: it walks **[items]**, looking each id up in
+ * [videos]. [LibraryRepository.videosByIds] returns rows in arbitrary order and omits ids it has
+ * no row for, so iterating its result instead would reorder and shorten the queue — and
+ * `MediaItemsWithStartPosition` names the item to start on by index, so a queue one element short
+ * silently starts the wrong video.
+ *
+ * A miss is not a drop: [resolve] hands back the item URI-less, which the player screen surfaces
+ * as a source error. Same length in, same length out.
+ */
+internal fun resolveQueue(
+    items: List<MediaItem>,
+    videos: Map<String, Video>,
+    settings: Settings,
+): List<MediaItem> = items.map { resolve(it, videos[it.mediaId], settings) }

@@ -25,6 +25,17 @@ interface LibraryRepository : PlaystateRepository {
     fun searchVideos(query: String): Flow<List<Video>>
     fun observeVideosByCategory(categoryId: String): Flow<List<Video>>
     fun observeVideo(youtubeId: String): Flow<Video?>
+
+    /**
+     * A batch of videos by id, read once rather than observed — for the playback queue, which
+     * needs every row it is about to play and needs none of them to keep updating.
+     *
+     * Keyed by `youtubeId`, and **an id with no row is absent from the map** rather than mapped to
+     * null: callers walk their own id list and decide what a miss means. Nothing here is a `Flow`
+     * on purpose; the one existing per-id read is, and collecting one value from hundreds of them
+     * is what this replaces.
+     */
+    suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video>
     fun observeCategories(): Flow<List<CategoryWithCount>>
     fun searchCategories(query: String): Flow<List<CategoryWithCount>>
     fun observeOthers(): Flow<List<CategoryWithCount>>

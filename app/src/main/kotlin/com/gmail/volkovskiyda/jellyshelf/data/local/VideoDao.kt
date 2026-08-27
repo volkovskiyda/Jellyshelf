@@ -42,12 +42,15 @@ interface VideoDao {
     suspend fun getAll(): List<VideoEntity>
 
     /**
-     * The rows behind a multi-selection, in the file-name order every list on screen is in — so a
-     * bulk run works through them top to bottom, the way the user sees them.
+     * The rows behind a batch of ids: a multi-selection's bulk run, and the playback queue's
+     * one-query resolve. The file-name order is for the bulk run, which works through them top to
+     * bottom the way the user sees them; a caller whose own order is load-bearing — the playback
+     * queue names its start item by index — maps the result by id instead, because **ids with no
+     * row simply do not appear** and a silently shorter list would shift every index after it.
      *
      * Callers chunk the id list rather than passing it whole: SQLite caps how many variables one
-     * statement may bind (999 on the platform versions this app supports), and selecting every
-     * video in a real library goes well past that.
+     * statement may bind (999 on the platform versions this app supports, `ID_CHUNK` is the one
+     * constant for it), and selecting every video in a real library goes well past that.
      */
     @Query("SELECT * FROM videos WHERE youtubeId IN (:youtubeIds) ORDER BY fileName")
     suspend fun getByIds(youtubeIds: List<String>): List<VideoEntity>

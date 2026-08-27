@@ -13,6 +13,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -60,6 +61,12 @@ class FakeLibraryRepository(
 
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videos.map { list -> list.firstOrNull { it.youtubeId == youtubeId } }
+
+    /** Absent ids are simply missing from the map, exactly as the real batch query leaves them. */
+    override suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video> {
+        val wanted = youtubeIds.toSet()
+        return videos.first().filter { it.youtubeId in wanted }.associateBy { it.youtubeId }
+    }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> = notModelled()
 
