@@ -171,6 +171,8 @@
     <string name="lock_index_url">Lock the index URL</string>
     <string name="unlock_api_url">Unlock the API URL</string>
     <string name="lock_api_url">Lock the API URL</string>
+    <string name="unlock_api_token">Unlock the API token</string>
+    <string name="lock_api_token">Lock the API token</string>
     <string name="index_url_state_locked">Locked</string>
     <string name="index_url_state_unlocked">Unlocked</string>
     <string name="previous_chapter">Previous chapter</string>

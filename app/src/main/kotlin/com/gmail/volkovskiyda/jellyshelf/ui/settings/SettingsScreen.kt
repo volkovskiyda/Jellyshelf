@@ -68,6 +68,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -726,10 +727,10 @@ private fun rememberScopeShake(nudge: Flow<Unit>): Animatable<Float, AnimationVe
 private fun Context.animationsEnabled(): Boolean =
     Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
 
-/** The metadata index URL — a [LockableUrlField] like the API URL below it. */
+/** The metadata index URL — a [LockableField] like the API URL below it. */
 @Composable
 private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
-    LockableUrlField(
+    LockableField(
         value = state.indexUrl,
         onValueChange = actions.onIndexUrlChange,
         labelRes = R.string.index_url_label,
@@ -747,7 +748,7 @@ private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
 /** The metadata API base URL — same protection rules as the index URL. */
 @Composable
 private fun MetadataApiUrlField(state: SettingsUiState, actions: SettingsActions) {
-    LockableUrlField(
+    LockableField(
         value = state.metadataApiUrl,
         onValueChange = actions.onMetadataApiUrlChange,
         labelRes = R.string.metadata_api_url_label,
@@ -765,9 +766,10 @@ private fun MetadataApiUrlField(state: SettingsUiState, actions: SettingsActions
 /**
  * The metadata API's bearer token. A secret, presented like the Jellyfin API key above it —
  * password-masked, opted out of autofill for the same reason: a password manager offering to
- * store a server token as this app's password would be remembering the wrong credential. No lock:
- * the token rotates with the server's, and a wrong one fails loudly (401) rather than producing
- * the half-populated library the URL locks exist to prevent.
+ * store a server token as this app's password would be remembering the wrong credential. Locked
+ * like the URLs once a sync has run, so all three feed inputs share one protection story and the
+ * same deliberate, unremembered unlock — but with no **Fill**, because a secret has nothing safe
+ * to fill from.
  */
 @Composable
 private fun MetadataApiTokenField(state: SettingsUiState, actions: SettingsActions) {
@@ -778,44 +780,44 @@ private fun MetadataApiTokenField(state: SettingsUiState, actions: SettingsActio
         state.metadataApiAuthFailed -> R.string.metadata_api_auth_failed
         else -> null
     }
-    OutlinedTextField(
+    LockableField(
         value = state.metadataApiToken,
         onValueChange = actions.onMetadataApiTokenChange,
-        label = { Text(stringResource(R.string.metadata_api_token)) },
-        singleLine = true,
+        labelRes = R.string.metadata_api_token,
+        protected = state.indexProtected,
+        lockRes = R.string.lock_api_token,
+        unlockRes = R.string.unlock_api_token,
+        testTag = METADATA_API_TOKEN_FIELD_TAG,
+        errorRes = errorRes,
         visualTransformation = PasswordVisualTransformation(),
-        isError = errorRes != null,
-        supportingText = errorRes?.let { { Text(stringResource(it)) } },
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDataType = ContentDataType.None }
-            .testTag(METADATA_API_TOKEN_FIELD_TAG),
     )
 }
 
 /**
- * A metadata feed URL, shown only once there are credentials to use it with
- * ([SettingsUiState.canEditIndex]).
+ * A metadata feed input — the two URLs and the API token — shown only once there are credentials
+ * to use it with ([SettingsUiState.canEditIndex]).
  *
  * Its trailing control changes with what there is to lose. Before the first sync the useful action
- * is filling the field in, so **Fill** stays exactly as it was. Once a sync has run there is a
- * populated library to damage, and the field locks: a mistyped feed URL produces a half-populated
- * library with no obvious cause. The unlock is deliberate and deliberately not remembered — it
- * resets every time this screen is composed, so an accidental unlock cannot follow the user around.
+ * is filling the field in, so **Fill** stays exactly as it was — but only where an [onFill] source
+ * exists; the token has none. Once a sync has run there is a populated library to damage, and the
+ * field locks: a mistyped feed URL produces a half-populated library with no obvious cause. The
+ * unlock is deliberate and deliberately not remembered — it resets every time this screen is
+ * composed, so an accidental unlock cannot follow the user around.
  */
 @Composable
-private fun LockableUrlField(
+private fun LockableField(
     value: String,
     onValueChange: (String) -> Unit,
     @StringRes labelRes: Int,
-    @StringRes hintRes: Int,
     protected: Boolean,
-    fillEnabled: Boolean,
-    onFill: () -> Unit,
     @StringRes lockRes: Int,
     @StringRes unlockRes: Int,
     testTag: String,
+    @StringRes hintRes: Int? = null,
+    fillEnabled: Boolean = false,
+    onFill: (() -> Unit)? = null,
     @StringRes errorRes: Int? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     var unlocked by remember { mutableStateOf(false) }
     val locked = protected && !unlocked
@@ -823,8 +825,9 @@ private fun LockableUrlField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(stringResource(labelRes)) },
-        placeholder = { Text(stringResource(hintRes)) },
+        placeholder = hintRes?.let { { Text(stringResource(it)) } },
         singleLine = true,
+        visualTransformation = visualTransformation,
         isError = errorRes != null,
         supportingText = errorRes?.let { { Text(stringResource(it)) } },
         // readOnly, not enabled = false: a locked field still has to be *readable*, and the
@@ -838,7 +841,7 @@ private fun LockableUrlField(
                     lockRes = lockRes,
                     unlockRes = unlockRes,
                 )
-            } else if (value.isBlank()) {
+            } else if (onFill != null && value.isBlank()) {
                 TextButton(
                     onClick = onFill,
                     enabled = fillEnabled,
