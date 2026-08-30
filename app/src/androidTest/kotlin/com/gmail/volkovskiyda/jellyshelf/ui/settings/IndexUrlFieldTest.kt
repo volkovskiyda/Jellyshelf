@@ -7,7 +7,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -96,7 +98,8 @@ class IndexUrlFieldTest {
         setContent(signedInBeforeSync)
 
         composeRule.onNodeWithText(label(R.string.index_url_label)).performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText(label(R.string.fill)).assertIsDisplayed()
+        // Two Fill buttons: the index URL's and the metadata API URL's, both still unlocked.
+        composeRule.onAllNodesWithText(label(R.string.fill)).assertCountEquals(2)
         composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url)).assertDoesNotExist()
     }
 

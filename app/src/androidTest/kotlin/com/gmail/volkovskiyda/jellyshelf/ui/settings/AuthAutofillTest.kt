@@ -106,10 +106,17 @@ class AuthAutofillTest {
     fun theAddressFields_declareNothingForAPasswordManagerToFill() {
         setContent(
             SettingsUiState(serverUrl = "https://example.org", signedIn = true, username = "wolf"),
+            // The feed fields live inside the Advanced section now.
+            advancedExpanded = true,
         )
 
         assertNotAutofillable(SERVER_URL_FIELD_TAG)
         assertNotAutofillable(INDEX_URL_FIELD_TAG)
+        assertNotAutofillable(METADATA_API_URL_FIELD_TAG)
+        // A secret like the API key, and opted out for the same reason: the metadata API's token
+        // is not this app's password, and a password-shaped field beside the real one would give
+        // the provider a wrong credential to offer.
+        assertNotAutofillable(METADATA_API_TOKEN_FIELD_TAG)
     }
 
     /**
