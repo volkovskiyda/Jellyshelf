@@ -160,6 +160,8 @@ class LiveUiJourneyTest : KoinTest {
         val youtubeId: String,
         val itemId: String,
         val title: String,
+        /** What the detail screen titles itself with — the row still leads with [title]. */
+        val fileName: String,
     )
 
     /** The server's answer for one item: what to restore, and what the restore is checked against. */
@@ -359,7 +361,12 @@ class LiveUiJourneyTest : KoinTest {
         // restore is not free — putting a watched flag *back* goes through the played-items
         // endpoint, which counts a play. Nothing to undo means nothing to write.
         original = state
-        return Target(youtubeId = chosen.youtubeId, itemId = itemId, title = chosen.title)
+        return Target(
+            youtubeId = chosen.youtubeId,
+            itemId = itemId,
+            title = chosen.title,
+            fileName = chosen.fileName,
+        )
     }
 
     /**
@@ -407,7 +414,8 @@ class LiveUiJourneyTest : KoinTest {
         composeRule.onAllNodes(row).onFirst().performClick()
 
         awaitText(string(R.string.play))
-        composeRule.onNodeWithText(target.title).assertExists()
+        // The detail screen titles itself with the file name (tappable to copy), not the title.
+        composeRule.onNodeWithText(target.fileName).assertExists()
     }
 
     /** The manual watched toggle, there and back, checked on the server at both ends. */

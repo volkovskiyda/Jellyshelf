@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -65,6 +67,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.formatSyncTime
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberCopyToClipboard
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberNow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
@@ -221,7 +224,16 @@ internal fun DetailContent(
                     .clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.Crop,
             )
-            Text(current.title, style = MaterialTheme.typography.titleLarge)
+            // The file name leads, not the YouTube title: it is the on-disk identity the user
+            // manages the library by, and a tap puts it on the clipboard.
+            val copyFileName = rememberCopyToClipboard()
+            Text(
+                current.fileName,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.clickable(
+                    onClickLabel = stringResource(R.string.copy_file_name),
+                ) { copyFileName(current.fileName) },
+            )
 
             val meta = buildList {
                 current.channel?.let { add(it) }
@@ -353,7 +365,9 @@ internal fun DetailContent(
 
             current.description?.takeIf { it.isNotBlank() }?.let { desc ->
                 Text(stringResource(R.string.description), style = MaterialTheme.typography.titleMedium)
-                Text(desc, style = MaterialTheme.typography.bodyMedium)
+                SelectionContainer {
+                    Text(desc, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
     }

@@ -137,6 +137,10 @@
     <string name="fetching_metadata">Fetching metadata…</string>
     <string name="metadata_updated_for">Metadata updated for %1$s</string>
     <string name="description">Description</string>
+    <!-- Click label on the file-name title (player and detail); tapping it copies the name. -->
+    <string name="copy_file_name">Copy file name</string>
+    <!-- Toast on Android 12/12L only: 13+ draws its own system "copied" overlay. -->
+    <string name="file_name_copied">File name copied</string>
     <string name="source_ytdlp">In-app</string>
     <string name="source_index">Index</string>
     <string name="source_jellyfin">Jellyfin</string>

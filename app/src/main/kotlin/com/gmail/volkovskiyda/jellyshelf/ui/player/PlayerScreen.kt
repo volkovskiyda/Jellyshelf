@@ -113,6 +113,7 @@ import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberCopyToClipboard
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
@@ -204,7 +205,9 @@ fun PlayerScreen(
         } else {
             PlayerWithControls(
                 controller = c,
-                title = video?.title,
+                // The file name, not the YouTube title: it names the actual file being played,
+                // and the overlay title's tap copies it (see PlayerControls).
+                title = video?.fileName,
                 poster = poster,
                 chapters = chapters,
                 onSpeedPicked = viewModel::savePlaybackSpeed,
@@ -608,13 +611,21 @@ internal fun PlayerControls(
                             tint = Color.White,
                         )
                     }
+                    // Tapping the title copies it (it carries the file name). The tap lands on
+                    // the bar, not the surface, so it can't double as a controls-hide toggle.
+                    val copyFileName = rememberCopyToClipboard()
                     Text(
                         title.orEmpty(),
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(
+                                enabled = title != null,
+                                onClickLabel = stringResource(R.string.copy_file_name),
+                            ) { title?.let(copyFileName) },
                     )
                     SpeedMenuButton(
                         speed = speed,

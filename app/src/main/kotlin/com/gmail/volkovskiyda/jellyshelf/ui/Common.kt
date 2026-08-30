@@ -1,5 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
+import android.content.ClipData
+import android.os.Build
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -43,6 +45,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -53,6 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -79,6 +84,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 /**
@@ -621,6 +627,28 @@ fun ToastOnMessage(message: String?, onConsumed: () -> Unit) {
         message?.let {
             Toast.makeText(context, it, Toast.LENGTH_LONG).show()
             onConsumed()
+        }
+    }
+}
+
+/**
+ * Returns an action that puts the given text on the clipboard. Android 13+ draws its own "copied"
+ * overlay for every clipboard write, so the confirmation toast is only shown below that — showing
+ * both would announce the copy twice.
+ */
+@Composable
+fun rememberCopyToClipboard(): (String) -> Unit {
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    return remember(clipboard, context, scope) {
+        { text ->
+            scope.launch {
+                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(text, text)))
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    Toast.makeText(context, R.string.file_name_copied, Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 }
