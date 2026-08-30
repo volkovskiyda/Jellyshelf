@@ -2,8 +2,11 @@ package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -72,6 +75,27 @@ class SignOutButtonTest {
 
         composeRule.onNodeWithText(label(R.string.sign_out)).assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.sign_in)).assertDoesNotExist()
+    }
+
+    /**
+     * The held token is bound to one server as one user: neither half of that address is
+     * editable until Sign out drops it. Only [SettingsUiState.signedIn] locks them — a demo or
+     * API-key install signing in to a real server is a supported one-step move, so those states
+     * leave the form alone.
+     */
+    @Test
+    fun signedIn_locksTheServerUrlAndUsernameFields() {
+        setContent(SettingsUiState(signedIn = true, serverUrl = "https://example.org", username = "wolf"))
+
+        composeRule.onNodeWithTag(SERVER_URL_FIELD_TAG).assertIsNotEnabled()
+        composeRule.onNodeWithTag(USERNAME_FIELD_TAG).assertIsNotEnabled()
+    }
+
+    @Test
+    fun signedOut_leavesTheServerUrlFieldEditable() {
+        setContent(SettingsUiState(serverUrl = "https://example.org"))
+
+        composeRule.onNodeWithTag(SERVER_URL_FIELD_TAG).assertIsEnabled()
     }
 
     /**

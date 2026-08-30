@@ -229,6 +229,11 @@ internal fun SettingsContent(
                 label = { Text(stringResource(R.string.server_url)) },
                 placeholder = { Text(stringResource(R.string.server_url_hint)) },
                 singleLine = true,
+                // Like the username below: the held token is bound to this server, so the
+                // address is not editable until Sign out drops it. Only [signedIn] locks it —
+                // a demo or API-key install signing in to a real server is a supported
+                // one-step move (see the sign-in button comment) and needs the field live.
+                enabled = !state.signedIn,
                 modifier = Modifier
                     .fillMaxWidth()
                     // Every text field is autofillable by default, and an unlabelled one sitting
