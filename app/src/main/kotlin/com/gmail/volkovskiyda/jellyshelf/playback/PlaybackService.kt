@@ -61,6 +61,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.qualifier.named
 import timber.log.Timber
+import java.util.UUID
 import androidx.tracing.Trace as SystemTrace
 
 /**
@@ -774,7 +775,13 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                     "direct play failed (${error.errorCodeName}); retrying as HLS transcode at ${resumeMs}ms",
                 )
                 val transcoded = failed.buildUpon()
-                    .setUri(Playback.hlsUrl(settings.serverUrl, itemId))
+                    .setUri(
+                        Playback.hlsUrl(
+                            settings.serverUrl,
+                            itemId,
+                            playSessionId = UUID.randomUUID().toString(),
+                        ),
+                    )
                     .build()
                 p.setMediaItem(transcoded, resumeMs)
                 p.prepare()

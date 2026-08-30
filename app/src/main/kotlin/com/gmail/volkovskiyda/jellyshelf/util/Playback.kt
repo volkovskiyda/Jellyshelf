@@ -56,14 +56,42 @@ object Playback {
 
     /**
      * HLS transcoding URL — the in-app player's fallback when the device can't decode what
-     * [streamUrl] serves. No codec constraints are passed on purpose: Jellyfin only
-     * stream-copies codecs the request lists as supported, so a bare request always transcodes
-     * to the server defaults (H.264/AAC), which any device decodes. The credential travels as a
-     * header here too — the playlist and every segment request go through the same
-     * authenticated datasource factory.
+     * [streamUrl] serves. The credential travels as a header here too — the playlist and every
+     * segment request go through the same authenticated datasource factory — but every other
+     * query parameter is load-bearing, each learned against a real Jellyfin (2026-08-30):
+     *
+     * - Jellyfin builds each segment URL by appending `&runtimeTicks=…` to the *playlist
+     *   request's* query string. A bare request yields `hls1/main/0.ts&runtimeTicks=…` — no `?`,
+     *   so the server reads the whole line as a path and 400s every segment.
+     * - `videoCodec`/`audioCodec` name what the device is to receive. Left off, the server
+     *   stream-copies the source video — the very codec that just failed to decode — into the
+     *   transport stream and only transcodes the audio. (An earlier version of this comment
+     *   claimed the opposite; the copy was observed.)
+     * - The bitrates are the transcode's quality ceiling. Left off, Jellyfin falls back to a
+     *   default small enough to shrink 720p sources to 416×234.
+     * - [playSessionId] keys the server's transcode job. Without one, jobs key on the device
+     *   alone and a new request is answered from a previous job's output, whatever parameters
+     *   that job was started with — a fresh id per fallback is what makes these parameters real.
      */
-    fun hlsUrl(serverUrl: String, itemId: String): String =
-        "${base(serverUrl)}/Videos/$itemId/$HLS_PLAYLIST"
+    fun hlsUrl(serverUrl: String, itemId: String, playSessionId: String): String =
+        "${base(serverUrl)}/Videos/$itemId/$HLS_PLAYLIST" +
+            "?mediaSourceId=$itemId" +
+            "&playSessionId=$playSessionId" +
+            "&videoCodec=$HLS_VIDEO_CODEC" +
+            "&audioCodec=$HLS_AUDIO_CODEC" +
+            "&videoBitrate=$HLS_VIDEO_BITRATE" +
+            "&audioBitrate=$HLS_AUDIO_BITRATE"
+
+    /** H.264/AAC: the pairing every Android device decodes in hardware — what a fallback is for. */
+    private const val HLS_VIDEO_CODEC = "h264"
+    private const val HLS_AUDIO_CODEC = "aac"
+
+    /**
+     * Generous for H.264 at 1080p and verified to keep a 720p source at 720p; a decode-failure
+     * fallback should degrade codec, not picture.
+     */
+    private const val HLS_VIDEO_BITRATE = 8_000_000
+    private const val HLS_AUDIO_BITRATE = 192_000
 
     /** Jellyfin web details deep link — opens the item page in the Jellyfin app / browser. */
     fun detailsDeepLink(serverUrl: String, itemId: String): String =

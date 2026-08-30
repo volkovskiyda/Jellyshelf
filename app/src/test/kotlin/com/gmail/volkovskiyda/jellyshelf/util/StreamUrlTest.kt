@@ -59,13 +59,22 @@ class StreamUrlTest {
     }
 
     /**
-     * The transcoding fallback URL: bare on purpose. No credential (it travels as a header) and
-     * no codec constraints — an empty supported-codec list is what forces Jellyfin to transcode
-     * instead of stream-copying the very codec the device just failed to decode.
+     * The transcoding fallback URL. Still no credential — it travels as a header — but the rest
+     * of the query is required, and a *bare* `main.m3u8` request does not work at all: Jellyfin
+     * appends `&runtimeTicks=…` to the playlist request's query when it writes each segment URL,
+     * so with no query there is no `?` and every segment 400s as an unroutable path. The codec
+     * pair matters just as much — without it the server stream-copies the very video codec the
+     * device just failed to decode. See [Playback.hlsUrl] for the full account; this pins the
+     * exact shape a real server was seen to accept.
      */
     @Test
-    fun `hls fallback url is bare of credentials and codec constraints`() {
-        assertEquals("$server/Videos/$itemId/main.m3u8", Playback.hlsUrl(server, itemId))
-        assertEquals("$server/Videos/$itemId/main.m3u8", Playback.hlsUrl("$server/", itemId))
+    fun `hls fallback url carries transcode params but no credential`() {
+        val expected = "$server/Videos/$itemId/main.m3u8?mediaSourceId=$itemId" +
+            "&playSessionId=SESSION&videoCodec=h264&audioCodec=aac" +
+            "&videoBitrate=8000000&audioBitrate=192000"
+
+        assertEquals(expected, Playback.hlsUrl(server, itemId, playSessionId = "SESSION"))
+        assertEquals(expected, Playback.hlsUrl("$server/", itemId, playSessionId = "SESSION"))
+        assertFalse(expected, expected.contains("api_key"))
     }
 }
