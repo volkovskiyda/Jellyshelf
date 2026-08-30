@@ -566,6 +566,11 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                             youtubeId = key.youtubeId,
                             onBack = { navThrottle { pop() } },
                             onPlayInApp = { id -> navThrottle { openPlayer(id, key.origin) } },
+                            // The "Appears in" chips land on the same screen a Categories-tab tap
+                            // does, pushed on top so Back returns to this video.
+                            onOpenCategory = { id, title ->
+                                navThrottle { push(AppNavKey.CategoryVideos(id, title)) }
+                            },
                         )
                     }
 

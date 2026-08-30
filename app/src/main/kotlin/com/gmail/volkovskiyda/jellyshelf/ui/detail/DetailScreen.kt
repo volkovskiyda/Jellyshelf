@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -51,6 +54,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_MONTH
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATEGORY
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
@@ -89,6 +98,7 @@ fun DetailScreen(
     youtubeId: String,
     onBack: () -> Unit,
     onPlayInApp: (String) -> Unit,
+    onOpenCategory: (categoryId: String, title: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -112,6 +122,7 @@ fun DetailScreen(
     val videoState by viewModel.video.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val fetching by viewModel.fetching.collectAsStateWithLifecycle()
+    val categories by viewModel.categories.collectAsStateWithLifecycle()
 
     val message by viewModel.message.collectAsStateWithLifecycle()
     ToastOnMessage(message) { viewModel.consumeMessage() }
@@ -136,6 +147,8 @@ fun DetailScreen(
         settings = settings,
         fetching = fetching,
         thumbnailModel = thumbnailModel,
+        categories = categories,
+        onOpenCategory = { category -> onOpenCategory(category.id, category.name) },
         onBack = onBack,
         onPlay = { video, s, requestedMode ->
             // The content hides the other modes in demo; this is the same rule at the dispatch,
@@ -175,6 +188,8 @@ internal fun DetailContent(
     settings: Settings?,
     fetching: Boolean,
     thumbnailModel: String?,
+    categories: List<Category>,
+    onOpenCategory: (Category) -> Unit,
     onBack: () -> Unit,
     onPlay: (Video, Settings, PlaybackMode) -> Unit,
     onSelectMode: (PlaybackMode) -> Unit,
@@ -363,10 +378,64 @@ internal fun DetailContent(
                 )
             }
 
+            AppearsInSection(categories = categories, onOpenCategory = onOpenCategory)
+
             current.description?.takeIf { it.isNotBlank() }?.let { desc ->
                 Text(stringResource(R.string.description), style = MaterialTheme.typography.titleMedium)
                 SelectionContainer {
                     Text(desc, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The dimensions the "Appears in" section shows, in display order, each with its row label.
+ * Auto dimensions only: manual playlists and the virtual Others filters are deliberately absent.
+ * All but the last hold exactly one value per video, hence the singular labels; a video can carry
+ * several YouTube categories, so that row reuses the Categories tab's plural.
+ */
+private val APPEARS_IN_DIMENSIONS = listOf(
+    CATEGORY_TYPE_AUTO_CHANNEL to R.string.type_channel,
+    CATEGORY_TYPE_AUTO_YEAR to R.string.type_year,
+    CATEGORY_TYPE_AUTO_MONTH to R.string.type_month,
+    CATEGORY_TYPE_AUTO_DURATION to R.string.type_duration,
+    CATEGORY_TYPE_AUTO_YT_CATEGORY to R.string.dim_youtube_categories,
+)
+
+/**
+ * Where this video appears in the Categories tab: one labeled row per auto dimension it belongs
+ * to, each value a chip that opens that category's video list — "more from this channel / month /
+ * …" without a detour through the tab. Emits nothing at all when the video has no auto categories
+ * (an unmatched Jellyfin-only row), rather than a header over an empty list.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AppearsInSection(categories: List<Category>, onOpenCategory: (Category) -> Unit) {
+    val byType = categories.groupBy { it.type }
+    val groups = APPEARS_IN_DIMENSIONS.mapNotNull { (type, labelRes) ->
+        byType[type]?.let { labelRes to it }
+    }
+    if (groups.isEmpty()) return
+
+    Text(stringResource(R.string.appears_in), style = MaterialTheme.typography.titleMedium)
+    groups.forEach { (labelRes, items) ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                stringResource(labelRes),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items.forEach { category ->
+                    AssistChip(
+                        onClick = { onOpenCategory(category) },
+                        label = { Text(category.name) },
+                    )
                 }
             }
         }

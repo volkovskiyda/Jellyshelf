@@ -3,6 +3,8 @@ package com.gmail.volkovskiyda.jellyshelf.ui.detail
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -11,6 +13,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_MONTH
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATEGORY
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_MANUAL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
@@ -101,6 +110,8 @@ class DetailContentTest {
         onRemove: () -> Unit = {},
         now: Long = NOW,
         settings: Settings = this.settings,
+        categories: List<Category> = emptyList(),
+        onOpenCategory: (Category) -> Unit = {},
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -109,6 +120,8 @@ class DetailContentTest {
                     settings = settings,
                     fetching = false,
                     thumbnailModel = null,
+                    categories = categories,
+                    onOpenCategory = onOpenCategory,
                     onBack = {},
                     onPlay = onPlay,
                     onSelectMode = onSelectMode,
@@ -272,6 +285,58 @@ class DetailContentTest {
         setContent(video)
 
         composeRule.onNodeWithText("Open in Jellyfin").assertDoesNotExist()
+    }
+
+    // --- the "Appears in" section: the auto categories this video belongs to ---
+
+    private val autoCategories = listOf(
+        Category("channel:UC1", "Sample Channel", CATEGORY_TYPE_AUTO_CHANNEL, 0L),
+        Category("year:2026", "2026", CATEGORY_TYPE_AUTO_YEAR, 0L),
+        Category("month:2026-07", "2026-07", CATEGORY_TYPE_AUTO_MONTH, 0L),
+        Category("duration:1", "10–30 min", CATEGORY_TYPE_AUTO_DURATION, 0L),
+        Category("ytcat:Music", "Music", CATEGORY_TYPE_AUTO_YT_CATEGORY, 0L),
+    )
+
+    /** The chip for [name] — text alone is ambiguous (the channel chip repeats the app-bar title). */
+    private fun chip(name: String) = composeRule.onNode(hasText(name) and hasClickAction())
+
+    @Test
+    fun `the appears-in section lists every auto dimension as a chip`() {
+        setContent(video, categories = autoCategories)
+
+        composeRule.onNodeWithText(string(R.string.appears_in)).performScrollTo().assertIsDisplayed()
+        for (name in listOf("Sample Channel", "2026", "2026-07", "10–30 min", "Music")) {
+            chip(name).performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun `tapping a category chip reports that category`() {
+        var opened: Category? = null
+        setContent(video, categories = autoCategories, onOpenCategory = { opened = it })
+
+        chip("2026-07").performScrollTo().performClick()
+
+        assertEquals("month:2026-07", opened?.id)
+    }
+
+    /** "Skip others": manual playlists are not part of the section, only the auto dimensions. */
+    @Test
+    fun `manual categories are not listed`() {
+        setContent(
+            video,
+            categories = autoCategories + Category("manual-1", "My playlist", CATEGORY_TYPE_MANUAL, 0L),
+        )
+
+        composeRule.onNodeWithText("My playlist").assertDoesNotExist()
+    }
+
+    /** No auto categories — an unmatched Jellyfin-only video — means no section at all. */
+    @Test
+    fun `a video with no categories shows no appears-in section`() {
+        setContent(video)
+
+        composeRule.onNodeWithText(string(R.string.appears_in)).assertDoesNotExist()
     }
 
     // --- demo mode: one bundled clip, in-app only ---

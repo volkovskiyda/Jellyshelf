@@ -156,6 +156,68 @@ class CategoryDaoInstrumentedTest {
         assertEquals(setOf("populated", "emptyManual"), remaining)
     }
 
+    // --- observeForVideo: the detail screen's "Appears in" read ------------------------------
+
+    @Test
+    fun observeForVideo_returnsOnlyThatVideosCategories() = runTest {
+        videoDao.upsert(listOf(video("v1"), video("v2")))
+        dao.upsertAll(
+            listOf(
+                category("mine", "channel"),
+                category("theirs", "channel"),
+                category("shared", "year"),
+            ),
+        )
+        dao.upsertCrossRefs(
+            listOf(
+                VideoCategoryCrossRef("v1", "mine"),
+                VideoCategoryCrossRef("v1", "shared"),
+                VideoCategoryCrossRef("v2", "theirs"),
+                VideoCategoryCrossRef("v2", "shared"),
+            ),
+        )
+
+        val ids = dao.observeForVideo("v1").first().map { it.id }.toSet()
+
+        assertEquals(setOf("mine", "shared"), ids)
+    }
+
+    /**
+     * Type first, then name — the order the "Appears in" section leans on for a multi-valued
+     * dimension (several YouTube categories come out alphabetical without the UI re-sorting).
+     */
+    @Test
+    fun observeForVideo_ordersByTypeThenName() = runTest {
+        videoDao.upsert(listOf(video("v1")))
+        // Names alone would order these [a, b, c]; the type must win first.
+        dao.upsertAll(
+            listOf(
+                CategoryEntity(id = "c", name = "Name c", type = "typeA", createdAt = 0L),
+                CategoryEntity(id = "a", name = "Name a", type = "typeB", createdAt = 0L),
+                CategoryEntity(id = "b", name = "Name b", type = "typeA", createdAt = 0L),
+            ),
+        )
+        dao.upsertCrossRefs(
+            listOf(
+                VideoCategoryCrossRef("v1", "a"),
+                VideoCategoryCrossRef("v1", "b"),
+                VideoCategoryCrossRef("v1", "c"),
+            ),
+        )
+
+        assertEquals(listOf("b", "c", "a"), dao.observeForVideo("v1").first().map { it.id })
+    }
+
+    /** No memberships — an unmatched Jellyfin-only video — is an empty list, not an error. */
+    @Test
+    fun observeForVideo_isEmptyForAVideoWithNoMemberships() = runTest {
+        videoDao.upsert(listOf(video("v1"), video("v2")))
+        dao.upsert(category("c1", "channel"))
+        dao.upsertCrossRefs(listOf(VideoCategoryCrossRef("v2", "c1")))
+
+        assertTrue(dao.observeForVideo("v1").first().isEmpty())
+    }
+
     // --- search -------------------------------------------------------------------------------
 
     @Test

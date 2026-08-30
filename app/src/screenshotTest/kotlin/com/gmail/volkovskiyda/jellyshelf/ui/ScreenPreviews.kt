@@ -230,6 +230,8 @@ private fun DetailLoaded() {
             settings = previewSettings,
             fetching = false,
             thumbnailModel = null,
+            categories = sampleVideoCategories,
+            onOpenCategory = {},
             onBack = {},
             onPlay = { _, _, _ -> },
             onSelectMode = {},
@@ -251,6 +253,10 @@ private fun DetailMissingFromServer() {
             settings = previewSettings,
             fetching = false,
             thumbnailModel = null,
+            // Empty on purpose: these two goldens guard the missing-from-server state, and the
+            // populated section is already covered by DetailLoaded.
+            categories = emptyList(),
+            onOpenCategory = {},
             onBack = {},
             onPlay = { _, _, _ -> },
             onSelectMode = {},
@@ -271,6 +277,10 @@ private fun DetailMissingFromServerDark() {
             settings = previewSettings,
             fetching = false,
             thumbnailModel = null,
+            // Empty on purpose: these two goldens guard the missing-from-server state, and the
+            // populated section is already covered by DetailLoaded.
+            categories = emptyList(),
+            onOpenCategory = {},
             onBack = {},
             onPlay = { _, _, _ -> },
             onSelectMode = {},
@@ -371,6 +381,8 @@ private fun DetailNotFound() {
             settings = previewSettings,
             fetching = false,
             thumbnailModel = null,
+            categories = emptyList(),
+            onOpenCategory = {},
             onBack = {},
             onPlay = { _, _, _ -> },
             onSelectMode = {},

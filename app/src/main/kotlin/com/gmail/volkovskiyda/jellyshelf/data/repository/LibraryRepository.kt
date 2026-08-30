@@ -598,6 +598,9 @@ class DefaultLibraryRepository private constructor(
         categoryDao.observeWithCounts().map { rows -> rows.map { it.toDomain() } }
             .flowOn(dispatchers.default)
 
+    override fun observeCategoriesForVideo(youtubeId: String): Flow<List<Category>> =
+        categoryDao.observeForVideo(youtubeId).map { rows -> rows.map { it.toDomain() } }
+
     override fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
         categoryDao.searchWithCounts(escapeLikePattern(query))
             .map { ranked -> SearchRanking.rankCategories(query, ranked).map { it.toDomain() } }

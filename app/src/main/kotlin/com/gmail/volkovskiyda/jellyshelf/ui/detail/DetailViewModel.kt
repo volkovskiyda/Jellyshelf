@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
@@ -44,6 +45,13 @@ class DetailViewModel(
         .stateIn(viewModelScope, WhileUiSubscribed, VideoDetailState.Loading)
 
     val settings: StateFlow<Settings?> = settingsState.settings
+
+    /**
+     * Every category this video belongs to, live — a metadata fetch that re-derives memberships
+     * updates the section in place. The content picks which dimensions it shows.
+     */
+    val categories: StateFlow<List<Category>> = repo.observeCategoriesForVideo(youtubeId)
+        .stateIn(viewModelScope, WhileUiSubscribed, emptyList())
 
     private val _fetching = MutableStateFlow(false)
     val fetching: StateFlow<Boolean> = _fetching.asStateFlow()

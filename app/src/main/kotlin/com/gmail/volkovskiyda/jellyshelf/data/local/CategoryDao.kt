@@ -44,6 +44,13 @@ interface CategoryDao {
     )
     fun searchWithCounts(query: String): Flow<List<RankedCategory>>
 
+    /** The categories this video belongs to, for the detail screen's "Appears in" section. */
+    @Query(
+        "SELECT c.* FROM categories c INNER JOIN video_category vc ON vc.categoryId = c.id " +
+            "WHERE vc.youtubeId = :youtubeId ORDER BY c.type, c.name",
+    )
+    fun observeForVideo(youtubeId: String): Flow<List<CategoryEntity>>
+
     /** Drop this video's memberships in auto categories (keeping [keepType], i.e. manual), before re-deriving them. */
     @Query(
         "DELETE FROM video_category WHERE youtubeId = :youtubeId AND categoryId IN " +

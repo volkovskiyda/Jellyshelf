@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
@@ -69,6 +70,8 @@ class FakeLibraryRepository(
     }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> = notModelled()
+
+    override fun observeCategoriesForVideo(youtubeId: String): Flow<List<Category>> = notModelled()
 
     override fun searchCategories(query: String): Flow<List<CategoryWithCount>> = notModelled()
 

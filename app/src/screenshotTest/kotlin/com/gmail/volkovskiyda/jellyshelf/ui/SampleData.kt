@@ -1,5 +1,11 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_DURATION
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_MONTH
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATEGORY
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 
@@ -31,6 +37,18 @@ internal val sampleVideo = Video(
     metadataSource = METADATA_SOURCE_INDEX,
     metadataUpdatedAt = 0L,
     missedSyncs = 0,
+)
+
+/**
+ * The auto categories sync would derive for [sampleVideo] — same ids and names the real
+ * assignment produces, so the detail preview's "Appears in" section shows every dimension.
+ */
+internal val sampleVideoCategories = listOf(
+    Category("channel:UC0000000000000000000000", "Sample Channel", CATEGORY_TYPE_AUTO_CHANNEL, 0L),
+    Category("year:2026", "2026", CATEGORY_TYPE_AUTO_YEAR, 0L),
+    Category("month:2026-07", "2026-07", CATEGORY_TYPE_AUTO_MONTH, 0L),
+    Category("duration:1", "10–30 min", CATEGORY_TYPE_AUTO_DURATION, 0L),
+    Category("ytcat:Entertainment", "Entertainment", CATEGORY_TYPE_AUTO_YT_CATEGORY, 0L),
 )
 
 /** Watched: shows the check icon, and no progress bar even if a position lingers. */

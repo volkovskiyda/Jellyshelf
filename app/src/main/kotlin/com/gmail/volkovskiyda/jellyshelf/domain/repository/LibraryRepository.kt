@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.domain.repository
 
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
@@ -37,6 +38,9 @@ interface LibraryRepository : PlaystateRepository {
      */
     suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video>
     fun observeCategories(): Flow<List<CategoryWithCount>>
+
+    /** The categories one video belongs to — every stored type; callers pick the dimensions they show. */
+    fun observeCategoriesForVideo(youtubeId: String): Flow<List<Category>>
     fun searchCategories(query: String): Flow<List<CategoryWithCount>>
     fun observeOthers(): Flow<List<CategoryWithCount>>
     fun videoCount(): Flow<Int>
