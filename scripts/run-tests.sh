@@ -204,6 +204,37 @@ awake_hold() {
   done
 }
 
+# The API 37 emulator image (google_apis rev 6.0.0, the latest as of 2026-08-30) ships an SELinux
+# policy that denies the mediacodec domain access to an app's memfd buffer queue, which kills every
+# c2.goldfish.* video decoder at its first input buffer. The live journey's playback step then
+# fails with "the stream advanced only 0s" — on the direct stream and on the HLS fallback alike,
+# since both decode through goldfish. Everything short of permissive was tried and lost: the
+# -feature -HardwareDecoder boot flag leaves the components registered, stopping the goldfish C2
+# service hangs codec creation instead, and the image refuses adb remount. So: permissive, per run,
+# because setenforce resets on every AVD reboot. Emulators only and API 37 up only — hardware has
+# no goldfish codecs (and no adb root), and the API 36 phone image decodes fine while enforcing.
+goldfish_selinux_hold() {
+  local serial api enforce
+  for serial in ${DEVICES[@]+"${DEVICES[@]}"}; do
+    is_emulator "$ADB" "$serial" || continue
+    api="$("$ADB" -s "$serial" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r\n')"
+    [[ "${api:-0}" -ge 37 ]] || continue
+    enforce="$("$ADB" -s "$serial" shell getenforce 2>/dev/null | tr -d '\r\n')"
+    if [[ "$enforce" != "Enforcing" ]]; then
+      printf 'selinux: %-24s already %s\n' "$serial" "${enforce:-unreadable}"
+      continue
+    fi
+    # adb root restarts adbd, so the shell that follows has to wait the device back.
+    if "$ADB" -s "$serial" root >/dev/null 2>&1 &&
+      "$ADB" -s "$serial" wait-for-device shell setenforce 0 >/dev/null 2>&1; then
+      printf 'selinux: %-24s permissive until the AVD reboots — the API %s image kills goldfish video decoders enforcing\n' \
+        "$serial" "$api"
+    else
+      printf 'selinux: %-24s could not go permissive — expect the live playback step to stall\n' "$serial" >&2
+    fi
+  done
+}
+
 # One worktree at a time may drive a device, because the live tests make the *server* the contended
 # resource, not the phone: LiveUiJourneyTest signs into the same Jellyfin as the same user and
 # drives the same item, so a second run overlapping it has already cost a run a 401 mid-journey.
@@ -660,6 +691,11 @@ if [[ "$WANT_AWAKE" -eq 1 ]]; then
   else
     awake_hold
   fi
+fi
+# Unconditional where --awake is opt-in: without it the affected emulator cannot pass the live
+# layer at all, and the function gates itself to the emulators that need it.
+if [[ "$HOST_ONLY" -eq 0 && ${#DEVICES[@]} -gt 0 ]]; then
+  goldfish_selinux_hold
 fi
 echo
 
