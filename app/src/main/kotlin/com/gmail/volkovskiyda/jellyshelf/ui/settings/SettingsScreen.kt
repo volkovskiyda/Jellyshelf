@@ -693,6 +693,7 @@ private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
         lockRes = R.string.lock_index_url,
         unlockRes = R.string.unlock_index_url,
         testTag = INDEX_URL_FIELD_TAG,
+        errorRes = R.string.metadata_index_unavailable.takeIf { state.indexUnavailable },
     )
 }
 
@@ -710,6 +711,7 @@ private fun MetadataApiUrlField(state: SettingsUiState, actions: SettingsActions
         lockRes = R.string.lock_api_url,
         unlockRes = R.string.unlock_api_url,
         testTag = METADATA_API_URL_FIELD_TAG,
+        errorRes = R.string.metadata_api_unavailable.takeIf { state.metadataApiUnavailable },
     )
 }
 
@@ -766,6 +768,7 @@ private fun LockableUrlField(
     @StringRes lockRes: Int,
     @StringRes unlockRes: Int,
     testTag: String,
+    @StringRes errorRes: Int? = null,
 ) {
     var unlocked by remember { mutableStateOf(false) }
     val locked = protected && !unlocked
@@ -775,6 +778,8 @@ private fun LockableUrlField(
         label = { Text(stringResource(labelRes)) },
         placeholder = { Text(stringResource(hintRes)) },
         singleLine = true,
+        isError = errorRes != null,
+        supportingText = errorRes?.let { { Text(stringResource(it)) } },
         // readOnly, not enabled = false: a locked field still has to be *readable*, and the
         // disabled colours wash the URL out to the point of being hard to check at a glance.
         readOnly = locked,

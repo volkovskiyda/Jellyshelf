@@ -85,6 +85,14 @@ data class SettingsUiState(
      * moment either API field is edited — the red state exists to prompt exactly that edit.
      */
     val metadataApiAuthFailed: Boolean = false,
+    /**
+     * The last sync could not fetch the configured metadata index (unreachable, 404, bad
+     * document). Same lifecycle as [metadataApiAuthFailed]: set from the sync result, cleared
+     * when the URL is edited.
+     */
+    val indexUnavailable: Boolean = false,
+    /** The last sync could not reach the configured metadata API for a non-auth reason. */
+    val metadataApiUnavailable: Boolean = false,
     /** The theme override and which way the next tap of the switch moves. */
     val themeState: ThemeState = ThemeState(),
     // Sign-in fields. The password lives here only until the token comes back — see [signIn].
@@ -437,6 +445,10 @@ class SettingsViewModel(
                         _state.value = _state.value.copy(
                             metadataApiAuthFailed =
                             out.getBoolean(SyncWorker.KEY_API_AUTH_FAILED, false),
+                            indexUnavailable =
+                            out.getBoolean(SyncWorker.KEY_INDEX_DEGRADED, false),
+                            metadataApiUnavailable =
+                            out.getBoolean(SyncWorker.KEY_API_DEGRADED, false),
                         )
                         // The worker exits early without output when credentials are missing;
                         // showing a 0/0 summary then would be a lie, so say nothing.
@@ -576,13 +588,17 @@ class SettingsViewModel(
     }
     fun onIndexUrlChange(value: String) {
         fieldsEdited = true
-        _state.value = _state.value.copy(indexUrl = value)
+        // Editing is the fix the red state asks for; a stale error over a corrected value would
+        // read as "still wrong" until the next sync. Same for both API handlers below.
+        _state.value = _state.value.copy(indexUrl = value, indexUnavailable = false)
     }
     fun onMetadataApiUrlChange(value: String) {
         fieldsEdited = true
-        // Editing is the fix the auth-failed state asks for; a stale red field over a corrected
-        // value would read as "still wrong" until the next sync.
-        _state.value = _state.value.copy(metadataApiUrl = value, metadataApiAuthFailed = false)
+        _state.value = _state.value.copy(
+            metadataApiUrl = value,
+            metadataApiAuthFailed = false,
+            metadataApiUnavailable = false,
+        )
     }
     fun onMetadataApiTokenChange(value: String) {
         fieldsEdited = true

@@ -243,6 +243,8 @@
     <string name="metadata_api_token">Metadata API token</string>
     <string name="metadata_api_token_required">Required when a metadata API URL is set</string>
     <string name="metadata_api_auth_failed">The metadata API rejected this token — check it and sync again</string>
+    <string name="metadata_index_unavailable">The index could not be fetched during the last sync — check the URL</string>
+    <string name="metadata_api_unavailable">The metadata API could not be reached during the last sync — check the URL</string>
     <string name="fill">Fill</string>
     <string name="connect_load_users">Connect &amp; load users</string>
     <string name="user">User</string>

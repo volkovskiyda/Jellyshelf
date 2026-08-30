@@ -148,6 +148,25 @@ class IndexUrlFieldTest {
         assertEquals(1, edits)
     }
 
+    /** A sync that could not fetch a feed marks that feed's URL field, not just the status line. */
+    @Test
+    fun anUnreachableFeed_marksItsOwnUrlField() {
+        setContent(signedInAfterSync.copy(indexUnavailable = true, metadataApiUnavailable = true))
+
+        composeRule.onNodeWithText(label(R.string.metadata_index_unavailable), useUnmergedTree = true)
+            .assertExists()
+        composeRule.onNodeWithText(label(R.string.metadata_api_unavailable), useUnmergedTree = true)
+            .assertExists()
+    }
+
+    @Test
+    fun aReachableFeed_showsNoError() {
+        setContent(signedInAfterSync)
+
+        composeRule.onNodeWithText(label(R.string.metadata_index_unavailable), useUnmergedTree = true)
+            .assertDoesNotExist()
+    }
+
     @Test
     fun lockingAgain_stopsTypingAgain() {
         setContent(signedInAfterSync)
