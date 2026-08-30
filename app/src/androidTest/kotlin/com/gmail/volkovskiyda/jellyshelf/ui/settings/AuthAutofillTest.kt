@@ -52,7 +52,11 @@ class AuthAutofillTest {
     /** Held outside the composition, like the real ViewModel's state, so a test can move it. */
     private var state by mutableStateOf(SettingsUiState())
 
-    private fun setContent(initial: SettingsUiState, advancedExpanded: Boolean = false) {
+    private fun setContent(
+        initial: SettingsUiState,
+        advancedExpanded: Boolean = false,
+        alternativeSignInExpanded: Boolean = false,
+    ) {
         state = initial
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -61,6 +65,7 @@ class AuthAutofillTest {
                     videoCount = 0,
                     actions = SettingsActions(),
                     advancedExpanded = advancedExpanded,
+                    alternativeSignInExpanded = alternativeSignInExpanded,
                 )
             }
         }
@@ -123,13 +128,13 @@ class AuthAutofillTest {
      * The API key opts out too, though unlike the addresses it *is* a secret.
      *
      * It is the wrong secret to offer: a Jellyfin API key is server-wide and admin-scoped, not
-     * this user's password, and an expanded Advanced section otherwise puts a second
+     * this user's password, and an expanded Alternative-sign-in section otherwise puts a second
      * password-shaped field beside the real one for the provider to choose between. Selected by
      * its label — the test tags on this screen belong to the baseline-profile generator.
      */
     @Test
     fun theApiKeyField_isNotOfferedAsThisAppsPassword() {
-        setContent(SettingsUiState(serverUrl = "https://example.org"), advancedExpanded = true)
+        setContent(SettingsUiState(serverUrl = "https://example.org"), alternativeSignInExpanded = true)
 
         assertNotAutofillable(
             composeRule.onNodeWithText(composeRule.activity.getString(R.string.api_key)),

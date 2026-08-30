@@ -651,8 +651,9 @@ private fun SettingsConnected() {
 }
 
 /**
- * The API-key fallback, expanded. Its own preview because the section is collapsed by default, and
- * a path that only appears behind a tap would otherwise have no golden at all.
+ * The API-key fallback (Alternative sign in) and the Advanced section, both expanded. Its own
+ * preview because both sections are collapsed by default, and paths that only appear behind a tap
+ * would otherwise have no golden at all.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
@@ -677,6 +678,7 @@ private fun SettingsAdvancedExpanded() {
             videoCount = 879,
             actions = SettingsActions(),
             advancedExpanded = true,
+            alternativeSignInExpanded = true,
         )
     }
 }

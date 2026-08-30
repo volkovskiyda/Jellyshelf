@@ -178,10 +178,11 @@ internal fun SettingsContent(
     videoCount: Int,
     actions: SettingsActions,
     modifier: Modifier = Modifier,
-    // Whether the Advanced (API-key) section starts open. A parameter purely so previews and
-    // screenshot tests can render it — collapsing it by default would otherwise hide that whole
-    // fallback path from the goldens.
+    // Whether the Advanced and Alternative-sign-in sections start open. Parameters purely so
+    // previews and screenshot tests can render them — collapsing them by default would otherwise
+    // hide those whole paths from the goldens.
     advancedExpanded: Boolean = false,
+    alternativeSignInExpanded: Boolean = false,
     // Fired when a Sync now tap was spent pointing at the scope instead of syncing. A flow rather
     // than a flag: the shake happens once and is over, and a flag would have to be cleared.
     nudgeScope: Flow<Unit> = emptyFlow(),
@@ -288,6 +289,14 @@ internal fun SettingsContent(
             // end of a scrolling column is a rejection nobody sees.
             StatusText(state.authStatus)
 
+            // Above the Sign in button, next to the form it is an alternative *to* — collapsed,
+            // it costs the form one text-button row.
+            AlternativeSignInSection(
+                state = state,
+                actions = actions,
+                initiallyExpanded = alternativeSignInExpanded,
+            )
+
             // Signed in, the two are one control in one slot — there is nothing to sign in *to*
             // while a token is held. Otherwise Sign in stays the primary action and Sign out is
             // offered underneath, because a demo (or API-key) install signing in to a real server
@@ -333,7 +342,7 @@ internal fun SettingsContent(
                 )
             }
 
-            AdvancedAuthSection(
+            AdvancedSection(
                 state = state,
                 actions = actions,
                 initiallyExpanded = advancedExpanded,
@@ -544,7 +553,7 @@ private fun UpdatesSection(
 }
 
 /**
- * The API-key fallback, collapsed behind "Advanced".
+ * The API-key fallback, collapsed behind "Alternative sign in", directly above the Sign in button.
  *
  * A Jellyfin API key is server-wide and admin-scoped, so it is deliberately no longer the path of
  * least resistance — signing in is. It stays available for setups that can't use a password login
@@ -552,21 +561,24 @@ private fun UpdatesSection(
  *
  * The user picker lives here too, not in the main section: API keys are server-wide, so the app
  * has to ask *which* user's watch state to read and write. A token already answers that, which is
- * why the whole section is hidden once signed in.
+ * why the whole section is gone once signed in — there is nothing here a signed-in user can do,
+ * and [Settings.credential] would ignore the key anyway.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AdvancedAuthSection(
+private fun AlternativeSignInSection(
     state: SettingsUiState,
     actions: SettingsActions,
     initiallyExpanded: Boolean = false,
 ) {
+    if (state.signedIn) return
+
     var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
 
     TextButton(onClick = { expanded = !expanded }) {
         Text(
             stringResource(
-                if (expanded) R.string.hide_advanced else R.string.show_advanced,
+                if (expanded) R.string.hide_alternative_sign_in else R.string.show_alternative_sign_in,
             ),
         )
     }
@@ -582,46 +594,15 @@ private fun AdvancedAuthSection(
         onValueChange = actions.onApiKeyChange,
         label = { Text(stringResource(R.string.api_key)) },
         singleLine = true,
-        // Inert while a user token is held — [Settings.credential] prefers the token.
-        enabled = !state.signedIn,
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier
             .fillMaxWidth()
             // Opted out like the two addresses, though this one *is* a secret: a manager offered
             // a server-wide admin key as this app's password would be offering the wrong
-            // credential, and expanding Advanced would put a second password-shaped field beside
-            // the real one for the provider to choose between.
+            // credential, and expanding this section would put a second password-shaped field
+            // beside the real one for the provider to choose between.
             .semantics { contentDataType = ContentDataType.None },
     )
-
-    // Playback handoff. Independent of which credential is in use, so it stays visible when
-    // signed in — the API-key affordances below do not.
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.token_in_query))
-            Text(
-                stringResource(R.string.token_in_query_explained),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = state.tokenInQuery, onCheckedChange = actions.onTokenInQueryChange)
-    }
-
-    // The metadata feeds. In here rather than the main section — they are power-user fields — but
-    // above the signed-in early return: unlike the API-key affordances below, they stay editable
-    // while signed in, which is exactly when [SettingsUiState.canEditIndex] holds.
-    if (state.canEditIndex) {
-        IndexUrlField(state = state, actions = actions)
-        MetadataApiUrlField(state = state, actions = actions)
-        MetadataApiTokenField(state = state, actions = actions)
-    }
-
-    if (state.signedIn) return
 
     OutlinedButton(
         onClick = actions.connect,
@@ -644,6 +625,55 @@ private fun AdvancedAuthSection(
                 )
             }
         }
+    }
+}
+
+/**
+ * The power-user settings, collapsed behind "Advanced": the playback-handoff switch and the
+ * metadata feeds. The API-key sign-in path used to live here too — it is [AlternativeSignInSection]
+ * now, up by the form it stands in for.
+ */
+@Composable
+private fun AdvancedSection(
+    state: SettingsUiState,
+    actions: SettingsActions,
+    initiallyExpanded: Boolean = false,
+) {
+    var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
+
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(
+            stringResource(
+                if (expanded) R.string.hide_advanced else R.string.show_advanced,
+            ),
+        )
+    }
+    if (!expanded) return
+
+    // Playback handoff. Independent of which credential is in use, so it is here rather than in
+    // the alternative-sign-in section — it stays visible and live while signed in.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.token_in_query))
+            Text(
+                stringResource(R.string.token_in_query_explained),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = state.tokenInQuery, onCheckedChange = actions.onTokenInQueryChange)
+    }
+
+    // The metadata feeds: power-user fields, editable exactly when [SettingsUiState.canEditIndex]
+    // holds — signed in included.
+    if (state.canEditIndex) {
+        IndexUrlField(state = state, actions = actions)
+        MetadataApiUrlField(state = state, actions = actions)
+        MetadataApiTokenField(state = state, actions = actions)
     }
 }
 

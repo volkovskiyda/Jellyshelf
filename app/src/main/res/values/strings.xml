@@ -233,6 +233,8 @@
     <string name="demo_mode_active">Demo mode — connecting to a server clears the demo data. Sign out leaves the demo.</string>
     <string name="show_advanced">Advanced ▾</string>
     <string name="hide_advanced">Advanced ▴</string>
+    <string name="show_alternative_sign_in">Alternative sign in ▾</string>
+    <string name="hide_alternative_sign_in">Alternative sign in ▴</string>
     <string name="api_key_explained">An API key is server-wide and admin-scoped. Use it only if password sign-in isn’t an option; signing in gives this device a user-scoped token instead.</string>
     <string name="token_in_query">Token in playback URL</string>
     <string name="token_in_query_explained">Normally the token is passed to the player as a request header, keeping it out of the URL. Turn this on if your player can’t use headers and playback fails.</string>
