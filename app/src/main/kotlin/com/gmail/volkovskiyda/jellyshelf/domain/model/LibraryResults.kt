@@ -42,6 +42,20 @@ sealed interface SyncResult {
     data class Error(val message: String, val retryable: Boolean = true) : SyncResult
 }
 
+/**
+ * The stage a running sync has reached, so a screen can label the wait with what is actually
+ * happening instead of one "Syncing…" for the whole run. Null between syncs.
+ *
+ * The stages mirror the sync's real cost profile: the server listing and the metadata feeds are
+ * each one request, while the yt-dlp pass is per-video and the only part worth counting —
+ * [FetchingMetadata.done] / [FetchingMetadata.total] over the videos it is filling.
+ */
+sealed interface SyncPhase {
+    data object LoadingLibrary : SyncPhase
+    data object FetchingIndex : SyncPhase
+    data class FetchingMetadata(val done: Int, val total: Int) : SyncPhase
+}
+
 /** Outcome of creating a Jellyfin playlist from a category. */
 sealed interface PlaylistResult {
     data class Success(val name: String, val count: Int) : PlaylistResult

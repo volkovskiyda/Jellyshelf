@@ -10,6 +10,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.domain.model.MediaFolder
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Session
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.JellyfinRepository
@@ -18,6 +19,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.emptySettings
 import com.gmail.volkovskiyda.jellyshelf.ui.inertUpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.ui.testLocalNetworkPrompt
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -25,6 +27,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -169,6 +172,55 @@ class DemoSyncInstrumentedTest {
         val state = viewModel.state.value
         assertEquals("Something broke", state.syncStatus?.text)
         assertTrue(state.syncStatus?.isError == true)
+    }
+
+    /**
+     * While the user-started sync is in flight, the repository's phase refines "Syncing…" into
+     * the stage it has reached — here the yt-dlp pass with its 12/24 count — and the finished
+     * sync's summary takes the line back afterwards.
+     */
+    @Test
+    fun syncNow_showsTheRepositorysPhaseWhileRunning() = runTest {
+        library.syncGate = CompletableDeferred()
+        val viewModel = viewModel(demoMode = true)
+
+        viewModel.syncNow()
+        runCurrent()
+        assertTrue("the sync is parked in flight", viewModel.state.value.syncRunning)
+        assertEquals(app.getString(R.string.syncing), viewModel.state.value.syncStatus?.text)
+
+        library.syncPhases.value = SyncPhase.FetchingMetadata(12, 24)
+        runCurrent()
+        assertEquals(
+            app.getString(R.string.sync_phase_fetching_ytdlp, 12, 24),
+            viewModel.state.value.syncStatus?.text,
+        )
+
+        // The real repository clears the phase in a finally as the sync ends; mirror that here.
+        library.syncPhases.value = null
+        library.syncGate?.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(viewModel.state.value.syncRunning)
+        assertEquals(
+            app.getString(R.string.sync_summary, 0, 0, 0),
+            viewModel.state.value.syncStatus?.text,
+        )
+    }
+
+    /**
+     * A phase with no user-started sync behind it — a periodic worker syncing in the background
+     * while this screen is open — must not light the status line up on its own.
+     */
+    @Test
+    fun aBackgroundSyncsPhase_doesNotTouchTheStatusLine() = runTest {
+        val viewModel = viewModel(demoMode = true)
+
+        library.syncPhases.value = SyncPhase.LoadingLibrary
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertFalse(state.syncRunning)
+        assertEquals(null, state.syncStatus)
     }
 
     /** The demo branch must not swallow the real path: without the flag, this still enqueues. */

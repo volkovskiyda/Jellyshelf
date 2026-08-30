@@ -34,6 +34,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_CONTINUE
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
@@ -634,8 +635,19 @@ class DefaultLibraryRepository private constructor(
 
     override fun videoCount(): Flow<Int> = videoDao.count()
 
+    private val _syncPhase = MutableStateFlow<SyncPhase?>(null)
+    override val syncPhase: StateFlow<SyncPhase?> = _syncPhase.asStateFlow()
+
     /** Full sync: pull Jellyfin items + metadata index, merge, persist, auto-categorize. */
-    override suspend fun sync(): SyncResult {
+    override suspend fun sync(): SyncResult = try {
+        syncOnce()
+    } finally {
+        // Every exit — success, error return, throw, cancellation — must take the phase with it,
+        // or the settings line would keep describing a sync that has stopped.
+        _syncPhase.value = null
+    }
+
+    private suspend fun syncOnce(): SyncResult {
         val s = settings.snapshot()
         if (s.demoMode) return demoSync()
         if (!s.isConnected) {
@@ -646,6 +658,7 @@ class DefaultLibraryRepository private constructor(
         }
 
         return tracedSync { trace ->
+            _syncPhase.value = SyncPhase.LoadingLibrary
             val fetchStartedAt = time.now()
             val items = runCatchingCancellable {
                 jellyfin.fetchAllItems(s.serverUrl, s.credential, s.userId, s.libraryId)
@@ -663,6 +676,9 @@ class DefaultLibraryRepository private constructor(
                 return SyncResult.Error(message, retryable = !isPermanentFailure(e))
             }
 
+            // One phase for both feeds: each is a single request, and the merge/persist that
+            // follows is quick enough not to deserve a label of its own.
+            _syncPhase.value = SyncPhase.FetchingIndex
             val api = fetchApi(s)
             val (index, indexAvailable) = fetchIndex(s)
 
@@ -888,12 +904,14 @@ class DefaultLibraryRepository private constructor(
         // a WorkManager worker with a ~10 minute execution window, and bounding the pass bounds it
         // directly, whatever any single extraction does. Whatever completed is already persisted —
         // each fetch commits on its own — and the next sync retries the rest.
+        _syncPhase.value = SyncPhase.FetchingMetadata(0, targets.size)
         withTimeoutOrNull(AUTO_FILL_BUDGET) {
             for (video in targets) {
                 when (fetchAndApply(video.youtubeId, demoMode = demoMode)) {
                     is FetchResult.Success -> filled++
                     is FetchResult.Error -> failed++
                 }
+                _syncPhase.value = SyncPhase.FetchingMetadata(filled + failed, targets.size)
             }
         } ?: Timber.w("Sync auto-fill hit its $AUTO_FILL_BUDGET budget after $filled/${targets.size}")
         return filled to failed

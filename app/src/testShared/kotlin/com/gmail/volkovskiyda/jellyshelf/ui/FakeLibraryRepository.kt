@@ -8,9 +8,11 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,6 +91,10 @@ class FakeLibraryRepository(
     val selectionRuns = MutableStateFlow<SelectionRun?>(null)
     override val selectionRun: StateFlow<SelectionRun?> = selectionRuns
 
+    /** The phase a test wants an in-flight sync to report; drives the settings status line. */
+    val syncPhases = MutableStateFlow<SyncPhase?>(null)
+    override val syncPhase: StateFlow<SyncPhase?> = syncPhases
+
     /**
      * What [sync] returns, and how often it was called. Modelled rather than refused, unlike the
      * rest: a demo sync doesn't go through WorkManager, so the Settings ViewModel calls this
@@ -98,9 +104,13 @@ class FakeLibraryRepository(
     var syncs = 0
         private set
 
+    /** When set, [sync] parks on it after counting — lets a test observe the in-flight state. */
+    var syncGate: CompletableDeferred<Unit>? = null
+
     override suspend fun sync(): SyncResult {
         syncs++
         writeOrder += "sync"
+        syncGate?.await()
         return syncResult
     }
 

@@ -7,6 +7,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import kotlinx.coroutines.flow.Flow
@@ -63,6 +64,13 @@ interface LibraryRepository : PlaystateRepository {
      * while it works.
      */
     val selectionRun: StateFlow<SelectionRun?>
+
+    /**
+     * The stage the sync in flight has reached, or null when none is running. Published by every
+     * sync — manual, periodic or demo — and cleared however the sync ends; the settings screen
+     * shows it only while the sync the user started is the one running.
+     */
+    val syncPhase: StateFlow<SyncPhase?>
 
     suspend fun sync(): SyncResult
     suspend fun fetchMetadata(youtubeId: String): FetchResult

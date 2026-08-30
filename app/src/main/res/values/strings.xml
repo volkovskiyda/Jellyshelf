@@ -280,6 +280,10 @@
     <string name="connection_failed">Connection failed: %1$s</string>
     <string name="folders_load_failed">Failed to load folders: %1$s</string>
     <string name="syncing">Syncing…</string>
+    <!-- Phase labels replacing "Syncing…" while the manual sync reports which stage it is in. -->
+    <string name="sync_phase_loading_library">Loading library from server…</string>
+    <string name="sync_phase_fetching_index">Fetching metadata index…</string>
+    <string name="sync_phase_fetching_ytdlp">Fetching metadata (yt-dlp)… %1$d/%2$d</string>
     <!-- Three independent counts; a single plurals resource can only agree with one quantity. -->
     <string name="sync_summary" tools:ignore="PluralsCandidate">Synced %1$d/%2$d videos with metadata into %3$d categories</string>
     <!-- Wraps sync_summary when the configured metadata index could not be fetched. -->

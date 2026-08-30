@@ -14,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_SERVER
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_USER_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Session
+import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
@@ -332,30 +333,40 @@ class SettingsViewModel(
      *
      * Sync owns [SettingsUiState.syncStatus] outright — no precedence rule, because it no longer
      * shares a line with anything a local operation writes.
+     *
+     * While the sync the user started is running, the repository's [LibraryRepository.syncPhase]
+     * refines the generic "Syncing…" into the stage it has reached. Gated on `sync.running` —
+     * which only the manual sync (or a demo sync) sets — so a periodic sync that happens to run
+     * while this screen is open doesn't light the line up on its own.
      */
-    val state: StateFlow<SettingsUiState> = combine(_state, _sync, updateUi) { local, sync, update ->
-        val withSync = if (sync == null) {
-            local
-        } else {
-            local.copy(
-                busy = local.busy || sync.running,
-                syncRunning = sync.running,
-                syncStatus = sync.line,
+    val state: StateFlow<SettingsUiState> =
+        combine(_state, _sync, updateUi, libraryRepo.syncPhase) { local, sync, update, phase ->
+            val withSync = if (sync == null) {
+                local
+            } else {
+                local.copy(
+                    busy = local.busy || sync.running,
+                    syncRunning = sync.running,
+                    syncStatus = if (sync.running && phase != null) {
+                        StatusLine(phaseLabel(phase))
+                    } else {
+                        sync.line
+                    },
+                )
+            }
+            withSync.copy(
+                updateSource = update.source,
+                checkingUpdate = update.checking,
+                signingInTester = update.signingIn,
+                updateError = update.error,
+                upToDate = update.upToDate,
+                lastUpdateCheckAt = update.lastCheckAt,
             )
-        }
-        withSync.copy(
-            updateSource = update.source,
-            checkingUpdate = update.checking,
-            signingInTester = update.signingIn,
-            updateError = update.error,
-            upToDate = update.upToDate,
-            lastUpdateCheckAt = update.lastCheckAt,
+        }.stateIn(
+            viewModelScope,
+            WhileUiSubscribed,
+            SettingsUiState(isDebugBuild = isDebugBuild, versionName = versionName),
         )
-    }.stateIn(
-        viewModelScope,
-        WhileUiSubscribed,
-        SettingsUiState(isDebugBuild = isDebugBuild, versionName = versionName),
-    )
 
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
         .stateIn(viewModelScope, WhileUiSubscribed, 0)
@@ -490,6 +501,14 @@ class SettingsViewModel(
                 }
             }
             .launchIn(viewModelScope)
+    }
+
+    /** The stage-specific text shown in place of "Syncing…" while a sync reports its phase. */
+    private fun phaseLabel(phase: SyncPhase): String = when (phase) {
+        SyncPhase.LoadingLibrary -> app.getString(R.string.sync_phase_loading_library)
+        SyncPhase.FetchingIndex -> app.getString(R.string.sync_phase_fetching_index)
+        is SyncPhase.FetchingMetadata ->
+            app.getString(R.string.sync_phase_fetching_ytdlp, phase.done, phase.total)
     }
 
     /**
