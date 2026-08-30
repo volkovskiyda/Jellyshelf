@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
@@ -322,9 +324,8 @@ internal fun DetailContent(
             }
 
             // Fetch / refresh YouTube metadata in-app with the bundled yt-dlp. "Get" when the video
-            // only has Jellyfin data, "Update" once it has index or yt-dlp metadata.
-            val hasMetadata = current.metadataSource == METADATA_SOURCE_INDEX ||
-                current.metadataSource == METADATA_SOURCE_YTDLP
+            // only has Jellyfin data, "Update" once any feed or fetch supplied metadata.
+            val hasMetadata = current.metadataSource != METADATA_SOURCE_JELLYFIN
             OutlinedButton(
                 onClick = onFetchMetadata,
                 enabled = !fetching,
@@ -487,6 +488,16 @@ private fun MetadataSourceBadge(source: String) {
             R.string.source_index,
             MaterialTheme.colorScheme.tertiaryContainer,
             MaterialTheme.colorScheme.onTertiaryContainer,
+        )
+        METADATA_SOURCE_API -> Triple(
+            R.string.source_api,
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+        METADATA_SOURCE_API_INDEX -> Triple(
+            R.string.source_api_index,
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
         )
         else -> Triple(
             R.string.source_jellyfin,

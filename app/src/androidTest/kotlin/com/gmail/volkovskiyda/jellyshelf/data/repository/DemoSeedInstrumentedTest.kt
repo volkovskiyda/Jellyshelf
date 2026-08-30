@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
@@ -89,6 +90,7 @@ class DemoSeedInstrumentedTest {
             // the asset — but it is what every action *after* the seed goes through.
             sources = LibrarySources(
                 JellyfinDataSource(JellyfinClient(httpClient)),
+                ApiSource(httpClient, dispatchers, json),
                 indexSource,
                 YtDlpMetadataSource(context, dispatchers, json),
                 TestDemoBackend(indexSource),

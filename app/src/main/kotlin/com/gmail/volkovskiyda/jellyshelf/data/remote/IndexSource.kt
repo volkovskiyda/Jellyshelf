@@ -71,20 +71,22 @@ class IndexSource(
         decode(context.assets.open(DEMO_FETCHED_ASSET))
     }
 
-    /**
-     * Decoded straight off the stream rather than via a String: a 10k-video index runs to tens of
-     * megabytes of JSON, and buffering the whole document before parsing it would hold a second
-     * full copy for no gain.
-     */
-    @OptIn(ExperimentalSerializationApi::class)
-    private fun decode(stream: InputStream): List<IndexEntry> = stream.use {
-        try {
-            json.decodeFromStream(ListSerializer(IndexEntry.serializer()), it)
-        } catch (e: SerializationException) {
-            // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at
-            // minimum), so a blank or non-JSON 200 — captive portal, file caught mid-rewrite —
-            // must count as a failed fetch, or it would downgrade every index-sourced row.
-            throw IOException("Index fetch returned no usable JSON array", e)
-        }
+    private fun decode(stream: InputStream): List<IndexEntry> = decodeIndexEntries(json, stream)
+}
+
+/**
+ * Decoded straight off the stream rather than via a String: a 10k-video index runs to tens of
+ * megabytes of JSON, and buffering the whole document before parsing it would hold a second
+ * full copy for no gain. Shared with [ApiSource], whose entries are the same document format.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+internal fun decodeIndexEntries(json: Json, stream: InputStream): List<IndexEntry> = stream.use {
+    try {
+        json.decodeFromStream(ListSerializer(IndexEntry.serializer()), it)
+    } catch (e: SerializationException) {
+        // A legitimate index is always a JSON array (build-library-index.sh emits "[]" at
+        // minimum), so a blank or non-JSON 200 — captive portal, file caught mid-rewrite —
+        // must count as a failed fetch, or it would downgrade every index-sourced row.
+        throw IOException("Index fetch returned no usable JSON array", e)
     }
 }

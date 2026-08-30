@@ -18,6 +18,13 @@ data class Settings(
     val libraryId: String,
     val libraryName: String,
     val indexUrl: String,
+    /**
+     * Base URL of the metadata API (the bot server that downloaded the videos), or blank when not
+     * configured. Sync appends `/videos` to it; entries share [indexUrl]'s document format.
+     */
+    val metadataApiUrl: String = "",
+    /** Bearer token the metadata API requires on every request; blank when not configured. */
+    val metadataApiToken: String = "",
     val lastSyncAt: Long,
     /**
      * The [libraryId] the last sync actually ran against. When it differs from [libraryId] the

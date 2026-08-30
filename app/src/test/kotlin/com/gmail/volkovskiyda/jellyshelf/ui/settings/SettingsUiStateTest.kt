@@ -51,6 +51,24 @@ class SettingsUiStateTest {
         assertFalse(SettingsUiState(signedIn = true, busy = true).indexProtected)
     }
 
+    // --- the metadata API token requirement ---
+
+    @Test
+    fun `a metadata api url without a token flags the token as missing`() {
+        assertTrue(SettingsUiState(metadataApiUrl = "https://example.org/api").metadataApiTokenMissing)
+    }
+
+    @Test
+    fun `a token satisfies the requirement`() {
+        val state = SettingsUiState(metadataApiUrl = "https://example.org/api", metadataApiToken = "t")
+        assertFalse(state.metadataApiTokenMissing)
+    }
+
+    @Test
+    fun `no api url means no token requirement`() {
+        assertFalse(SettingsUiState(metadataApiToken = "").metadataApiTokenMissing)
+    }
+
     // --- the demo affordances ---
 
     @Test

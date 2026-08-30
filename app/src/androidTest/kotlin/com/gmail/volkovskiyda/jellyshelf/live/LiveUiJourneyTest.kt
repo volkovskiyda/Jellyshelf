@@ -252,9 +252,12 @@ class LiveUiJourneyTest : KoinTest {
         composeRule.onNodeWithTag(PASSWORD_FIELD_TAG).performImeAction()
         awaitText(string(R.string.sign_out), SIGN_IN_TIMEOUT_MS)
 
-        // The index field appears only once signed in. JellyfinTestConfig falls back to the
-        // <server>/jellyshelf-index.json convention the screen's own Fill button writes, so this
-        // is filled the same either way; an index that 404s only costs the sync its metadata.
+        // The index field appears only once signed in, and lives behind the Advanced expander —
+        // collapsed on a fresh launch, so it has to be opened the way a user would.
+        // JellyfinTestConfig falls back to the <server>/jellyshelf-index.json convention the
+        // screen's own Fill button writes, so this is filled the same either way; an index that
+        // 404s only costs the sync its metadata.
+        composeRule.onNodeWithText(string(R.string.show_advanced)).performScrollTo().performClick()
         composeRule.onNodeWithTag(INDEX_URL_FIELD_TAG).performScrollTo()
             .performTextInput(config.indexUrl)
     }

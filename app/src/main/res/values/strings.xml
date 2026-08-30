@@ -137,9 +137,11 @@
     <string name="fetching_metadata">Fetching metadata…</string>
     <string name="metadata_updated_for">Metadata updated for %1$s</string>
     <string name="description">Description</string>
-    <string name="source_ytdlp">In-app · yt-dlp</string>
-    <string name="source_index">Script · index</string>
-    <string name="source_jellyfin">Jellyfin only</string>
+    <string name="source_ytdlp">In-app</string>
+    <string name="source_index">Index</string>
+    <string name="source_jellyfin">Jellyfin</string>
+    <string name="source_api">API</string>
+    <string name="source_api_index">API + index</string>
     <!-- Detail's own line, so it leads. Settings says the same thing mid-sentence with its own
          lowercase synced_at; keeping the wording distinct is also what stops the two reading as
          one duplicated string. -->
@@ -167,6 +169,8 @@
     <string name="check_sync_scope_first">Check the sync scope first</string>
     <string name="unlock_index_url">Unlock the index URL</string>
     <string name="lock_index_url">Lock the index URL</string>
+    <string name="unlock_api_url">Unlock the API URL</string>
+    <string name="lock_api_url">Lock the API URL</string>
     <string name="index_url_state_locked">Locked</string>
     <string name="index_url_state_unlocked">Unlocked</string>
     <string name="previous_chapter">Previous chapter</string>
@@ -214,7 +218,7 @@
       no connection to retype, and its library is one tap away again.
     -->
     <string name="sign_out_dialog_title">Sign out?</string>
-    <string name="sign_out_dialog_text">This clears everything on this device: the server URL, API key, metadata index URL, folder scope, and every synced video and category. Nothing on the Jellyfin server is changed.</string>
+    <string name="sign_out_dialog_text">This clears everything on this device: the server URL, API key, metadata index URL, metadata API URL and token, folder scope, and every synced video and category. Nothing on the Jellyfin server is changed.</string>
     <string name="sign_out_dialog_title_demo">Leave demo?</string>
     <string name="sign_out_dialog_text_demo">This clears the demo library from this device. Tap Try demo to load it again.</string>
     <string name="leave_demo">Leave demo</string>
@@ -234,6 +238,11 @@
     <string name="token_in_query_explained">Normally the token is passed to the player as a request header, keeping it out of the URL. Turn this on if your player can’t use headers and playback fails.</string>
     <string name="index_url_label">Metadata index URL (optional)</string>
     <string name="index_url_hint">https://host/jellyshelf-index.json</string>
+    <string name="metadata_api_url_label">Metadata API URL (optional)</string>
+    <string name="metadata_api_url_hint">https://host/api</string>
+    <string name="metadata_api_token">Metadata API token</string>
+    <string name="metadata_api_token_required">Required when a metadata API URL is set</string>
+    <string name="metadata_api_auth_failed">The metadata API rejected this token — check it and sync again</string>
     <string name="fill">Fill</string>
     <string name="connect_load_users">Connect &amp; load users</string>
     <string name="user">User</string>
@@ -263,6 +272,8 @@
     <string name="sync_summary" tools:ignore="PluralsCandidate">Synced %1$d/%2$d videos with metadata into %3$d categories</string>
     <!-- Wraps sync_summary when the configured metadata index could not be fetched. -->
     <string name="sync_index_unavailable">%1$s • metadata index unavailable</string>
+    <!-- Wraps the sync summary when the configured metadata API could not be fetched. -->
+    <string name="sync_api_unavailable">%1$s • metadata API unavailable</string>
     <!-- Wraps the sync summary when the sync's yt-dlp auto-fill pass filled small metadata gaps. -->
     <string name="sync_auto_filled" tools:ignore="PluralsCandidate">%1$s • fetched %2$d missing with yt-dlp</string>
     <string name="sync_auto_filled_partial" tools:ignore="PluralsCandidate">%1$s • fetched %2$d missing with yt-dlp, %3$d failed</string>

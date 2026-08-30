@@ -473,9 +473,10 @@ class DefaultLibraryRepository private constructor(
     private val videoDao = db.videoDao()
     private val categoryDao = db.categoryDao()
 
-    // Unpacked once. The four are grouped for the constructor's sake (see [LibrarySources]); every
+    // Unpacked once. The five are grouped for the constructor's sake (see [LibrarySources]); every
     // call below still names the source it actually reaches for.
     private val jellyfin = sources.jellyfin
+    private val apiSource = sources.api
     private val indexSource = sources.index
     private val ytDlp = sources.ytDlp
     private val demo = sources.demo
@@ -659,18 +660,19 @@ class DefaultLibraryRepository private constructor(
                 return SyncResult.Error(message, retryable = !isPermanentFailure(e))
             }
 
+            val api = fetchApi(s)
             val (index, indexAvailable) = fetchIndex(s)
 
             val now = time.now()
             val serverBase = s.serverUrl.trim().removeSuffix("/")
-            val mergeContext = SyncMergeContext(serverBase, now, indexAvailable)
+            val mergeContext = SyncMergeContext(serverBase, now, indexAvailable, api.available)
 
             val synced = writes.mutex.withLock {
                 // Existing rows, to honour newest-wins: a manual in-app yt-dlp fetch is kept over
                 // an index entry unless the index entry is genuinely newer. Read inside the lock
                 // so no other writer can slip between this snapshot and the upsert below.
                 val existingById = videoDao.getAll().associateBy { it.youtubeId }
-                val videos = mergedVideos(items, existingById, index, mergeContext, fetchStartedAt)
+                val videos = mergedVideos(items, existingById, api.entries, index, mergeContext, fetchStartedAt)
 
                 val prune = prunePolicy(
                     scopeChanged = s.libraryId != s.lastSyncLibraryId,
@@ -689,6 +691,8 @@ class DefaultLibraryRepository private constructor(
                     indexed = videos.count { it.metadataSource != METADATA_SOURCE_JELLYFIN },
                     categories = autoCategories.size,
                     indexDegraded = s.indexUrl.isNotBlank() && !indexAvailable,
+                    apiDegraded = s.metadataApiUrl.isNotBlank() && !api.available && !api.authFailed,
+                    apiAuthFailed = api.authFailed,
                 )
             }
             trace.putAttribute("result", "success")
@@ -766,10 +770,37 @@ class DefaultLibraryRepository private constructor(
         }
     }
 
-    /** Every server item that carries a YouTube id, merged with its stored row and index entry. */
+    /** One sync's metadata API outcome: the entries, and how the fetch ended if they are empty. */
+    private class ApiFetch(
+        val entries: Map<String, IndexEntry>,
+        val available: Boolean,
+        val authFailed: Boolean = false,
+    )
+
+    /**
+     * The metadata API's entries keyed by video id, with the same failed-vs-empty distinction as
+     * [fetchIndex] and for the same reason: a transient failure must never downgrade API-sourced
+     * rows. A 401 is additionally split out as [ApiFetch.authFailed] — a wrong token is a
+     * configuration error the settings screen points at directly, not a reachability blip.
+     */
+    private suspend fun fetchApi(s: Settings): ApiFetch {
+        if (s.metadataApiUrl.isBlank()) return ApiFetch(emptyMap(), available = false)
+        return runCatchingCancellable {
+            ApiFetch(
+                apiSource.fetchVideos(s.metadataApiUrl, s.metadataApiToken).associateBy { it.id },
+                available = true,
+            )
+        }.getOrElse { e ->
+            Timber.w(e, "Metadata API fetch failed; syncing without it")
+            ApiFetch(emptyMap(), available = false, authFailed = isUnauthorized(e))
+        }
+    }
+
+    /** Every server item that carries a YouTube id, merged with its stored row and feed entries. */
     private fun mergedVideos(
         items: List<BaseItemDto>,
         existingById: Map<String, VideoEntity>,
+        api: Map<String, IndexEntry>,
         index: Map<String, IndexEntry>,
         context: SyncMergeContext,
         fetchStartedAt: Long,
@@ -779,7 +810,7 @@ class DefaultLibraryRepository private constructor(
             existing = existingById[youtubeId],
             youtubeId = youtubeId,
             item = item,
-            meta = index[youtubeId],
+            meta = combinedMeta(api[youtubeId], index[youtubeId]),
             context = context,
             // A local watch-state write that landed after the server snapshot was taken
             // is newer than that snapshot — keep it.
@@ -943,6 +974,9 @@ class DefaultLibraryRepository private constructor(
                 description = entry.description ?: existing.description,
                 tags = entry.tags ?: existing.tags,
                 youtubeCategories = entry.categories ?: existing.youtubeCategories,
+                // A fetch that carries structured chapters supplies them like every other field;
+                // one without leaves whatever the row already had rather than erasing it.
+                chapters = entry.chapters?.toChapters() ?: existing.chapters,
                 // Strip a legacy embedded api key so it can't persist past this write.
                 thumbnailUrl = entry.thumbnail ?: stripCredentials(existing.thumbnailUrl),
                 metadataSource = METADATA_SOURCE_YTDLP,

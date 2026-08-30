@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
@@ -65,6 +66,9 @@ class IndexUrlFieldTest {
                             state = state.copy(indexUrl = it)
                         },
                     ),
+                    // The field lives inside the Advanced section now; expanded up front, since
+                    // what these tests pin is the field's behavior, not the expander's.
+                    advancedExpanded = true,
                 )
             }
         }
@@ -91,7 +95,7 @@ class IndexUrlFieldTest {
     fun theField_appearsWithFill_onceSignedInAndBeforeAnySync() {
         setContent(signedInBeforeSync)
 
-        composeRule.onNodeWithText(label(R.string.index_url_label)).assertIsDisplayed()
+        composeRule.onNodeWithText(label(R.string.index_url_label)).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.fill)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url)).assertDoesNotExist()
     }
@@ -100,7 +104,7 @@ class IndexUrlFieldTest {
     fun theField_acceptsTypingBeforeTheFirstSync() {
         setContent(signedInBeforeSync)
 
-        composeRule.onNodeWithText(label(R.string.index_url_label)).performTextInput("x")
+        composeRule.onNodeWithText(label(R.string.index_url_label)).performScrollTo().performTextInput("x")
 
         assertEquals(1, edits)
     }
@@ -109,7 +113,8 @@ class IndexUrlFieldTest {
     fun aSyncedField_locksAndSwapsFillForTheLockButton() {
         setContent(signedInAfterSync)
 
-        composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url))
+            .performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.fill)).assertDoesNotExist()
     }
 
@@ -135,7 +140,8 @@ class IndexUrlFieldTest {
     fun unlocking_letsTypingThrough_andOffersToLockAgain() {
         setContent(signedInAfterSync)
 
-        composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url)).performClick()
+        composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url))
+            .performScrollTo().performClick()
         composeRule.onNodeWithContentDescription(label(R.string.lock_index_url)).assertIsDisplayed()
         composeRule.onNodeWithText(label(R.string.index_url_label)).performTextInput("x")
 
@@ -146,7 +152,8 @@ class IndexUrlFieldTest {
     fun lockingAgain_stopsTypingAgain() {
         setContent(signedInAfterSync)
 
-        composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url)).performClick()
+        composeRule.onNodeWithContentDescription(label(R.string.unlock_index_url))
+            .performScrollTo().performClick()
         composeRule.onNodeWithContentDescription(label(R.string.lock_index_url)).performClick()
 
         assertNotTypeable()

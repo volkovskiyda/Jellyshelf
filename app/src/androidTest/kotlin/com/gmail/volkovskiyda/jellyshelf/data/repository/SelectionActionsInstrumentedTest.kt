@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
@@ -34,6 +35,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -184,16 +186,26 @@ class SelectionActionsInstrumentedTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val dataSource = JellyfinDataSource(JellyfinClient(httpClient))
-        val indexSource =
-            IndexSource(ApplicationProvider.getApplicationContext(), httpClient, dispatchers, json)
-        val ytDlp = UnusedYtDlp(ApplicationProvider.getApplicationContext(), dispatchers)
         return DefaultLibraryRepository(
             db = db,
             settings = settings,
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
-            sources = LibrarySources(dataSource, indexSource, ytDlp, TestDemoBackend(indexSource)),
+            sources = sources(httpClient, json),
+        )
+    }
+
+    private fun sources(httpClient: HttpClient, json: Json): LibrarySources {
+        val dataSource = JellyfinDataSource(JellyfinClient(httpClient))
+        val indexSource =
+            IndexSource(ApplicationProvider.getApplicationContext(), httpClient, dispatchers, json)
+        val ytDlp = UnusedYtDlp(ApplicationProvider.getApplicationContext(), dispatchers)
+        return LibrarySources(
+            dataSource,
+            ApiSource(httpClient, dispatchers, json),
+            indexSource,
+            ytDlp,
+            TestDemoBackend(indexSource),
         )
     }
 

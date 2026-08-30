@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
@@ -169,7 +170,13 @@ class RemoveWatchedInstrumentedTest {
             time = DefaultTimeProvider(),
             // Not a demo install, so every removal here goes to the MockEngine rather than the
             // demo backend — [DemoActionsInstrumentedTest] covers the other side.
-            sources = LibrarySources(dataSource, indexSource, ytDlp, TestDemoBackend(indexSource)),
+            sources = LibrarySources(
+                dataSource,
+                ApiSource(httpClient, dispatchers, json),
+                indexSource,
+                ytDlp,
+                TestDemoBackend(indexSource),
+            ),
         )
     }
 

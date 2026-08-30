@@ -102,6 +102,8 @@ class FakeSettingsRepository(
             libraryId = "",
             libraryName = "",
             indexUrl = "",
+            metadataApiUrl = "",
+            metadataApiToken = "",
             tokenInQuery = false,
         )
         _syncScopeNudged.value = false
@@ -128,6 +130,10 @@ class FakeSettingsRepository(
 
     override suspend fun setIndexUrl(url: String) {
         _settings.value = _settings.value.copy(indexUrl = url)
+    }
+
+    override suspend fun setMetadataApi(url: String, token: String) {
+        _settings.value = _settings.value.copy(metadataApiUrl = url, metadataApiToken = token)
     }
 
     override suspend fun setLastSync(timestamp: Long, libraryId: String) {

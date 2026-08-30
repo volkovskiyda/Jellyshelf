@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
+import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
@@ -166,6 +167,7 @@ class PlaystateReportingInstrumentedTest {
             time = DefaultTimeProvider(),
             sources = LibrarySources(
                 JellyfinDataSource(JellyfinClient(httpClient)),
+                ApiSource(httpClient, dispatchers, json),
                 IndexSource(context, httpClient, dispatchers, json),
                 YtDlpMetadataSource(context, dispatchers, json),
                 TestDemoBackend(IndexSource(context, httpClient, dispatchers, json)),

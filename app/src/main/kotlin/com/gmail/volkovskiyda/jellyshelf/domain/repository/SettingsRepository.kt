@@ -30,7 +30,8 @@ interface SettingsRepository {
 
     /**
      * Drops everything that describes a server: the token and its user, the server URL, the
-     * advanced API key, the metadata index URL, the folder scope and the playback-handoff switch.
+     * advanced API key, the metadata index URL, the metadata API URL and token, the folder scope
+     * and the playback-handoff switch.
      * What survives is the device's own state — the install's [deviceId], the theme, the playback
      * preferences, the update-check settings — none of which came from a server.
      *
@@ -50,6 +51,12 @@ interface SettingsRepository {
     /** Library/collection to scope sync to. Empty id == root == all collections. */
     suspend fun setLibrary(libraryId: String, libraryName: String)
     suspend fun setIndexUrl(url: String)
+
+    /**
+     * Records both halves of the metadata API connection at once — a URL without its token can
+     * only produce 401s, so no caller gets to persist one and forget the other.
+     */
+    suspend fun setMetadataApi(url: String, token: String)
 
     /** Advanced playback handoff: credential in the URL query rather than an intent header. */
     suspend fun setTokenInQuery(enabled: Boolean)

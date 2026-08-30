@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.settings
 
 import android.content.Context
 import android.provider.Settings
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
@@ -91,6 +92,8 @@ internal const val SERVER_URL_FIELD_TAG = "server_url_field"
 internal const val USERNAME_FIELD_TAG = "username_field"
 internal const val PASSWORD_FIELD_TAG = "password_field"
 internal const val INDEX_URL_FIELD_TAG = "index_url_field"
+internal const val METADATA_API_URL_FIELD_TAG = "metadata_api_url_field"
+internal const val METADATA_API_TOKEN_FIELD_TAG = "metadata_api_token_field"
 
 /**
  * Settings tab: binds [SettingsViewModel] to the stateless [SettingsContent] below, which
@@ -134,10 +137,13 @@ fun SettingsScreen(
             onServerUrlChange = viewModel::onServerUrlChange,
             onApiKeyChange = viewModel::onApiKeyChange,
             onIndexUrlChange = viewModel::onIndexUrlChange,
+            onMetadataApiUrlChange = viewModel::onMetadataApiUrlChange,
+            onMetadataApiTokenChange = viewModel::onMetadataApiTokenChange,
             onUsernameChange = viewModel::onUsernameChange,
             onPasswordChange = viewModel::onPasswordChange,
             onTokenInQueryChange = viewModel::onTokenInQueryChange,
             fillIndexUrlFromServer = viewModel::fillIndexUrlFromServer,
+            fillMetadataApiUrlFromServer = viewModel::fillMetadataApiUrlFromServer,
             signIn = viewModel::signIn,
             signOut = viewModel::signOut,
             tryDemo = viewModel::tryDemo,
@@ -326,8 +332,6 @@ internal fun SettingsContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            if (state.canEditIndex) IndexUrlField(state = state, actions = actions)
 
             AdvancedAuthSection(
                 state = state,
@@ -608,6 +612,15 @@ private fun AdvancedAuthSection(
         Switch(checked = state.tokenInQuery, onCheckedChange = actions.onTokenInQueryChange)
     }
 
+    // The metadata feeds. In here rather than the main section — they are power-user fields — but
+    // above the signed-in early return: unlike the API-key affordances below, they stay editable
+    // while signed in, which is exactly when [SettingsUiState.canEditIndex] holds.
+    if (state.canEditIndex) {
+        IndexUrlField(state = state, actions = actions)
+        MetadataApiUrlField(state = state, actions = actions)
+        MetadataApiTokenField(state = state, actions = actions)
+    }
+
     if (state.signedIn) return
 
     OutlinedButton(
@@ -666,36 +679,117 @@ private fun rememberScopeShake(nudge: Flow<Unit>): Animatable<Float, AnimationVe
 private fun Context.animationsEnabled(): Boolean =
     Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
 
+/** The metadata index URL — a [LockableUrlField] like the API URL below it. */
+@Composable
+private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
+    LockableUrlField(
+        value = state.indexUrl,
+        onValueChange = actions.onIndexUrlChange,
+        labelRes = R.string.index_url_label,
+        hintRes = R.string.index_url_hint,
+        protected = state.indexProtected,
+        fillEnabled = state.serverUrl.isNotBlank(),
+        onFill = actions.fillIndexUrlFromServer,
+        lockRes = R.string.lock_index_url,
+        unlockRes = R.string.unlock_index_url,
+        testTag = INDEX_URL_FIELD_TAG,
+    )
+}
+
+/** The metadata API base URL — same protection rules as the index URL. */
+@Composable
+private fun MetadataApiUrlField(state: SettingsUiState, actions: SettingsActions) {
+    LockableUrlField(
+        value = state.metadataApiUrl,
+        onValueChange = actions.onMetadataApiUrlChange,
+        labelRes = R.string.metadata_api_url_label,
+        hintRes = R.string.metadata_api_url_hint,
+        protected = state.indexProtected,
+        fillEnabled = state.serverUrl.isNotBlank(),
+        onFill = actions.fillMetadataApiUrlFromServer,
+        lockRes = R.string.lock_api_url,
+        unlockRes = R.string.unlock_api_url,
+        testTag = METADATA_API_URL_FIELD_TAG,
+    )
+}
+
 /**
- * The metadata index URL, shown only once there are credentials to use it with
+ * The metadata API's bearer token. A secret, presented like the Jellyfin API key above it —
+ * password-masked, opted out of autofill for the same reason: a password manager offering to
+ * store a server token as this app's password would be remembering the wrong credential. No lock:
+ * the token rotates with the server's, and a wrong one fails loudly (401) rather than producing
+ * the half-populated library the URL locks exist to prevent.
+ */
+@Composable
+private fun MetadataApiTokenField(state: SettingsUiState, actions: SettingsActions) {
+    // The two error states the token can be in, most actionable first: a gap the user can see
+    // before syncing, then the server's verdict on the token a sync actually sent.
+    val errorRes = when {
+        state.metadataApiTokenMissing -> R.string.metadata_api_token_required
+        state.metadataApiAuthFailed -> R.string.metadata_api_auth_failed
+        else -> null
+    }
+    OutlinedTextField(
+        value = state.metadataApiToken,
+        onValueChange = actions.onMetadataApiTokenChange,
+        label = { Text(stringResource(R.string.metadata_api_token)) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        isError = errorRes != null,
+        supportingText = errorRes?.let { { Text(stringResource(it)) } },
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDataType = ContentDataType.None }
+            .testTag(METADATA_API_TOKEN_FIELD_TAG),
+    )
+}
+
+/**
+ * A metadata feed URL, shown only once there are credentials to use it with
  * ([SettingsUiState.canEditIndex]).
  *
  * Its trailing control changes with what there is to lose. Before the first sync the useful action
  * is filling the field in, so **Fill** stays exactly as it was. Once a sync has run there is a
- * populated library to damage, and the field locks: a mistyped index URL produces a half-populated
+ * populated library to damage, and the field locks: a mistyped feed URL produces a half-populated
  * library with no obvious cause. The unlock is deliberate and deliberately not remembered — it
  * resets every time this screen is composed, so an accidental unlock cannot follow the user around.
  */
 @Composable
-private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
+private fun LockableUrlField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    @StringRes labelRes: Int,
+    @StringRes hintRes: Int,
+    protected: Boolean,
+    fillEnabled: Boolean,
+    onFill: () -> Unit,
+    @StringRes lockRes: Int,
+    @StringRes unlockRes: Int,
+    testTag: String,
+) {
     var unlocked by remember { mutableStateOf(false) }
-    val locked = state.indexProtected && !unlocked
+    val locked = protected && !unlocked
     OutlinedTextField(
-        value = state.indexUrl,
-        onValueChange = actions.onIndexUrlChange,
-        label = { Text(stringResource(R.string.index_url_label)) },
-        placeholder = { Text(stringResource(R.string.index_url_hint)) },
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(stringResource(labelRes)) },
+        placeholder = { Text(stringResource(hintRes)) },
         singleLine = true,
         // readOnly, not enabled = false: a locked field still has to be *readable*, and the
         // disabled colours wash the URL out to the point of being hard to check at a glance.
         readOnly = locked,
         trailingIcon = {
-            if (state.indexProtected) {
-                LockToggle(unlocked = unlocked, onToggle = { unlocked = !unlocked })
-            } else if (state.indexUrl.isBlank()) {
+            if (protected) {
+                LockToggle(
+                    unlocked = unlocked,
+                    onToggle = { unlocked = !unlocked },
+                    lockRes = lockRes,
+                    unlockRes = unlockRes,
+                )
+            } else if (value.isBlank()) {
                 TextButton(
-                    onClick = actions.fillIndexUrlFromServer,
-                    enabled = state.serverUrl.isNotBlank(),
+                    onClick = onFill,
+                    enabled = fillEnabled,
                 ) { Text(stringResource(R.string.fill)) }
             }
         },
@@ -703,7 +797,7 @@ private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
             .fillMaxWidth()
             // Not a credential either — same reasoning as the server URL above.
             .semantics { contentDataType = ContentDataType.None }
-            .testTag(INDEX_URL_FIELD_TAG),
+            .testTag(testTag),
     )
 }
 
@@ -713,7 +807,12 @@ private fun IndexUrlField(state: SettingsUiState, actions: SettingsActions) {
  * in, only what tapping it would do.
  */
 @Composable
-private fun LockToggle(unlocked: Boolean, onToggle: () -> Unit) {
+private fun LockToggle(
+    unlocked: Boolean,
+    onToggle: () -> Unit,
+    @StringRes lockRes: Int,
+    @StringRes unlockRes: Int,
+) {
     val stateLabel = stringResource(
         if (unlocked) R.string.index_url_state_unlocked else R.string.index_url_state_locked,
     )
@@ -723,9 +822,7 @@ private fun LockToggle(unlocked: Boolean, onToggle: () -> Unit) {
     ) {
         Icon(
             if (unlocked) Icons.Filled.LockOpen else Icons.Filled.Lock,
-            contentDescription = stringResource(
-                if (unlocked) R.string.lock_index_url else R.string.unlock_index_url,
-            ),
+            contentDescription = stringResource(if (unlocked) lockRes else unlockRes),
         )
     }
 }

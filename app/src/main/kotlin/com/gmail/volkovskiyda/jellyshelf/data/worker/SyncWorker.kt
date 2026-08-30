@@ -37,6 +37,8 @@ class SyncWorker(
                     KEY_INDEXED to result.indexed,
                     KEY_CATEGORIES to result.categories,
                     KEY_INDEX_DEGRADED to result.indexDegraded,
+                    KEY_API_DEGRADED to result.apiDegraded,
+                    KEY_API_AUTH_FAILED to result.apiAuthFailed,
                     KEY_AUTO_FILLED to result.autoFilled,
                     KEY_AUTO_FILL_FAILED to result.autoFillFailed,
                 ),
@@ -60,6 +62,8 @@ class SyncWorker(
         const val KEY_INDEXED = "indexed"
         const val KEY_CATEGORIES = "categories"
         const val KEY_INDEX_DEGRADED = "indexDegraded"
+        const val KEY_API_DEGRADED = "apiDegraded"
+        const val KEY_API_AUTH_FAILED = "apiAuthFailed"
         const val KEY_AUTO_FILLED = "autoFilled"
         const val KEY_AUTO_FILL_FAILED = "autoFillFailed"
         const val KEY_ERROR = "error"

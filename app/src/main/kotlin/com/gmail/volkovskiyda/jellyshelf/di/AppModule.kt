@@ -13,6 +13,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.DefaultDispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.install.ApkInstaller
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.DemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
@@ -143,6 +144,7 @@ val appModule = module {
     singleOf(::DefaultJellyfinRepository) { bind<JellyfinRepository>() }
     singleOf(::YtDlpMetadataSource)
     singleOf(::DemoBackend)
+    singleOf(::ApiSource)
     singleOf(::LibrarySources)
     singleOf(::DefaultLibraryRepository) { bind<LibraryRepository>() }
     singleOf(::SyncScheduler)

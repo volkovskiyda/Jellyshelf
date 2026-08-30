@@ -41,6 +41,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val LIBRARY_ID = stringPreferencesKey("library_id")
         val LIBRARY_NAME = stringPreferencesKey("library_name")
         val INDEX_URL = stringPreferencesKey("index_url")
+        val METADATA_API_URL = stringPreferencesKey("metadata_api_url")
+        val METADATA_API_TOKEN = stringPreferencesKey("metadata_api_token")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
         val LAST_SYNC_LIBRARY_ID = stringPreferencesKey("last_sync_library_id")
         val SELECTED_CATEGORY_TYPE = stringPreferencesKey("selected_category_type")
@@ -94,6 +96,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
                 libraryId = p[Keys.LIBRARY_ID].orEmpty(),
                 libraryName = p[Keys.LIBRARY_NAME].orEmpty(),
                 indexUrl = p[Keys.INDEX_URL].orEmpty(),
+                metadataApiUrl = p[Keys.METADATA_API_URL].orEmpty(),
+                metadataApiToken = p[Keys.METADATA_API_TOKEN].orEmpty(),
                 lastSyncAt = p[Keys.LAST_SYNC_AT] ?: 0L,
                 lastSyncLibraryId = p[Keys.LAST_SYNC_LIBRARY_ID].orEmpty(),
                 tokenInQuery = p[Keys.TOKEN_IN_QUERY] ?: false,
@@ -161,6 +165,8 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
             it.remove(Keys.LIBRARY_ID)
             it.remove(Keys.LIBRARY_NAME)
             it.remove(Keys.INDEX_URL)
+            it.remove(Keys.METADATA_API_URL)
+            it.remove(Keys.METADATA_API_TOKEN)
             it.remove(Keys.TOKEN_IN_QUERY)
             // Re-arms the "check the sync scope" nudge for whoever signs in next, exactly as a
             // successful sign-in does — it is once per sign-in, and this is a new one.
@@ -207,6 +213,13 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
 
     override suspend fun setIndexUrl(url: String) {
         ds.edit { it[Keys.INDEX_URL] = url.trim() }
+    }
+
+    override suspend fun setMetadataApi(url: String, token: String) {
+        ds.edit {
+            it[Keys.METADATA_API_URL] = url.trim()
+            it[Keys.METADATA_API_TOKEN] = token.trim()
+        }
     }
 
     override suspend fun setLastSync(timestamp: Long, libraryId: String) {

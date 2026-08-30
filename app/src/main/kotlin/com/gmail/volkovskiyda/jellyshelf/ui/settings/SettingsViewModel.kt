@@ -76,6 +76,15 @@ data class SettingsUiState(
     val serverUrl: String = "",
     val apiKey: String = "",
     val indexUrl: String = "",
+    /** Base URL of the bot server's metadata API; blank when not configured. */
+    val metadataApiUrl: String = "",
+    /** Bearer token that API requires; blank when not configured. */
+    val metadataApiToken: String = "",
+    /**
+     * The last sync's metadata API fetch came back 401. Set from the sync result and cleared the
+     * moment either API field is edited — the red state exists to prompt exactly that edit.
+     */
+    val metadataApiAuthFailed: Boolean = false,
     /** The theme override and which way the next tap of the switch moves. */
     val themeState: ThemeState = ThemeState(),
     // Sign-in fields. The password lives here only until the token comes back — see [signIn].
@@ -200,6 +209,13 @@ data class SettingsUiState(
      * locks behind a deliberate unlock instead of staying open.
      */
     val indexProtected: Boolean get() = lastSyncAt != 0L || syncRunning
+
+    /**
+     * A metadata API URL without its token can only produce 401s, so the token field flags the
+     * gap the moment the URL is set — before a sync has to fail to say the same thing.
+     */
+    val metadataApiTokenMissing: Boolean
+        get() = metadataApiUrl.isNotBlank() && metadataApiToken.isBlank()
 
     /**
      * Path of the folder currently being browsed, from server-provided folder names — no
@@ -356,6 +372,8 @@ class SettingsViewModel(
                 serverUrl = serverUrl,
                 apiKey = if (edited) cur.apiKey else s.apiKey,
                 indexUrl = if (edited) cur.indexUrl else s.indexUrl,
+                metadataApiUrl = if (edited) cur.metadataApiUrl else s.metadataApiUrl,
+                metadataApiToken = if (edited) cur.metadataApiToken else s.metadataApiToken,
                 username = if (edited) cur.username else s.userName,
                 signedIn = s.isSignedIn,
                 // The *persisted* key, never the field — see [SettingsUiState.apiKeyConnected].
@@ -416,6 +434,10 @@ class SettingsViewModel(
                         SyncUi(running = true, line = StatusLine(app.getString(R.string.syncing)))
                     WorkInfo.State.SUCCEEDED -> {
                         val out = info.outputData
+                        _state.value = _state.value.copy(
+                            metadataApiAuthFailed =
+                            out.getBoolean(SyncWorker.KEY_API_AUTH_FAILED, false),
+                        )
                         // The worker exits early without output when credentials are missing;
                         // showing a 0/0 summary then would be a lie, so say nothing.
                         val message = if (out.keyValueMap.isEmpty()) {
@@ -428,6 +450,7 @@ class SettingsViewModel(
                                     indexed = out.getInt(SyncWorker.KEY_INDEXED, 0),
                                     categories = out.getInt(SyncWorker.KEY_CATEGORIES, 0),
                                     indexDegraded = out.getBoolean(SyncWorker.KEY_INDEX_DEGRADED, false),
+                                    apiDegraded = out.getBoolean(SyncWorker.KEY_API_DEGRADED, false),
                                     autoFilled = out.getInt(SyncWorker.KEY_AUTO_FILLED, 0),
                                     autoFillFailed = out.getInt(SyncWorker.KEY_AUTO_FILL_FAILED, 0),
                                 ),
@@ -469,12 +492,14 @@ class SettingsViewModel(
             result.matched,
             result.categories,
         )
-        // The sync succeeded, but without the metadata index its counts are the reason "nothing
+        // The sync succeeded, but without its metadata feeds the counts are the reason "nothing
         // new gets categorized" — say so rather than reporting an unqualified success.
-        val qualified = if (result.indexDegraded) {
-            app.getString(R.string.sync_index_unavailable, summary)
-        } else {
-            summary
+        var qualified = summary
+        if (result.indexDegraded) {
+            qualified = app.getString(R.string.sync_index_unavailable, qualified)
+        }
+        if (result.apiDegraded) {
+            qualified = app.getString(R.string.sync_api_unavailable, qualified)
         }
         return appendAutoFill(qualified, result.autoFilled, result.autoFillFailed)
     }
@@ -552,6 +577,16 @@ class SettingsViewModel(
     fun onIndexUrlChange(value: String) {
         fieldsEdited = true
         _state.value = _state.value.copy(indexUrl = value)
+    }
+    fun onMetadataApiUrlChange(value: String) {
+        fieldsEdited = true
+        // Editing is the fix the auth-failed state asks for; a stale red field over a corrected
+        // value would read as "still wrong" until the next sync.
+        _state.value = _state.value.copy(metadataApiUrl = value, metadataApiAuthFailed = false)
+    }
+    fun onMetadataApiTokenChange(value: String) {
+        fieldsEdited = true
+        _state.value = _state.value.copy(metadataApiToken = value, metadataApiAuthFailed = false)
     }
 
     /**
@@ -653,6 +688,7 @@ class SettingsViewModel(
         val form = _state.value
         settingsRepo.setConnection(serverUrl, form.apiKey)
         settingsRepo.setIndexUrl(form.indexUrl)
+        settingsRepo.setMetadataApi(form.metadataApiUrl, form.metadataApiToken)
         settingsRepo.setSession(session.accessToken, session.user.id, session.user.name)
         // A different user means a different item tree, so the old folder scope points at a parent
         // id that may not exist for them — same reset as switching users by hand.
@@ -828,6 +864,13 @@ class SettingsViewModel(
         _state.value = _state.value.copy(indexUrl = "$base/jellyshelf-index.json")
     }
 
+    /** Prefill the metadata API URL from the entered server URL. */
+    fun fillMetadataApiUrlFromServer() {
+        val base = normalizeServerUrl(_state.value.serverUrl).trimEnd('/')
+        if (base.isBlank()) return
+        _state.value = _state.value.copy(metadataApiUrl = "$base/api")
+    }
+
     /**
      * The **API-key** connect path: save server + key, load the server-wide user list, auto-select
      * the saved/first user. Only reachable from the advanced section — a signed-in user has no use
@@ -866,6 +909,7 @@ class SettingsViewModel(
                 // overwrite a previously working configuration.
                 settingsRepo.setConnection(serverUrl, s.apiKey)
                 settingsRepo.setIndexUrl(s.indexUrl)
+                settingsRepo.setMetadataApi(s.metadataApiUrl, s.metadataApiToken)
                 // Keyed by what setConnection persists, so the next init's lookup hits.
                 settingsCache.store(serverUrl, users)
                 val current = _state.value
@@ -1052,6 +1096,8 @@ class SettingsViewModel(
      */
     fun syncNow() {
         val indexUrl = _state.value.indexUrl
+        val metadataApiUrl = _state.value.metadataApiUrl
+        val metadataApiToken = _state.value.metadataApiToken
         viewModelScope.launch {
             if (settingsRepo.snapshot().demoMode) {
                 demoSync()
@@ -1070,10 +1116,11 @@ class SettingsViewModel(
                 _nudgeScope.emit(Unit)
                 return@launch
             }
-            // The worker reads the index URL from settings, so persist before enqueueing — and
-            // do both even if this ViewModel is cleared in between.
+            // The worker reads the index and API URLs from settings, so persist before enqueueing
+            // — and do all of it even if this ViewModel is cleared in between.
             withContext(NonCancellable) {
                 settingsRepo.setIndexUrl(indexUrl)
+                settingsRepo.setMetadataApi(metadataApiUrl, metadataApiToken)
                 syncScheduler.syncNow()
             }
         }

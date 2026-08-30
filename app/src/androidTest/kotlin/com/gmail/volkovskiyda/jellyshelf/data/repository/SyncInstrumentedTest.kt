@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
+import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
@@ -13,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
@@ -69,6 +71,8 @@ class SyncInstrumentedTest {
 
     private val serverUrl = "http://server:8096"
     private val indexUrl = "http://server/jellyshelf-index.json"
+    private val apiUrl = "http://server/api"
+    private val apiToken = "TOKEN"
 
     private val connected = Settings(
         serverUrl = serverUrl,
@@ -134,10 +138,13 @@ class SyncInstrumentedTest {
      *
      * @param serverIds youtube ids the server listing contains this sync.
      * @param index entries the metadata index serves, or null to make the index fetch fail.
+     * @param api entries the metadata API serves — behind a real bearer check against [apiToken],
+     *   so a settings token that doesn't match gets the 401 the production API would send.
      */
     private fun repository(
         serverIds: List<String>,
         index: List<IndexEntry>? = emptyList(),
+        api: List<IndexEntry> = emptyList(),
         settings: FakeSettingsRepository = FakeSettingsRepository(connected),
         ytDlp: YtDlpMetadataSource = FakeYtDlp(
             ApplicationProvider.getApplicationContext(),
@@ -152,6 +159,14 @@ class SyncInstrumentedTest {
                     null -> respondError(HttpStatusCode.NotFound)
                     else -> respond(
                         content = json.encodeToString(index),
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                url.contains("/videos") -> when {
+                    request.headers[HttpHeaders.Authorization] != "Bearer $apiToken" ->
+                        respondError(HttpStatusCode.Unauthorized)
+                    else -> respond(
+                        content = json.encodeToString(api),
                         headers = headersOf(HttpHeaders.ContentType, "application/json"),
                     )
                 }
@@ -181,7 +196,13 @@ class SyncInstrumentedTest {
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
             // The demo backend is never consulted: none of these syncs is a demo.
-            sources = LibrarySources(dataSource, indexSource, ytDlp, TestDemoBackend(indexSource)),
+            sources = LibrarySources(
+                dataSource,
+                ApiSource(httpClient, dispatchers, json),
+                indexSource,
+                ytDlp,
+                TestDemoBackend(indexSource),
+            ),
         )
     }
 
@@ -249,6 +270,45 @@ class SyncInstrumentedTest {
         val repo = repository(serverIds = listOf("aaaaaaaaaaa"))
 
         assertFalse((repo.sync() as SyncResult.Success).indexDegraded)
+    }
+
+    // --- the metadata API feed ---
+
+    @Test
+    fun sync_mergesApiEntriesWithTheBearerToken() = runBlocking {
+        val repo = repository(
+            serverIds = listOf("aaaaaaaaaaa"),
+            api = listOf(IndexEntry(id = "aaaaaaaaaaa", title = "Api A", fetchedAt = 6_000L)),
+            settings = FakeSettingsRepository(
+                connected.copy(metadataApiUrl = apiUrl, metadataApiToken = apiToken),
+            ),
+        )
+
+        val result = repo.sync() as SyncResult.Success
+
+        assertFalse(result.apiDegraded)
+        assertFalse(result.apiAuthFailed)
+        val stored = db.videoDao().get("aaaaaaaaaaa")!!
+        assertEquals(METADATA_SOURCE_API, stored.metadataSource)
+        assertEquals("Api A", stored.title)
+    }
+
+    @Test
+    fun sync_reportsApiAuthFailureOnAWrongToken() = runBlocking {
+        val repo = repository(
+            serverIds = listOf("aaaaaaaaaaa"),
+            settings = FakeSettingsRepository(
+                connected.copy(metadataApiUrl = apiUrl, metadataApiToken = "wrong"),
+            ),
+        )
+
+        val result = repo.sync() as SyncResult.Success
+
+        assertTrue(result.apiAuthFailed)
+        // An auth failure points at the token, not at reachability.
+        assertFalse(result.apiDegraded)
+        // The sync itself still completed.
+        assertEquals(listOf("aaaaaaaaaaa"), storedIds())
     }
 
     /** A previously indexed row must survive a failed index fetch rather than downgrade. */

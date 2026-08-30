@@ -12,6 +12,12 @@ const val METADATA_SOURCE_INDEX = "INDEX"
 /** Fetched in-app by the bundled yt-dlp (youtubedl-android). */
 const val METADATA_SOURCE_YTDLP = "YTDLP"
 
+/** Matched a metadata API entry only — the bot server that downloaded the video. */
+const val METADATA_SOURCE_API = "API"
+
+/** Matched both the metadata API and the index; the fields were coalesced newest-first. */
+const val METADATA_SOURCE_API_INDEX = "API_INDEX"
+
 /**
  * A library video as the app's UI and ViewModels see it — the domain model that repository
  * interfaces expose. The data layer maps its Room row (`VideoEntity`) onto this, so nothing above

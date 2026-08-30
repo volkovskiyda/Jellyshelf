@@ -11,6 +11,13 @@ sealed interface SyncResult {
      *   itself succeeded — existing metadata was kept rather than downgraded — but new videos
      *   stay uncategorized until the index is reachable again, which otherwise looks identical
      *   to months of healthy syncs.
+     * @param apiDegraded a metadata API URL is configured but this sync could not fetch it — the
+     *   same silent-freeze problem as [indexDegraded], reported for the same reason. False when
+     *   the failure was authentication: that case is [apiAuthFailed], which points at the token
+     *   rather than at reachability.
+     * @param apiAuthFailed the metadata API rejected the configured token (401) this sync. A
+     *   configuration error the user must fix, so the settings screen marks the token field
+     *   rather than qualifying the summary line.
      * @param autoFilled videos whose metadata this sync fetched with the built-in yt-dlp, after
      *   the merge left only a handful without any. Zero when the pass didn't run.
      * @param autoFillFailed videos that auto-fill pass tried and could not fetch. Reported rather
@@ -22,6 +29,8 @@ sealed interface SyncResult {
         val indexed: Int,
         val categories: Int,
         val indexDegraded: Boolean = false,
+        val apiDegraded: Boolean = false,
+        val apiAuthFailed: Boolean = false,
         val autoFilled: Int = 0,
         val autoFillFailed: Int = 0,
     ) : SyncResult

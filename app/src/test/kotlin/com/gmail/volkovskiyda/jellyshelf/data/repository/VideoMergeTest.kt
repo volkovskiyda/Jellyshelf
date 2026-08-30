@@ -6,6 +6,8 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexChapter
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDataDto
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API
+import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
@@ -21,7 +23,11 @@ class VideoMergeTest {
     private val now = 1_000_000L
     private val youtubeId = "dQw4w9WgXcQ"
 
-    private fun context(indexAvailable: Boolean) = SyncMergeContext(serverBase, now, indexAvailable)
+    private fun context(indexAvailable: Boolean, apiAvailable: Boolean = false) =
+        SyncMergeContext(serverBase, now, indexAvailable, apiAvailable)
+
+    /** An index-only candidate, built the way the sync builds one. */
+    private fun indexMeta(entry: IndexEntry?) = combinedMeta(api = null, index = entry)
 
     private fun item(
         played: Boolean = false,
@@ -107,7 +113,7 @@ class VideoMergeTest {
             existing = existing(METADATA_SOURCE_YTDLP, metadataUpdatedAt = 3_000_000L),
             youtubeId = youtubeId,
             item = item(),
-            meta = meta(fetchedAtSeconds = 2_000L), // 2_000_000 ms < 3_000_000 ms
+            meta = indexMeta(meta(fetchedAtSeconds = 2_000L)), // 2_000_000 ms < 3_000_000 ms
             context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_YTDLP, merged.metadataSource)
@@ -120,7 +126,7 @@ class VideoMergeTest {
             existing = existing(METADATA_SOURCE_YTDLP, metadataUpdatedAt = 1_000_000L),
             youtubeId = youtubeId,
             item = item(),
-            meta = meta(fetchedAtSeconds = 2_000L), // 2_000_000 ms > 1_000_000 ms
+            meta = indexMeta(meta(fetchedAtSeconds = 2_000L)), // 2_000_000 ms > 1_000_000 ms
             context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
@@ -148,7 +154,7 @@ class VideoMergeTest {
             existing = null,
             youtubeId = youtubeId,
             item = item(),
-            meta = meta(),
+            meta = indexMeta(meta()),
             context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
@@ -177,7 +183,7 @@ class VideoMergeTest {
             existing = local,
             youtubeId = youtubeId,
             item = item(played = false, positionTicks = 0L), // stale pre-write server snapshot
-            meta = meta(),
+            meta = indexMeta(meta()),
             context = context(indexAvailable = true),
             keepLocalWatchState = true,
         )
@@ -251,7 +257,7 @@ class VideoMergeTest {
             existing = failed,
             youtubeId = youtubeId,
             item = item(),
-            meta = meta(),
+            meta = indexMeta(meta()),
             context = context(indexAvailable = true),
         )
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
@@ -268,13 +274,15 @@ class VideoMergeTest {
             existing = null,
             youtubeId = youtubeId,
             item = item(),
-            meta = meta().copy(
-                chapters = listOf(
-                    IndexChapter(startSeconds = 120.5, title = "Main part"),
-                    IndexChapter(startSeconds = 0.0, title = "Intro"),
-                    IndexChapter(startSeconds = -3.0, title = "Negative start"),
-                    IndexChapter(startSeconds = 300.0, title = "   "),
-                    IndexChapter(startSeconds = null, title = "No start"),
+            meta = indexMeta(
+                meta().copy(
+                    chapters = listOf(
+                        IndexChapter(startSeconds = 120.5, title = "Main part"),
+                        IndexChapter(startSeconds = 0.0, title = "Intro"),
+                        IndexChapter(startSeconds = -3.0, title = "Negative start"),
+                        IndexChapter(startSeconds = 300.0, title = "   "),
+                        IndexChapter(startSeconds = null, title = "No start"),
+                    ),
                 ),
             ),
             context = context(indexAvailable = true),
@@ -296,5 +304,132 @@ class VideoMergeTest {
             context = context(indexAvailable = true),
         )
         assertEquals(emptyList<Chapter>(), merged.chapters)
+    }
+
+    // --- the metadata API feed and the per-field API+index combine ---
+
+    private fun apiMeta(fetchedAtSeconds: Long? = 3_000L) = IndexEntry(
+        id = youtubeId,
+        title = "Api Title",
+        description = "Api description",
+        fetchedAt = fetchedAtSeconds,
+    )
+
+    @Test
+    fun `api-only entry labels the candidate API`() {
+        val combined = combinedMeta(api = apiMeta(), index = null)!!
+        assertEquals(METADATA_SOURCE_API, combined.source)
+        assertEquals("Api Title", combined.entry.title)
+    }
+
+    @Test
+    fun `both entries combine newest-first per field`() {
+        // The API entry is fresher: its fields win, the index fills what it lacks.
+        val combined = combinedMeta(api = apiMeta(fetchedAtSeconds = 3_000L), index = meta(fetchedAtSeconds = 2_000L))!!
+        assertEquals(METADATA_SOURCE_API_INDEX, combined.source)
+        assertEquals("Api Title", combined.entry.title)
+        assertEquals("Index Channel", combined.entry.channel)
+        assertEquals(620L, combined.entry.duration)
+        assertEquals(3_000L, combined.entry.fetchedAt)
+    }
+
+    @Test
+    fun `an older api entry only fills the newer index entry's gaps`() {
+        val combined = combinedMeta(api = apiMeta(fetchedAtSeconds = 1_000L), index = meta(fetchedAtSeconds = 2_000L))!!
+        assertEquals(METADATA_SOURCE_API_INDEX, combined.source)
+        assertEquals("Index Title", combined.entry.title)
+        // The index entry has no description; the older API entry supplies it.
+        assertEquals("Api description", combined.entry.description)
+        assertEquals(2_000L, combined.entry.fetchedAt)
+    }
+
+    @Test
+    fun `new video with an api entry uses api metadata`() {
+        val merged = mergeVideo(
+            existing = null,
+            youtubeId = youtubeId,
+            item = item(),
+            meta = combinedMeta(api = apiMeta(), index = null),
+            context = context(indexAvailable = false, apiAvailable = true),
+        )
+        assertEquals(METADATA_SOURCE_API, merged.metadataSource)
+        assertEquals("Api Title", merged.title)
+        assertEquals(3_000_000L, merged.metadataUpdatedAt)
+    }
+
+    @Test
+    fun `api-sourced row keeps its metadata when the api fetch failed`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_API),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = null,
+            context = context(indexAvailable = true, apiAvailable = false),
+        )
+        assertEquals(METADATA_SOURCE_API, merged.metadataSource)
+        assertEquals("Rich Title", merged.title)
+    }
+
+    @Test
+    fun `api-sourced row downgrades when a healthy api genuinely lacks the entry`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_API),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = null,
+            context = context(indexAvailable = false, apiAvailable = true),
+        )
+        assertEquals(METADATA_SOURCE_JELLYFIN, merged.metadataSource)
+    }
+
+    @Test
+    fun `api-sourced row upgrades to a genuinely newer index entry`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_API, metadataUpdatedAt = 1_000_000L),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = indexMeta(meta(fetchedAtSeconds = 2_000L)),
+            context = context(indexAvailable = true, apiAvailable = true),
+        )
+        assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
+        assertEquals("Index Title", merged.title)
+    }
+
+    @Test
+    fun `ytdlp row is kept over an equal-or-older api entry`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_YTDLP, metadataUpdatedAt = 3_000_000L),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = combinedMeta(api = apiMeta(fetchedAtSeconds = 3_000L), index = null),
+            context = context(indexAvailable = false, apiAvailable = true),
+        )
+        assertEquals(METADATA_SOURCE_YTDLP, merged.metadataSource)
+    }
+
+    /** A combined row is demoted only when *both* feeds vouched for its absence. */
+    @Test
+    fun `api-index row survives a sync where only one of its feeds is reachable`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_API_INDEX),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = null,
+            context = context(indexAvailable = true, apiAvailable = false),
+        )
+        assertEquals(METADATA_SOURCE_API_INDEX, merged.metadataSource)
+        assertEquals("Rich Title", merged.title)
+    }
+
+    @Test
+    fun `api-index row downgrades when both healthy feeds lack the entry`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_API_INDEX),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = null,
+            context = context(indexAvailable = true, apiAvailable = true),
+        )
+        assertEquals(METADATA_SOURCE_JELLYFIN, merged.metadataSource)
     }
 }
