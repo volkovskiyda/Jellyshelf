@@ -641,6 +641,11 @@ private fun AlternativeSignInSection(
  * switch used to live here too — it sits in the open above the Updates section now, where a user
  * whose playback just failed can actually find it. The API-key sign-in path is
  * [AlternativeSignInSection], up by the form it stands in for.
+ *
+ * Everything in here only exists once there are credentials ([SettingsUiState.canEditIndex] —
+ * a sign-in or an API key), so until then the expander is disabled rather than opening onto
+ * nothing. Disabled, not hidden: the section stays discoverable, and its unlocking on sign-in
+ * says what it is waiting for.
  */
 @Composable
 private fun AdvancedSection(
@@ -650,22 +655,20 @@ private fun AdvancedSection(
 ) {
     var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
 
-    TextButton(onClick = { expanded = !expanded }) {
+    TextButton(onClick = { expanded = !expanded }, enabled = state.canEditIndex) {
         Text(
             stringResource(
                 if (expanded) R.string.hide_advanced else R.string.show_advanced,
             ),
         )
     }
-    if (!expanded) return
+    // The second gate matters on its own: a sign-out while the section is open must take the
+    // fields with it, not leave them editable under a disabled expander.
+    if (!expanded || !state.canEditIndex) return
 
-    // The metadata feeds: power-user fields, editable exactly when [SettingsUiState.canEditIndex]
-    // holds — signed in included.
-    if (state.canEditIndex) {
-        IndexUrlField(state = state, actions = actions)
-        MetadataApiUrlField(state = state, actions = actions)
-        MetadataApiTokenField(state = state, actions = actions)
-    }
+    IndexUrlField(state = state, actions = actions)
+    MetadataApiUrlField(state = state, actions = actions)
+    MetadataApiTokenField(state = state, actions = actions)
 }
 
 /**
