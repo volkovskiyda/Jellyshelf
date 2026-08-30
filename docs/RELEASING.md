@@ -2,8 +2,9 @@
 
 Two delivery channels, both driven by CI. Neither needs a version edit in `build.gradle.kts`:
 `versionCode` is always `git rev-list --count HEAD` — monotonic across both workflows, so a build
-from one can never install backwards over a build from the other — and `versionName` is either
-`<base>.<versionCode>` or, for a tagged release, the tag itself.
+from one can never install backwards over a build from the other — and `versionName` is
+`<latest tag>.<versionCode>` in both (the `distribute` job derives the tag with
+`git describe --tags --abbrev=0`; the Release workflow takes the pushed tag).
 
 ## Continuous — testers
 
@@ -22,10 +23,11 @@ asks for the version name, then tags `v<name>` and pushes. The
 [Release workflow](../.github/workflows/release.yml) takes over and publishes a release with
 `jellyshelf-<version>.<versionCode>.apk` and `mapping-<version>.<versionCode>.txt` attached.
 
-The APK's own `versionName` is the tag alone — tag `v1.0` reports `1.0` — but the **asset filenames
-append the versionCode**, so `v1.0` at commit 164 publishes `jellyshelf-1.0.164.apk`. The tag by
-itself does not identify a build, and versionCode is the only identifier shared with the App
-Distribution channel, which is what lets a mapping file be matched to a crash by hand.
+The APK's `versionName`, the asset filenames, and the release title all carry the versionCode —
+tag `v1.0` at commit 164 reports `1.0.164`, publishes `jellyshelf-1.0.164.apk`, and titles the
+release `v1.0.164` (the tag itself stays `v1.0`). The tag by itself does not identify a build, and
+versionCode is the only identifier shared with the App Distribution channel, which is what lets a
+mapping file be matched to a crash by hand.
 
 Plain `git tag v<version> && git push origin v<version>` does the same thing.
 

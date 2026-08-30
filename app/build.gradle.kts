@@ -30,12 +30,12 @@ val keystoreEnv = loadEnv(rootProject.file("keystore.properties"))
 // Versioning is a CI concern; nothing here is edited per release. Both workflows pass
 // -PbuildNumber=$(git rev-list --count HEAD) — one monotonic versionCode shared by App Distribution
 // builds and tagged releases, so neither can ever install "over" the other backwards. (github.run_number
-// would not do: it counts per workflow.) release.yml additionally passes -PreleaseVersion from the
-// tag, which is the only thing that ever sets a versionName by hand. Local and IDE builds pass
-// neither and stay at 1 / the base version.
-val baseVersion = "1.0"
+// would not do: it counts per workflow.) Both also pass -PbaseVersion, the latest tag without its
+// "v" (ci.yml derives it with `git describe --tags --abbrev=0`, release.yml takes the pushed tag),
+// so every published build reports <tag>.<versionCode>. Local and IDE builds pass neither and stay
+// at 1 / the fallback base version.
+val baseVersion = (findProperty("baseVersion") as String?) ?: "1.0"
 val buildNumber = (findProperty("buildNumber") as String?)?.toIntOrNull()
-val releaseVersion = findProperty("releaseVersion") as String?
 
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf"
@@ -46,7 +46,7 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = buildNumber ?: 1
-        versionName = releaseVersion ?: buildNumber?.let { "$baseVersion.$it" } ?: baseVersion
+        versionName = buildNumber?.let { "$baseVersion.$it" } ?: baseVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Live-endpoint test config from the git-ignored .test.env, passed as runtime instrumentation

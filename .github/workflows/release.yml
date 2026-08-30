@@ -121,13 +121,14 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: scripts/restore-signing.sh
 
-      # versionName comes from the tag and versionCode from the commit count, so a release needs no
-      # edit to build.gradle.kts and the tag can never drift from what the APK reports.
+      # versionName is <tag>.<versionCode> — the same rule as the App Distribution builds — so a
+      # release needs no edit to build.gradle.kts and the tag can never drift from what the APK
+      # reports.
       - name: Build signed release APK
         run: |
           ./gradlew :app:assembleRelease \
             -PbuildNumber=$(git rev-list --count HEAD) \
-            -PreleaseVersion=${GITHUB_REF_NAME#v}
+            -PbaseVersion=${GITHUB_REF_NAME#v}
 
       # The mapping is not optional: R8 is on, so without the file from this exact build no crash
       # report from this release can be read. Crashlytics holds its own copy (item 07); this one is
@@ -137,11 +138,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Assets carry the versionCode as well as the tag. The tag alone is ambiguous — v1.0 says
-          # nothing about which build it was — and versionCode is the one identifier shared with the
-          # App Distribution builds, so mapping-1.0.164.txt can be matched to a crash by hand.
+          # Assets and title carry the versionCode as well as the tag, matching the APK's own
+          # versionName. versionCode is the one identifier shared with the App Distribution builds,
+          # so mapping-1.0.164.txt can be matched to a crash by hand.
           V="${GITHUB_REF_NAME#v}.$(git rev-list --count HEAD)"
           cp app/build/outputs/apk/release/app-release.apk "jellyshelf-$V.apk"
           cp app/build/outputs/mapping/release/mapping.txt "mapping-$V.txt"
           gh release create "$GITHUB_REF_NAME" "jellyshelf-$V.apk" "mapping-$V.txt" \
+            --title "v$V" \
             --generate-notes

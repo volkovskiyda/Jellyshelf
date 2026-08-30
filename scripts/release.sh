@@ -2,8 +2,9 @@
 # Cuts a release: asks for the version name, tags main as v<name>, pushes the tag. The Release
 # workflow does everything else — builds, signs, and publishes the APK and its R8 mapping.
 #
-# There is nothing to edit in build.gradle.kts: versionName comes from the tag and versionCode from
-# the commit count. Single-branch by design — no develop, no merge flow.
+# There is nothing to edit in build.gradle.kts: versionCode is the commit count and versionName is
+# the tag plus that count (v1.3 at commit 348 reports 1.3.348). Single-branch by design — no
+# develop, no merge flow.
 set -euo pipefail
 
 git fetch origin main
