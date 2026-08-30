@@ -389,6 +389,14 @@ internal fun SettingsContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            HorizontalDivider()
+
+            // Playback handoff. Out in the open rather than behind Advanced: it is the switch to
+            // reach for when playback fails, and a fix hidden behind an expander is one the user
+            // in that situation never finds. Independent of which credential is in use, so it is
+            // not gated on being signed in either.
+            TokenInQueryRow(state = state, actions = actions)
+
             // Last on the screen, below the library summary: updating the app is the rarest thing
             // anyone comes to Settings to do, and it has nothing to do with the server connection
             // and sync scope above it.
@@ -629,9 +637,10 @@ private fun AlternativeSignInSection(
 }
 
 /**
- * The power-user settings, collapsed behind "Advanced": the playback-handoff switch and the
- * metadata feeds. The API-key sign-in path used to live here too — it is [AlternativeSignInSection]
- * now, up by the form it stands in for.
+ * The power-user settings, collapsed behind "Advanced": the metadata feeds. The playback-handoff
+ * switch used to live here too — it sits in the open above the Updates section now, where a user
+ * whose playback just failed can actually find it. The API-key sign-in path is
+ * [AlternativeSignInSection], up by the form it stands in for.
  */
 @Composable
 private fun AdvancedSection(
@@ -650,8 +659,21 @@ private fun AdvancedSection(
     }
     if (!expanded) return
 
-    // Playback handoff. Independent of which credential is in use, so it is here rather than in
-    // the alternative-sign-in section — it stays visible and live while signed in.
+    // The metadata feeds: power-user fields, editable exactly when [SettingsUiState.canEditIndex]
+    // holds — signed in included.
+    if (state.canEditIndex) {
+        IndexUrlField(state = state, actions = actions)
+        MetadataApiUrlField(state = state, actions = actions)
+        MetadataApiTokenField(state = state, actions = actions)
+    }
+}
+
+/**
+ * The playback-handoff switch: whether the token rides in the playback URL instead of a header.
+ * Independent of which credential is in use, so it is live signed in or out.
+ */
+@Composable
+private fun TokenInQueryRow(state: SettingsUiState, actions: SettingsActions) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -666,14 +688,6 @@ private fun AdvancedSection(
             )
         }
         Switch(checked = state.tokenInQuery, onCheckedChange = actions.onTokenInQueryChange)
-    }
-
-    // The metadata feeds: power-user fields, editable exactly when [SettingsUiState.canEditIndex]
-    // holds — signed in included.
-    if (state.canEditIndex) {
-        IndexUrlField(state = state, actions = actions)
-        MetadataApiUrlField(state = state, actions = actions)
-        MetadataApiTokenField(state = state, actions = actions)
     }
 }
 
