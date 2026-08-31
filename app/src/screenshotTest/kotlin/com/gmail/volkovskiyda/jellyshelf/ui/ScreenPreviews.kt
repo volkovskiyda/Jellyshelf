@@ -17,6 +17,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_LAST_PLAYED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesContent
@@ -530,7 +531,7 @@ private fun CategoryVideosMissingRemoved() {
     }
 }
 
-/** The Others tab with the new filter listed beside the four it joins. */
+/** The Others tab with every virtual filter, including Last played in its slot after Continue. */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
 @Composable
@@ -552,9 +553,11 @@ private fun CategoriesOthersWithMissing() {
     }
 }
 
+/** Every virtual filter, in the order `observeOthers` emits them — the tab renders it verbatim. */
 private val sampleOthers = listOf(
     category("virtual:uncategorized", "Uncategorized", CATEGORY_TYPE_OTHERS, 4),
     category("virtual:continue", "Continue watching", CATEGORY_TYPE_OTHERS, 6),
+    category(VIRTUAL_CATEGORY_LAST_PLAYED, "Last played", CATEGORY_TYPE_OTHERS, 5),
     category("virtual:unwatched", "Unwatched", CATEGORY_TYPE_OTHERS, 45),
     category("virtual:watched", "Watched", CATEGORY_TYPE_OTHERS, 15),
     category(VIRTUAL_CATEGORY_MISSING, "Missing from server", CATEGORY_TYPE_OTHERS, 3),
@@ -602,6 +605,50 @@ private fun MissingFromServerPreview(
         thumbnailModel = { null },
     )
 }
+
+/**
+ * The "Last played" filter: recency order, not file-name order — the watched video below sits
+ * *under* the part-watched one because it was played earlier, which no other list in the app can
+ * show. Mixed states on purpose: any play counts, finished or not.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun CategoryVideosLastPlayed() {
+    PreviewTheme {
+        CategoryVideosContent(
+            title = "Last played",
+            videosOrNull = lastPlayedSample,
+            bulkFetch = BulkProgress.Idle,
+            bulkRemove = BulkProgress.Idle,
+            demoMode = false,
+            isUncategorized = false,
+            removeKind = null,
+            scrollKey = "preview.lastplayed",
+            showRemoveDialog = false,
+            onShowRemoveDialog = {},
+            onDismissRemoveDialog = {},
+            onPlayVideo = {},
+            onOpenDetails = {},
+            onBack = {},
+            onStartFetchMissing = {},
+            onCancelFetchMissing = {},
+            onAcknowledgeBulkFetch = {},
+            onConfirmRemove = {},
+            onCancelRemove = {},
+            onAcknowledgeBulkRemove = {},
+            scrollStore = FakeScrollPositionRepository(),
+            thumbnailModel = { null },
+        )
+    }
+}
+
+/** Newest play first; the titles say the order out loud so a drifted golden reads as wrong. */
+private val lastPlayedSample = listOf(
+    partWatchedVideo.copy(youtubeId = "lp1", title = "Stopped partway this morning"),
+    watchedVideo.copy(youtubeId = "lp2", title = "Finished yesterday evening"),
+    watchedVideo.copy(youtubeId = "lp3", title = "Finished last week"),
+)
 
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)

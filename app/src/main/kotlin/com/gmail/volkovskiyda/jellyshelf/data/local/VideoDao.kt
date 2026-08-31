@@ -76,6 +76,11 @@ interface VideoDao {
     @Query("SELECT * FROM videos WHERE played = 0 AND playbackPositionTicks > 0 ORDER BY fileName")
     fun observeContinueWatchingBrowse(): Flow<List<VideoBrowseRow>>
 
+    /** The [limit] most recently played videos, newest first — the one browse read not in file-name order. */
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE lastPlayedAt > 0 ORDER BY lastPlayedAt DESC LIMIT :limit")
+    fun observeLastPlayedBrowse(limit: Int): Flow<List<VideoBrowseRow>>
+
     @Query("SELECT * FROM videos WHERE played = 1 ORDER BY fileName")
     suspend fun getWatched(): List<VideoEntity>
 
@@ -115,6 +120,10 @@ interface VideoDao {
 
     @Query("SELECT COUNT(*) FROM videos WHERE played = 0 AND playbackPositionTicks > 0")
     fun countContinueWatching(): Flow<Int>
+
+    /** Capped to match [observeLastPlayedBrowse]: the row's count is what the filter shows. */
+    @Query("SELECT COUNT(*) FROM (SELECT 1 FROM videos WHERE lastPlayedAt > 0 LIMIT :limit)")
+    fun countLastPlayed(limit: Int): Flow<Int>
 
     /** See [observeMissingBrowse] for why this one has no index behind it. */
     @Query("SELECT COUNT(*) FROM videos WHERE missedSyncs > 0")
@@ -162,6 +171,14 @@ interface VideoDao {
         positionTicks: Long,
         playCount: Int,
     )
+
+    /**
+     * Stamps when [youtubeId] was last played, monotonically: `MAX` keeps whichever of the stored
+     * and offered instants is later, so a stale server value read back after a fresh local play
+     * can never move the video down the "Last played" list.
+     */
+    @Query("UPDATE videos SET lastPlayedAt = MAX(lastPlayedAt, :playedAt) WHERE youtubeId = :youtubeId")
+    suspend fun touchLastPlayed(youtubeId: String, playedAt: Long)
 
     /**
      * Position-only write for the in-app player's periodic saves. The `played = 0` guard is the

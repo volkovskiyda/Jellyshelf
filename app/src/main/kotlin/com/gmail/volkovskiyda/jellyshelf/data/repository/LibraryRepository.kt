@@ -27,6 +27,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DurationBucket
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
+import com.gmail.volkovskiyda.jellyshelf.domain.model.LAST_PLAYED_LIMIT
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
@@ -37,6 +38,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_CONTINUE
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_LAST_PLAYED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNWATCHED
@@ -161,8 +163,25 @@ private const val PERCENT = 100
 
 private const val MILLIS_PER_SECOND = 1_000L
 
+/**
+ * How far apart seeded plays sit, and the deterministic shuffle that orders them. The bundled
+ * entries arrive in file-name order — the order every other list already shows — so stamping
+ * plays by raw index would make the "Last played" filter look identical to plain browsing and
+ * demonstrate nothing. `(index * STRIDE) % MODULUS` instead: the modulus is prime and above the
+ * bundled 60, so the mapping is a bijection (no two rows share an instant), and the stride
+ * scatters neighbours far apart — a recency order visibly unlike the alphabetical one.
+ */
+private const val DEMO_PLAY_SPACING_MILLIS = 3 * 60 * 60 * MILLIS_PER_SECOND
+private const val DEMO_PLAY_ORDER_STRIDE = 13
+private const val DEMO_PLAY_ORDER_MODULUS = 61
+
 /** The watch state one seeded row starts life with. */
-private class DemoWatchState(val played: Boolean, val positionTicks: Long, val playCount: Int)
+private class DemoWatchState(
+    val played: Boolean,
+    val positionTicks: Long,
+    val playCount: Int,
+    val lastPlayedAt: Long = 0L,
+)
 
 /**
  * One demo entry → one row, mapped exactly as [mergeVideo]'s index branch maps a real one, so
@@ -177,7 +196,7 @@ internal fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
     val title = entry.title ?: entry.id
     val indexed = entry.hasIndexMetadata
     val durationSeconds = entry.duration ?: 0L
-    val watch = demoWatchState(index, durationSeconds)
+    val watch = demoWatchState(index, durationSeconds, now)
     return VideoEntity(
         youtubeId = entry.id,
         jellyfinItemId = DEMO_ITEM_ID,
@@ -197,6 +216,7 @@ internal fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
         played = watch.played,
         playbackPositionTicks = watch.positionTicks,
         playCount = watch.playCount,
+        lastPlayedAt = watch.lastPlayedAt,
         lastSyncedAt = now,
         metadataSource = if (indexed) METADATA_SOURCE_INDEX else METADATA_SOURCE_JELLYFIN,
         metadataUpdatedAt = if (indexed) (entry.updatedAtMillis ?: now) else 0L,
@@ -214,18 +234,22 @@ internal fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
  * Played wins where the two cycles coincide, and a video of unknown length can't be
  * mid-watched (the progress bar divides by its duration).
  */
-private fun demoWatchState(index: Int, durationSeconds: Long): DemoWatchState = when {
-    index % DEMO_PLAYED_EVERY == DEMO_PLAYED_EVERY - 1 ->
-        DemoWatchState(played = true, positionTicks = 0L, playCount = 1)
-    index % DEMO_IN_PROGRESS_EVERY == DEMO_IN_PROGRESS_EVERY - 1 && durationSeconds > 0 ->
-        DemoWatchState(
-            played = false,
-            positionTicks = millisToTicks(
-                durationSeconds * MILLIS_PER_SECOND * DEMO_RESUME_PERCENT / PERCENT,
-            ),
-            playCount = 0,
-        )
-    else -> DemoWatchState(played = false, positionTicks = 0L, playCount = 0)
+private fun demoWatchState(index: Int, durationSeconds: Long, now: Long): DemoWatchState {
+    val playedAt = now - (index * DEMO_PLAY_ORDER_STRIDE % DEMO_PLAY_ORDER_MODULUS) * DEMO_PLAY_SPACING_MILLIS
+    return when {
+        index % DEMO_PLAYED_EVERY == DEMO_PLAYED_EVERY - 1 ->
+            DemoWatchState(played = true, positionTicks = 0L, playCount = 1, lastPlayedAt = playedAt)
+        index % DEMO_IN_PROGRESS_EVERY == DEMO_IN_PROGRESS_EVERY - 1 && durationSeconds > 0 ->
+            DemoWatchState(
+                played = false,
+                positionTicks = millisToTicks(
+                    durationSeconds * MILLIS_PER_SECOND * DEMO_RESUME_PERCENT / PERCENT,
+                ),
+                playCount = 0,
+                lastPlayedAt = playedAt,
+            )
+        else -> DemoWatchState(played = false, positionTicks = 0L, playCount = 0)
+    }
 }
 
 /**
@@ -574,6 +598,7 @@ class DefaultLibraryRepository private constructor(
     override fun observeVideosByCategory(categoryId: String): Flow<List<Video>> = when (categoryId) {
         VIRTUAL_CATEGORY_UNCATEGORIZED -> videoDao.observeBySourceBrowse(METADATA_SOURCE_JELLYFIN)
         VIRTUAL_CATEGORY_CONTINUE -> videoDao.observeContinueWatchingBrowse()
+        VIRTUAL_CATEGORY_LAST_PLAYED -> videoDao.observeLastPlayedBrowse(LAST_PLAYED_LIMIT)
         VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatchedBrowse()
         VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatchedBrowse()
         VIRTUAL_CATEGORY_MISSING -> videoDao.observeMissingBrowse()
@@ -609,23 +634,29 @@ class DefaultLibraryRepository private constructor(
 
     /**
      * The "Others" tab's virtual filters with live counts: Uncategorized (no yt-dlp/index metadata),
-     * Continue watching, Unwatched, Watched, Missing from server. Empty filters are dropped, so
-     * the last one only appears once the server has actually stopped listing something.
+     * Continue watching, Last played, Unwatched, Watched, Missing from server. Empty filters are
+     * dropped, so the last one only appears once the server has actually stopped listing something.
+     *
+     * Six flows is past `combine`'s typed overloads, so the counts arrive as an array — the row
+     * list below is zipped against it and must stay in the same order as the flows.
      */
     override fun observeOthers(): Flow<List<CategoryWithCount>> = combine(
         videoDao.countBySource(METADATA_SOURCE_JELLYFIN),
         videoDao.countContinueWatching(),
+        videoDao.countLastPlayed(LAST_PLAYED_LIMIT),
         videoDao.countUnwatched(),
         videoDao.countWatched(),
         videoDao.countMissing(),
-    ) { uncategorized, continueWatching, unwatched, watched, missing ->
+    ) { counts ->
         listOf(
-            virtualRow(VIRTUAL_CATEGORY_UNCATEGORIZED, "Uncategorized", uncategorized),
-            virtualRow(VIRTUAL_CATEGORY_CONTINUE, "Continue watching", continueWatching),
-            virtualRow(VIRTUAL_CATEGORY_UNWATCHED, "Unwatched", unwatched),
-            virtualRow(VIRTUAL_CATEGORY_WATCHED, "Watched", watched),
-            virtualRow(VIRTUAL_CATEGORY_MISSING, "Missing from server", missing),
-        ).filter { it.videoCount > 0 }
+            VIRTUAL_CATEGORY_UNCATEGORIZED to "Uncategorized",
+            VIRTUAL_CATEGORY_CONTINUE to "Continue watching",
+            VIRTUAL_CATEGORY_LAST_PLAYED to "Last played",
+            VIRTUAL_CATEGORY_UNWATCHED to "Unwatched",
+            VIRTUAL_CATEGORY_WATCHED to "Watched",
+            VIRTUAL_CATEGORY_MISSING to "Missing from server",
+        ).zip(counts.toList()) { (id, name), count -> virtualRow(id, name, count) }
+            .filter { it.videoCount > 0 }
     }
 
     private fun virtualRow(id: String, name: String, count: Int) = CategoryWithCount(

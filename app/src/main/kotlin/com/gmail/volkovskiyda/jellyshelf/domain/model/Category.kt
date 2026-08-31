@@ -20,6 +20,18 @@ const val VIRTUAL_CATEGORY_UNWATCHED = "virtual:unwatched"
 const val VIRTUAL_CATEGORY_CONTINUE = "virtual:continue"
 
 /**
+ * The most recently played videos, newest first — the one filter whose members are ordered by
+ * recency rather than file name. Any play counts, finished or not: a video watched for a minute
+ * yesterday sits above one finished last week, and plays from other Jellyfin clients arrive with
+ * the next sync via the server's `LastPlayedDate`. Capped at [LAST_PLAYED_LIMIT] so it stays a
+ * "recent history" feed rather than a recency-sorted duplicate of Watched.
+ */
+const val VIRTUAL_CATEGORY_LAST_PLAYED = "virtual:last_played"
+
+/** How many videos the [VIRTUAL_CATEGORY_LAST_PLAYED] filter shows. */
+const val LAST_PLAYED_LIMIT = 20
+
+/**
  * Videos the server has stopped listing — see [Video.missingFromServer]. Almost always videos
  * deleted on the server that the app hasn't been told about: sync counts missed appearances
  * rather than deleting on the first one, so they sit in the library looking real until the grace

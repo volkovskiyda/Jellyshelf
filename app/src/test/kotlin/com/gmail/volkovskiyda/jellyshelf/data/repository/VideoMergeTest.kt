@@ -32,17 +32,24 @@ class VideoMergeTest {
     private fun item(
         played: Boolean = false,
         positionTicks: Long = 0L,
+        lastPlayedDate: String? = null,
     ) = BaseItemDto(
         id = "jf-item-1",
         name = "Jellyfin Name",
         path = "/media/Title [$youtubeId].mp4",
         runTimeTicks = 600L * 10_000_000, // 600s
-        userData = UserDataDto(played = played, playbackPositionTicks = positionTicks, playCount = 1),
+        userData = UserDataDto(
+            played = played,
+            playbackPositionTicks = positionTicks,
+            playCount = 1,
+            lastPlayedDate = lastPlayedDate,
+        ),
     )
 
     private fun existing(
         source: String,
         metadataUpdatedAt: Long = 500_000L,
+        lastPlayedAt: Long = 0L,
     ) = VideoEntity(
         youtubeId = youtubeId,
         jellyfinItemId = "jf-item-1",
@@ -59,6 +66,7 @@ class VideoMergeTest {
         played = false,
         playbackPositionTicks = 0L,
         playCount = 0,
+        lastPlayedAt = lastPlayedAt,
         lastSyncedAt = 400_000L,
         metadataSource = source,
         metadataUpdatedAt = metadataUpdatedAt,
@@ -431,5 +439,49 @@ class VideoMergeTest {
             context = context(indexAvailable = true, apiAvailable = true),
         )
         assertEquals(METADATA_SOURCE_JELLYFIN, merged.metadataSource)
+    }
+
+    // --- last played: the later of the local and server instants always wins ---
+
+    @Test
+    fun `a newer server last played advances the local instant`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_INDEX, lastPlayedAt = 500_000L),
+            youtubeId = youtubeId,
+            // 1970-01-01T00:15:00Z = 900_000 ms — a play made on another client.
+            item = item(lastPlayedDate = "1970-01-01T00:15:00.0000000Z"),
+            meta = null,
+            context = context(indexAvailable = false),
+        )
+        assertEquals(900_000L, merged.lastPlayedAt)
+    }
+
+    @Test
+    fun `an older server last played never moves the local instant back`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_INDEX, lastPlayedAt = 999_000L),
+            youtubeId = youtubeId,
+            item = item(lastPlayedDate = "1970-01-01T00:15:00Z"), // 900_000 ms
+            meta = null,
+            context = context(indexAvailable = false),
+            // Even in the branch that otherwise takes the server's watch state wholesale: a
+            // timestamp is monotonic, so the retained-triple arbitration does not apply to it.
+            keepLocalWatchState = false,
+        )
+        assertEquals(999_000L, merged.lastPlayedAt)
+    }
+
+    @Test
+    fun `a server snapshot without a parseable last played leaves the local instant alone`() {
+        val kept = mergeVideo(
+            existing = existing(METADATA_SOURCE_INDEX, lastPlayedAt = 700_000L),
+            youtubeId = youtubeId,
+            item = item(lastPlayedDate = null),
+            meta = null,
+            context = context(indexAvailable = false),
+        )
+        assertEquals(700_000L, kept.lastPlayedAt)
+        assertEquals(0L, lastPlayedMillis(null))
+        assertEquals(0L, lastPlayedMillis("not-a-date"))
     }
 }

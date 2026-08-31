@@ -59,6 +59,9 @@ internal class PlaystateWriter(
         writes.mutex.withLock {
             val v = videoDao.get(youtubeId) ?: return false
             videoDao.updateWatchState(youtubeId, played, if (played) v.playbackPositionTicks else 0L)
+            // Marking watched counts as a play, mirroring what /PlayedItems does on the server
+            // (it stamps LastPlayedDate). Un-marking leaves the instant alone there too.
+            if (played) videoDao.touchLastPlayed(youtubeId, Instant.now().toEpochMilli())
             writes.stamp(youtubeId)
         }
         val s = settings.snapshot()
@@ -262,6 +265,9 @@ internal class PlaystateWriter(
                     "local write played=$finished position=${if (finished) 0L else positionTicks}",
             )
             videoDao.updateWatchState(youtubeId, finished, if (finished) 0L else positionTicks)
+            // Finished or worth resuming, this stop was a real play — surface it in "Last
+            // played" now rather than after the next sync brings the server's stamp back.
+            videoDao.touchLastPlayed(youtubeId, Instant.now().toEpochMilli())
             writes.stamp(youtubeId)
             v
         }
@@ -425,6 +431,9 @@ internal class PlaystateWriter(
                     positionTicks = positionTicks,
                     playCount = playCount,
                 )
+                // Monotonic (MAX), so the server's stamp — taken when this play was reported —
+                // can only refine the local one, never move the video down the list.
+                videoDao.touchLastPlayed(youtubeId, lastPlayedMillis(userData.lastPlayedDate))
                 writes.stamp(youtubeId)
                 Timber.tag(PLAYBACK_TAG).d(
                     "onPlaybackStopped: mirrored the server's verdict for itemId=$itemId " +

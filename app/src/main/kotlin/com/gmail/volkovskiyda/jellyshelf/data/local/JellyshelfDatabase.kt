@@ -13,7 +13,8 @@ import androidx.room.TypeConverters
     // 2: dropped the videos.durationSeconds index with the library's duration filter, its only
     // reader. Schemas are checked in under app/schemas, so every bump is diffable against the one
     // before it.
-    version = 2,
+    // 3: added videos.lastPlayedAt and its index for the "Last played" filter.
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

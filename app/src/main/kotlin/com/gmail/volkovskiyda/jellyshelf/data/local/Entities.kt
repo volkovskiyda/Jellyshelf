@@ -35,6 +35,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
         Index(value = ["played", "playbackPositionTicks", "fileName"]),
         // The Uncategorized filter and countBySource.
         Index(value = ["metadataSource", "fileName"]),
+        // The Last played filter: lastPlayedAt > 0 ORDER BY lastPlayedAt DESC (a backward index
+        // scan) and its capped count.
+        Index(value = ["lastPlayedAt"]),
     ],
 )
 data class VideoEntity(
@@ -55,6 +58,14 @@ data class VideoEntity(
     val played: Boolean,
     val playbackPositionTicks: Long,
     val playCount: Int,
+    /**
+     * When this video was last played, epoch millis; 0 = never. Fed from both directions — the
+     * app's own playback/toggle writes stamp it, and sync folds in the server's
+     * `UserData.LastPlayedDate` (which every Jellyfin client updates). Writes always take
+     * `MAX(old, new)`: a timestamp only ever moves forward, so the later value is always the
+     * truth regardless of which side it came from.
+     */
+    val lastPlayedAt: Long = 0L,
     val lastSyncedAt: Long,
     /** One of METADATA_SOURCE_*: where the YouTube metadata above came from. */
     val metadataSource: String = METADATA_SOURCE_JELLYFIN,

@@ -19,6 +19,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_MONTH
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATEGORY
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
+import com.gmail.volkovskiyda.jellyshelf.domain.model.LAST_PLAYED_LIMIT
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
@@ -150,7 +151,7 @@ class DemoSeedInstrumentedTest {
         )
     }
 
-    /** Watched, Continue watching and Unwatched are three tabs; all three must have content. */
+    /** Watched, Continue watching, Last played and Unwatched are filters; all must have content. */
     @Test
     fun seed_producesAMixOfWatchStates() = runBlocking {
         repository().seedDemoLibrary()
@@ -161,6 +162,12 @@ class DemoSeedInstrumentedTest {
         assertTrue(
             "a part-watched video needs a position inside its own duration",
             db.videoDao().getContinueWatching().all { it.playbackPositionTicks > 0L },
+        )
+        val lastPlayed = db.videoDao().observeLastPlayedBrowse(LAST_PLAYED_LIMIT).first()
+        assertTrue("last played needs members", lastPlayed.isNotEmpty())
+        assertTrue(
+            "every seeded play is watched or part-watched",
+            lastPlayed.all { it.played || it.playbackPositionTicks > 0L },
         )
     }
 

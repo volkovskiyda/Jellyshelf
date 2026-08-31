@@ -43,6 +43,7 @@ class VideoDaoInstrumentedTest {
         positionTicks: Long = 0L,
         syncedAt: Long = 1L,
         tags: List<String> = listOf("a", "b"),
+        lastPlayedAt: Long = 0L,
     ) = VideoEntity(
         youtubeId = id,
         jellyfinItemId = "jf-$id",
@@ -59,6 +60,7 @@ class VideoDaoInstrumentedTest {
         played = played,
         playbackPositionTicks = positionTicks,
         playCount = 0,
+        lastPlayedAt = lastPlayedAt,
         lastSyncedAt = syncedAt,
         metadataSource = METADATA_SOURCE_YTDLP,
         metadataUpdatedAt = 0L,
@@ -131,6 +133,41 @@ class VideoDaoInstrumentedTest {
 
         val continueWatching = dao.observeContinueWatchingBrowse().first().map { it.youtubeId }
         assertEquals(listOf("watching"), continueWatching)
+    }
+
+    @Test
+    fun observeLastPlayed_ordersByRecencyCapsAndExcludesNeverPlayed() = runTest {
+        dao.upsert(
+            listOf(
+                video("older", played = true, lastPlayedAt = 100L),
+                video("newest", played = true, lastPlayedAt = 300L),
+                // Part-watched plays belong in the list too — any play counts.
+                video("middle", positionTicks = 10L, lastPlayedAt = 200L),
+                video("never"),
+            ),
+        )
+
+        assertEquals(
+            listOf("newest", "middle", "older"),
+            dao.observeLastPlayedBrowse(limit = 10).first().map { it.youtubeId },
+        )
+        // The cap keeps the newest, and the count reports what the capped list shows.
+        assertEquals(listOf("newest", "middle"), dao.observeLastPlayedBrowse(limit = 2).first().map { it.youtubeId })
+        assertEquals(2, dao.countLastPlayed(limit = 2).first())
+        assertEquals(3, dao.countLastPlayed(limit = 10).first())
+    }
+
+    @Test
+    fun touchLastPlayed_onlyEverMovesForward() = runTest {
+        dao.upsert(video("v1", lastPlayedAt = 200L))
+
+        // A stale instant — a server value read back after a fresh local play — is a no-op…
+        dao.touchLastPlayed("v1", playedAt = 100L)
+        assertEquals(200L, dao.get("v1")?.lastPlayedAt)
+
+        // …and a newer one advances.
+        dao.touchLastPlayed("v1", playedAt = 300L)
+        assertEquals(300L, dao.get("v1")?.lastPlayedAt)
     }
 
     /**
@@ -235,6 +272,24 @@ class VideoDaoInstrumentedTest {
                 "`playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
                 "FROM (SELECT * FROM videos ORDER BY fileName)",
         )
+    }
+
+    @Test
+    fun theLastPlayedFilter_walksItsIndexBackwardsWithNoSort() {
+        // `lastPlayedAt > 0 ORDER BY lastPlayedAt DESC` is one backward walk of the range the
+        // seek lands in — the DESC costs nothing, and with the LIMIT the read stops after the
+        // first rows it delivers.
+        val plan = explain(
+            "SELECT * FROM videos WHERE lastPlayedAt > 0 ORDER BY lastPlayedAt DESC LIMIT 20",
+        )
+        assertTrue(plan, "index_videos_lastPlayedAt" in plan)
+        assertNoTableScan(plan)
+        assertFalse(plan, "TEMP B-TREE" in plan)
+
+        // Its capped count never touches the table at all.
+        val countPlan = explain("SELECT COUNT(*) FROM (SELECT 1 FROM videos WHERE lastPlayedAt > 0 LIMIT 20)")
+        assertTrue(countPlan, "USING COVERING INDEX" in countPlan)
+        assertNoTableScan(countPlan)
     }
 
     @Test

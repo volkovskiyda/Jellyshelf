@@ -12,6 +12,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.util.fileNameFromPath
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
+import java.time.Instant
 
 private const val MILLIS_PER_SECOND = 1000L
 
@@ -69,7 +70,19 @@ private fun IndexEntry.filledFrom(older: IndexEntry): IndexEntry = IndexEntry(
 )
 
 /** Watch state for one row: whichever of the local row and the server snapshot is newer. */
-private class WatchState(val played: Boolean, val positionTicks: Long, val playCount: Int)
+private class WatchState(
+    val played: Boolean,
+    val positionTicks: Long,
+    val playCount: Int,
+    val lastPlayedAt: Long,
+)
+
+/**
+ * The server's `LastPlayedDate` as epoch millis, 0 when absent or unparseable. Jellyfin sends
+ * ISO-8601 UTC instants (with up to seven fractional digits), which [Instant.parse] covers.
+ */
+internal fun lastPlayedMillis(iso: String?): Long =
+    iso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: 0L
 
 /**
  * The per-row values both merge branches write, resolved once before the keep-or-rebuild decision.
@@ -129,6 +142,13 @@ private fun resolveWatchState(
         played = retained?.played ?: item.userData?.played ?: false,
         positionTicks = retained?.playbackPositionTicks ?: item.userData?.playbackPositionTicks ?: 0L,
         playCount = retained?.playCount ?: item.userData?.playCount ?: 0,
+        // Unlike the triple above, no newer-writer arbitration: a last-played instant only ever
+        // moves forward, so the later of the two sides is always the truth — this is also how a
+        // play made on another Jellyfin client reaches the "Last played" filter.
+        lastPlayedAt = maxOf(
+            existing?.lastPlayedAt ?: 0L,
+            lastPlayedMillis(item.userData?.lastPlayedDate),
+        ),
     )
 }
 
@@ -182,6 +202,7 @@ private fun refreshedExisting(
     played = row.watch.played,
     playbackPositionTicks = row.watch.positionTicks,
     playCount = row.watch.playCount,
+    lastPlayedAt = row.watch.lastPlayedAt,
     lastSyncedAt = now,
     // Seen on the server again — any grace-period misses it accumulated are void.
     missedSyncs = 0,
@@ -229,6 +250,7 @@ private fun rebuiltEntity(
         played = row.watch.played,
         playbackPositionTicks = row.watch.positionTicks,
         playCount = row.watch.playCount,
+        lastPlayedAt = row.watch.lastPlayedAt,
         lastSyncedAt = context.now,
         metadataSource = provenance.source,
         metadataUpdatedAt = provenance.updatedAt,
