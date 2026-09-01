@@ -159,6 +159,13 @@ internal const val PLAYER_POSITION_TAG = "player_position"
  * Minimize exists because the bar needs playback to survive leaving the player. It is a *second*
  * exit rather than a change to the first: back stopping playback was decided deliberately, and
  * this does not reopen it.
+ *
+ * [leaving] is the navigation layer saying this has stopped being the screen. It is not the same
+ * moment as the screen going away: a pop lands, the destination composes — which for the library
+ * is a couple of hundred milliseconds — and only then does `NavDisplay` swap the two over. For
+ * that whole gap the player is still the thing on the display, now over a destination the user
+ * has already asked for, and by then it is showing the cover, because the exit stopped playback
+ * and emptied the surface underneath it. So it shows nothing instead.
  */
 @Composable
 fun PlayerScreen(
@@ -166,6 +173,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     origin: PlayerOrigin = PlayerOrigin.None,
+    leaving: Boolean = false,
 ) {
     val viewModel: PlayerViewModel = koinViewModel { parametersOf(AppNavKey.Player(youtubeId, origin)) }
     val controller by viewModel.controller.collectAsStateWithLifecycle()
@@ -189,7 +197,13 @@ fun PlayerScreen(
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
         val c = controller
-        if (c == null) {
+        // Nothing at all once this is no longer the screen — see [leaving]. Its own black is
+        // what is left, and that is the point: a video surface is a hardware layer that a
+        // transition's alpha never reaches, so anything still on it would sit fully opaque over
+        // the screen taking over.
+        if (leaving) {
+            Unit
+        } else if (c == null) {
             // Still connecting to the service. The back arrow stays reachable regardless — with
             // no controller yet there is nothing to stop, so this is a plain leave.
             PlayerPoster(poster, Modifier.matchParentSize())

@@ -592,6 +592,10 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         PlayerScreen(
                             youtubeId = key.youtubeId,
                             origin = key.origin,
+                            // Read here rather than handed down from the composable above, so the
+                            // read belongs to this entry's own composition — that is what makes
+                            // the outgoing entry recompose when the stack changes under it.
+                            leaving = backStack.lastOrNull() != key,
                             onBack = { navThrottle { pop() } },
                         )
                     }
