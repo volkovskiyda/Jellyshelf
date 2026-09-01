@@ -1,7 +1,9 @@
 name: Release
 
 # Only a manually pushed v* tag publishes to the Releases page — that is what keeps it a curated
-# archive rather than a build log. Continuous delivery to testers is ci.yml's distribute job.
+# archive rather than a build log. Continuous delivery to testers is ci.yml's distribute job; a tag
+# feeds the same App Distribution channel as well, so testers who are behind get offered the
+# tag-named build rather than one named under the previous tag.
 on:
   push:
     tags: ['v*']
@@ -129,6 +131,34 @@ jobs:
           ./gradlew :app:assembleRelease \
             -PbuildNumber=$(git rev-list --count HEAD) \
             -PbaseVersion=${GITHUB_REF_NAME#v}
+
+      # The same channel every main push feeds, and the same group. The tagged commit itself already
+      # reached testers when it landed on main — under the previous tag's name and this same
+      # versionCode — and the in-app check only offers a strictly greater versionCode, so testers
+      # already on this commit are not prompted again; this upload is for the ones who are behind,
+      # and it is what keeps the build in testers' hands named after the tag it belongs to.
+      # Deliberately ahead of the Releases step: re-uploading the same binary is deduplicated by
+      # Firebase, while `gh release create` fails once the release exists, so with this order a
+      # failed run can simply be re-run.
+      - name: Upload to Firebase App Distribution
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+        run: |
+          set -euo pipefail
+          : "${FIREBASE_SERVICE_ACCOUNT:?set the FIREBASE_SERVICE_ACCOUNT repository secret (see docs/RELEASING.md)}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          V="${GITHUB_REF_NAME#v}.$(git rev-list --count HEAD)"
+          # What the update dialog shows: the full version, then every commit subject since the
+          # previous tag — the same ground --generate-notes covers on the release page below. The
+          # first tag ever has no predecessor, in which case the whole history is the changelog.
+          PREV=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          NOTES="v$V"$'\n\n'"$(git log ${PREV:+$PREV..}HEAD --pretty='- %s')"
+          npx firebase-tools@15 appdistribution:distribute \
+            app/build/outputs/apk/release/app-release.apk \
+            --app 1:967566106537:android:1b97dedaa2eec8bdbeeeb8 \
+            --groups testers \
+            --release-notes "$NOTES"
 
       # The mapping is not optional: R8 is on, so without the file from this exact build no crash
       # report from this release can be read. Crashlytics holds its own copy (item 07); this one is

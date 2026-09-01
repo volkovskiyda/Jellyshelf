@@ -12,6 +12,13 @@ Every green push to `main` builds a signed release APK and uploads it to **Fireb
 Distribution** for the `testers` group. Nothing to run: it is the `distribute` job in
 [`ci.yml`](../.github/workflows/ci.yml), and it waits for the checks job.
 
+A pushed tag uploads to the same channel and group as well (a step in the Release workflow's
+`release` job). The tagged commit already reached testers when it landed on `main`, under the
+*previous* tag's name and the same versionCode — the in-app check only offers a strictly greater
+versionCode, so testers on that build are not prompted again. The tag upload is for testers who are
+behind, and it keeps the build in circulation named after the tag it belongs to; its release notes
+are the commit subjects since the previous tag.
+
 ## Curated — GitHub Release
 
 ```sh
@@ -37,7 +44,8 @@ The app can tell a user that a newer build exists. There is no Play listing to a
 picks which of the two channels above they installed from, in **Settings → Updates**.
 
 **Both channels ship the same signed release APK.** GitHub Releases are tag-driven and curated;
-App Distribution gets every green `main` push. Neither is a debug channel — a point worth stating,
+App Distribution gets every green `main` push plus every tag. Neither is a debug channel — a point
+worth stating,
 because it has been assumed otherwise: `release.yml` runs `assembleRelease` with the restored
 keystore, and the R8 mapping attached to each release only exists for a minified release build.
 
