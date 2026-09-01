@@ -15,6 +15,8 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
@@ -51,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -111,6 +114,10 @@ import org.koin.compose.koinInject
 import timber.log.Timber
 
 private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: ImageVector)
+
+// Long enough to read as the tabs leaving rather than blinking out, short enough to be over well
+// before the screen taking their place has finished arriving.
+private const val TABS_FADE_MS = 150
 
 // The scrims androidx applies to a three-button navigation bar, redeclared because
 // SystemBarStyle.auto's defaults are internal. Only used when gesture navigation is off.
@@ -365,6 +372,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // So [onScreen] is every entry currently composed, in composition order, and the chrome stays
     // for as long as any of them still wants it — going only once the last one has been disposed
     // and has nothing left to reflow.
+    //
+    // Only the *space* has to be held that long, though. Holding the tabs themselves as well left
+    // them sitting fully opaque over the screen that had already replaced them, for the whole of
+    // its transition in — a good three quarters of a second of tabs that belong to the screen
+    // underneath. So the two are separated: [chromeOwner] reserves the height, and [tabsShowing]
+    // below decides whether anything is drawn in it, on the stack and without waiting.
     val onScreen = remember { mutableStateListOf<AppNavKey>() }
     val top = backStack.lastOrNull()
     // The player holds the display until it is composed, so the chrome — and PiP, and the update
@@ -381,6 +394,17 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     val chromeOwner = onScreen.lastOrNull { key -> topLevel.any { it.key == key } }
         ?: current?.takeIf { key -> topLevel.any { it.key == key } }
     val showBottomBar = chromeOwner != null
+
+    // Whether the tabs are *drawn* in the space [chromeOwner] reserves. This one follows the stack,
+    // so they start leaving on the tap rather than when the screen they belonged to is finally
+    // disposed. They fade rather than cut, because the space stays behind either way and a bar that
+    // blinks out draws more attention to the gap it leaves than one that dissolves into it.
+    val tabsShowing = topLevel.any { it.key == current }
+    val tabsAlpha by animateFloatAsState(
+        targetValue = if (tabsShowing) 1f else 0f,
+        animationSpec = tween(durationMillis = TABS_FADE_MS),
+        label = "tabsAlpha",
+    )
 
     // The update offer, hosted here because this is the only place that knows which tab is current.
     // The tab is the whole suppression rule for an offer nobody asked for: the player, detail and
@@ -543,11 +567,19 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     )
                 }
                 if (showBottomBar) {
-                    NavigationBar(windowInsets = chromeIgnoringVisibility()) {
+                    NavigationBar(
+                        windowInsets = chromeIgnoringVisibility(),
+                        modifier = Modifier.graphicsLayer { alpha = tabsAlpha },
+                    ) {
                         topLevel.forEach { item ->
                             val label = stringResource(item.labelRes)
                             NavigationBarItem(
                                 selected = chromeOwner == item.key,
+                                // Faded out, the bar is still laid out and would still take a tap
+                                // meant for the screen behind it. Disabling the items is what makes
+                                // the reserved space inert; nothing of the disabled styling shows
+                                // through, because by then there is nothing left to style.
+                                enabled = tabsShowing,
                                 onClick = { switchTo(item.key) },
                                 // The visible label already names the item; a duplicate icon
                                 // description would make TalkBack announce it twice.
