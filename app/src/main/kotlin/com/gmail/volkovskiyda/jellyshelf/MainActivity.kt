@@ -41,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -343,20 +344,39 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         TopLevel(AppNavKey.Settings, R.string.tab_settings, Icons.Filled.Settings),
     )
     // Everything outside the `NavDisplay` — the tabs, the mini-player bar, and the padding the two
-    // impose on the screen between them — follows the screen *on display*, which is not the same
-    // moment as the top of the stack changing: `NavDisplay` composes the incoming screen first and
-    // swaps it in a frame or two later. Were the chrome to go on the stack instead, the screen
-    // still being displayed would spend that gap visibly reflowing into the space the tabs had
-    // left. A cross-fade covered that; the player arrives on a cut (see [Cut]) with nothing to
-    // cover it, which is why it is the one screen this waits for.
-    var playerOnDisplay by remember { mutableStateOf(false) }
+    // impose on the screen between them — belongs to the screens actually *composed*, which is not
+    // the same set as the top of the stack. `NavDisplay` composes the incoming screen a frame or
+    // two before it swaps it in, and — on anything but a cut — keeps the outgoing one composed, and
+    // measured, for the whole of the transition out. Chrome that went on the stack instead would
+    // leave on the first of those and strand the other: the screen still being displayed spends the
+    // gap reflowing into the space the tabs left.
+    //
+    // On a list that is not cosmetic, and the fade does not cover it. Scrolled to the end there is
+    // no row left to reveal, so [LazyColumn] answers the taller viewport by back-scrolling to keep
+    // the last item against the bottom — a real change to `firstVisibleItemIndex/Offset`. Coming
+    // back only shrinks the viewport again; nothing scrolls it forward, and the debounced save in
+    // `rememberAnchoredLazyListState` has meanwhile written the moved anchor down. The list is
+    // simply somewhere else now, and stays there across a relaunch.
+    //
+    // So [onScreen] is every entry currently composed, in composition order, and the chrome stays
+    // for as long as any of them still wants it — going only once the last one has been disposed
+    // and has nothing left to reflow.
+    val onScreen = remember { mutableStateListOf<AppNavKey>() }
     val top = backStack.lastOrNull()
-    val current = if (top is AppNavKey.Player && !playerOnDisplay) {
+    // The player holds the display until it is composed, so the chrome — and PiP, and the update
+    // offer, all of which read [current] — still belong to the screen underneath until then.
+    val current = if (top is AppNavKey.Player && onScreen.none { it is AppNavKey.Player }) {
         backStack.getOrNull(backStack.lastIndex - 1)
     } else {
         top
     }
-    val showBottomBar = topLevel.any { it.key == current }
+    // The *last* composed top-level screen, so switching tabs hands the tabs straight over, while
+    // pushing a Detail on top of one leaves them with the tab underneath it. Falls back to the
+    // stack for the first frame, before any entry has had the chance to register: a cold start on a
+    // tab would otherwise draw one frame without its tabs and then add them.
+    val chromeOwner = onScreen.lastOrNull { key -> topLevel.any { it.key == key } }
+        ?: current?.takeIf { key -> topLevel.any { it.key == key } }
+    val showBottomBar = chromeOwner != null
 
     // The update offer, hosted here because this is the only place that knows which tab is current.
     // The tab is the whole suppression rule for an offer nobody asked for: the player, detail and
@@ -408,7 +428,15 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // PlaybackService, so it is already right on a launch that walked in on playback under way.
     val nowPlayingState: NowPlayingState = koinInject()
     val nowPlaying by nowPlayingState.nowPlaying.collectAsStateWithLifecycle()
-    val showMiniPlayer = nowPlaying != null && current !is AppNavKey.Player
+    // Held to the same rule as the tabs above it, for the same reason: the bar is the other half of
+    // the height the screen between them is measured against, and dropping it out from under a
+    // screen that has not finished leaving costs that screen its scroll position just as surely.
+    // The player is the only screen that does not want it; any other screen still composed does.
+    val showMiniPlayer = nowPlaying != null && if (onScreen.isEmpty()) {
+        current !is AppNavKey.Player
+    } else {
+        onScreen.any { it !is AppNavKey.Player }
+    }
 
     // Picture-in-Picture is stated in advance, not triggered — see MainActivity.updatePipParams.
     // Re-stated whenever the answer changes: which screen is on top, whether it is playing, and
@@ -512,7 +540,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         topLevel.forEach { item ->
                             val label = stringResource(item.labelRes)
                             NavigationBarItem(
-                                selected = current == item.key,
+                                selected = chromeOwner == item.key,
                                 onClick = { switchTo(item.key) },
                                 // The visible label already names the item; a duplicate icon
                                 // description would make TalkBack announce it twice.
@@ -545,6 +573,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             ) { key ->
                 when (key) {
                     is AppNavKey.Library -> NavEntry(key) {
+                        OnScreen(key, onScreen)
                         LibraryScreen(
                             // A thumbnail tap goes straight to the player, carrying the same origin the
                             // detour through Detail would have handed it: the queue is the library as
@@ -561,12 +590,14 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     }
 
                     is AppNavKey.Categories -> NavEntry(key) {
+                        OnScreen(key, onScreen)
                         CategoriesScreen(onCategoryClick = { id, title ->
                             navThrottle { push(AppNavKey.CategoryVideos(id, title)) }
                         })
                     }
 
                     is AppNavKey.Settings -> NavEntry(key) {
+                        OnScreen(key, onScreen)
                         SettingsScreen(
                             // A seeded demo goes straight to the library it just filled. switchTo
                             // replaces the stack rather than pushing, so Back exits from Library
@@ -576,6 +607,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     }
 
                     is AppNavKey.CategoryVideos -> NavEntry(key) {
+                        OnScreen(key, onScreen)
                         val origin = PlayerOrigin.Category(key.categoryId)
                         CategoryVideosScreen(
                             categoryId = key.categoryId,
@@ -591,6 +623,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     }
 
                     is AppNavKey.Detail -> NavEntry(key) {
+                        OnScreen(key, onScreen)
                         DetailScreen(
                             youtubeId = key.youtubeId,
                             onBack = { navThrottle { pop() } },
@@ -604,12 +637,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     }
 
                     is AppNavKey.Player -> NavEntry(key, metadata = mapOf(CUT_TRANSITION to true)) {
-                        // Composed is as close to displayed as the entry can report, and the two
-                        // are a frame apart at most — see [current], which this drives.
-                        DisposableEffect(Unit) {
-                            playerOnDisplay = true
-                            onDispose { playerOnDisplay = false }
-                        }
+                        OnScreen(key, onScreen)
                         PlayerScreen(
                             youtubeId = key.youtubeId,
                             origin = key.origin,
@@ -625,6 +653,25 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 }
             }
         }
+    }
+}
+
+/**
+ * Registers [key] as on screen for as long as this entry is composed, in composition order.
+ *
+ * The list is what the chrome outside the `NavDisplay` is sized from, and both ends of a transition
+ * matter to it: `NavDisplay` composes the incoming entry before it swaps, and holds the outgoing
+ * one until its exit animation has run. Being in this list is the entry's claim on the tabs and the
+ * mini-player bar, and it lasts exactly as long as the entry can still be measured.
+ *
+ * An effect rather than a plain call, because composition alone is not the thing being tracked —
+ * disposal is, and only [DisposableEffect] gets told about it.
+ */
+@Composable
+private fun OnScreen(key: AppNavKey, onScreen: MutableList<AppNavKey>) {
+    DisposableEffect(key) {
+        onScreen.add(key)
+        onDispose { onScreen.remove(key) }
     }
 }
 
