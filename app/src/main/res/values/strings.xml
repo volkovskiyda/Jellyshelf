@@ -104,7 +104,9 @@
     <string name="selected_count" tools:ignore="PluralsCandidate">%1$d selected</string>
     <string name="selection_cleared">Selection cleared</string>
     <string name="undo">Undo</string>
-    <string name="update">Update</string>
+    <!-- The bulk action, not the app update: update_install reads the same today and is
+         deliberately not the same string — see notification_permission_dismiss. -->
+    <string name="update" tools:ignore="DuplicateStrings">Update</string>
     <string name="selection_mark">Mark</string>
     <string name="selection_mark_watched_title">Mark as watched?</string>
     <string name="selection_mark_watched_text">This marks %1$s as watched, here and on the Jellyfin server.</string>

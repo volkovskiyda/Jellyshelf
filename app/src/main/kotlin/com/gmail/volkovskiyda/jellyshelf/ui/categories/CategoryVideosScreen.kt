@@ -186,6 +186,7 @@ internal fun CategoryVideosContent(
     onConfirmRemove: () -> Unit,
     onCancelRemove: () -> Unit,
     onAcknowledgeBulkRemove: () -> Unit,
+    modifier: Modifier = Modifier,
     selectionActive: Boolean = false,
     selectedIds: Set<String> = emptySet(),
     selectionRun: SelectionRun? = null,
@@ -203,7 +204,6 @@ internal fun CategoryVideosContent(
     playlistDefaultName: String = "",
     onDismissPlaylistDialog: () -> Unit = {},
     onConfirmPlaylist: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
     // Resolved once for the whole screen, not per row — see [rememberVideoThumbnailResolver].

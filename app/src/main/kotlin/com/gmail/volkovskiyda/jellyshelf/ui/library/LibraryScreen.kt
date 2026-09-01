@@ -139,6 +139,7 @@ internal fun LibraryContent(
     onQueryChange: (String) -> Unit,
     onPlayVideo: (Video) -> Unit,
     onOpenDetails: (Video) -> Unit,
+    modifier: Modifier = Modifier,
     selectionActive: Boolean = false,
     selectedIds: Set<String> = emptySet(),
     selectionRun: SelectionRun? = null,
@@ -156,7 +157,6 @@ internal fun LibraryContent(
     creatingPlaylist: Boolean = false,
     onDismissPlaylistDialog: () -> Unit = {},
     onConfirmPlaylist: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
     // Resolved once for the whole screen, not per row — see [rememberVideoThumbnailResolver].
