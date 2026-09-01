@@ -17,10 +17,15 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -55,10 +60,16 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -378,6 +389,13 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // its transition in — a good three quarters of a second of tabs that belong to the screen
     // underneath. So the two are separated: [chromeOwner] reserves the height, and [tabsShowing]
     // below decides whether anything is drawn in it, on the stack and without waiting.
+    //
+    // And the space is reserved *per screen*, not for the display as a whole — see [bottomFor].
+    // The `Scaffold` has one bottom padding for everything under it, so the height held for the
+    // screen on its way out was being applied to the screen on its way in as well: the tabs faded
+    // out of a band the arriving screen was still being kept clear of, leaving it empty until the
+    // outgoing screen was finally disposed. What each screen wants is a property of the screen,
+    // and constant for as long as it lives; only the display-wide value has to change.
     val onScreen = remember { mutableStateListOf<AppNavKey>() }
     val top = backStack.lastOrNull()
     // The player holds the display until it is composed, so the chrome — and PiP, and the update
@@ -405,6 +423,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         animationSpec = tween(durationMillis = TABS_FADE_MS),
         label = "tabsAlpha",
     )
+
+    // How much of the chrome the tabs account for, measured: `NavigationBar`'s own height is not
+    // public, and it carries the bottom system inset on top of it. Only ever read while the tabs
+    // are composed — kept from the last time they were, it is one navigation bar too many.
+    val density = LocalDensity.current
+    var tabsHeight by remember { mutableStateOf(0.dp) }
 
     // The update offer, hosted here because this is the only place that knows which tab is current.
     // The tab is the whole suppression rule for an offer nobody asked for: the player, detail and
@@ -569,7 +593,9 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 if (showBottomBar) {
                     NavigationBar(
                         windowInsets = chromeIgnoringVisibility(),
-                        modifier = Modifier.graphicsLayer { alpha = tabsAlpha },
+                        modifier = Modifier
+                            .graphicsLayer { alpha = tabsAlpha }
+                            .onSizeChanged { tabsHeight = with(density) { it.height.toDp() } },
                     ) {
                         topLevel.forEach { item ->
                             val label = stringResource(item.labelRes)
@@ -592,15 +618,67 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             }
         },
     ) { innerPadding ->
+        val layoutDirection = LocalLayoutDirection.current
+        // The space the system navigation bar takes when it is showing, which is not the space it
+        // takes right now — see [chromeIgnoringVisibility].
+        val navigationInset = WindowInsets.navigationBarsIgnoringVisibility
+            .asPaddingValues()
+            .calculateBottomPadding()
+        // What a screen that is not a tab reserves: everything the chrome reserves, less the tabs
+        // it does not want, plus the system inset those tabs were carrying on behalf of the bar
+        // above them. Written as a subtraction because the two values then agree by construction
+        // at the moment the tabs go: what is left is what the chrome collapses to anyway.
+        //
+        // Never less than that inset. With no chrome at all the Scaffold falls back to its own
+        // content insets, which are the live ones, and those read zero for a few frames after the
+        // player hands the system bars back.
+        val bottomWithoutTabs = when {
+            // Tabs composed but not yet measured — the first frame of a process that started on a
+            // screen deeper than a tab. What the Scaffold offers is what this screen had before
+            // there was anything to subtract, and it is right again one layout pass later.
+            showBottomBar && tabsHeight > 0.dp ->
+                innerPadding.calculateBottomPadding() - tabsHeight + navigationInset
+            else -> innerPadding.calculateBottomPadding()
+        }.coerceAtLeast(navigationInset)
+
+        /**
+         * What [key] reserves at the bottom, for the whole of its life.
+         *
+         * A tab screen sits under the tabs and takes the lot. The player owns the window and takes
+         * what the `Scaffold` offers, which with no chrome composed is the live inset it is about
+         * to hide. Everything in between — Detail, a category — is on top of a tab rather than
+         * beside it: it never wants the tabs' height, not even while the tab it covers is still
+         * fading out underneath it.
+         */
+        fun bottomFor(key: AppNavKey): Dp = when {
+            key is AppNavKey.Player -> innerPadding.calculateBottomPadding()
+            topLevel.any { it.key == key } -> innerPadding.calculateBottomPadding()
+            else -> bottomWithoutTabs
+        }
+
+        /** One screen, holding its own [bottomFor] clear of the chrome and its own claim on it. */
+        fun entry(
+            key: AppNavKey,
+            metadata: Map<String, Any> = emptyMap(),
+            content: @Composable () -> Unit,
+        ): NavEntry<NavKey> =
+            NavEntry(key, metadata = metadata) {
+                OnScreen(key, onScreen)
+                BottomChrome(bottomFor(key), content)
+            }
+
         // Every screen under here can post to the Scaffold's snackbar host without that host being
         // threaded through NavDisplay and each entry that happens to want one.
         CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
+            // Sides and top only: the bottom is the one edge the screens do not agree on, and each
+            // applies its own in [entry] above. consumeWindowInsets keeps each screen's own
+            // TopAppBar from applying the status-bar inset a second time on top of the scaffold
+            // padding; imePadding keeps the keyboard from covering search fields and the lower
+            // Settings inputs.
+            val sides = innerPadding.sides(layoutDirection)
             NavDisplay(
                 backStack = backStack,
-                // consumeWindowInsets keeps each screen's own TopAppBar from applying the status-bar
-                // inset a second time on top of the scaffold padding; imePadding keeps the keyboard
-                // from covering search fields and the lower Settings inputs.
-                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding(),
+                modifier = Modifier.padding(sides).consumeWindowInsets(sides).imePadding(),
                 entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
                 // The player cuts in and out; everything else keeps the default cross-fade.
                 transitionSpec = cutting(defaultTransitionSpec()),
@@ -611,8 +689,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 onBack = { pop() },
             ) { key ->
                 when (key) {
-                    is AppNavKey.Library -> NavEntry(key) {
-                        OnScreen(key, onScreen)
+                    is AppNavKey.Library -> entry(key) {
                         LibraryScreen(
                             // A thumbnail tap goes straight to the player, carrying the same origin the
                             // detour through Detail would have handed it: the queue is the library as
@@ -628,15 +705,13 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         )
                     }
 
-                    is AppNavKey.Categories -> NavEntry(key) {
-                        OnScreen(key, onScreen)
+                    is AppNavKey.Categories -> entry(key) {
                         CategoriesScreen(onCategoryClick = { id, title ->
                             navThrottle { push(AppNavKey.CategoryVideos(id, title)) }
                         })
                     }
 
-                    is AppNavKey.Settings -> NavEntry(key) {
-                        OnScreen(key, onScreen)
+                    is AppNavKey.Settings -> entry(key) {
                         SettingsScreen(
                             // A seeded demo goes straight to the library it just filled. switchTo
                             // replaces the stack rather than pushing, so Back exits from Library
@@ -645,8 +720,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         )
                     }
 
-                    is AppNavKey.CategoryVideos -> NavEntry(key) {
-                        OnScreen(key, onScreen)
+                    is AppNavKey.CategoryVideos -> entry(key) {
                         val origin = PlayerOrigin.Category(key.categoryId)
                         CategoryVideosScreen(
                             categoryId = key.categoryId,
@@ -661,8 +735,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         )
                     }
 
-                    is AppNavKey.Detail -> NavEntry(key) {
-                        OnScreen(key, onScreen)
+                    is AppNavKey.Detail -> entry(key) {
                         DetailScreen(
                             youtubeId = key.youtubeId,
                             onBack = { navThrottle { pop() } },
@@ -675,8 +748,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         )
                     }
 
-                    is AppNavKey.Player -> NavEntry(key, metadata = mapOf(CUT_TRANSITION to true)) {
-                        OnScreen(key, onScreen)
+                    is AppNavKey.Player -> entry(key, metadata = mapOf(CUT_TRANSITION to true)) {
                         PlayerScreen(
                             youtubeId = key.youtubeId,
                             origin = key.origin,
@@ -722,6 +794,30 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
 private fun chromeIgnoringVisibility(): WindowInsets =
     WindowInsets.systemBarsIgnoringVisibility
         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+
+/**
+ * [this], less the bottom edge: every screen applies a bottom of its own.
+ */
+private fun PaddingValues.sides(direction: LayoutDirection) = PaddingValues(
+    start = calculateStartPadding(direction),
+    top = calculateTopPadding(),
+    end = calculateEndPadding(direction),
+)
+
+/**
+ * Holds [content] clear of the [bottom] of the window, for as long as it is composed.
+ *
+ * The chrome is drawn over whatever is beneath it, so this is a screen's own statement of how much
+ * of it that screen is under — not a description of what is down there at the moment. It stays the
+ * same while the tabs fade out over the top of it, and while the screen it replaced finishes
+ * leaving, which is the point: a screen that is measured once and never remeasured has nothing to
+ * reflow, and a list inside it has no reason to go anywhere.
+ */
+@Composable
+private fun BottomChrome(bottom: Dp, content: @Composable () -> Unit) {
+    val padding = PaddingValues(bottom = bottom)
+    Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) { content() }
+}
 
 /**
  * Registers [key] as on screen for as long as this entry is composed, in composition order.
