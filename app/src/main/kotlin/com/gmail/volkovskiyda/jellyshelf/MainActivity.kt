@@ -41,8 +41,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -340,7 +342,20 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         TopLevel(AppNavKey.Categories, R.string.tab_categories, Icons.AutoMirrored.Filled.ViewList),
         TopLevel(AppNavKey.Settings, R.string.tab_settings, Icons.Filled.Settings),
     )
-    val current = backStack.lastOrNull()
+    // Everything outside the `NavDisplay` — the tabs, the mini-player bar, and the padding the two
+    // impose on the screen between them — follows the screen *on display*, which is not the same
+    // moment as the top of the stack changing: `NavDisplay` composes the incoming screen first and
+    // swaps it in a frame or two later. Were the chrome to go on the stack instead, the screen
+    // still being displayed would spend that gap visibly reflowing into the space the tabs had
+    // left. A cross-fade covered that; the player arrives on a cut (see [Cut]) with nothing to
+    // cover it, which is why it is the one screen this waits for.
+    var playerOnDisplay by remember { mutableStateOf(false) }
+    val top = backStack.lastOrNull()
+    val current = if (top is AppNavKey.Player && !playerOnDisplay) {
+        backStack.getOrNull(backStack.lastIndex - 1)
+    } else {
+        top
+    }
     val showBottomBar = topLevel.any { it.key == current }
 
     // The update offer, hosted here because this is the only place that knows which tab is current.
@@ -589,6 +604,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     }
 
                     is AppNavKey.Player -> NavEntry(key, metadata = mapOf(CUT_TRANSITION to true)) {
+                        // Composed is as close to displayed as the entry can report, and the two
+                        // are a frame apart at most — see [current], which this drives.
+                        DisposableEffect(Unit) {
+                            playerOnDisplay = true
+                            onDispose { playerOnDisplay = false }
+                        }
                         PlayerScreen(
                             youtubeId = key.youtubeId,
                             origin = key.origin,
