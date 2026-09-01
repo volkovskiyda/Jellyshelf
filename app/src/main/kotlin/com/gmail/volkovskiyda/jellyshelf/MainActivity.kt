@@ -16,14 +16,16 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -301,7 +303,9 @@ internal fun JellyshelfApp(viewModel: MainViewModel = koinViewModel()) {
 
 @Composable
 @Suppress("SpreadOperator") // rememberNavBackStack is vararg-only; copies a handful of nav keys, once per composition
-@OptIn(ExperimentalComposeUiApi::class) // testTagsAsResourceId, on the Scaffold below
+// testTagsAsResourceId, on the Scaffold below; IgnoringVisibility insets, on the bar inside it —
+// see [chromeIgnoringVisibility] for why the chrome reserves bars that are not currently showing.
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel) {
     val backStack = rememberNavBackStack(*startStack.toTypedArray())
     val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
@@ -526,17 +530,20 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         // bar's stop button draws underneath it — NavigationBar insets itself, so
                         // only the bar was exposed. When the tabs are showing they own the bottom
                         // inset, and taking it here as well would leave a gap between the two.
+                        //
+                        // Ignoring visibility, like the tabs below — see [chromeIgnoringVisibility].
                         modifier = Modifier.windowInsetsPadding(
                             if (showBottomBar) {
-                                WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
+                                WindowInsets.navigationBarsIgnoringVisibility
+                                    .only(WindowInsetsSides.Horizontal)
                             } else {
-                                WindowInsets.navigationBars
+                                WindowInsets.navigationBarsIgnoringVisibility
                             },
                         ),
                     )
                 }
                 if (showBottomBar) {
-                    NavigationBar {
+                    NavigationBar(windowInsets = chromeIgnoringVisibility()) {
                         topLevel.forEach { item ->
                             val label = stringResource(item.labelRes)
                             NavigationBarItem(
@@ -655,6 +662,34 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         }
     }
 }
+
+/**
+ * The insets the bottom chrome reserves: the real ones, whether or not the system bars happen to be
+ * showing right now.
+ *
+ * They are not always showing. The player goes immersive while it is up ([ImmersiveWhileHere]), so
+ * for as long as it holds the window the navigation-bar inset reads zero — and reads zero for a few
+ * frames more on the way back out, because `show()` animates the bars in rather than restoring them
+ * on the frame it is called. The screen underneath is composed and measured inside that window, and
+ * a bottom bar sized from the live inset is 24dp short exactly then: the list it sits under gets
+ * 24dp taller, and if it was scrolled to its end it back-scrolls to fill them and stays there. Same
+ * failure as losing the tabs mid-transition, from the other direction — the window changed rather
+ * than the back stack, so [onScreen] cannot see it coming.
+ *
+ * `IgnoringVisibility` is the answer to exactly that question: the space the bars occupy when they
+ * are shown, which is the space this chrome should be holding either way. Unlike remembering the
+ * last non-zero value it stays right when the answer genuinely changes — switching between gesture
+ * and three-button navigation is a different inset, not a hidden one.
+ *
+ * Only the chrome. The `Scaffold`'s own `contentWindowInsets` must keep reading the live insets,
+ * because the player is inside them: told to reserve bars that are deliberately hidden, the one
+ * screen that asked for the whole window would letterbox itself.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun chromeIgnoringVisibility(): WindowInsets =
+    WindowInsets.systemBarsIgnoringVisibility
+        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
 
 /**
  * Registers [key] as on screen for as long as this entry is composed, in composition order.
