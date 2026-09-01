@@ -678,12 +678,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             // Sides and top only: the bottom is the one edge the screens do not agree on, and each
             // applies its own in [entry] above. consumeWindowInsets keeps each screen's own
             // TopAppBar from applying the status-bar inset a second time on top of the scaffold
-            // padding; imePadding keeps the keyboard from covering search fields and the lower
-            // Settings inputs.
+            // padding. The keyboard is handled inside [BottomChrome], not here: out here the ime
+            // inset would stack on top of the chrome reservation each entry applies within.
             val sides = innerPadding.sides(layoutDirection)
             NavDisplay(
                 backStack = backStack,
-                modifier = Modifier.padding(sides).consumeWindowInsets(sides).imePadding(),
+                modifier = Modifier.padding(sides).consumeWindowInsets(sides),
                 entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
                 // The player cuts in and out; everything else cross-fades.
                 transitionSpec = cutting(Fade),
@@ -817,11 +817,18 @@ private fun PaddingValues.sides(direction: LayoutDirection) = PaddingValues(
  * same while the tabs fade out over the top of it, and while the screen it replaced finishes
  * leaving, which is the point: a screen that is measured once and never remeasured has nothing to
  * reflow, and a list inside it has no reason to go anywhere.
+ *
+ * The keyboard is the one thing allowed to remeasure it, and `imePadding` sits *inside* the chrome
+ * padding so the two never stack: with the chrome consumed as insets first, it pads only what the
+ * keyboard rises above the reservation, and the content's bottom edge lands exactly on the
+ * keyboard's top instead of a chrome-height's worth of black above it.
  */
 @Composable
 private fun BottomChrome(bottom: Dp, content: @Composable () -> Unit) {
     val padding = PaddingValues(bottom = bottom)
-    Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) { content() }
+    Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
+        content()
+    }
 }
 
 /**
