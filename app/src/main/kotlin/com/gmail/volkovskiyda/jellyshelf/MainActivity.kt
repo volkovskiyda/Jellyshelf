@@ -11,6 +11,10 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -54,7 +58,11 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.ui.defaultPopTransitionSpec
+import androidx.navigation3.ui.defaultPredictivePopTransitionSpec
+import androidx.navigation3.ui.defaultTransitionSpec
 import androidx.tracing.trace
 import com.gmail.volkovskiyda.jellyshelf.data.repository.ThemeModeCache
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
@@ -512,6 +520,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 // from covering search fields and the lower Settings inputs.
                 modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding(),
                 entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
+                // The player cuts in and out; everything else keeps the default cross-fade.
+                transitionSpec = cutting(defaultTransitionSpec()),
+                popTransitionSpec = cutting(defaultPopTransitionSpec()),
+                predictivePopTransitionSpec = { edge ->
+                    if (cutting()) Cut else defaultPredictivePopTransitionSpec<NavKey>()(this, edge)
+                },
                 onBack = { pop() },
             ) { key ->
                 when (key) {
@@ -574,7 +588,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         )
                     }
 
-                    is AppNavKey.Player -> NavEntry(key) {
+                    is AppNavKey.Player -> NavEntry(key, metadata = mapOf(CUT_TRANSITION to true)) {
                         PlayerScreen(
                             youtubeId = key.youtubeId,
                             origin = key.origin,
@@ -587,4 +601,45 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             }
         }
     }
+}
+
+/**
+ * Every screen cross-fades into the next, except the player, which cuts.
+ *
+ * `NavDisplay`'s default is a 700 ms fade in both directions, and for its whole length the screen
+ * being left and the screen being entered are drawn on top of each other. Between two ordinary
+ * screens that is the intended dissolve. The player is not an ordinary screen: its video sits on a
+ * surface of its own that a fade's alpha never reaches, so it stays *fully opaque* through the
+ * whole animation — arriving over a library that has not finished fading, and on the way back
+ * covering the destination with the frame playback stopped on for the better part of a second.
+ * That is what reads as the glitch, and no easing fixes it, because the video is never being faded
+ * at all. So the player does not fade: it is there, or it is not.
+ *
+ * This is only half of it. A cut is still not instant: `NavDisplay` composes the destination
+ * before it swaps, and the player holds the display for as long as that takes — see [PlayerScreen]
+ * for the other half, which empties the player for that gap.
+ */
+private val Cut = ContentTransform(EnterTransition.None, ExitTransition.None)
+
+/**
+ * Marks the entries [Cut] applies to.
+ *
+ * Carried as entry metadata rather than matched on the key, because a [Scene] is reached here
+ * without its keys: `NavEntry.key` is private to the navigation library, and the `contentKey` that
+ * a [Scene] does expose is a derived pair, not the [AppNavKey] itself. `NavDisplay` has per-entry
+ * transition metadata of its own, but only consults it on `Scene.metadata`, which the built-in
+ * single-pane scenes never populate from their entries — so the entries are read directly.
+ */
+private const val CUT_TRANSITION = "com.gmail.volkovskiyda.jellyshelf.CUT_TRANSITION"
+
+private fun Scene<NavKey>.cuts(): Boolean = entries.any { CUT_TRANSITION in it.metadata }
+
+private fun AnimatedContentTransitionScope<Scene<NavKey>>.cutting(): Boolean =
+    initialState.cuts() || targetState.cuts()
+
+/** [spec], except between screens that cut. */
+private fun cutting(
+    spec: AnimatedContentTransitionScope<Scene<NavKey>>.() -> ContentTransform,
+): AnimatedContentTransitionScope<Scene<NavKey>>.() -> ContentTransform = {
+    if (cutting()) Cut else spec()
 }
