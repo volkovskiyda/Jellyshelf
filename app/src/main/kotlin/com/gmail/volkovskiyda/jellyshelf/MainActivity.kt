@@ -17,6 +17,8 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -79,7 +81,6 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.NavDisplay
-import androidx.navigation3.ui.defaultPopTransitionSpec
 import androidx.navigation3.ui.defaultPredictivePopTransitionSpec
 import androidx.navigation3.ui.defaultTransitionSpec
 import androidx.tracing.trace
@@ -129,6 +130,10 @@ private data class TopLevel(val key: AppNavKey, val labelRes: Int, val icon: Ima
 // Long enough to read as the tabs leaving rather than blinking out, short enough to be over well
 // before the screen taking their place has finished arriving.
 private const val TABS_FADE_MS = 150
+
+// `NavDisplay`'s own default is 700, which is a long time to spend looking at two screens at once
+// — long enough that everything that goes on during a transition is watched rather than glimpsed.
+private const val SCREEN_FADE_MS = 300
 
 // The scrims androidx applies to a three-button navigation bar, redeclared because
 // SystemBarStyle.auto's defaults are internal. Only used when gesture navigation is off.
@@ -680,9 +685,9 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 backStack = backStack,
                 modifier = Modifier.padding(sides).consumeWindowInsets(sides).imePadding(),
                 entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
-                // The player cuts in and out; everything else keeps the default cross-fade.
-                transitionSpec = cutting(defaultTransitionSpec()),
-                popTransitionSpec = cutting(defaultPopTransitionSpec()),
+                // The player cuts in and out; everything else cross-fades.
+                transitionSpec = cutting(Fade),
+                popTransitionSpec = cutting(Fade),
                 predictivePopTransitionSpec = { edge ->
                     if (cutting()) Cut else defaultPredictivePopTransitionSpec<NavKey>()(this, edge)
                 },
@@ -855,6 +860,18 @@ private fun OnScreen(key: AppNavKey, onScreen: MutableList<AppNavKey>) {
  * for the other half, which empties the player for that gap.
  */
 private val Cut = ContentTransform(EnterTransition.None, ExitTransition.None)
+
+/**
+ * The ordinary screen-to-screen dissolve: `NavDisplay`'s default, at [SCREEN_FADE_MS].
+ *
+ * Its own is [defaultTransitionSpec], which is the same pair of fades over 700 ms.
+ */
+private val Fade: AnimatedContentTransitionScope<Scene<NavKey>>.() -> ContentTransform = {
+    ContentTransform(
+        fadeIn(animationSpec = tween(SCREEN_FADE_MS)),
+        fadeOut(animationSpec = tween(SCREEN_FADE_MS)),
+    )
+}
 
 /**
  * Marks the entries [Cut] applies to.
