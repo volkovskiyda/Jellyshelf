@@ -8,10 +8,9 @@ private const val PLAYING = "aaaaaaaaaaa"
 private const val ANOTHER = "bbbbbbbbbbb"
 
 /**
- * The rule behind the stop that a video selection fires, tested here for the reason
- * [PipEligibilityTest] gives about its own: what it drives is only observable with a server and a
- * decoder, so a wrong answer surfaces either as two videos playing at once or as a session the
- * user never asked to end.
+ * The rule behind the stop that a video selection fires, tested as a pure function because what
+ * it drives is only observable with a server and a decoder: a wrong answer surfaces either as two
+ * videos playing at once or as a session the user never asked to end.
  */
 class PlaybackHandoverTest {
 

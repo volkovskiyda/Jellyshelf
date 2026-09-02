@@ -94,7 +94,6 @@ import com.gmail.volkovskiyda.jellyshelf.playback.PipAspect
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
 import com.gmail.volkovskiyda.jellyshelf.playback.endsCurrentPlayback
 import com.gmail.volkovskiyda.jellyshelf.playback.pipAspect
-import com.gmail.volkovskiyda.jellyshelf.playback.pipEligible
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallSnackbarHost
 import com.gmail.volkovskiyda.jellyshelf.ui.LocalSnackbarHostState
@@ -235,24 +234,34 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Keeps the window's Picture-in-Picture parameters in step with what is on screen.
+     * Keeps the window's Picture-in-Picture parameters in step with the video's shape.
      *
-     * `setAutoEnterEnabled` is the whole mechanism: rather than catching the moment the user
-     * leaves and calling `enterPictureInPictureMode` — which only ever sees the button-navigation
-     * case and misses the gesture — the activity states *in advance* whether leaving now should
-     * shrink it, and the platform does the rest. That is why this has to be re-stated whenever
-     * the answer changes rather than called once.
+     * PiP is entered only by the player's own button — [enterPip] — never automatically on
+     * leaving the app (auto-enter surprised more than it helped, so it is gone). The parameters
+     * are still stated in advance rather than at the moment of entry: an active PiP window
+     * re-shapes itself when the queue advances to a differently-sized video, and that only works
+     * through `setPictureInPictureParams`.
      *
      * The aspect ratio is left unset while the size is unknown, so the platform picks its own
      * instead of being handed a degenerate one.
      */
-    fun updatePipParams(eligible: Boolean, aspect: PipAspect?, rect: android.graphics.Rect? = null) {
+    fun updatePipParams(aspect: PipAspect?, rect: android.graphics.Rect? = null) {
         val params = PictureInPictureParams.Builder()
-            .setAutoEnterEnabled(eligible)
             .apply { aspect?.let { setAspectRatio(Rational(it.numerator, it.denominator)) } }
             .apply { setSourceRectHint(rect ?: android.graphics.Rect()) }
             .build()
         setPictureInPictureParams(params)
+    }
+
+    /**
+     * Shrinks the activity into a Picture-in-Picture window, on the player's explicit request.
+     *
+     * The empty params are deliberate: `enterPictureInPictureMode` *combines* them with whatever
+     * [updatePipParams] has already stated, so the aspect ratio the decoder reported is what the
+     * window opens with.
+     */
+    fun enterPip() {
+        enterPictureInPictureMode(PictureInPictureParams.Builder().build())
     }
 
     /**
@@ -495,14 +504,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         onScreen.any { it !is AppNavKey.Player }
     }
 
-    // Picture-in-Picture is stated in advance, not triggered — see MainActivity.updatePipParams.
-    // Re-stated whenever the answer changes: which screen is on top, whether it is playing, and
-    // the shape of the video once the decoder reports it.
+    // The PiP window's shape is stated in advance, not at entry — see MainActivity.updatePipParams.
+    // Re-stated whenever the decoder reports a new video size, so an active window re-fits too.
     val activity = LocalActivity.current as? MainActivity
-    val pipEligible = pipEligible(current, nowPlaying)
     val pipAspect = nowPlaying?.let { pipAspect(it.videoWidth, it.videoHeight) }
-    LaunchedEffect(activity, pipEligible, pipAspect) {
-        activity?.updatePipParams(pipEligible, pipAspect)
+    LaunchedEffect(activity, pipAspect) {
+        activity?.updatePipParams(pipAspect)
     }
 
     // Library is the app's home and always the stack root: switching to any other tab rebuilds the

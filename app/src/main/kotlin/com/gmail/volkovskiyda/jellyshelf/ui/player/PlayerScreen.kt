@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
@@ -106,6 +107,7 @@ import androidx.media3.ui.compose.state.rememberSeekBackButtonState
 import androidx.media3.ui.compose.state.rememberSeekForwardButtonState
 import coil3.compose.AsyncImage
 import com.gmail.volkovskiyda.jellyshelf.LocalIsInPip
+import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
@@ -147,12 +149,12 @@ internal const val PLAYER_POSITION_TAG = "player_position"
  *  - **Minimize** — the down-chevron in the top bar — pops this screen and leaves playback running.
  *    The mini-player bar then appears on whatever screen is underneath, and is the way back here.
  *
- * Merely hiding the app also keeps playing — and while a video is actually rolling, leaving from
- * *this* screen shrinks the app into a Picture-in-Picture window rather than just hiding it.
- * Expanding that window comes back here with the back stack untouched; closing it destroys the
- * activity while the service plays on, exactly as leaving used to, and then the notification (or
- * the mini-player bar on the next launch) is the way back. The media notification is a third way
- * back in every case.
+ * Merely hiding the app also keeps playing. Picture-in-Picture is a *third* exit, and only ever
+ * on request — the PiP button in the top bar, never automatically on leaving the app (auto-enter
+ * on the Home gesture surprised more than it helped). Expanding that window comes back here with
+ * the back stack untouched; closing it destroys the activity while the service plays on, and then
+ * the notification (or the mini-player bar on the next launch) is the way back. The media
+ * notification is a way back in every case.
  *
  * Orientation is free (sensor); the surface just re-fits.
  *
@@ -180,6 +182,7 @@ fun PlayerScreen(
     val video by viewModel.video.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val isInPip = LocalIsInPip.current
+    val activity = LocalActivity.current
     // The cover to stand in for the video until it has a frame of its own — see [PlayerPoster].
     // Keyed on the video the screen is *for*, so it is on screen before the controller has even
     // connected, and it follows the queue when that advances (the flow tracks the current id).
@@ -230,6 +233,7 @@ fun PlayerScreen(
                 // The nav layer's plain pop: no stopPlayback, so the session survives and the
                 // mini-player bar picks it up on the screen underneath.
                 onMinimize = onBack,
+                onEnterPip = { (activity as? MainActivity)?.enterPip() },
             )
         }
     }
@@ -246,6 +250,7 @@ private fun PlayerWithControls(
     isInPip: Boolean,
     onBack: () -> Unit,
     onMinimize: () -> Unit,
+    onEnterPip: () -> Unit,
 ) {
     // Snapshots the UI renders from — polled/listened, because a Player is not observable state.
     var positionMs by remember { mutableLongStateOf(controller.currentPosition.coerceAtLeast(0)) }
@@ -497,6 +502,7 @@ private fun PlayerWithControls(
                 onOpenChapters = { chaptersOpen = true },
                 onBack = onBack,
                 onMinimize = onMinimize,
+                onEnterPip = onEnterPip,
             )
         }
         if (chaptersOpen && !isInPip) {
@@ -587,6 +593,7 @@ internal fun PlayerControls(
     onOpenChapters: () -> Unit,
     onBack: () -> Unit,
     onMinimize: () -> Unit,
+    onEnterPip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // While dragging, the chapter row shows the scrub target. Unlike before, the seek itself is
@@ -654,6 +661,15 @@ internal fun PlayerControls(
                                 tint = Color.White,
                             )
                         }
+                    }
+                    // Always enabled, even paused: unlike the auto-enter this replaced, a tap is
+                    // an explicit ask, so a still-frame window can't be a surprise.
+                    IconButton(onClick = onEnterPip) {
+                        Icon(
+                            Icons.Filled.PictureInPictureAlt,
+                            contentDescription = stringResource(R.string.player_pip),
+                            tint = Color.White,
+                        )
                     }
                 }
             }

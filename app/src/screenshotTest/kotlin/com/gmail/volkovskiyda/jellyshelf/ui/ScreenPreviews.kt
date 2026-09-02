@@ -326,6 +326,7 @@ private fun PlayerControlsWithChapters() {
             onOpenChapters = {},
             onBack = {},
             onMinimize = {},
+            onEnterPip = {},
         )
     }
 }
@@ -358,6 +359,7 @@ private fun PlayerControlsSingleVideo() {
             onOpenChapters = {},
             onBack = {},
             onMinimize = {},
+            onEnterPip = {},
         )
     }
 }

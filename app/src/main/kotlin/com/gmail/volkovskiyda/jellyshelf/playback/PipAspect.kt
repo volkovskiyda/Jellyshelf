@@ -1,27 +1,5 @@
 package com.gmail.volkovskiyda.jellyshelf.playback
 
-import androidx.navigation3.runtime.NavKey
-import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
-
-/**
- * Whether leaving the app right now should shrink it into a Picture-in-Picture window.
- *
- * Two conditions, both necessary. **The player screen is topmost**, because PiP is that screen's
- * own way of leaving: browsing the library with the mini-player bar and pressing Home means "keep
- * listening", and answering it with a floating video would be a different app. **Something is
- * actually playing**, because a PiP window over a paused video is a screenshot the user has to
- * dismiss.
- *
- * A pure function of the two states the activity already holds, so the rule can be read and tested
- * without a device — the behaviour it drives cannot be, since auto-enter happens inside the
- * platform on a gesture no test can make.
- *
- * Takes the raw [NavKey] the back stack holds rather than an [AppNavKey], so a key that is not
- * one of this app's cannot quietly become "not the player" through a failed cast.
- */
-fun pipEligible(current: NavKey?, nowPlaying: NowPlaying?): Boolean =
-    current is AppNavKey.Player && nowPlaying != null && nowPlaying.isPlaying
-
 /** A PiP aspect ratio as the platform will accept it — see [pipAspect]. */
 data class PipAspect(val numerator: Int, val denominator: Int)
 

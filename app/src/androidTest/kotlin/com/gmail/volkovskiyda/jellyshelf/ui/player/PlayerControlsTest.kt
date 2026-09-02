@@ -78,6 +78,7 @@ class PlayerControlsTest {
         onSeek: (Long) -> Unit = {},
         onBack: () -> Unit = {},
         onMinimize: () -> Unit = {},
+        onEnterPip: () -> Unit = {},
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -102,6 +103,7 @@ class PlayerControlsTest {
                     onOpenChapters = {},
                     onBack = onBack,
                     onMinimize = onMinimize,
+                    onEnterPip = onEnterPip,
                 )
             }
         }
@@ -149,6 +151,20 @@ class PlayerControlsTest {
 
         assertEquals(1, backs)
         assertEquals(1, minimizes)
+    }
+
+    /**
+     * PiP is entered only through this button since auto-enter was removed, so the button not
+     * firing its callback would mean the feature is simply gone — with nothing else failing.
+     */
+    @Test
+    fun theTopBar_offersPictureInPicture() {
+        var pips = 0
+        setControls(onEnterPip = { pips++ })
+
+        onDescription(R.string.player_pip).performClick()
+
+        assertEquals(1, pips)
     }
 
     /**

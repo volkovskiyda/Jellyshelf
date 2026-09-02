@@ -192,6 +192,7 @@
     <string name="playback_transcoding_fallback">Direct play failed, switching to transcoding…</string>
     <string name="chapters">Chapters</string>
     <string name="player_minimize">Minimize player</string>
+    <string name="player_pip">Enter picture-in-picture</string>
     <!--
       The mini-player bar. None of its three targets carries a visible label, so each needs its
       own description: the row's is a click label (it says what the tap does, not what the row

@@ -16,7 +16,7 @@ package com.gmail.volkovskiyda.jellyshelf.playback
  * already follow for the back stack. False when nothing is playing at all — there is nothing to
  * hand over from.
  *
- * A pure function of the state the activity already holds, for the reason [pipEligible] is one:
+ * A pure function of the state the activity already holds:
  * the rule is worth reading and testing on its own, while the behaviour it drives — a stop report
  * filed at the right instant, a surface that comes up black instead of showing the previous
  * video — needs a server and a decoder to observe.
