@@ -4,6 +4,7 @@ import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Color
+import android.graphics.Rect
 import android.os.Bundle
 import android.util.Rational
 import androidx.activity.ComponentActivity
@@ -233,32 +234,64 @@ class MainActivity : ComponentActivity() {
             ?.let(mainViewModel::requestOpenPlayer)
     }
 
+    /** The two halves of the PiP parameters, always restated together — see [updatePipParams]. */
+    private var pipAspect: PipAspect? = null
+    private var pipSourceRect: Rect? = null
+
     /**
-     * Keeps the window's Picture-in-Picture parameters in step with the video's shape.
+     * Keeps the window's Picture-in-Picture parameters in step with the video: its shape from the
+     * decoder, and where its surface sits from the player's own layout. Either half restates both,
+     * the other keeping its last value.
      *
-     * PiP is entered only by the player's own button — [enterPip] — never automatically on
-     * leaving the app (auto-enter surprised more than it helped, so it is gone). The parameters
-     * are still stated in advance rather than at the moment of entry: an active PiP window
-     * re-shapes itself when the queue advances to a differently-sized video, and that only works
-     * through `setPictureInPictureParams`.
+     * Both are stated in advance rather than at the moment of entry. The shape because an active
+     * PiP window re-fits when the queue advances to a differently shaped video, and that only works
+     * through `setPictureInPictureParams`. The rect because it is what the platform's enter
+     * animation shrinks from and its exit animation grows back into: without one, the transition
+     * covers the task with a content overlay and scales the whole window, and that is the path
+     * that has left the video surface behind at an intermediate size (2026-09-02, Pixel 7 Pro).
+     * It is restated on every layout change, as the platform documentation asks, so it is right
+     * for the exit as well as the entry.
      *
-     * The aspect ratio is left unset while the size is unknown, so the platform picks its own
-     * instead of being handed a degenerate one.
+     * Only a rect laid out in the full-screen window is a hint — see [isFullScreenLayout]; any
+     * other keeps the last one that was.
+     *
+     * The platform *merges* each statement into what it already holds (an unset field keeps its
+     * previous value), so neither half can be cleared once stated — and neither needs to be: PiP
+     * is entered only from the player, where both are fresh. The aspect ratio is left unset while
+     * the size is unknown, so the platform picks its own instead of being handed a degenerate one.
      */
-    fun updatePipParams(aspect: PipAspect?, rect: android.graphics.Rect? = null) {
+    fun updatePipParams(aspect: PipAspect? = pipAspect, rect: Rect? = pipSourceRect) {
+        val hint = rect?.takeIf(::isFullScreenLayout) ?: pipSourceRect
+        if (aspect == pipAspect && hint == pipSourceRect) return
+        pipAspect = aspect
+        pipSourceRect = hint
         val params = PictureInPictureParams.Builder()
             .apply { aspect?.let { setAspectRatio(Rational(it.numerator, it.denominator)) } }
-            .apply { setSourceRectHint(rect ?: android.graphics.Rect()) }
+            .apply { hint?.let { setSourceRectHint(it) } }
             .build()
         setPictureInPictureParams(params)
+    }
+
+    /**
+     * Whether [rect] is the video's place in the full-screen window, which is the only layout the
+     * PiP transitions animate against. The player reports its bounds on every layout, and the
+     * shell's own log shows three of those arriving while the window is still settling into PiP:
+     * one at the full-screen size but offset clean off the bottom of the screen (the window has
+     * already moved under the layout), then two at PiP-window sizes. Neither the mode flag nor the
+     * containment test alone rejects all three; together they do.
+     */
+    private fun isFullScreenLayout(rect: Rect): Boolean {
+        if (isInPictureInPictureMode) return false
+        val decor = window.decorView
+        return Rect(0, 0, decor.width, decor.height).contains(rect)
     }
 
     /**
      * Shrinks the activity into a Picture-in-Picture window, on the player's explicit request.
      *
      * The empty params are deliberate: `enterPictureInPictureMode` *combines* them with whatever
-     * [updatePipParams] has already stated, so the aspect ratio the decoder reported is what the
-     * window opens with.
+     * [updatePipParams] has already stated, so the aspect ratio the decoder reported and the rect the
+     * player laid out are what the window opens with and from.
      */
     fun enterPip() {
         enterPictureInPictureMode(PictureInPictureParams.Builder().build())
@@ -509,7 +542,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     val activity = LocalActivity.current as? MainActivity
     val pipAspect = nowPlaying?.let { pipAspect(it.videoWidth, it.videoHeight) }
     LaunchedEffect(activity, pipAspect) {
-        activity?.updatePipParams(pipAspect)
+        activity?.updatePipParams(aspect = pipAspect)
     }
 
     // Library is the app's home and always the stack root: switching to any other tab rebuilds the

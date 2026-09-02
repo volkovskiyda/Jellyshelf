@@ -7,6 +7,7 @@
 
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
+import android.graphics.Rect
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -69,6 +70,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -127,6 +130,7 @@ import org.koin.core.parameter.parametersOf
 import java.text.NumberFormat
 import java.util.Formatter
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * The elapsed-position label, tagged so the baseline-profile generator can read it: it is the only
@@ -234,6 +238,7 @@ fun PlayerScreen(
                 // mini-player bar picks it up on the screen underneath.
                 onMinimize = onBack,
                 onEnterPip = { (activity as? MainActivity)?.enterPip() },
+                onSurfaceBounds = { (activity as? MainActivity)?.updatePipParams(rect = it) },
             )
         }
     }
@@ -251,6 +256,7 @@ private fun PlayerWithControls(
     onBack: () -> Unit,
     onMinimize: () -> Unit,
     onEnterPip: () -> Unit,
+    onSurfaceBounds: (Rect) -> Unit,
 ) {
     // Snapshots the UI renders from — polled/listened, because a Player is not observable state.
     var positionMs by remember { mutableLongStateOf(controller.currentPosition.coerceAtLeast(0)) }
@@ -460,7 +466,11 @@ private fun PlayerWithControls(
             player = controller,
             modifier = Modifier
                 .align(Alignment.Center)
-                .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp),
+                .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
+                // Inside the resize, so these are the bounds of the video itself — the fitted
+                // rect, not the full box it is centred in. That is what the PiP transition
+                // animates from and back into (see MainActivity.updatePipParams).
+                .onGloballyPositioned { onSurfaceBounds(it.boundsInWindow().toAndroidRect()) },
         )
         if (presentationState.coverSurface) {
             // Shutter until the first frame renders: solid black beats a stale/blank surface.
@@ -1135,3 +1145,7 @@ private const val PANEL_BACKGROUND_ALPHA = 0.92f
 private val PANEL_MAX_HEIGHT = 360.dp
 private val CHAPTER_TICK_HEIGHT = 8.dp
 private val CHAPTER_TICK_WIDTH = 2.dp
+
+/** Integer window pixels, as `PictureInPictureParams` wants them; a whole-pixel rounding, not a truncation. */
+private fun androidx.compose.ui.geometry.Rect.toAndroidRect(): Rect =
+    Rect(left.roundToInt(), top.roundToInt(), right.roundToInt(), bottom.roundToInt())
