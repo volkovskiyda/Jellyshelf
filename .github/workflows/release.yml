@@ -75,7 +75,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7   # no lfs; debug.keystore is committed and signs the test APKs
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -111,7 +111,7 @@ jobs:
           fetch-depth: 0   # versionCode is the commit count
           lfs: true        # not for goldens — the release build reads the LFS-tracked baseline
                            # profile, and a pointer file fails expandReleaseArtProfileWildcards
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
