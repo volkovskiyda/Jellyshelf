@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           lfs: true          # screenshot goldens are LFS objects (.gitattributes)
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21   # LTS, and what gradle/gradle-daemon-jvm.properties pins; AGP 9 needs 17+
@@ -68,7 +68,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7   # no lfs; debug.keystore is committed and signs the test APKs
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -167,7 +167,7 @@ jobs:
           fetch-depth: 0   # versionCode is the commit count
           lfs: true        # not for goldens — the release build reads the LFS-tracked baseline
                            # profile, and a pointer file fails expandReleaseArtProfileWildcards
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
