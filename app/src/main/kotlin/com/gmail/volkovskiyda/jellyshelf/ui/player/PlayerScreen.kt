@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -74,6 +75,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -421,6 +423,25 @@ private fun PlayerWithControls(
         }
     }
 
+    // A PiP window's surface can be left behind at an intermediate size (2026-09-02, Pixel 7 Pro
+    // on Android 17: the whole frame at ~70 % of the window, top-left, until a pinch resized it).
+    // The shell settles the window in steps — the emulator's own log shows an entry size and then
+    // a bounds change right after — and the surface's geometry is what a real bounds change
+    // refreshes, which is exactly what the pinch supplied. So every size the PiP window takes is
+    // followed, two frames later, by a one-pixel inset held for two frames: two genuine bounds
+    // changes for the SurfaceView, the second landing it on its final size. Invisible at that
+    // scale. Frames rather than a delay because the surface geometry is applied per frame, and
+    // two of them so the inset is laid out and drawn, not merely composed and undone.
+    val windowSize = LocalWindowInfo.current.containerSize
+    var surfaceNudge by remember { mutableStateOf(0.dp) }
+    LaunchedEffect(isInPip, windowSize) {
+        if (!isInPip) return@LaunchedEffect
+        repeat(SURFACE_NUDGE_FRAMES) { withFrameNanos {} }
+        surfaceNudge = SURFACE_NUDGE
+        repeat(SURFACE_NUDGE_FRAMES) { withFrameNanos {} }
+        surfaceNudge = 0.dp
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -466,6 +487,9 @@ private fun PlayerWithControls(
             player = controller,
             modifier = Modifier
                 .align(Alignment.Center)
+                // Outside the resize, so the inset shrinks the box the video is fitted into and
+                // the fitted rect — the SurfaceView's bounds — changes with it.
+                .padding(surfaceNudge)
                 .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
                 // Inside the resize, so these are the bounds of the video itself — the fitted
                 // rect, not the full box it is centred in. That is what the PiP transition
@@ -1132,6 +1156,10 @@ private const val HOLD_SPEED = 3f
 private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L
 private const val INDICATOR_LINGER_MS = 800L
+
+/** See the PiP surface nudge in [PlayerWithControls]. */
+private const val SURFACE_NUDGE_FRAMES = 2
+private val SURFACE_NUDGE = 1.dp
 private const val MILLIS_PER_SECOND = 1_000L
 
 /** The disc behind each centre transport button, now that no full-screen scrim backs them. */
