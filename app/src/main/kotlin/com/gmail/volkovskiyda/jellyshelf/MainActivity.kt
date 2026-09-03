@@ -664,6 +664,8 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         },
     ) { innerPadding ->
         val layoutDirection = LocalLayoutDirection.current
+        // See [pipInsetFree].
+        val isInPip = LocalIsInPip.current
         // The space the system navigation bar takes when it is showing, which is not the space it
         // takes right now — see [chromeIgnoringVisibility].
         val navigationInset = WindowInsets.navigationBarsIgnoringVisibility
@@ -709,7 +711,14 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         ): NavEntry<NavKey> =
             NavEntry(key, metadata = metadata) {
                 OnScreen(key, onScreen)
-                BottomChrome(bottomFor(key), content)
+                // The PiP flag is read here, in the entry's own composition, and not inside
+                // [bottomFor]: NavDisplay keeps the entry it built, and that entry's lambda holds
+                // the [bottomFor] of the composition that built it — one from before the flag
+                // flipped still reserved the live navigation-bar inset for a pass after entering
+                // PiP, while the top padding above, applied directly, had already gone. See
+                // [pipInsetFree].
+                val bottom = if (LocalIsInPip.current) 0.dp else bottomFor(key)
+                BottomChrome(bottom, content)
             }
 
         // Every screen under here can post to the Scaffold's snackbar host without that host being
@@ -720,7 +729,9 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             // TopAppBar from applying the status-bar inset a second time on top of the scaffold
             // padding. The keyboard is handled inside [BottomChrome], not here: out here the ime
             // inset would stack on top of the chrome reservation each entry applies within.
-            val sides = innerPadding.sides(layoutDirection)
+            //
+            // Nothing at all in a PiP window — see [pipInsetFree].
+            val sides = if (isInPip) PaddingValues() else innerPadding.sides(layoutDirection)
             NavDisplay(
                 backStack = backStack,
                 modifier = Modifier.padding(sides).consumeWindowInsets(sides),
@@ -839,6 +850,21 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
 private fun chromeIgnoringVisibility(): WindowInsets =
     WindowInsets.systemBarsIgnoringVisibility
         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+
+/**
+ * Why a PiP window gets no inset padding at all, top or bottom.
+ *
+ * A PiP window has no system bars, but for a layout pass or two around the transition the
+ * window still reports the full-screen ones: on the API 37 emulator the player's first layout
+ * inside the 1184×666 window was padded by the 156 px status bar and the 72 px navigation bar,
+ * fitting the video into 779×438, and only the next pass had the real, empty insets. Two surface
+ * sizes in one transition, and the second is the one the SurfaceView's geometry can lose — that
+ * is the video sitting at ~70 % of the window, top-left, until a pinch resizes it (2026-09-03).
+ * With the insets ignored while in PiP the first layout is the final one. The PiP flag is read
+ * from [LocalIsInPip], which the emulator's log shows set before that padded pass composes.
+ */
+@Suppress("unused")
+private val pipInsetFree = Unit
 
 /**
  * [this], less the bottom edge: every screen applies a bottom of its own.
