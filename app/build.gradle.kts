@@ -50,17 +50,25 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Live-endpoint test config from the git-ignored .test.env, passed as runtime instrumentation
-        // extras (never baked into BuildConfig, so changing .test.env needs no rebuild). Blank when
-        // the file is absent, so the live tests skip.
+        // extras (never baked into BuildConfig, so changing .test.env needs no rebuild). Absent when
+        // the file or the key is, so the live tests skip — they read every extra with `orEmpty()`.
+        //
+        // Absent rather than blank, and this is load-bearing: since AGP 9.4.0 the connected-test
+        // engine hands `am instrument` one unquoted shell string, so a blank value turns into
+        // `-e jellyfinIndexUrl -e jellyfinSyncFolder …` — the next flag becomes the value, every
+        // pair after it shifts, and `am` answers "Invalid userId -2" having run *no* tests, while
+        // the Gradle task still reports success. Measured on the API 37 tablet AVD on 2026-09-10,
+        // with the two optional keys unset. Values with spaces would break the same way; none of
+        // these carry one.
         testInstrumentationRunnerArguments += mapOf(
-            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"].orEmpty(),
-            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"].orEmpty(),
-            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"].orEmpty(),
-            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"].orEmpty(),
-            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"].orEmpty(),
-            "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"].orEmpty(),
-            "jellyfinTestItemId" to testEnv["JELLYFIN_TEST_ITEM_ID"].orEmpty(),
-        )
+            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"],
+            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"],
+            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"],
+            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"],
+            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"],
+            "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"],
+            "jellyfinTestItemId" to testEnv["JELLYFIN_TEST_ITEM_ID"],
+        ).filterValues { !it.isNullOrBlank() }.mapValues { (_, value) -> value!! }
 
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers
         // virtually all modern physical devices and keeps the APK from ballooning across ABIs.
