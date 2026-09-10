@@ -16,7 +16,7 @@ import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.repository.dataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
-import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
+import com.gmail.volkovskiyda.jellyshelf.grantJourneyPermissions
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
@@ -56,8 +56,9 @@ class DemoLibrarySearchFlowTest {
     @Before
     fun resetAppState() {
         // This test seeds a full demo library, which is exactly what makes the library screen ask
-        // for POST_NOTIFICATIONS — its dialog would cover the rows and the search field below.
-        grantNotificationPermission()
+        // for POST_NOTIFICATIONS — its dialog would cover the rows and the search field below —
+        // and it starts on the sign-in screen, which asks for the local network on API 37.
+        grantJourneyPermissions()
         WorkManager.getInstance(context).cancelAllWork().result.get()
         runBlocking {
             GlobalContext.get().get<LibraryRepository>().clearLocalData()

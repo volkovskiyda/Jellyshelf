@@ -43,7 +43,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
-import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
+import com.gmail.volkovskiyda.jellyshelf.grantJourneyPermissions
 import com.gmail.volkovskiyda.jellyshelf.ui.VIDEO_ROW_DETAILS_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LIBRARY_ROW_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
@@ -187,7 +187,7 @@ class LiveUiJourneyTest : KoinTest {
             serverReachable(config.serverUrl),
         )
 
-        grantNotificationPermission()
+        grantJourneyPermissions()
         api = runBlocking {
             // A fixed device id, so a live run shows up as one stable device on the Jellyfin
             // dashboard rather than one per run. Distinct from the endpoint test's, so the two are

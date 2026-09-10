@@ -8,7 +8,7 @@ import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.gmail.volkovskiyda.jellyshelf.NotificationPermissionRule
+import com.gmail.volkovskiyda.jellyshelf.JourneyPermissionsRule
 import com.gmail.volkovskiyda.jellyshelf.R
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,7 +39,7 @@ class UpdateNotificationTest {
 
     /** Posting is a no-op without it, which would make every assertion below vacuous. */
     @get:Rule
-    val notificationPermission = NotificationPermissionRule()
+    val journeyPermissions = JourneyPermissionsRule()
 
     @After
     fun clearNotifications() {

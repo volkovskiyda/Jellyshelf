@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.live
 
 import androidx.test.platform.app.InstrumentationRegistry
+import com.gmail.volkovskiyda.jellyshelf.grantJourneyPermissions
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -85,8 +86,17 @@ val liveTestModule = module {
 /**
  * Fast reachability probe with a short timeout, so a down server skips the live tests quickly
  * instead of hanging on each of them. `/System/Info/Public` needs no credentials.
+ *
+ * It grants the journey permissions first, because the probe is subject to the same
+ * `ACCESS_LOCAL_NETWORK` rule as the app: the instrumented process runs under the app's uid, so
+ * on API 37 a server on the device's own subnet is dropped for this probe exactly as it would be
+ * for a sign-in. Without the grant every live test skipped on such a device as "unreachable" —
+ * a green run that covered nothing, and one no `@Before` could rescue, since each of them is
+ * behind this assumption. Here rather than in each test so the guard and its precondition cannot
+ * drift apart.
  */
 internal fun serverReachable(serverUrl: String): Boolean = runCatching {
+    grantJourneyPermissions()
     runBlocking {
         HttpClient(OkHttp) {
             install(HttpTimeout) {

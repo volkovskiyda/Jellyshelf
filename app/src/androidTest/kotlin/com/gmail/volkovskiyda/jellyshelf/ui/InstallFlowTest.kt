@@ -7,8 +7,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.gmail.volkovskiyda.jellyshelf.JourneyPermissionsRule
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
-import com.gmail.volkovskiyda.jellyshelf.NotificationPermissionRule
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.data.remote.AppDistributionSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.GitHubReleaseSource
@@ -114,7 +114,7 @@ class InstallFlowTest {
 
     /** Granted before the activity exists — see [UpdateOfferHostingTest] for why. */
     @get:Rule(order = 0)
-    val notificationPermission = NotificationPermissionRule()
+    val journeyPermissions = JourneyPermissionsRule()
 
     /**
      * Swaps the checker in **before the compose rule launches the activity**, and puts the real one

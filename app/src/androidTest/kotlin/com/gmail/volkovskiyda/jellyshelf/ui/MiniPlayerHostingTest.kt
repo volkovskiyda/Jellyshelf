@@ -12,8 +12,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.gmail.volkovskiyda.jellyshelf.JourneyPermissionsRule
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
-import com.gmail.volkovskiyda.jellyshelf.NotificationPermissionRule
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlaying
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
@@ -43,7 +43,7 @@ private const val BAR_TIMEOUT_MS = 5_000L
 class MiniPlayerHostingTest {
 
     @get:Rule(order = 0)
-    val notificationPermission = NotificationPermissionRule()
+    val journeyPermissions = JourneyPermissionsRule()
 
     /**
      * [UnconfinedTestDispatcher] rather than the v2 default of `StandardTestDispatcher`, for the

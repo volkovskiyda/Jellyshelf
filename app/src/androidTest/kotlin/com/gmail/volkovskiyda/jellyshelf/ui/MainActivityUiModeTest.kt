@@ -9,7 +9,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
-import com.gmail.volkovskiyda.jellyshelf.grantNotificationPermission
+import com.gmail.volkovskiyda.jellyshelf.grantJourneyPermissions
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -63,9 +63,10 @@ class MainActivityUiModeTest {
     @Before
     fun watchCreationsAndRememberNightMode() {
         // A library left populated by an earlier test in this suite would have the library screen
-        // ask for POST_NOTIFICATIONS, and its dialog is a window this test's assertions cannot see
-        // past. Granting it up front keeps the night-mode flip the only thing under test.
-        grantNotificationPermission()
+        // ask for POST_NOTIFICATIONS, and a signed-out start asks for the local network on API 37;
+        // either dialog is a window this test's assertions cannot see past. Granting both up front
+        // keeps the night-mode flip the only thing under test.
+        grantJourneyPermissions()
         application().registerActivityLifecycleCallbacks(creationWatch)
         deviceNightMode = shell("cmd uimode night").substringAfter("Night mode:", "").trim()
         // Nothing gets flipped that cannot be flipped back: an unreadable setting skips the test

@@ -18,7 +18,7 @@ import org.junit.runners.model.Statement
  *
  * Disabled for the test rather than dismissed on sight, for three reasons. The sheet lives in a
  * window of its own, where Compose's clicks and Back cannot reach — the same reason
- * [NotificationPermissionRule] grants instead of dismissing. Its copy and layout belong to Play
+ * [JourneyPermissionsRule] grants instead of dismissing. Its copy and layout belong to Play
  * services and the device locale, so any selector against it is a moving target. And no service
  * means no session, so nothing is committed and nothing has the password to offer — which is the
  * only version of "removed" that never flashes on screen at all.
