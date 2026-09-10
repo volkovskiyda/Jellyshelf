@@ -16,6 +16,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -50,6 +51,7 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
         val TOKEN_IN_QUERY = booleanPreferencesKey("token_in_query")
         val PLAYBACK_MODE = stringPreferencesKey("playback_mode")
         val PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
+        val VIDEO_SCALE_MODE = stringPreferencesKey("video_scale_mode")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val THEME_TOWARD_DARK = booleanPreferencesKey("theme_toward_dark")
         val CATEGORIES_SEARCH_ALL = booleanPreferencesKey("categories_search_all")
@@ -107,6 +109,9 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
                 // Validated against the menu's own list, so a speed a later build drops (or a
                 // corrupt value) starts at 1× rather than at one no menu item can tick.
                 playbackSpeed = PlaybackSpeed.fromStorage(p[Keys.PLAYBACK_SPEED]),
+                // Unknown or absent reads as Fit — the letterboxing the player did before the
+                // button existed, so a corrupt value can never leave a video stretched.
+                videoScaleMode = VideoScaleMode.fromStorage(p[Keys.VIDEO_SCALE_MODE]),
                 // Unset (and unreadable) reads as "not a demo" — the safe direction: a real
                 // library presented as a demo would hide server actions that genuinely work.
                 demoMode = p[Keys.DEMO_MODE] ?: false,
@@ -209,6 +214,11 @@ class DefaultSettingsRepository(context: Context) : SettingsRepository {
      */
     override suspend fun setPlaybackSpeed(speed: Float) {
         ds.edit { it[Keys.PLAYBACK_SPEED] = speed }
+    }
+
+    /** Stored by name, like [setPlaybackMode]: the value is a mode, not a number to apply. */
+    override suspend fun setVideoScaleMode(mode: VideoScaleMode) {
+        ds.edit { it[Keys.VIDEO_SCALE_MODE] = mode.storageValue }
     }
 
     override suspend fun setIndexUrl(url: String) {

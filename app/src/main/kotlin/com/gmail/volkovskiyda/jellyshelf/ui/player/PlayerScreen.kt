@@ -7,6 +7,7 @@
 
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
+import android.content.res.Configuration
 import android.graphics.Rect
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -32,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -41,6 +43,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +77,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -80,6 +85,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,6 +122,7 @@ import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
@@ -187,6 +194,7 @@ fun PlayerScreen(
     val controller by viewModel.controller.collectAsStateWithLifecycle()
     val video by viewModel.video.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
+    val scaleMode by viewModel.videoScaleMode.collectAsStateWithLifecycle()
     val isInPip = LocalIsInPip.current
     val activity = LocalActivity.current
     // The cover to stand in for the video until it has a frame of its own — see [PlayerPoster].
@@ -196,6 +204,15 @@ fun PlayerScreen(
     val poster = video?.let(thumbnail)
 
     ImmersiveWhileHere(enabled = !isInPip)
+
+    // The rotate button's landscape request never outlives the player, and never fights PiP. Both
+    // ends matter: leaving hands orientation back to the rest of the app, and a request the sensor
+    // never got to release (auto-rotate off) would otherwise be permanent.
+    DisposableEffect(activity, isInPip) {
+        val landscape = (activity as? MainActivity)?.landscape
+        if (isInPip) landscape?.release()
+        onDispose { landscape?.release() }
+    }
 
     // Every *stopping* exit routes through here — and only those, which is why it is not an
     // onCleared()/lifecycle hook: those also fire on rotation and on minimizing.
@@ -234,12 +251,15 @@ fun PlayerScreen(
                 poster = poster,
                 chapters = chapters,
                 onSpeedPicked = viewModel::savePlaybackSpeed,
+                scaleMode = scaleMode,
+                onScaleModePicked = viewModel::setVideoScaleMode,
                 isInPip = isInPip,
                 onBack = leave,
                 // The nav layer's plain pop: no stopPlayback, so the session survives and the
                 // mini-player bar picks it up on the screen underneath.
                 onMinimize = onBack,
                 onEnterPip = { (activity as? MainActivity)?.enterPip() },
+                onRotateToLandscape = { (activity as? MainActivity)?.landscape?.request() },
                 onSurfaceBounds = { (activity as? MainActivity)?.updatePipParams(rect = it) },
             )
         }
@@ -254,10 +274,13 @@ private fun PlayerWithControls(
     poster: String?,
     chapters: List<Chapter>,
     onSpeedPicked: (Float) -> Unit,
+    scaleMode: VideoScaleMode,
+    onScaleModePicked: (VideoScaleMode) -> Unit,
     isInPip: Boolean,
     onBack: () -> Unit,
     onMinimize: () -> Unit,
     onEnterPip: () -> Unit,
+    onRotateToLandscape: () -> Unit,
     onSurfaceBounds: (Rect) -> Unit,
 ) {
     // Snapshots the UI renders from — polled/listened, because a Player is not observable state.
@@ -331,7 +354,18 @@ private fun PlayerWithControls(
         onDispose { view.keepScreenOn = false }
     }
 
+    // The activity keeps `orientation` in its configChanges, so a rotation recomposes rather than
+    // recreating: this is read from composition every time, never cached.
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    // Android 16+ ignores an app's orientation request on a display this wide, so asking there
+    // would leave a button that visibly does nothing. Those windows cycle scale modes instead —
+    // one flag for both halves, so the icon and the action can never disagree.
+    val rotateFirst = isPortrait && configuration.smallestScreenWidthDp < LARGE_SCREEN_WIDTH_DP
+
     var controlsVisible by remember { mutableStateOf(true) }
+    // Bumped by every top-bar tap that keeps the user here, to re-arm the auto-hide below.
+    var controlsTouched by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
     var chaptersOpen by remember { mutableStateOf(false) }
     var speedMenuOpen by remember { mutableStateOf(false) }
@@ -349,7 +383,10 @@ private fun PlayerWithControls(
     // Auto-hide while playing; scrubbing, the open chapter panel or the speed menu pins the
     // controls (hiding them would tear the open menu out of the composition mid-use).
     val controlsPinned = scrubbing || chaptersOpen || speedMenuOpen
-    LaunchedEffect(controlsVisible, isPlaying, controlsPinned) {
+    // controlsTouched and isPortrait are keys so a tap — and the rotation one of them asks for —
+    // restart the 3 s rather than letting it run out mid-sequence: reaching Stretch from portrait
+    // takes four taps, and the controls hiding between them would strand the user.
+    LaunchedEffect(controlsVisible, isPlaying, controlsPinned, controlsTouched, isPortrait) {
         if (controlsVisible && isPlaying && !controlsPinned) {
             delay(CONTROLS_HIDE_DELAY_MS)
             controlsVisible = false
@@ -483,18 +520,34 @@ private fun PlayerWithControls(
             }
             .then(if (isInPip) Modifier else Modifier.playerDragGestures(gestureHandler)),
     ) {
+        // The PiP source rect is the *fitted* video rect whatever the screen is showing, so it is
+        // reported from its own node rather than from the surface: in Zoom the surface is measured
+        // wider than the window and its bounds are no longer the video's place in it. Laid out by
+        // the same media3 modifier the surface uses in Fit, so the rect is unchanged from before
+        // the modes existed — that is what the PiP transition animates from and back into (see
+        // MainActivity.updatePipParams). The nudge is deliberately absent: it only applies inside
+        // PiP, where every report is discarded anyway.
+        Spacer(
+            Modifier
+                .align(Alignment.Center)
+                .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
+                .onGloballyPositioned { onSurfaceBounds(it.boundsInWindow().toAndroidRect()) },
+        )
         PlayerSurface(
             player = controller,
             modifier = Modifier
                 .align(Alignment.Center)
-                // Outside the resize, so the inset shrinks the box the video is fitted into and
-                // the fitted rect — the SurfaceView's bounds — changes with it.
+                // Outside the resize, so the inset shrinks the box the video is scaled into
+                // and the SurfaceView's bounds change with it — which is the point: a genuine
+                // bounds change is what refreshes the surface's geometry.
                 .padding(surfaceNudge)
-                .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
-                // Inside the resize, so these are the bounds of the video itself — the fitted
-                // rect, not the full box it is centred in. That is what the PiP transition
-                // animates from and back into (see MainActivity.updatePipParams).
-                .onGloballyPositioned { onSurfaceBounds(it.boundsInWindow().toAndroidRect()) },
+                // Zoom and Stretch are the landscape player's alone: a PiP window is a thumbnail
+                // of the whole frame, and cropping a 16:9 video into a portrait window would throw
+                // most of the picture away. The mode is remembered through both.
+                .resizeWithContentScale(
+                    if (isInPip || rotateFirst) ContentScale.Fit else scaleMode.contentScale,
+                    presentationState.videoSizeDp,
+                ),
         )
         if (presentationState.coverSurface) {
             // Shutter until the first frame renders: solid black beats a stale/blank surface.
@@ -530,6 +583,20 @@ private fun PlayerWithControls(
                     // Only a menu pick is a choice worth keeping. Press-and-hold's 3× is a
                     // temporary override on the same state, and is never saved.
                     onSpeedPicked(speed)
+                },
+                rotateFirst = rotateFirst,
+                scaleMode = scaleMode,
+                onCycleScaleMode = {
+                    val next = scaleMode.next()
+                    onScaleModePicked(next)
+                    // gestureActive stays false, so the existing linger effect clears it.
+                    gestureIndicator = GestureIndicator.ScaleMode(next)
+                    controlsTouched++
+                },
+                // No pill: the rotation is its own feedback, and would be mid-flight anyway.
+                onRotateToLandscape = {
+                    onRotateToLandscape()
+                    controlsTouched++
                 },
                 onScrubbingChanged = { scrubbing = it },
                 onSpeedMenuChanged = { speedMenuOpen = it },
@@ -622,6 +689,10 @@ internal fun PlayerControls(
     onNext: () -> Unit,
     onSeek: (Long) -> Unit,
     onSetSpeed: (Float) -> Unit,
+    rotateFirst: Boolean,
+    scaleMode: VideoScaleMode,
+    onCycleScaleMode: () -> Unit,
+    onRotateToLandscape: () -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
     onSpeedMenuChanged: (Boolean) -> Unit,
     onOpenChapters: () -> Unit,
@@ -704,6 +775,31 @@ internal fun PlayerControls(
                             contentDescription = stringResource(R.string.player_pip),
                             tint = Color.White,
                         )
+                    }
+                    // One slot, two jobs — see [rotateFirst]. They are alternatives rather than
+                    // additions, so the bar gains no width in the orientation that has least.
+                    if (rotateFirst) {
+                        IconButton(onClick = onRotateToLandscape) {
+                            Icon(
+                                Icons.Filled.ScreenRotation,
+                                contentDescription = stringResource(R.string.player_rotate_landscape),
+                                tint = Color.White,
+                            )
+                        }
+                    } else {
+                        val modeLabel = stringResource(scaleMode.labelRes())
+                        IconButton(
+                            onClick = onCycleScaleMode,
+                            // The mode is the button's *state*, so TalkBack reads "Video scale
+                            // mode, Zoom" while the label a test clicks on stays put.
+                            modifier = Modifier.semantics { stateDescription = modeLabel },
+                        ) {
+                            Icon(
+                                Icons.Filled.AspectRatio,
+                                contentDescription = stringResource(R.string.player_scale_mode),
+                                tint = Color.White,
+                            )
+                        }
                     }
                 }
             }
@@ -1156,6 +1252,9 @@ private const val HOLD_SPEED = 3f
 private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L
 private const val INDICATOR_LINGER_MS = 800L
+
+/** Android 16+ ignores an app's orientation request at or above this window width. */
+private const val LARGE_SCREEN_WIDTH_DP = 600
 
 /** See the PiP surface nudge in [PlayerWithControls]. */
 private const val SURFACE_NUDGE_FRAMES = 2

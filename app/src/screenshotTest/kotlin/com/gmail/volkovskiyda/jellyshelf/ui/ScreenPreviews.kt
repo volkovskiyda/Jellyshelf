@@ -20,6 +20,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_LAST_PLAYED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesContent
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryList
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosContent
@@ -321,6 +322,10 @@ private fun PlayerControlsWithChapters() {
             onNext = {},
             onSeek = {},
             onSetSpeed = {},
+            rotateFirst = false,
+            scaleMode = VideoScaleMode.FIT,
+            onCycleScaleMode = {},
+            onRotateToLandscape = {},
             onScrubbingChanged = {},
             onSpeedMenuChanged = {},
             onOpenChapters = {},
@@ -354,6 +359,10 @@ private fun PlayerControlsSingleVideo() {
             onNext = {},
             onSeek = {},
             onSetSpeed = {},
+            rotateFirst = false,
+            scaleMode = VideoScaleMode.FIT,
+            onCycleScaleMode = {},
+            onRotateToLandscape = {},
             onScrubbingChanged = {},
             onSpeedMenuChanged = {},
             onOpenChapters = {},
@@ -361,6 +370,53 @@ private fun PlayerControlsSingleVideo() {
             onMinimize = {},
             onEnterPip = {},
         )
+    }
+}
+
+/**
+ * The same overlay in portrait, where the last slot in the top bar is the rotate button rather than
+ * the scale cycle — the only visual difference, and one no landscape preview can show.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun PlayerControlsPortrait() {
+    PreviewTheme(darkTheme = true) {
+        PlayerControls(
+            player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
+            visible = true,
+            title = "The only video in the queue",
+            positionMs = 200_000L,
+            durationMs = 754_000L,
+            chapters = emptyList(),
+            speed = 1f,
+            hasPrevious = false,
+            hasNext = false,
+            onPrevious = {},
+            onNext = {},
+            onSeek = {},
+            onSetSpeed = {},
+            rotateFirst = true,
+            scaleMode = VideoScaleMode.FIT,
+            onCycleScaleMode = {},
+            onRotateToLandscape = {},
+            onScrubbingChanged = {},
+            onSpeedMenuChanged = {},
+            onOpenChapters = {},
+            onBack = {},
+            onMinimize = {},
+            onEnterPip = {},
+        )
+    }
+}
+
+/** The scale button's confirmation pill, naming the mode a tap just moved to. */
+@PreviewTest
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun ScaleModePill() {
+    PreviewTheme(darkTheme = true) {
+        GestureIndicatorPill(GestureIndicator.ScaleMode(VideoScaleMode.ZOOM))
     }
 }
 

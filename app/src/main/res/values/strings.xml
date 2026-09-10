@@ -193,6 +193,15 @@
     <string name="chapters">Chapters</string>
     <string name="player_minimize">Minimize player</string>
     <string name="player_pip">Enter picture-in-picture</string>
+    <string name="player_rotate_landscape">Rotate to landscape</string>
+    <!--
+      The scale button's label. The mode itself is announced as the button's state rather than
+      folded into this, so the label a test clicks on stays the same in every mode.
+    -->
+    <string name="player_scale_mode">Video scale mode</string>
+    <string name="scale_mode_fit">Fit</string>
+    <string name="scale_mode_zoom">Zoom</string>
+    <string name="scale_mode_stretch">Stretch</string>
     <!--
       The mini-player bar. None of its three targets carries a visible label, so each needs its
       own description: the row's is a click label (it says what the tap does, not what the row

@@ -4,6 +4,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -126,6 +127,10 @@ class FakeSettingsRepository(
 
     override suspend fun setPlaybackSpeed(speed: Float) {
         _settings.value = _settings.value.copy(playbackSpeed = speed)
+    }
+
+    override suspend fun setVideoScaleMode(mode: VideoScaleMode) {
+        _settings.value = _settings.value.copy(videoScaleMode = mode)
     }
 
     override suspend fun setIndexUrl(url: String) {

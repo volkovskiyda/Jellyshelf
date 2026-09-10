@@ -5,6 +5,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import kotlinx.coroutines.flow.Flow
 
 /** Persistent app/connection settings. Backed by DataStore in the data layer. */
@@ -69,6 +70,12 @@ interface SettingsRepository {
      * and it reads back off [Settings.playbackSpeed].
      */
     suspend fun setPlaybackSpeed(speed: Float)
+
+    /**
+     * App-wide scale mode the in-app player renders with; the player's top-bar button persists the
+     * pick here and it reads back off [Settings.videoScaleMode].
+     */
+    suspend fun setVideoScaleMode(mode: VideoScaleMode)
 
     /** Records that a sync finished at [timestamp] against library scope [libraryId]. */
     suspend fun setLastSync(timestamp: Long, libraryId: String)

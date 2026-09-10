@@ -13,6 +13,7 @@ import androidx.media3.session.SessionToken
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
@@ -99,6 +100,27 @@ class PlayerViewModel(
             .ifEmpty { embedded }
     }
         .stateIn(viewModelScope, WhileUiSubscribed, emptyList())
+
+    /**
+     * How the player scales the video into its window. Held here rather than on the player: media3
+     * has no such state (unlike the speed, which [androidx.media3.ui.compose.state.PlaybackSpeedState]
+     * owns), and a ViewModel outlives the rotation this very setting is reached through.
+     */
+    private val _videoScaleMode = MutableStateFlow(VideoScaleMode.DEFAULT)
+    val videoScaleMode: StateFlow<VideoScaleMode> = _videoScaleMode.asStateFlow()
+
+    /** Main-thread only, and the reason the restore below is a one-shot read — see [setVideoScaleMode]. */
+    private var scaleModeChosen = false
+
+    init {
+        // A single snapshot rather than collecting [SettingsRepository.settings]: a later disk
+        // emission must never overwrite a mode the user has already tapped, and the guard covers a
+        // tap that lands before this read returns (both run on Main).
+        viewModelScope.launch {
+            val saved = settingsRepository.snapshot().videoScaleMode
+            if (!scaleModeChosen) _videoScaleMode.value = saved
+        }
+    }
 
     private val _controller = MutableStateFlow<MediaController?>(null)
     val controller: StateFlow<MediaController?> = _controller.asStateFlow()
@@ -214,6 +236,19 @@ class PlayerViewModel(
      */
     fun savePlaybackSpeed(speed: Float) {
         dispatchers.applicationScope.launch { settingsRepository.setPlaybackSpeed(speed) }
+    }
+
+    /**
+     * Applies a scale mode picked from the player's top-bar button and remembers it app-wide.
+     *
+     * On [DispatcherProvider.applicationScope] for the reason [savePlaybackSpeed] gives: picking a
+     * mode and leaving is one gesture, and a [viewModelScope] write would be cancelled before it
+     * reached disk.
+     */
+    fun setVideoScaleMode(mode: VideoScaleMode) {
+        scaleModeChosen = true
+        _videoScaleMode.value = mode
+        dispatchers.applicationScope.launch { settingsRepository.setVideoScaleMode(mode) }
     }
 
     override fun onCleared() {

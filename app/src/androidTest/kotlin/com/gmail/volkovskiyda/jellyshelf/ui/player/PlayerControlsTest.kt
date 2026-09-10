@@ -6,6 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -69,6 +71,13 @@ class PlayerControlsTest {
     private fun setControls(
         speed: Float = 1f,
         onSetSpeed: (Float) -> Unit = {},
+        // Passed explicitly rather than read from the device: the harness activity is in whatever
+        // orientation the phone is holding, and these two buttons are alternatives, so a class that
+        // let the device decide would assert the other one's absence on half the racks.
+        rotateFirst: Boolean = false,
+        scaleMode: VideoScaleMode = VideoScaleMode.FIT,
+        onCycleScaleMode: () -> Unit = {},
+        onRotateToLandscape: () -> Unit = {},
         chapters: List<Chapter> = emptyList(),
         positionMs: Long = 10_000L,
         hasPrevious: Boolean = false,
@@ -98,6 +107,10 @@ class PlayerControlsTest {
                     onNext = onNext,
                     onSeek = onSeek,
                     onSetSpeed = onSetSpeed,
+                    rotateFirst = rotateFirst,
+                    scaleMode = scaleMode,
+                    onCycleScaleMode = onCycleScaleMode,
+                    onRotateToLandscape = onRotateToLandscape,
                     onScrubbingChanged = {},
                     onSpeedMenuChanged = {},
                     onOpenChapters = {},
@@ -165,6 +178,75 @@ class PlayerControlsTest {
         onDescription(R.string.player_pip).performClick()
 
         assertEquals(1, pips)
+    }
+
+    /**
+     * The last slot in the bar is one button doing two jobs, and which one it is decides what the
+     * tap means. Offering the scale cycle in portrait would name modes the player deliberately does
+     * not render there, and offering the rotation in landscape would point at where the user
+     * already is. Either way round the button becomes a no-op, and a silent one — hence a pair of
+     * tests asserting the other button's *absence* as well as the right one's presence.
+     */
+    @Test
+    fun inPortrait_theLastSlotOffersRotationOnly() {
+        setControls(rotateFirst = true)
+
+        onDescription(R.string.player_rotate_landscape).assertIsDisplayed()
+        onDescription(R.string.player_scale_mode).assertDoesNotExist()
+    }
+
+    @Test
+    fun inLandscape_theLastSlotOffersTheScaleModeOnly() {
+        setControls(rotateFirst = false)
+
+        onDescription(R.string.player_scale_mode).assertIsDisplayed()
+        onDescription(R.string.player_rotate_landscape).assertDoesNotExist()
+    }
+
+    /** Landscape's tap cycles the mode; the cycle's order is [VideoScaleMode]'s own unit test. */
+    @Test
+    fun theScaleButton_cyclesTheMode() {
+        var cycles = 0
+        var rotations = 0
+        setControls(onCycleScaleMode = { cycles++ }, onRotateToLandscape = { rotations++ })
+
+        onDescription(R.string.player_scale_mode).performClick()
+
+        assertEquals(1, cycles)
+        assertEquals(0, rotations)
+    }
+
+    /** Portrait's tap asks for landscape, and must not quietly change the scale instead. */
+    @Test
+    fun theRotateButton_asksForLandscape() {
+        var cycles = 0
+        var rotations = 0
+        setControls(
+            rotateFirst = true,
+            onCycleScaleMode = { cycles++ },
+            onRotateToLandscape = { rotations++ },
+        )
+
+        onDescription(R.string.player_rotate_landscape).performClick()
+
+        assertEquals(1, rotations)
+        assertEquals(0, cycles)
+    }
+
+    /**
+     * The mode reaches TalkBack as the button's state, not its label — which is what lets the label
+     * stay identical in all three modes while the announcement still says which one is on.
+     */
+    @Test
+    fun theScaleButton_announcesTheCurrentMode() {
+        setControls(scaleMode = VideoScaleMode.ZOOM)
+
+        onDescription(R.string.player_scale_mode).assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.StateDescription,
+                composeRule.activity.getString(R.string.scale_mode_zoom),
+            ),
+        )
     }
 
     /**

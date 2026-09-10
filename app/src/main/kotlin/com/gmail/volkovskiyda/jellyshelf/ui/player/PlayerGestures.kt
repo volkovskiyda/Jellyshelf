@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Speed
@@ -25,8 +26,10 @@ import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import kotlin.math.abs
 
 /**
@@ -185,6 +188,12 @@ internal sealed interface GestureIndicator {
 
     /** Press-and-hold's temporary speed override, for as long as the finger stays down. */
     data class Speed(val speed: Float) : GestureIndicator
+
+    /**
+     * The scale button's confirmation. Not a gesture, but the same pill: the mode it names is the
+     * only feedback for a tap whose effect on a frame the video already fills is invisible.
+     */
+    data class ScaleMode(val mode: VideoScaleMode) : GestureIndicator
 }
 
 /** The transient feedback pill for a drag in progress. */
@@ -201,6 +210,7 @@ internal fun GestureIndicatorPill(indicator: GestureIndicator, modifier: Modifie
         when (indicator) {
             is GestureIndicator.Seek -> SeekIndicator(indicator)
             is GestureIndicator.Speed -> SpeedIndicator(indicator)
+            is GestureIndicator.ScaleMode -> ScaleModeIndicator(indicator)
         }
     }
 }
@@ -211,6 +221,17 @@ private fun SpeedIndicator(indicator: GestureIndicator.Speed) {
     Icon(Icons.Filled.Speed, contentDescription = null, tint = Color.White)
     Text(
         formatSpeed(indicator.speed),
+        color = Color.White,
+        style = MaterialTheme.typography.labelLarge,
+    )
+}
+
+/** A scale-mode tap: the button's own icon and the name of the mode now in force. */
+@Composable
+private fun ScaleModeIndicator(indicator: GestureIndicator.ScaleMode) {
+    Icon(Icons.Filled.AspectRatio, contentDescription = null, tint = Color.White)
+    Text(
+        stringResource(indicator.mode.labelRes()),
         color = Color.White,
         style = MaterialTheme.typography.labelLarge,
     )

@@ -105,6 +105,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryScreen
+import com.gmail.volkovskiyda.jellyshelf.ui.player.LandscapeRequest
 import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsScreen
@@ -161,6 +162,15 @@ class MainActivity : ComponentActivity() {
 
     /** Fed by the platform's own callback, read by composition — see [LocalIsInPip]. */
     private val inPip = MutableStateFlow(false)
+
+    /**
+     * The player's rotate button, reached from composition like [enterPip]. A property rather than
+     * a pair of methods: the machinery is its own object (see [LandscapeRequest]) and this class is
+     * already at detekt's function ceiling.
+     */
+    val landscape: LandscapeRequest by lazy {
+        LandscapeRequest(this).also(lifecycle::addObserver)
+    }
 
     // Wrapped whole, super included: unlike Application.onCreate, ComponentActivity's is where the
     // saved state, the ViewModelStore and the window are restored, and a cold launch that is slow
@@ -294,6 +304,8 @@ class MainActivity : ComponentActivity() {
      * player laid out are what the window opens with and from.
      */
     fun enterPip() {
+        // A pending landscape request must not fight the transition, or the window it shrinks into.
+        landscape.release()
         enterPictureInPictureMode(PictureInPictureParams.Builder().build())
     }
 

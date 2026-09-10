@@ -53,6 +53,12 @@ data class Settings(
      */
     val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
     /**
+     * How the in-app player fits the video into its window, cycled by the player's top-bar button.
+     * Applies to the full-screen landscape player only — see [VideoScaleMode], which says why a PiP
+     * window and portrait always show the whole frame regardless of what is stored here.
+     */
+    val videoScaleMode: VideoScaleMode = VideoScaleMode.DEFAULT,
+    /**
      * Whether the library holds seeded demo data rather than a real server's. Set by the demo
      * seeder and cleared by Sign out's wipe — the flag never outlives the rows it describes.
      *
