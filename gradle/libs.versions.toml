@@ -12,7 +12,7 @@ targetSdk = "37"
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.
 agp = "9.4.0"
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 lifecycle = "2.11.0"
@@ -20,14 +20,14 @@ activityCompose = "1.13.0"
 # Custom Tabs. Already present transitively through firebase-appdistribution, but that artifact is
 # releaseImplementation-only, so the sign-in launcher would not compile on debug without this.
 androidxBrowser = "1.10.0"
-composeBom = "2026.08.00"
-googleDevtoolsKsp = "2.3.11"
+composeBom = "2026.09.00"
+googleDevtoolsKsp = "2.3.12"
 kotlinxSerializationJson = "1.11.0"
 navigation3 = "1.1.7"
 adaptive = "1.3.0"
-roomRuntime = "2.8.4"
+roomRuntime = "2.8.5"
 # One ref for coil-compose and coil-network-ktor3: same release train, bumped together.
-coil = "3.6.1"
+coil = "3.6.2"
 ktor = "3.5.2"
 # Nothing declares OkHttp: it arrives under both HTTP clients in di/AppModule.kt as Ktor's engine
 # (which asks for 5.3.2) and again through firebase-perf (4.12.0). This ref feeds a *constraint* in
@@ -71,7 +71,7 @@ composeScreenshot = "0.0.1-alpha16"
 # mapping file, perf-plugin weaves network/@AddTrace instrumentation into release bytecode
 # (2.0.1 is the first release compatible with AGP 9).
 googleServices = "4.5.0"
-firebaseBom = "34.18.0"
+firebaseBom = "34.19.0"
 # App Distribution is the exception to the BoM rule above: firebase-bom 34.17.0 lists 28 artifacts
 # and none of them is an App Distribution one (verified 2026-08-06), so these two pin their own
 # version — and need their own bump, which nothing else here does. Still upstream beta after years.
@@ -79,12 +79,11 @@ firebaseAppDistribution = "16.0.0-beta20"
 firebaseCrashlyticsPlugin = "3.0.8"
 firebasePerfPlugin = "2.0.2"
 # Baseline profile. The benchmark family (the plugin and macro-junit4) ships as a set and shares one
-# ref. This is a pre-release on purpose: 1.4.1 is the latest stable, but it refuses to apply to an
-# AGP 9 application module ("Module `:app` is not a supported android module"), and 1.5.0-beta01 is
-# the first version that accepts one. Drop back to stable once 1.5.0 ships.
+# ref. 1.5.0 is the floor, not a preference: 1.4.1 refuses to apply to an AGP 9 application module
+# ("Module `:app` is not a supported android module").
 # profileinstaller is the runtime half: it installs the committed profile on devices where ART does
 # not pick it up by itself, and it versions independently of the benchmark family.
-androidxBaselineProfile = "1.5.0-rc02"
+androidxBaselineProfile = "1.5.0"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.0"
 # System tracing — the app-side half of the same measurement story the baseline profile serves.
@@ -96,7 +95,7 @@ uiautomator = "2.4.0"
 # 2.0.0, but its classes.jar holds nothing but a version marker (checked, not assumed), so
 # `trace("label") { }` and `traceAsync` now come from `tracing` itself. Declaring both would add a
 # dependency that contributes no code.
-androidxTracing = "2.0.1"
+androidxTracing = "2.0.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
