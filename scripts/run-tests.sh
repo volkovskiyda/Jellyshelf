@@ -481,11 +481,16 @@ restore_instrumented_results() {
 # reachability probe is dropped rather than refused, times out, and the whole package assumes itself
 # away. Counting testcases in the live package rather than whole files keeps this usable from the
 # single-device branch too, where one invocation carries the offline half as well.
+#
+# A skip has two shapes. AGP's older runner wrote `<skipped/>`; the connected-test engine that
+# arrived with AGP 9.4.0 writes an `assumeTrue` violation as a `<failure>` whose text names
+# `AssumptionViolatedException` — while still passing the task, so the XML is the only place the
+# difference shows. Both count, or a blocked device reads as fully covered.
 live_layer_covered() {
   local counts total skipped
   counts="$(cat "$ANDROID_TEST_RESULTS"/*.xml 2>/dev/null | awk -v pkg="$LIVE_PACKAGE" '
     index($0, "<testcase ") { live = (index($0, "classname=\"" pkg) > 0); if (live) total++ }
-    live && index($0, "<skipped") { skipped++ }
+    live && (index($0, "<skipped") || index($0, "AssumptionViolatedException")) { skipped++ }
     END { print (total + 0) " " (skipped + 0) }
   ')"
   total="${counts%% *}" ; skipped="${counts##* }"

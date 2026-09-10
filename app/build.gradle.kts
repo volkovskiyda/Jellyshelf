@@ -360,6 +360,20 @@ tasks.register("testSummary") {
         // machine-written and only the header is needed. Both shapes appear — Gradle writes one
         // <testsuite> per class, the instrumentation runner wraps them in a <testsuites> whose
         // totals would double-count, so only the first such element per file is read.
+        //
+        // One correction to the header: since AGP 9.4.0 the connected-test engine records two
+        // kinds of skip as a <failure> and counts them in `failures`, while the task itself still
+        // passes — an `assumeTrue` violation, whose text names AssumptionViolatedException, and a
+        // class-level @Ignore, which becomes one empty <failure></failure> on a case named "null".
+        // Every live test guards itself with the first and BrowseCostBenchmark carries the second,
+        // so both move from the failed column to the skipped one, or a run with no server in reach
+        // would report red for tests that ran nothing.
+        val skipsRecordedAsFailures = { lines: List<String> ->
+            lines.count {
+                it.contains("<failure") &&
+                    (it.contains("AssumptionViolatedException") || it.trim() == "<failure></failure>")
+            }
+        }
         val parse = { dir: File ->
             val files = dir.walkTopDown().filter { it.isFile && it.extension == "xml" }.toList()
             if (files.isEmpty()) {
@@ -369,14 +383,16 @@ tasks.register("testSummary") {
                 var failures = 0
                 var skipped = 0
                 files.forEach { file ->
-                    val header = file.readLines().firstOrNull { it.contains("<testsuite") }
+                    val lines = file.readLines()
+                    val header = lines.firstOrNull { it.contains("<testsuite") }
                     if (header != null) {
                         val attr = { name: String ->
                             Regex("""$name="(\d+)"""").find(header)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                         }
+                        val assumed = skipsRecordedAsFailures(lines)
                         tests += attr("tests")
-                        failures += attr("failures") + attr("errors")
-                        skipped += attr("skipped")
+                        failures += attr("failures") + attr("errors") - assumed
+                        skipped += attr("skipped") + assumed
                     }
                 }
                 Triple(tests, failures, skipped)
@@ -414,11 +430,21 @@ tasks.register("testSummary") {
                         // One invocation carrying both: a single-device run, which is not split.
                         else -> ""
                     }
+                    // A skip recorded as a failure — see `skipsRecordedAsFailures`.
+                    val recordedSkip = { node: org.w3c.dom.Node ->
+                        val text = node.textContent.trim()
+                        node.nodeName == "failure" &&
+                            (text.isEmpty() || text.startsWith("org.junit.AssumptionViolatedException"))
+                    }
+                    val assumed = cases.count { case ->
+                        val children = case.childNodes
+                        (0 until children.length).any { recordedSkip(children.item(it)) }
+                    }
                     val failed = cases.filter { case ->
                         val children = case.childNodes
                         (0 until children.length).any {
-                            val name = children.item(it).nodeName
-                            name == "failure" || name == "error"
+                            val child = children.item(it)
+                            (child.nodeName == "failure" || child.nodeName == "error") && !recordedSkip(child)
                         }
                     }.map { "${it.getAttribute("classname")}.${it.getAttribute("name")}" }
                     // Totals from the <testsuites> wrapper when present — it is the file's own
@@ -426,8 +452,9 @@ tasks.register("testSummary") {
                     val header = elements("testsuites").firstOrNull()
                     val attr = { name: String -> header?.getAttribute(name)?.toIntOrNull() ?: 0 }
                     val tests = if (header != null) attr("tests") else cases.size
-                    val skipped = if (header != null) attr("skipped") else 0
-                    Triple(device to phase, Triple(tests, failed.size.coerceAtLeast(attr("failures")), skipped), failed)
+                    val skipped = (if (header != null) attr("skipped") else 0) + assumed
+                    val failures = failed.size.coerceAtLeast(attr("failures") - assumed)
+                    Triple(device to phase, Triple(tests, failures, skipped), failed)
                 }.getOrNull()
             }.sortedWith(compareBy({ it.first.first }, { it.first.second })).toList()
         }
