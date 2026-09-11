@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.firebase.perf)
+    alias(libs.plugins.kotzilla)
     alias(libs.plugins.androidx.baselineprofile)
 }
 
@@ -154,6 +155,13 @@ android {
         // Instrumented tests share them too — the sync suite needs the same in-memory
         // SettingsRepository the host-side tests use.
         getByName("androidTest") { kotlin.directories += "src/testShared/kotlin" }
+        // A no-op monitoring() for keyless checkouts. The Kotzilla plugin below is switched off
+        // when app/kotzilla.json is missing, and a disabled plugin generates no code whatsoever,
+        // so JellyshelfApplication's call would not resolve. Same condition as the kotzilla block,
+        // and never both: when the file is there, the generated function is the only one.
+        if (!file("kotzilla.json").exists()) {
+            getByName("main") { kotlin.directories += "src/kotzillaDisabled/kotlin" }
+        }
     }
     buildFeatures {
         compose = true
@@ -186,6 +194,26 @@ android {
 ksp {
     // Check generated Room schemas into app/schemas so version bumps can ship real migrations.
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// Kotzilla reads its API keys from app/kotzilla.json, which is git-ignored because those keys are
+// ingestion credentials and this repo is public (.example.kotzilla.json is the template, and CI
+// restores the real file from a secret — see docs/RELEASING.md). The plugin fails configuration
+// when the file is missing, so a checkout without one switches the whole thing off instead: a
+// fresh clone, a fork's pull request and CI's build/test jobs all still build, exactly the way
+// the release signing config above is simply not created without keystore.properties.
+//
+// Everything else is left at the plugin's defaults on purpose — mapping upload, the build report,
+// Compose instrumentation and early start. Don't restate them here "for clarity"; a line in this
+// block is a decision to own, and the plan behind this (internal/, 20260911-kotzilla-mcp-plan)
+// records why each default stands. One that must never be set in a committed file is
+// displayLogs: it turns on runtime logging that prints bearer tokens.
+//
+// Compose instrumentation being on is what ties this project to Kotlin 2.4.10: it is a Kotlin
+// compiler plugin, and 2.3.6 still registers it through the K1 ComponentRegistrar interface that
+// Kotlin 2.4.20 deleted. See the kotlin ref in gradle/libs.versions.toml before bumping either.
+kotzilla {
+    enabled = file("kotzilla.json").exists()
 }
 
 // The baseline-profile plugin derives its nonMinifiedRelease variant from release so the generator

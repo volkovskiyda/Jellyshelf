@@ -58,6 +58,13 @@ workRuntimeKtx = "2.11.2"
 youtubedlAndroid = "0.18.1"
 timber = "5.0.1"
 koinBom = "4.2.2"
+# Kotzilla, the Koin authors' observability platform: the Koin graph, screen timings and crashes
+# from real sessions. One ref for three things, which is why there is no [libraries] entry below —
+# the Gradle plugin applies a Compose compiler plugin AND adds io.kotzilla:kotzilla-sdk-compose to
+# the module it is applied to, both at its own version. Declaring the runtime as well would be a
+# second place to bump and a chance for the two to disagree; the cost is that
+# `./gradlew dependencyUpdates` only ever offers the plugin.
+kotzilla = "2.3.6"
 # Static analysis. 1.23.8 is the current stable line; it embeds its own Kotlin parser, so it lags
 # the project's Kotlin version without blocking it.
 detekt = "1.23.8"
@@ -210,3 +217,4 @@ ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlyticsPlugin" }
 firebase-perf = { id = "com.google.firebase.firebase-perf", version.ref = "firebasePerfPlugin" }
+kotzilla = { id = "io.kotzilla.kotzilla-plugin", version.ref = "kotzilla" }

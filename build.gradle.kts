@@ -15,6 +15,13 @@ plugins {
     alias(libs.plugins.google.services) apply false
     alias(libs.plugins.firebase.crashlytics) apply false
     alias(libs.plugins.firebase.perf) apply false
+    // Applied here, not `apply false`: Kotzilla's root application is what lets it see every
+    // module's build id and capture Compose navigation across them. Safe because every module
+    // that owns screens gets the SDK — there is only :app, and :baselineprofile is a
+    // com.android.test module with no Compose of its own. Were a design-system or ui module ever
+    // added without the SDK, this would have to become `apply false` plus a per-module apply, and
+    // the symptom of getting it wrong is a compile error naming KotzillaScreenHost.
+    alias(libs.plugins.kotzilla)
     alias(libs.plugins.detekt)
     // Applied to every project below rather than here, so `apply false`.
     alias(libs.plugins.ktlint) apply false
