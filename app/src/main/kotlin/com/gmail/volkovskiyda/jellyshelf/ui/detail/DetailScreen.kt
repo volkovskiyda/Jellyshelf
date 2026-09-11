@@ -241,7 +241,7 @@ internal fun DetailContent(
             )
             // The file name leads, not the YouTube title: it is the on-disk identity the user
             // manages the library by, and a tap puts it on the clipboard.
-            val copyFileName = rememberCopyToClipboard()
+            val copyFileName = rememberCopyToClipboard(R.string.file_name_copied)
             Text(
                 current.fileName,
                 style = MaterialTheme.typography.titleLarge,

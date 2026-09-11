@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.os.Build
 import android.os.SystemClock
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -633,20 +634,20 @@ fun ToastOnMessage(message: String?, onConsumed: () -> Unit) {
 
 /**
  * Returns an action that puts the given text on the clipboard. Android 13+ draws its own "copied"
- * overlay for every clipboard write, so the confirmation toast is only shown below that — showing
- * both would announce the copy twice.
+ * overlay for every clipboard write, so the [copiedMessage] toast is only shown below that —
+ * showing both would announce the copy twice.
  */
 @Composable
-fun rememberCopyToClipboard(): (String) -> Unit {
+fun rememberCopyToClipboard(@StringRes copiedMessage: Int): (String) -> Unit {
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    return remember(clipboard, context, scope) {
+    return remember(clipboard, context, scope, copiedMessage) {
         { text ->
             scope.launch {
                 clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(text, text)))
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                    Toast.makeText(context, R.string.file_name_copied, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, copiedMessage, Toast.LENGTH_SHORT).show()
                 }
             }
         }

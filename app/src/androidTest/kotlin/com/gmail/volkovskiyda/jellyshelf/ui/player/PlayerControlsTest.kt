@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
+import android.content.ClipboardManager
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -20,6 +22,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
@@ -29,6 +32,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -414,6 +418,53 @@ class PlayerControlsTest {
         // Past the restart threshold into the last chapter, so previous still has work to do.
         onDescription(R.string.previous_chapter).assertIsEnabled()
     }
+
+    private fun setChaptersPanel(onChapterClick: (Chapter) -> Unit = {}) {
+        composeRule.setContent {
+            JellyshelfTheme(dynamicColor = false) {
+                ChaptersPanel(
+                    chapters = chapters,
+                    currentChapter = null,
+                    onChapterClick = onChapterClick,
+                    onDismiss = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun tappingAChapterRow_seeksToIt() {
+        var clicked: Chapter? = null
+        setChaptersPanel(onChapterClick = { clicked = it })
+
+        composeRule.onNodeWithText("Main part").performClick()
+
+        assertEquals(chapters[1], clicked)
+    }
+
+    /**
+     * The clipboard is cleared first so a title left there by an earlier run cannot pass this
+     * vacuously, and the assertion polls because the write is launched rather than awaited. The
+     * harness activity is in the foreground, which is what Android 10+ requires before a read of
+     * the primary clip returns anything at all.
+     */
+    @Test
+    fun longPressingAChapterRow_copiesItsTitleWithoutSeeking() {
+        clipboard.clearPrimaryClip()
+        var clicked: Chapter? = null
+        setChaptersPanel(onChapterClick = { clicked = it })
+
+        composeRule.onNodeWithText("Main part").performTouchInput { longClick() }
+
+        composeRule.waitUntil { primaryClipText() == "Main part" }
+        assertNull(clicked)
+    }
+
+    private val clipboard: ClipboardManager
+        get() = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(ClipboardManager::class.java)
+
+    private fun primaryClipText(): String? = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
 
     /**
      * The position label reads `"00:00"` at zero, not `"0:00"`.

@@ -191,6 +191,8 @@
     <string name="playback_error">Playback failed: %1$s — try the External player mode</string>
     <string name="playback_transcoding_fallback">Direct play failed, switching to transcoding…</string>
     <string name="chapters">Chapters</string>
+    <string name="copy_chapter">Copy chapter</string>
+    <string name="chapter_copied">Chapter copied</string>
     <string name="player_minimize">Minimize player</string>
     <string name="player_pip">Enter picture-in-picture</string>
     <string name="player_rotate_landscape">Rotate to landscape</string>

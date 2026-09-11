@@ -14,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -759,7 +760,7 @@ internal fun PlayerControls(
                     }
                     // Tapping the title copies it (it carries the file name). The tap lands on
                     // the bar, not the surface, so it can't double as a controls-hide toggle.
-                    val copyFileName = rememberCopyToClipboard()
+                    val copyFileName = rememberCopyToClipboard(R.string.file_name_copied)
                     Text(
                         title.orEmpty(),
                         color = Color.White,
@@ -1160,6 +1161,8 @@ private fun Modifier.chapterTicks(chapters: List<Chapter>, durationMs: Long): Mo
 /**
  * The tappable chapter list over a full-screen scrim: timestamp + title per row, the current
  * chapter in the primary colour. Tapping outside (or Back, handled by the caller) dismisses.
+ * Long-pressing a row copies its title to the clipboard and leaves the panel open, so the next
+ * one can be copied without reopening it.
  */
 @Composable
 internal fun ChaptersPanel(
@@ -1192,13 +1195,22 @@ internal fun ChaptersPanel(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
+            val copyChapter = rememberCopyToClipboard(R.string.chapter_copied)
+            val copyLabel = stringResource(R.string.copy_chapter)
             LazyColumn {
                 items(chapters, key = Chapter::startMs) { chapter ->
                     val highlight = chapter == currentChapter
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clickable { onChapterClick(chapter) }
+                            // A row of label-sized text is 40 dp on its own: short of the 48 dp
+                            // touch target the accessibility checks in PlayerControlsTest enforce.
+                            .heightIn(min = MIN_TOUCH_TARGET)
+                            .combinedClickable(
+                                onClick = { onChapterClick(chapter) },
+                                onLongClick = { copyChapter(chapter.title) },
+                                onLongClickLabel = copyLabel,
+                            )
                             .padding(horizontal = 20.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1287,6 +1299,7 @@ private const val DISABLED_ALPHA = 0.35f
 private const val PANEL_SCRIM_ALPHA = 0.6f
 private const val PANEL_BACKGROUND_ALPHA = 0.92f
 private val PANEL_MAX_HEIGHT = 360.dp
+private val MIN_TOUCH_TARGET = 48.dp
 private val CHAPTER_TICK_HEIGHT = 8.dp
 private val CHAPTER_TICK_WIDTH = 2.dp
 
