@@ -102,6 +102,7 @@ internal fun MacrobenchmarkScope.signIn() {
  * `JELLYFIN_INDEX_URL` is blank. An explicit URL is typed instead.
  */
 internal fun MacrobenchmarkScope.configureIndexAndScope() {
+    expandAdvanced()
     if (JourneyConfig.indexUrl.isNotBlank()) {
         scrollTo(By.res(INDEX_URL_FIELD)) { "The index URL field never appeared after sign-in." }
         setText(INDEX_URL_FIELD, JourneyConfig.indexUrl)
@@ -120,6 +121,25 @@ internal fun MacrobenchmarkScope.configureIndexAndScope() {
         device.waitForIdle()
     }
     scrollTo(By.text(USE_THIS_FOLDER)) { "The Use this folder button never appeared." }.click()
+}
+
+/**
+ * Opens the "Advanced" disclosure, which is where the metadata feeds live — both the index URL
+ * field and its **Fill** button. Neither exists in the hierarchy while the section is closed, so
+ * without this every run fails on the control rather than on the section hiding it.
+ *
+ * Matches on the prefix because the label carries its own state ("Advanced ▾" closed, "Advanced ▴"
+ * open) and clicks only the closed one: the journey walks this on every signed-in run, and a blind
+ * click would close the section that the run before it left open.
+ */
+private fun MacrobenchmarkScope.expandAdvanced() {
+    val toggle = scrollTo(By.textStartsWith(ADVANCED)) {
+        "The Advanced section never appeared in Settings."
+    }
+    if (toggle.text == SHOW_ADVANCED) {
+        toggle.click()
+        device.waitForIdle()
+    }
 }
 
 /**
@@ -539,6 +559,10 @@ internal const val TAB_SETTINGS = "Settings"
 internal const val SIGN_IN = "Sign in"
 internal const val SIGN_OUT = "Sign out"
 internal const val FILL = "Fill"
+
+/** The Advanced disclosure, and the exact label it shows while closed (it flips the arrow open). */
+internal const val ADVANCED = "Advanced"
+internal const val SHOW_ADVANCED = "Advanced \u25BE"
 internal const val CHANGE_FOLDER = "Change folder…"
 internal const val USE_THIS_FOLDER = "Use this folder"
 internal const val SYNC_NOW = "Sync now"

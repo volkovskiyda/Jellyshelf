@@ -23,15 +23,23 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Runtime `am instrument -e` extras, exactly like :app's live-endpoint tests — never baked
-        // into any BuildConfig, so changing .test.env needs no rebuild. Blank when the file is
-        // absent, which is what makes the real-server journey skip.
+        // into any BuildConfig, so changing .test.env needs no rebuild. Missing when the file or
+        // the key is, which is what makes the real-server journey skip: the tests read each extra
+        // with `orEmpty()` themselves.
+        //
+        // Omitted rather than passed blank, for the same load-bearing reason :app documents at
+        // length: since AGP 9.4.0 the connected-test engine hands `am instrument` one unquoted
+        // shell string, so a blank value collapses into `-e jellyfinIndexUrl -e jellyfinSyncFolder
+        // …`, every pair after it shifts, and `am` answers "Invalid userId -2" having run no tests
+        // at all. This module kept `.orEmpty()` when :app was fixed, and with JELLYFIN_INDEX_URL
+        // unset that is precisely what every JourneyBenchmark run hit.
         testInstrumentationRunnerArguments += mapOf(
-            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"].orEmpty(),
-            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"].orEmpty(),
-            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"].orEmpty(),
-            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"].orEmpty(),
-            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"].orEmpty(),
-        )
+            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"],
+            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"],
+            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"],
+            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"],
+            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"],
+        ).filterValues { !it.isNullOrBlank() }.mapValues { (_, value) -> value!! }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
