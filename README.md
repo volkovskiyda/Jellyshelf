@@ -409,6 +409,19 @@ deliberately no committed threshold to fail against: these numbers move with the
 library size and how warm the phone is, so a number in the repository would fail for reasons that
 have nothing to do with a commit.
 
+**Monitoring the graph itself.** [Kotzilla](https://kotzilla.io), from the Koin authors, watches the
+dependency graph, screen timings and crashes from real sessions. The Gradle plugin adds the SDK and
+generates its config, and `monitoring()` attaches it to Koin last inside `startKoin`. Both build
+types report, into separate keys, so development sessions inform the graph diagnostics without
+diluting production data — deliberately unlike Firebase, which is release-only here, because this
+tool is most useful while building. Its keys live in the git-ignored `app/kotzilla.json`, and
+without that file the plugin disables itself and the app builds exactly as it did before. The
+companion MCP server is how it is queried from Claude Code:
+
+```bash
+claude mcp add kotzilla --transport http https://mcp.kotzilla.io/mcp
+```
+
 Firebase Performance covers the same two of these spans in the field (`library_sync`,
 `player_startup`) and is not a substitute — that one samples real installs and reports minutes
 later, on release builds only; these are local, exact, free, and available on any build.
@@ -545,10 +558,13 @@ Both are optional; copy the committed `.example.*` template and fill it in when 
 | `keystore.properties` | git-ignored | Release signing: `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Absent → release builds are unsigned. |
 | `.example.keystore.properties` | committed | Template for `keystore.properties`. |
 | `*.jks` | git-ignored | The keystore itself, sitting next to those files. |
+| `app/kotzilla.json` | git-ignored | Kotzilla ingestion keys, one per build type. The odd one out: it sits in `app/`, not at the repo root, because that is where the plugin looks. Absent → the Kotzilla plugin turns itself off and the build is unchanged. |
+| `.example.kotzilla.json` | committed | Template for `app/kotzilla.json`. |
 
 Gradle's `loadEnv` reads both. The test config is passed to the instrumentation tests as runtime
 runner arguments (`am instrument -e` extras), so it is never compiled into any `BuildConfig` and
-changing it needs no rebuild.
+changing it needs no rebuild. `app/kotzilla.json` is read by the Kotzilla Gradle plugin instead of
+`loadEnv`, and only the delivery CI jobs restore it — see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 

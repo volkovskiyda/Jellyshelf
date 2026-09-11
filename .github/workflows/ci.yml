@@ -177,6 +177,7 @@ jobs:
         env:
           KEYSTORE_PROPERTIES_BASE64: ${{ secrets.KEYSTORE_PROPERTIES_BASE64 }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KOTZILLA_JSON_BASE64: ${{ secrets.KOTZILLA_JSON_BASE64 }}
         run: scripts/restore-signing.sh
 
       # baseVersion is the latest tag reachable from HEAD, so testers see 1.3.348-style versions

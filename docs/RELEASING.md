@@ -224,8 +224,8 @@ After editing `.test.env`, refresh the local secrets snapshot so its `verify` st
 
 **Keep the mapping file.** Release builds are R8-obfuscated, so a stack trace from a released APK is
 unreadable without the `mapping-<version>.<versionCode>.txt` from that exact build. Firebase
-Crashlytics gets its own copy automatically; the release asset is for anyone reading a trace pasted
-into an issue.
+Crashlytics gets its own copy automatically, and so does Kotzilla, which tags each upload with its
+own per-build id; the release asset is for anyone reading a trace pasted into an issue.
 
 ## One-time setup
 
@@ -235,8 +235,15 @@ their contents anywhere:
 ```sh
 base64 -i keystore.properties  | gh secret set KEYSTORE_PROPERTIES_BASE64
 base64 -i jellyshelf-release.jks | gh secret set KEYSTORE_BASE64
+base64 -i app/kotzilla.json    | gh secret set KOTZILLA_JSON_BASE64
 gh secret set FIREBASE_SERVICE_ACCOUNT < firebase-ci.json && rm firebase-ci.json
 ```
+
+`app/kotzilla.json` holds the Kotzilla ingestion keys, one per build type — the debug key belongs to
+the `Jellyshelf Debug` app and the release key to `Jellyshelf`, which is what keeps dev sessions out
+of production data. Regenerate it from the Kotzilla MCP server (`generate_app_config`) or the
+console at https://console.kotzilla.io if it is ever lost; adding a key leaves existing ones
+working.
 
 `FIREBASE_SERVICE_ACCOUNT` is a JSON key for the `firebase-ci` service account in the
 `jellyshelf-3dfc8` project. To recreate it from scratch:
@@ -273,9 +280,14 @@ Then, in the Firebase console, open **App Distribution**, and create a tester gr
 ## Signing
 
 `keystore.properties` and `jellyshelf-release.jks` live at the repo root and are git-ignored; CI
-recreates both from the secrets above via [`scripts/restore-signing.sh`](../scripts/restore-signing.sh).
+recreates both from the secrets above via [`scripts/restore-signing.sh`](../scripts/restore-signing.sh),
+which despite its name restores a third file too — `app/kotzilla.json`, under `app/` rather than at
+the root, because that is where the Kotzilla plugin looks for it.
 A checkout without them still builds — the release signing config is simply not created and the APK
-comes out unsigned, which is what pull-request CI wants.
+comes out unsigned, which is what pull-request CI wants. The same is true of the Kotzilla file: when
+it is absent the plugin turns itself off, so a fork's pull request and the debug and test jobs build
+exactly as before. Only the delivery jobs restore any of this, which is why a build from those jobs
+is the only one that reports sessions or uploads a mapping.
 
 `debug.keystore` is different: it *is* committed, so every machine and CI sign debug builds with the
 same certificate. The Firebase API key is restricted to this project's two package names and their

@@ -121,6 +121,7 @@ jobs:
         env:
           KEYSTORE_PROPERTIES_BASE64: ${{ secrets.KEYSTORE_PROPERTIES_BASE64 }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KOTZILLA_JSON_BASE64: ${{ secrets.KOTZILLA_JSON_BASE64 }}
         run: scripts/restore-signing.sh
 
       # versionName is <tag>.<versionCode> — the same rule as the App Distribution builds — so a
