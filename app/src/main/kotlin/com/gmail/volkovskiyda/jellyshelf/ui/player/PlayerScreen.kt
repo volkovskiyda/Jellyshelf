@@ -417,6 +417,11 @@ private fun PlayerWithControls(
     val playlist = rememberPlaylistState(controller)
     val hasPrevious = playlist.currentMediaItemIndex > 0
     val hasNext = playlist.currentMediaItemIndex in 0..<playlist.mediaItemCount - 1
+    // A chapter list belongs to the video it was opened for. The queue can move on while it is up
+    // — the transport arrows sit beside it, and the previous video can simply end — so every
+    // transition closes it, rather than leaving the next video's list (or, without chapters, a bare
+    // heading over a scrim) where the last one's was.
+    LaunchedEffect(playlist.currentMediaItemIndex) { chaptersOpen = false }
 
     // Press-and-hold forces a temporary speed until the finger lifts — 2× to begin with, and
     // whatever the swipe walks it to after that (see HoldSpeedTracker). PlaybackSpeedState
