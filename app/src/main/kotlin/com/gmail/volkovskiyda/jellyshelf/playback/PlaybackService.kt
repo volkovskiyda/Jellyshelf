@@ -197,6 +197,10 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             .setSeekBackIncrementMs(SEEK_BACK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
             .build()
+        // What the loader is doing, in debug builds only — the one view of a stall that raises no
+        // player error. See [logLoadsInDebug]; first, so a load that fails during the very first
+        // prepare is logged too.
+        player.logLoadsInDebug(buildInfo.isDebug)
         // A few seconds of the *next* queued video, buffered while this one plays: pressing Next
         // and reaching the end of a video both then start on a stream that is already open, which
         // is the whole wait for anything the user did not have to choose. Only the next item is
