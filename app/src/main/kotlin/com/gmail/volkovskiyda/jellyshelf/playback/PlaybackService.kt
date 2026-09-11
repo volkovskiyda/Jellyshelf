@@ -186,10 +186,15 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                     .createDataSource(),
             )
         }
+        // The backstop for a stall the reconnect above cannot explain: it needs to hear about every
+        // byte the player loads, which is why it is built here and its listener handed to the
+        // factory rather than it being simply another Player.Listener.
+        val stallWatchdog = StallWatchdog(scope, player = { this.player })
         // Media3's standard composition: `asset:` and `file:` URIs — which is what a demo video
         // resolves to — route to local sources, while every http(s) URI is handed to the factory
         // above and behaves exactly as it did before, credential-at-creation-time included.
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
+            .setTransferListener(stallWatchdog.transferListener)
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
@@ -219,6 +224,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         player.addListener(TranscodeFallbackListener())
         // Last, so a transition has already been reported and re-tracked before this seeks.
         player.addListener(ResumeSeedingListener())
+        // After that, and harmlessly so: it reads state rather than reacting to an order, and its
+        // own recovery runs a second later at the earliest.
+        player.addListener(stallWatchdog)
         this.player = player
         // The mini-player bar's three buttons, on the real player. Registered here rather than
         // handed a controller, because a controller is what *starts* this service.
