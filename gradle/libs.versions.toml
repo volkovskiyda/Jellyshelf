@@ -12,7 +12,14 @@ targetSdk = "37"
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.
 agp = "9.4.0"
-kotlin = "2.4.20"
+# Held one release below the current 2.4.20, deliberately, for the Kotzilla plugin (below). Kotlin
+# 2.4.20 deleted the K1 `ComponentRegistrar` interface; io.kotzilla.gradle.kcp.KotzillaPluginRegistrar
+# still declares it as a supertype, so the class cannot even be defined and *every* compileKotlin
+# task dies with NoClassDefFoundError. 2.4.10 is the newest release that still ships the interface
+# (verified by listing both kotlin-compiler-embeddable jars). Disabling composeInstrumentation does
+# not unwire the compiler plugin, so there is no way to stay on 2.4.20 and keep Kotzilla. Raise this
+# only once Kotzilla drops the supertype — see internal/plan/20260911-kotzilla-mcp-plan.
+kotlin = "2.4.10"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 lifecycle = "2.11.0"
