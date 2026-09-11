@@ -19,7 +19,7 @@ agp = "9.4.0"
 # (verified by listing both kotlin-compiler-embeddable jars). Disabling composeInstrumentation does
 # not unwire the compiler plugin, so there is no way to stay on 2.4.20 and keep Kotzilla. Raise this
 # only once Kotzilla drops the supertype — see internal/plan/20260911-kotzilla-mcp-plan.
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 lifecycle = "2.11.0"
