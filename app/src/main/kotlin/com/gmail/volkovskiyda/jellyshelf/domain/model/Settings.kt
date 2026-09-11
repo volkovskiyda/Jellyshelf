@@ -49,7 +49,8 @@ data class Settings(
      * ExoPlayer when the playback service builds it. Always one of [PlaybackSpeed.options] — a
      * stored value this build no longer offers reads back as [PlaybackSpeed.DEFAULT].
      *
-     * Press-and-hold's temporary 3× never reaches here: it is a gesture, not a choice.
+     * Press-and-hold's temporary speed never reaches here: it is a gesture, not a choice — and
+     * its ladder reaches 4× and 5×, which [PlaybackSpeed.fromStorage] would reject anyway.
      */
     val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
     /**

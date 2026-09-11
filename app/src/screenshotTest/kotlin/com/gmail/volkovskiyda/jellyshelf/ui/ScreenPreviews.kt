@@ -430,6 +430,19 @@ private fun SeekGesturePill() {
     }
 }
 
+/**
+ * The press-and-hold pill at a speed only a swipe can reach — the half of the ladder the speed
+ * menu does not offer, so a golden here is the only thing watching how it renders.
+ */
+@PreviewTest
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun SpeedGesturePill() {
+    PreviewTheme(darkTheme = true) {
+        GestureIndicatorPill(GestureIndicator.Speed(speed = 5f))
+    }
+}
+
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
 @Composable

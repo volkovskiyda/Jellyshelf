@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -29,8 +30,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * The player surface's one drag gesture: a decisively horizontal drag scrubs. A full surface
@@ -162,20 +167,132 @@ internal fun Modifier.playerDragGestures(handler: PlayerGestureHandler): Modifie
     }
 
 /**
- * Calls [onRelease] every time a gesture ends — whoever consumed the events in between.
+ * Press-and-hold's temporary speed, and the horizontal swipe that retunes it without lifting.
  *
- * The whole point is the pass it listens on. [PointerEventPass.Initial] is dispatched before the
- * Main pass, where the tap detector consumes the rest of a long press's event stream; a Main-pass
- * `waitForUpOrCancellation` reads that consumption as a cancellation and fires early, which is
- * why press-and-hold cannot find its own release any other way. Meant to run alongside
- * `detectTapGestures` in one `pointerInput`, whose `onLongPress` has no release half.
+ * A hold starts at [PlaybackSpeed.HOLD_DEFAULT] and every [stepPx] of travel from the point the
+ * press landed moves one rung along [PlaybackSpeed.holdOptions], right for faster, clamped at both
+ * ends. Travel is measured from that anchor rather than accumulated per event, so sliding back
+ * returns through exactly the same speeds — an incremental sum would drift by a rung and never
+ * come home.
+ *
+ * A plain class so the ladder arithmetic is unit-testable on the JVM, matching
+ * [PlayerGestureHandler]; the screen owns what a new speed *does* (override, pill, haptics).
  */
-internal suspend fun PointerInputScope.awaitGestureReleases(onRelease: () -> Unit) {
+internal class HoldSpeedTracker(private val host: Host) {
+
+    /** The player screen's side: a hold's speed as it changes, and the end of the hold. */
+    interface Host {
+        /** The hold's speed, on the press itself and again on every rung the swipe crosses. */
+        fun onHoldSpeed(speed: Float)
+
+        /** The held finger lifted — only ever after an [onHoldSpeed]. */
+        fun onHoldEnd()
+    }
+
+    /** Whether a press-and-hold is in flight, which is what keeps a swipe off the seek path. */
+    var isHolding = false
+        private set
+
+    private var startX = 0f
+    private var stepPx = 1f
+    private var anchorIndex = 0
+    private var index = 0
+
+    /** The long press fired: force the default and anchor the swipe to where the finger is. */
+    fun start(position: Offset, stepPx: Float) {
+        isHolding = true
+        startX = position.x
+        this.stepPx = if (stepPx > 0f) stepPx else 1f
+        anchorIndex = PlaybackSpeed.holdOptions.indexOf(PlaybackSpeed.HOLD_DEFAULT)
+        index = anchorIndex
+        host.onHoldSpeed(PlaybackSpeed.holdOptions[index])
+    }
+
+    /** Inert unless a hold is in flight: this sees every gesture's movement, not only a hold's. */
+    fun move(position: Offset) {
+        if (!isHolding) return
+        val steps = ((position.x - startX) / stepPx).roundToInt()
+        val moved = (anchorIndex + steps).coerceIn(PlaybackSpeed.holdOptions.indices)
+        if (moved == index) return
+        index = moved
+        host.onHoldSpeed(PlaybackSpeed.holdOptions[moved])
+    }
+
+    /** The finger lifted, or the gesture was cancelled. Safe on a gesture that never held. */
+    fun end() {
+        if (!isHolding) return
+        isHolding = false
+        host.onHoldEnd()
+    }
+}
+
+/**
+ * The player surface's finger gestures that are not drags: tap, double-tap, and press-and-hold
+ * with the swipe that retunes its speed.
+ *
+ * All of it belongs in one pointer node because the halves are not separable. `detectTapGestures`
+ * consumes the rest of a long press's event stream, so a gesture detector downstream of it — the
+ * scrub's `detectDragGestures`, say — rejects the swipe as already handled; only a reader sitting
+ * beside it in the same node sees the movement at all (see [awaitHoldPointer]). Splitting them
+ * across two `pointerInput` nodes would also let one restart mid-gesture and strand a hold at
+ * speed with nothing left to undo it.
+ *
+ * [key] is what the node restarts on; pass everything the callbacks close over. Kept here rather
+ * than inline on the screen so an instrumented test can drive the real wiring.
+ */
+internal fun Modifier.playerTapGestures(
+    key: Any?,
+    holdSpeed: HoldSpeedTracker,
+    onTap: () -> Unit,
+    onDoubleTap: (Offset, IntSize) -> Unit,
+    onHoldRelease: () -> Unit,
+): Modifier = pointerInput(key) {
+    coroutineScope {
+        launch {
+            detectTapGestures(
+                onDoubleTap = { offset -> onDoubleTap(offset, size) },
+                onLongPress = { offset -> holdSpeed.start(offset, HOLD_SPEED_STEP.toPx()) },
+                onTap = { onTap() },
+            )
+        }
+        // onLongPress has neither a movement nor a release half; this supplies both.
+        launch {
+            awaitHoldPointer(onMove = holdSpeed::move) {
+                holdSpeed.end()
+                onHoldRelease()
+            }
+        }
+    }
+}
+
+/**
+ * Reports the pointer's position for the whole of every gesture, then calls [onRelease] when it
+ * ends — whoever consumed the events in between.
+ *
+ * The pass it listens on is what makes it work. [PointerEventPass.Initial] is dispatched before
+ * the Main pass, where the tap detector consumes the rest of a long press's event stream; a
+ * Main-pass `waitForUpOrCancellation` reads that consumption as a cancellation and fires early,
+ * which is why press-and-hold cannot find its own release any other way. Reading the raw event
+ * loop rather than that helper is the other half: a consumed change is still *delivered*, so the
+ * positions a swipe-while-held is made of survive the tap detector either way — but only here,
+ * beside it, since anything downstream treats the consumption as a gesture already claimed.
+ *
+ * Nothing is consumed here — the tap detector on the Main pass still has to see its own taps.
+ * Meant to run alongside `detectTapGestures` in one `pointerInput`, whose `onLongPress` has
+ * neither a movement nor a release half.
+ */
+internal suspend fun PointerInputScope.awaitHoldPointer(
+    onMove: (Offset) -> Unit,
+    onRelease: () -> Unit,
+) {
     awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         var event: PointerEvent
         do {
             event = awaitPointerEvent(PointerEventPass.Initial)
+            // By id rather than the first change: a second finger landing must not hand the hold
+            // a position that jumps across the surface.
+            event.changes.firstOrNull { it.id == down.id }?.let { onMove(it.position) }
         } while (event.changes.any { it.pressed })
         onRelease()
     }
@@ -257,6 +374,16 @@ private fun SeekIndicator(indicator: GestureIndicator.Seek) {
         style = MaterialTheme.typography.labelLarge,
     )
 }
+
+/**
+ * How far a held finger travels to move one rung along [PlaybackSpeed.holdOptions].
+ *
+ * Wide enough that a hold meant to sit still does not drift off 2×, narrow enough that both ends
+ * of the ladder are in reach: six rungs down to 0.5× is 192 dp, four up to 5× is 128 dp.
+ *
+ * Internal rather than private so the gesture test measures its travel in real rungs.
+ */
+internal val HOLD_SPEED_STEP = 32.dp
 
 /** A drag must travel twice as far along one axis as the other before it locks. */
 private const val AXIS_LOCK_RATIO = 2f

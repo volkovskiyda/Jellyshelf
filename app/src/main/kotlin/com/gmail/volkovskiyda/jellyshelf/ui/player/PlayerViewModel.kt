@@ -227,7 +227,7 @@ class PlayerViewModel(
      * Remembers a speed picked from the speed menu as the one later playback starts at
      * ([PlaybackService] applies it when it builds the player). Applying it to the *current*
      * player is the caller's job — media3's speed-button state does that — so this is only the
-     * write. Press-and-hold's temporary 3× never comes through here.
+     * write. Press-and-hold's temporary speed never comes through here.
      *
      * On [DispatcherProvider.applicationScope] rather than [viewModelScope] because picking a
      * speed and leaving is one gesture — 2×, then Back — and a `viewModelScope` write would be

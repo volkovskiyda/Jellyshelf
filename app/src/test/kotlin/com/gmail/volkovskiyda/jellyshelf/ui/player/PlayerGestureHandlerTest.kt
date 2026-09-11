@@ -16,7 +16,7 @@ import org.junit.Test
 class PlayerGestureHandlerTest {
 
     private class RecordingHost(
-        private val seekable: Boolean = true,
+        var seekable: Boolean = true,
         private val seekStart: Long = 60_000L,
         private val seekDuration: Long = 600_000L,
     ) : PlayerGestureHandler.Host {
@@ -195,5 +195,28 @@ class PlayerGestureHandlerTest {
         handler.onDragEnd()
 
         assertEquals(1, host.ended)
+    }
+
+    /**
+     * The seam press-and-hold's swipe rides on: [PlayerGestureHandler.Host.canSeek] is asked once,
+     * when the drag locks, and a refusal there keeps the whole of that gesture off the seek path.
+     * The screen refuses while a hold is in flight, so a finger that holds and then slides adjusts
+     * the speed without also scrubbing — and it must stay that way for the rest of the gesture even
+     * though the hold's own flag clears the moment the finger lifts.
+     */
+    @Test
+    fun `a drag refused at lock time stays inert even once seeking is allowed again`() {
+        val host = RecordingHost(seekable = false)
+        val handler = PlayerGestureHandler(host)
+
+        handler.onDragStart(Offset(500f, 450f), size)
+        handler.onDrag(Offset(100f, 0f))
+        host.seekable = true
+        handler.onDrag(Offset(100f, 0f))
+        handler.onDragEnd()
+
+        assertTrue(host.seekPreviews.isEmpty())
+        assertTrue(host.seekCommits.isEmpty())
+        assertEquals(0, host.ended)
     }
 }

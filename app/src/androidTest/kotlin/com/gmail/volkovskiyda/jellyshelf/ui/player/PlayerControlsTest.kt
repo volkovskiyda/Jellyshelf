@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
+import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -134,8 +135,8 @@ class PlayerControlsTest {
      * looking for `"1.5×"` fails, while the `assertDoesNotExist` lines beside them pass
      * **vacuously** — they assert the absence of a string that was never on screen, so a real
      * regression would go through green. Locales with non-Latin digits break the whole-number
-     * labels too, which is why `1×` and `3×` come through here as well rather than only the
-     * fractional ones.
+     * labels too, which is why `1×`, `3×` and the hold-only `4×`/`5×` come through here as well
+     * rather than only the fractional ones.
      */
     private fun speedLabel(speed: Float): String =
         composeRule.activity.getString(
@@ -315,6 +316,28 @@ class PlayerControlsTest {
         composeRule.onNodeWithText(speedLabel(3f)).performScrollTo().performClick()
 
         assertEquals(3f, applied)
+    }
+
+    /**
+     * 4× and 5× are reachable only by swiping during a press-and-hold, and a hold's speed is never
+     * saved. Offering either here would make it a persisted setting — a video left playing at 5×,
+     * and a chip showing a speed the next launch restores. The menu is [PlaybackSpeed.options],
+     * which is deliberately shorter than [PlaybackSpeed.holdOptions].
+     *
+     * Both labels go through [speedLabel]: hard-coding `"4×"` would assert the absence of a string
+     * that never renders on a `uk-UA` device, and pass vacuously there.
+     */
+    @Test
+    fun theSpeedMenu_doesNotOfferTheHoldOnlySpeeds() {
+        setControls()
+
+        composeRule.onNodeWithText(speedLabel(1f)).performClick()
+        // The menu is open and scrollable: 3× is present, so its absent neighbours are a real
+        // absence rather than a menu that failed to open.
+        composeRule.onNodeWithText(speedLabel(3f)).performScrollTo().assertIsDisplayed()
+
+        composeRule.onNodeWithText(speedLabel(4f)).assertDoesNotExist()
+        composeRule.onNodeWithText(speedLabel(5f)).assertDoesNotExist()
     }
 
     @Test

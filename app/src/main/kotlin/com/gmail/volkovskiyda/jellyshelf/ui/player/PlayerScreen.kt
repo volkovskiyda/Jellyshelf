@@ -73,12 +73,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
@@ -131,9 +133,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.rememberCopyToClipboard
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.text.NumberFormat
@@ -417,12 +417,14 @@ private fun PlayerWithControls(
     val hasPrevious = playlist.currentMediaItemIndex > 0
     val hasNext = playlist.currentMediaItemIndex in 0..<playlist.mediaItemCount - 1
 
-    // Press-and-hold forces 3× until the finger lifts; PlaybackSpeedState remembers the speed to
-    // go back to, so a hold started at 1.5× returns to 1.5×. Its release half runs in the pointer
-    // handler below, which only exists while this composition does — so a hold interrupted by the
-    // composable going away (rotating with the finger still down recreates the activity) would
-    // leave the *session* at 3× with nothing holding it there. The player outlives this screen,
-    // so undoing the hold has to be tied to the screen's lifetime as well as to the finger's.
+    // Press-and-hold forces a temporary speed until the finger lifts — 2× to begin with, and
+    // whatever the swipe walks it to after that (see HoldSpeedTracker). PlaybackSpeedState
+    // remembers the speed to go back to, so a hold started at 1.5× returns to 1.5× however far the
+    // swipe wandered. Its release half runs in the pointer handler below, which only exists while
+    // this composition does — so a hold interrupted by the composable going away (rotating with
+    // the finger still down recreates the activity) would leave the *session* sped up with nothing
+    // holding it there. The player outlives this screen, so undoing the hold has to be tied to the
+    // screen's lifetime as well as to the finger's.
     DisposableEffect(playbackSpeed) {
         onDispose { playbackSpeed.restoreOverriddenSpeed() }
     }
@@ -431,9 +433,35 @@ private fun PlayerWithControls(
     // lingers briefly after the finger lifts, then hides.
     var gestureIndicator by remember { mutableStateOf<GestureIndicator?>(null) }
     var gestureActive by remember { mutableStateOf(false) }
+    // Press-and-hold's speed, and the swipe that retunes it without lifting. Remembered on the
+    // controller like the drag handler, so neither restarts mid-gesture.
+    val haptics = LocalHapticFeedback.current
+    val holdSpeed = remember(controller) {
+        HoldSpeedTracker(object : HoldSpeedTracker.Host {
+            override fun onHoldSpeed(speed: Float) {
+                playbackSpeed.temporarilyOverrideSpeedWith(speed)
+                gestureActive = true
+                gestureIndicator = GestureIndicator.Speed(speed)
+                // Only the round landmarks tick, the press's own 2× among them: a rung every
+                // 32 dp means ticking all eleven would buzz through a slow swipe.
+                if (speed in PlaybackSpeed.hapticLandmarks) {
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                }
+            }
+
+            override fun onHoldEnd() = Unit
+        })
+    }
     val gestureHandler = remember(controller) {
         PlayerGestureHandler(object : PlayerGestureHandler.Host {
-            override fun canSeek() = controller.isCurrentMediaItemSeekable && controller.duration > 0
+            // A hold that has begun owns the finger: without this the drag node — the inner of the
+            // two pointer nodes, so it reads the Main pass before the tap detector consumes it —
+            // would lock a scrub under the swipe and fight it for the pill. canSeek() is read once
+            // per gesture, when the drag locks, so refusing here keeps the whole of that gesture
+            // off the seek path.
+            override fun canSeek() =
+                !holdSpeed.isHolding && controller.isCurrentMediaItemSeekable &&
+                    controller.duration > 0
 
             override fun seekStartMs() = controller.currentPosition.coerceAtLeast(0)
 
@@ -482,42 +510,34 @@ private fun PlayerWithControls(
     Box(
         Modifier
             .fillMaxSize()
-            // Both halves of the hold live in one pointerInput, keyed on the controller the
-            // button states are themselves remembered from, so neither can restart mid-gesture.
-            // Keyed on isInPip as well, so entering PiP tears the handlers down: a double-tap
-            // seek or a press-and-hold from a 200 dp window would be an accident every time, and
-            // the platform reads taps there as "expand me" anyway.
-            .pointerInput(controller, isInPip) {
-                if (isInPip) return@pointerInput
-                coroutineScope {
-                    launch {
-                        detectTapGestures(
-                            // Which half was tapped picks the direction; the increments come from
-                            // the player, so a double-tap and the buttons cannot disagree.
-                            onDoubleTap = { offset ->
-                                if (offset.x < size.width / 2) {
-                                    seekBack.onClick()
-                                } else {
-                                    seekForward.onClick()
-                                }
-                            },
-                            onLongPress = {
-                                playbackSpeed.temporarilyOverrideSpeedWith(HOLD_SPEED)
-                                gestureActive = true
-                                gestureIndicator = GestureIndicator.Speed(HOLD_SPEED)
-                            },
-                            onTap = { controlsVisible = !controlsVisible },
-                        )
-                    }
-                    // onLongPress has no release half; this supplies it.
-                    launch {
-                        awaitGestureReleases {
+            // Both gesture nodes are keyed on the controller the button states are themselves
+            // remembered from, so neither can restart mid-gesture — and on isInPip, so entering
+            // PiP tears them down: a double-tap seek or a press-and-hold from a 200 dp window
+            // would be an accident every time, and the platform reads taps there as "expand me".
+            .then(
+                if (isInPip) {
+                    Modifier
+                } else {
+                    Modifier.playerTapGestures(
+                        key = controller,
+                        holdSpeed = holdSpeed,
+                        onTap = { controlsVisible = !controlsVisible },
+                        // Which half was tapped picks the direction; the increments come from the
+                        // player, so a double-tap and the buttons cannot disagree.
+                        onDoubleTap = { offset, size ->
+                            if (offset.x < size.width / 2) {
+                                seekBack.onClick()
+                            } else {
+                                seekForward.onClick()
+                            }
+                        },
+                        onHoldRelease = {
                             playbackSpeed.restoreOverriddenSpeed()
                             gestureActive = false
-                        }
-                    }
-                }
-            }
+                        },
+                    )
+                },
+            )
             .then(if (isInPip) Modifier else Modifier.playerDragGestures(gestureHandler)),
     ) {
         // The PiP source rect is the *fitted* video rect whatever the screen is showing, so it is
@@ -580,7 +600,7 @@ private fun PlayerWithControls(
                 onSeek = controller::seekTo,
                 onSetSpeed = { speed ->
                     playbackSpeed.updatePlaybackSpeed(speed)
-                    // Only a menu pick is a choice worth keeping. Press-and-hold's 3× is a
+                    // Only a menu pick is a choice worth keeping. Press-and-hold's speed is a
                     // temporary override on the same state, and is never saved.
                     onSpeedPicked(speed)
                 },
@@ -1245,9 +1265,6 @@ private fun formatPlayerTime(ms: Long): String {
     val builder = StringBuilder()
     return Util.getStringForTime(builder, Formatter(builder, Locale.getDefault()), ms)
 }
-
-/** What press-and-hold temporarily forces the speed to, until the finger lifts. */
-private const val HOLD_SPEED = 3f
 
 private const val POSITION_POLL_MS = 500L
 private const val CONTROLS_HIDE_DELAY_MS = 3_000L

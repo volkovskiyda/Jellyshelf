@@ -270,9 +270,11 @@ the External player mode.
   at zero, ascending, within the runtime — otherwise none, since wrong chapters are worse than
   no chapters). Previous-chapter restarts the current one when more than 3 s into it.
 - **Seeking** — 10 s back / 30 s forward, deliberately asymmetric. Drag horizontally to scrub
-  with a preview, seeking on release. Press and hold for 3× speed; the speed menu offers
-  0.5×–3×, and the speed picked there is remembered — later videos, and later launches, start at
-  it. The press-and-hold 3× is not: it is a gesture, and it ends with the finger.
+  with a preview, seeking on release. Press and hold for 2× speed, and keep sliding — without
+  lifting — to walk it anywhere from 0.5× to 5×, a step every 32 dp, buzzing only on the round
+  numbers. The speed menu offers 0.5×–3×, and the speed picked there is remembered: later videos,
+  and later launches, start at it. What a hold reaches is not, 4× and 5× least of all — a hold is
+  a gesture, and it ends with the finger.
 - **Background playback** — a `MediaSessionService` owns the player, so playback survives leaving
   the screen and system surfaces (notification, output switcher, Android Auto) can drive it.
   Tapping the notification reopens the player on whatever is playing.
