@@ -2,7 +2,10 @@ package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import android.content.ClipboardManager
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -95,6 +98,8 @@ class PlayerControlsTest {
         onEnterPip: () -> Unit = {},
     ) {
         composeRule.setContent {
+            // The speed menu's open flag is hoisted out of the controls, so the harness holds it.
+            var speedMenuOpen by remember { mutableStateOf(false) }
             JellyshelfTheme(dynamicColor = false) {
                 PlayerControls(
                     // Everything transport reads its state off the player now, so the harness
@@ -117,7 +122,8 @@ class PlayerControlsTest {
                     onCycleScaleMode = onCycleScaleMode,
                     onRotateToLandscape = onRotateToLandscape,
                     onScrubbingChanged = {},
-                    onSpeedMenuChanged = {},
+                    speedMenuOpen = speedMenuOpen,
+                    onSpeedMenuChanged = { speedMenuOpen = it },
                     onOpenChapters = {},
                     onBack = onBack,
                     onMinimize = onMinimize,

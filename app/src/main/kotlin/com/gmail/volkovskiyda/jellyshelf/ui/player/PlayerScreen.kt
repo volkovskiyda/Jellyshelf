@@ -417,11 +417,14 @@ private fun PlayerWithControls(
     val playlist = rememberPlaylistState(controller)
     val hasPrevious = playlist.currentMediaItemIndex > 0
     val hasNext = playlist.currentMediaItemIndex in 0..<playlist.mediaItemCount - 1
-    // A chapter list belongs to the video it was opened for. The queue can move on while it is up
-    // — the transport arrows sit beside it, and the previous video can simply end — so every
-    // transition closes it, rather than leaving the next video's list (or, without chapters, a bare
-    // heading over a scrim) where the last one's was.
-    LaunchedEffect(playlist.currentMediaItemIndex) { chaptersOpen = false }
+    // The chapter list and the speed menu belong to the video they were opened for. The queue can
+    // move on while one is up — the transport arrows sit beside them, and the previous video can
+    // simply end — so every transition closes both, rather than leaving the next video's chapter
+    // list (or, without chapters, a bare heading over a scrim) or a menu where the last one's was.
+    LaunchedEffect(playlist.currentMediaItemIndex) {
+        chaptersOpen = false
+        speedMenuOpen = false
+    }
 
     // Press-and-hold forces a temporary speed until the finger lifts — 2× to begin with, and
     // whatever the swipe walks it to after that (see HoldSpeedTracker). PlaybackSpeedState
@@ -625,6 +628,7 @@ private fun PlayerWithControls(
                     controlsTouched++
                 },
                 onScrubbingChanged = { scrubbing = it },
+                speedMenuOpen = speedMenuOpen,
                 onSpeedMenuChanged = { speedMenuOpen = it },
                 onOpenChapters = { chaptersOpen = true },
                 onBack = onBack,
@@ -720,6 +724,7 @@ internal fun PlayerControls(
     onCycleScaleMode: () -> Unit,
     onRotateToLandscape: () -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
+    speedMenuOpen: Boolean,
     onSpeedMenuChanged: (Boolean) -> Unit,
     onOpenChapters: () -> Unit,
     onBack: () -> Unit,
@@ -781,6 +786,7 @@ internal fun PlayerControls(
                     )
                     SpeedMenuButton(
                         speed = speed,
+                        menuOpen = speedMenuOpen,
                         onSetSpeed = onSetSpeed,
                         onMenuChanged = onSpeedMenuChanged,
                     )
@@ -1069,21 +1075,20 @@ private fun transportTint(enabled: Boolean): Color =
 
 /**
  * The playback-speed chip and its menu: the chip shows the current speed, tapping an option
- * applies it immediately. Open state lives here (it is pure interaction), but is reported via
- * [onMenuChanged] so the caller keeps the controls overlay pinned while the menu is up.
+ * applies it immediately. Open state is the caller's ([menuOpen] / [onMenuChanged]) rather than
+ * this button's: the caller pins the controls overlay while the menu is up, and closes the menu
+ * from outside — on a video transition, or on the way into PiP — which a private flag here could
+ * not be told to do.
  */
 @Composable
 private fun SpeedMenuButton(
     speed: Float,
+    menuOpen: Boolean,
     onSetSpeed: (Float) -> Unit,
     onMenuChanged: (Boolean) -> Unit,
 ) {
     Box {
-        var menuOpen by remember { mutableStateOf(false) }
-        fun setMenu(open: Boolean) {
-            menuOpen = open
-            onMenuChanged(open)
-        }
+        fun setMenu(open: Boolean) = onMenuChanged(open)
         // The chip's text is the bare value ("1×"); the description says what the button *is*.
         val speedLabel = stringResource(R.string.playback_speed)
         TextButton(
