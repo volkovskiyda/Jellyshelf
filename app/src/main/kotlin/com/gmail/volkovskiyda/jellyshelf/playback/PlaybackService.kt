@@ -172,12 +172,19 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         // OkHttp rather than off it — our Ktor engine is OkHttp — and onto its own client, since a
         // stream is one long request that neither the API client's whole-request timeout nor its
         // expectSuccess contract suits. See AppModule.provideMediaHttpClient.
+        //
+        // Wrapped in [IdleReconnectDataSource], which reopens a stream that has sat untouched long
+        // enough to have died unnoticed — a pause does not close a stream, it only stops reading
+        // one, and the socket under a paused video (or under the preloaded next one) is on its own
+        // for as long as the pause lasts.
         val httpFactory = DataSource.Factory {
-            KtorDataSource.Factory(mediaHttpClient)
-                .setDefaultRequestProperties(
-                    mapOf(Playback.TOKEN_HEADER to settingsState.settings.value?.credential.orEmpty()),
-                )
-                .createDataSource()
+            IdleReconnectDataSource(
+                KtorDataSource.Factory(mediaHttpClient)
+                    .setDefaultRequestProperties(
+                        mapOf(Playback.TOKEN_HEADER to settingsState.settings.value?.credential.orEmpty()),
+                    )
+                    .createDataSource(),
+            )
         }
         // Media3's standard composition: `asset:` and `file:` URIs — which is what a demo video
         // resolves to — route to local sources, while every http(s) URI is handed to the factory
@@ -852,6 +859,17 @@ class PlaybackService : MediaSessionService(), KoinComponent {
          * traffic and in memory, to shorten a wait that is already gone. Three seconds of a
          * direct-played 1080p stream is a few megabytes against a server that is usually on the
          * same network.
+         *
+         * **More is not better, and this was measured.** Fifteen seconds was tried twice while
+         * benchmarking queue advances: one run died in teardown with the session still alive, and
+         * the other produced a thirty-second stall. Raising this is not the way to make an advance
+         * faster.
+         *
+         * Note what preloading implies for the connection rather than the buffer: the next video's
+         * stream is opened here and then left untouched until the queue reaches it, so across a long
+         * pause it is the oldest idle socket in the player. [IdleReconnectDataSource] is what makes
+         * that safe — without it, preloading would hand every queue advance after a pause a
+         * connection that had been sitting unused for the whole of it.
          */
         private const val PRELOAD_TARGET_DURATION_US = 3_000_000L
 

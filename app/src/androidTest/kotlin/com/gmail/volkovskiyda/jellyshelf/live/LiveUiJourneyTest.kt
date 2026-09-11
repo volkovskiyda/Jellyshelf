@@ -483,6 +483,8 @@ class LiveUiJourneyTest : KoinTest {
             )
         }
 
+        surviveAStalePause()
+
         // Far enough in to clear the app's own resume bar — the smaller of a tenth of the video and
         // a minute — at any duration, and well short of the 90% at which the server would call the
         // video watched. Driving the semantics action is what a screen reader's "set progress"
@@ -502,6 +504,50 @@ class LiveUiJourneyTest : KoinTest {
                 ?.takeIf { it.playbackPositionTicks > 0 && !it.played }
         }
         assertServerResumePoint(target)
+    }
+
+    /**
+     * Leaves the video paused long enough for its HTTP stream to count as stale, then resumes and
+     * insists playback actually moves again.
+     *
+     * **What this covers that nothing else can.** Pausing does not close a stream, it stops reading
+     * one, so the socket under a paused video — and the one under the few preloaded seconds of the
+     * *next* video — sits untouched for as long as the pause lasts. Left alone, a connection a proxy
+     * or a NAT has since dropped is only discovered on the next read, which is why a video paused
+     * for a while could come back to a spinner that never cleared. `IdleReconnectDataSource`
+     * reconnects instead, and this is the only test that exercises it against a real server, a real
+     * range request and whatever sits in front of Jellyfin.
+     *
+     * The wait is deliberately longer than that reconnect threshold rather than equal to it, so the
+     * test does not turn on a boundary it cannot observe. It is not asserted that a reconnect
+     * *happened*: whether the stream had already been read to its end during the play above depends
+     * on the file's size, and a test that demanded a reconnect would fail on a short target for a
+     * reason that has nothing to do with the behaviour under test. What matters — and what broke —
+     * is that playback resumes.
+     *
+     * Resume, play, then pause again before reading the seek bar: a playing player hides its
+     * controls, and [seekBarFraction] is passive by design (see its KDoc — a polling loop that taps
+     * to reveal them reads as a double-tap seek). Pausing is also what leaves the caller where it
+     * found the player, so the seek that follows is unaffected.
+     */
+    private fun surviveAStalePause() {
+        val before = seekBarFraction()
+        pausedFor(STALE_PAUSE_MS)
+
+        clickPlayerControl(string(R.string.play))
+        awaitContentDescription(string(R.string.pause), PLAYBACK_TIMEOUT_MS)
+        playFor(RESUME_PLAY_MS)
+        clickPlayerControl(string(R.string.pause))
+        awaitContentDescription(string(R.string.play))
+
+        runCatching {
+            composeRule.waitUntil(AWAIT_TIMEOUT_MS) { seekBarFraction() > before }
+        }.getOrElse {
+            error(
+                "playback did not advance after a ${STALE_PAUSE_MS / MILLIS_PER_SECOND}s pause — " +
+                    "the stream did not survive going idle",
+            )
+        }
     }
 
     /** The player's seek bar, by the action it carries rather than by a tag it does not have. */
@@ -538,6 +584,15 @@ class LiveUiJourneyTest : KoinTest {
         val deadline = System.currentTimeMillis() + millis
         composeRule.waitUntil(millis + AWAIT_TIMEOUT_MS) { System.currentTimeMillis() >= deadline }
     }
+
+    /**
+     * The same clock-turning wait as [playFor], for the stretch where nothing is playing.
+     *
+     * Named apart rather than reusing [playFor] at the call site because the distinction is the
+     * point of [surviveAStalePause]: what the stream has to survive is time in which it is *not*
+     * being read.
+     */
+    private fun pausedFor(millis: Long) = playFor(millis)
 
     /**
      * Clicks a player control, bringing the controls back first if they are not on screen.
@@ -772,6 +827,21 @@ class LiveUiJourneyTest : KoinTest {
          * change here.
          */
         const val PAST_FIRST_TICK_MS = 13_000L
+
+        /**
+         * How long to leave the video paused in [surviveAStalePause].
+         *
+         * Comfortably past `IdleReconnectDataSource`'s thirty-second staleness threshold rather
+         * than equal to it, so the test is not deciding a boundary case it has no way to observe.
+         * Coupled to that constant by intent, the same way [PAST_FIRST_TICK_MS] is coupled to the
+         * position tick: it is private to the app, so a change there wants a change here.
+         */
+        const val STALE_PAUSE_MS = 35_000L
+
+        /** Long enough after resuming for the seek bar to have visibly moved on any bitrate. */
+        const val RESUME_PLAY_MS = 8_000L
+
+        const val MILLIS_PER_SECOND = 1_000L
 
         /** A stream that advanced less than this while playing never really rolled. */
         const val MIN_PLAYED_SECONDS = 5f
