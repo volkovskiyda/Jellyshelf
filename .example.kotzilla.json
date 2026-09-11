@@ -1,0 +1,19 @@
+{
+    "keys": [
+        {
+            "appId": "<debug app id from console.kotzilla.io>",
+            "applicationPackageName": "com.gmail.volkovskiyda.jellyshelf.debug",
+            "keyId": "<debug key id>",
+            "apiKey": "ktz-sdk-<debug ingestion key>",
+            "flavor": "debug",
+            "isDefault": true
+        },
+        {
+            "appId": "<release app id from console.kotzilla.io>",
+            "applicationPackageName": "com.gmail.volkovskiyda.jellyshelf",
+            "keyId": "<release key id>",
+            "apiKey": "ktz-sdk-<release ingestion key>",
+            "flavor": "release"
+        }
+    ]
+}

@@ -22,6 +22,11 @@ build
 keystore.properties
 *.jks
 /firebase-ci.json
+# The one that isn't at the repo root: the Kotzilla Gradle plugin reads the project file from the
+# module it is applied to. It carries the ingestion API keys (one per build type), so it is
+# ignored like the files above; .example.kotzilla.json is its committed template and CI restores
+# the real one from a secret. Absent, the plugin is disabled and the build still works.
+/app/kotzilla.json
 
 # /debug.keystore is deliberately NOT ignored. It is committed so this machine, any contributor
 # and CI all sign debug builds with the same certificate — the Firebase API key's Android app
