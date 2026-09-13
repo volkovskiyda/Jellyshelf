@@ -127,6 +127,18 @@ object Traces {
     const val PLAYER_STARTUP = "Jellyshelf.player.startup"
 
     /**
+     * A seek within the item already playing, to the frame it produces.
+     *
+     * Only the service can measure this. The seek bar fires its own `seekTo` from inside media3's
+     * `ProgressSlider`, so the app never sees that one at a call site — the player's position
+     * discontinuity is the only place every seek shows up. The resume-seeding seek the service
+     * performs itself is excluded: nobody waited for it.
+     *
+     * Async, like the two below, and closed by the same rendered frame.
+     */
+    const val PLAYER_SEEK = "Jellyshelf.player.seek"
+
+    /**
      * One media item to the first frame of the next: what a queue advance costs, whether it came
      * from the next button or from an item simply ending.
      *

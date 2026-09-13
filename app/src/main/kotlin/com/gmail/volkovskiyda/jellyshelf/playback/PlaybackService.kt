@@ -25,7 +25,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import androidx.tracing.traceAsync
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.di.MEDIA_HTTP_CLIENT
@@ -39,13 +38,12 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import com.google.common.util.concurrent.ListenableFuture
-import com.google.firebase.perf.FirebasePerformance
-import com.google.firebase.perf.metrics.Trace
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +60,6 @@ import org.koin.core.component.inject
 import org.koin.core.qualifier.named
 import timber.log.Timber
 import java.util.UUID
-import androidx.tracing.Trace as SystemTrace
 
 /**
  * The app's playback engine: one [ExoPlayer] owned by a [MediaSessionService], so playback
@@ -110,6 +107,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val buildInfo: BuildInfo by inject()
     private val syncScheduler: SyncScheduler by inject()
     private val mediaHttpClient: HttpClient by inject(named(MEDIA_HTTP_CLIENT))
+    private val metrics: Metrics by inject()
 
     // The player's application thread is this service's main thread; session callbacks, the
     // listener and the periodic saver all stay on it, which is also what makes the plain-var
@@ -138,23 +136,20 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private var progressJob: Job? = null
 
     /**
-     * The user-perceived startup being timed: set when a controller hands the session a queue,
-     * consumed by [StartupTraceListener] at the first rendered frame. A trace that is replaced
-     * or abandoned is deliberately never stopped — an unstopped trace is never reported.
+     * The startup, queue advance and seek being timed — each opened in one callback and closed by
+     * the rendered frame that ends the wait. Every rule about which of them a frame closes, and
+     * which are dropped instead of reported, lives in [PlaybackSpans].
+     *
+     * Lazy because the Koin graph is not resolvable at field-initialisation time on a service.
      */
-    private var startupTrace: Trace? = null
+    private val spans: PlaybackSpans by lazy { PlaybackSpans(metrics) }
 
     /**
-     * The open cookies of the two async trace sections in [Traces], or null when none is running.
-     *
-     * Kept as fields rather than derived at the end, because an async section has to be closed with
-     * the *same* cookie it was opened with and the media item it came from may already have changed
-     * by then. A section left open is worse than an unstopped Firebase trace — Perfetto draws it as
-     * a slice running to the end of the capture — so every path that abandons [startupTrace]
-     * clears these too.
+     * The media id [ResumeSeedingListener] is about to seek, so the discontinuity it causes is not
+     * counted as a seek the user waited for. Both run on the application thread in order, and it is
+     * cleared by the next item change in case the seek never lands.
      */
-    private var startupSectionCookie: Int? = null
-    private var transitionSectionCookie: Int? = null
+    private var seedingSeekFor: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -317,8 +312,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         if (p != null) watch.onDestroy(p.currentPosition).perform()
         // A teardown mid-startup (swiped from recents before the first frame) is the one abandon
         // path the queue-empty close in WatchStateListener cannot see.
-        startupSectionCookie = endSection(Traces.PLAYER_STARTUP, startupSectionCookie)
-        transitionSectionCookie = endSection(Traces.PLAYER_TRANSITION, transitionSectionCookie)
+        spans.abandonAll()
         nowPlaying.detach()
         session?.release()
         p?.release()
@@ -349,32 +343,14 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             // The closest observable moment to the user's tap: startup includes resolving the
             // queue below, preparing, and possibly the transcode fallback — everything between
-            // here and the first rendered frame. Names are API (the console keys off them):
-            // trace "player_startup", attribute "source" (direct|hls). Replacing a still-pending
-            // trace abandons it: the user gave up on that startup and began another.
-            startupTrace = FirebasePerformance.getInstance().newTrace("player_startup")
-                .apply { start() }
-            // The local mirror of that trace, readable by a macrobenchmark without a release build
-            // — see [Traces.PLAYER_STARTUP]. Same lifecycle as the Firebase one, abandonment
-            // included: replacing a pending startup closes the section that was measuring it,
-            // rather than leaking a slice that runs to the end of the capture.
-            startupSectionCookie?.let { SystemTrace.endAsyncSection(Traces.PLAYER_STARTUP, it) }
-            startupSectionCookie = mediaItems.firstOrNull()?.mediaId.hashCode().also {
-                SystemTrace.beginAsyncSection(Traces.PLAYER_STARTUP, it)
-            }
+            // here and the first rendered frame. The cookie is what lets two overlapping startups
+            // be told apart, so it comes from the video being started rather than being a constant.
+            spans.startupBegan(mediaItems.firstOrNull()?.mediaId.hashCode())
             return scope.future {
-                // An *async* section, not a `trace { }` one: resolving suspends on DataStore and
-                // Room, so it can resume on a thread other than the one it began on, and
-                // beginSection/endSection are thread-confined — a plain section would be closed on
-                // the wrong track or not at all. The cookie is what lets two overlapping startups
-                // be told apart, so it comes from the video being started rather than being a
-                // constant. See [Traces.PLAYER_RESOLVE].
-                val resolved = traceAsync(
-                    Traces.PLAYER_RESOLVE,
-                    mediaItems.firstOrNull()?.mediaId.hashCode(),
-                ) {
-                    resolveAll(mediaItems)
-                }
+                // Resolving suspends on DataStore and Room, so it can resume on a thread other
+                // than the one it began on — which is why its span is asynchronous and why it is
+                // the one shape Kotzilla can time as a block of its own.
+                val resolved = spans.resolving { resolveAll(mediaItems) }
                 if (startPositionMs != C.TIME_UNSET || resolved.items.isEmpty()) {
                     // A controller that wants a specific position passes one — the transcode
                     // fallback, which must land exactly where the failed decode left off.
@@ -502,21 +478,16 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             // a startup and is already measured as one. Counting it here as well would make the
             // two metrics move together and stop either from isolating anything. A null item is the
             // queue emptying, which is not an advance either.
+            seedingSeekFor = null
             if (mediaItem != null && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
-                transitionSectionCookie = endSection(Traces.PLAYER_TRANSITION, transitionSectionCookie)
-                transitionSectionCookie = mediaItem.mediaId.hashCode().also {
-                    SystemTrace.beginAsyncSection(Traces.PLAYER_TRANSITION, it)
-                }
+                spans.transitionBegan(mediaItem.mediaId.hashCode(), transitionReason(reason))
             }
             if (mediaItem == null) {
-                // The queue emptied with a startup or transition still measuring — a stop landed
-                // between a queue advance (or a tap) and the frame that would have closed it.
-                // Nothing will ever render that frame now, so close here or the slice runs to the
-                // end of the capture and corrupts the very metric the benchmark reads. The
-                // Firebase startup trace needs no twin of this: a trace never stop()ped is simply
-                // never reported.
-                startupSectionCookie = endSection(Traces.PLAYER_STARTUP, startupSectionCookie)
-                transitionSectionCookie = endSection(Traces.PLAYER_TRANSITION, transitionSectionCookie)
+                // The queue emptied with something still measuring — a stop landed between a queue
+                // advance (or a tap) and the frame that would have closed it. Nothing will ever
+                // render that frame now, so drop them here or the slices run to the end of the
+                // capture and corrupt the very metric the benchmark reads.
+                spans.abandonAll()
             }
             watch.onItemChanged(
                 newMediaId = mediaItem?.mediaId,
@@ -581,6 +552,20 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 newMediaId = newPosition.mediaItem?.mediaId,
                 newPositionMs = newPosition.positionMs,
             )
+            // A seek *inside* the playing item. The same reason code also reports next/previous,
+            // which changes the item index and is already measured as a transition. The service's
+            // own resume seek is skipped: nobody waited for it.
+            val newMediaId = newPosition.mediaItem?.mediaId
+            val inItem = reason == Player.DISCONTINUITY_REASON_SEEK &&
+                oldPosition.mediaItemIndex == newPosition.mediaItemIndex
+            if (inItem && seedingSeekFor != null && seedingSeekFor == newMediaId) {
+                seedingSeekFor = null
+            } else if (inItem) {
+                spans.seekBegan(
+                    cookie = newMediaId.hashCode(),
+                    distanceMs = newPosition.positionMs - oldPosition.positionMs,
+                )
+            }
             // A seek moves the bar's line too. The tick job runs only while playing, so without
             // this a scrub made while paused leaves the mini-player bar holding the pre-seek
             // fraction for as long as the pause lasts; while playing this is merely one tick
@@ -685,38 +670,31 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 // suspended — seeking now would land in whatever is playing instead.
                 if (player !== p || p.currentMediaItem?.mediaId != mediaId) return@launch
                 Timber.tag(Playback.TAG).d("resuming $mediaId at ${seekMs}ms")
+                seedingSeekFor = mediaId
                 p.seekTo(seekMs)
             }
         }
     }
 
     /**
-     * Closes [startupTrace] at the moment the startup it measures becomes visible — the first
-     * rendered frame — tagging its `source` as `direct` or `hls` (a startup that went through the
-     * transcode fallback, whose durations will naturally run worse). A demo startup is abandoned
-     * instead: the bundled asset plays locally and would only pollute the duration distribution
-     * (the same reason demo syncs are untraced). A terminal error abandons the pending trace too,
-     * so a much-later manual retry can't report the idle time in between as a minutes-long
-     * "startup" — but a decode failure the transcode fallback is about to retry keeps it pending
-     * on purpose, because that retry is part of what the user waits through.
+     * Hands the first rendered frame to [PlaybackSpans], which is where every rule about what that
+     * frame closes lives — and drops whatever was pending when playback fails terminally, so a
+     * much-later manual retry cannot report the idle time in between as a minutes-long startup.
+     *
+     * The frame carries the two things the spans cannot see for themselves: whether the item is
+     * playing the server's transcode, and whether it is the bundled demo clip.
      */
     private inner class StartupTraceListener : Player.Listener {
         override fun onRenderedFirstFrame() {
-            // The two system-trace sections close first and unconditionally, before the Firebase
-            // trace's own rules get a say: they are a local measurement and have neither its
-            // demo-clip skip nor its release-only gating. Kept apart from the Firebase bookkeeping
-            // below so a reader can see which is which.
-            endPlaybackSections()
-
-            val trace = startupTrace ?: return
-            startupTrace = null
             val uri = player?.currentMediaItem?.localConfiguration?.uri
-            if (uri?.scheme == DEMO_SAMPLE_SCHEME) return
-            trace.putAttribute(
-                "source",
-                if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) "hls" else "direct",
+            spans.firstFrame(
+                source = if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) {
+                    PlaybackSpans.SOURCE_HLS
+                } else {
+                    PlaybackSpans.SOURCE_DIRECT
+                },
+                demo = uri?.scheme == DEMO_SAMPLE_SCHEME,
             )
-            trace.stop()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -724,22 +702,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             val uri = player?.currentMediaItem?.localConfiguration?.uri
             val retrying = error.isDecodeFailure() && uri != null &&
                 uri.scheme != DEMO_SAMPLE_SCHEME && uri.lastPathSegment != Playback.HLS_PLAYLIST
-            if (!retrying) {
-                startupTrace = null
-                // A startup that will never render a frame: close its sections here or they run to
-                // the end of the capture. A retry keeps them open on purpose — the transcode
-                // fallback is part of what the startup cost, not a separate one.
-                endPlaybackSections()
-            }
-        }
-
-        /**
-         * Closes whichever of [Traces.PLAYER_STARTUP] and [Traces.PLAYER_TRANSITION] is open, with
-         * the cookie each was opened with. Safe to call when neither is.
-         */
-        private fun endPlaybackSections() {
-            startupSectionCookie = endSection(Traces.PLAYER_STARTUP, startupSectionCookie)
-            transitionSectionCookie = endSection(Traces.PLAYER_TRANSITION, transitionSectionCookie)
+            // A startup that will never render a frame is dropped here. A retry keeps it pending on
+            // purpose — the transcode fallback is part of what the startup cost, not a separate one.
+            if (!retrying) spans.abandonAll()
         }
     }
 
@@ -947,16 +912,16 @@ private fun ExoPlayer.checkOnApplicationLooper(isDebug: Boolean) {
 }
 
 /**
- * Closes an open async trace section and returns the null its tracking field should now hold; a
- * null cookie is a section that was never open, and is a no-op. One implementation for every
- * closer — the frame that ends a measurement, the queue emptying under one, and the service dying
- * with one open — because a close path missed here is a slice running to the end of the capture.
- * Top-level for the same reason [checkOnApplicationLooper] is: the service class sits at detekt's
- * function threshold.
+ * How the queue got to this item, as the attribute the transition span carries.
+ *
+ * `PLAYLIST_CHANGED` never reaches here: that is the queue's first item arriving, which is a
+ * startup and is measured as one. Top-level for the same reason [checkOnApplicationLooper] is —
+ * the service class sits at detekt's function threshold.
  */
-private fun endSection(name: String, cookie: Int?): Int? {
-    cookie?.let { SystemTrace.endAsyncSection(name, it) }
-    return null
+private fun transitionReason(reason: Int): String = when (reason) {
+    Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> PlaybackSpans.REASON_SEEK
+    Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> PlaybackSpans.REASON_REPEAT
+    else -> PlaybackSpans.REASON_AUTO
 }
 
 /**

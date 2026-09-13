@@ -43,6 +43,15 @@ object Spans {
     /** A tap to the first frame it produces. Firebase history too — never rename it. */
     val PLAYER_STARTUP = Span(Traces.PLAYER_STARTUP, "player_startup")
 
+    /** Resolving the media ids a controller sent into playable items. The one suspending span. */
+    val PLAYER_RESOLVE = Span(Traces.PLAYER_RESOLVE, "player_resolve")
+
+    /** One queue advance, to the first frame of the item it arrived at. */
+    val PLAYER_TRANSITION = Span(Traces.PLAYER_TRANSITION, "player_transition")
+
+    /** One seek within the playing item, to the frame it produces. */
+    val PLAYER_SEEK = Span(Traces.PLAYER_SEEK, "player_seek")
+
     /**
      * The library's own list, one collection at a time: how long from subscribing to the first rows
      * being ready, and how many there were. The per-emission section [Traces.LIBRARY_BROWSE] still
