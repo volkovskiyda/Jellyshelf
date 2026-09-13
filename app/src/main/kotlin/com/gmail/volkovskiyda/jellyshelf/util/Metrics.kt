@@ -53,6 +53,16 @@ object Spans {
     val PLAYER_SEEK = Span(Traces.PLAYER_SEEK, "player_seek")
 
     /**
+     * One played item, from its first frame to the moment the player leaves it: what went wrong
+     * while it played, as counters rather than as durations.
+     *
+     * No system-trace section of its own — it spans a whole viewing and would be a slice across
+     * the entire recording, telling a reader nothing they could not see from the frames. The name
+     * is here rather than in [Traces] for that reason.
+     */
+    val PLAYER_ITEM = Span("Jellyshelf.player.item", "player_item")
+
+    /**
      * The library's own list, one collection at a time: how long from subscribing to the first rows
      * being ready, and how many there were. The per-emission section [Traces.LIBRARY_BROWSE] still
      * records every emission beside it.
@@ -265,6 +275,16 @@ class Metrics(
             cloud = cloud.start(span.id),
         )
     }
+
+    /**
+     * A point on Kotzilla's session timeline with no span around it: something that *happened*
+     * rather than something that took time — a stream reconnecting, a rebuffer starting.
+     *
+     * The other two sinks get nothing here on purpose. A system-trace instant is invisible without
+     * a section around it, and the Firebase side of these events is a counter on the trace for the
+     * item they happened during, which is the only shape that makes them comparable.
+     */
+    fun mark(label: String, track: String = TRACK_APP) = kotzilla.mark(label, track)
 
     private fun nextCookie(): Int = cookies.updateAndGet { it + 1 }
 

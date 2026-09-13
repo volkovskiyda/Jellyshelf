@@ -144,6 +144,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
      */
     private val spans: PlaybackSpans by lazy { PlaybackSpans(metrics) }
 
+    /** What went wrong while an item played, counted onto one trace per item. */
+    private val health: PlaybackHealth by lazy { PlaybackHealth(metrics) }
+
     /**
      * The media id [ResumeSeedingListener] is about to seek, so the discontinuity it causes is not
      * counted as a seek the user waited for. Both run on the application thread in order, and it is
@@ -179,12 +182,18 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                         mapOf(Playback.TOKEN_HEADER to settingsState.settings.value?.credential.orEmpty()),
                     )
                     .createDataSource(),
+                // Counted from the loader thread this runs on; the counters are built for that.
+                onReopen = health::onIdleReconnect,
             )
         }
         // The backstop for a stall the reconnect above cannot explain: it needs to hear about every
         // byte the player loads, which is why it is built here and its listener handed to the
         // factory rather than it being simply another Player.Listener.
-        val stallWatchdog = StallWatchdog(scope, player = { this.player })
+        val stallWatchdog = StallWatchdog(
+            scope,
+            player = { this.player },
+            onRecover = health::onStallRecovery,
+        )
         // Media3's standard composition: `asset:` and `file:` URIs — which is what a demo video
         // resolves to — route to local sources, while every http(s) URI is handed to the factory
         // above and behaves exactly as it did before, credential-at-creation-time included.
@@ -313,6 +322,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         // A teardown mid-startup (swiped from recents before the first frame) is the one abandon
         // path the queue-empty close in WatchStateListener cannot see.
         spans.abandonAll()
+        health.onAbandoned()
         nowPlaying.detach()
         session?.release()
         p?.release()
@@ -479,6 +489,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             // two metrics move together and stop either from isolating anything. A null item is the
             // queue emptying, which is not an advance either.
             seedingSeekFor = null
+            // The item being left is done being reported on, before the next one's trace opens.
+            // PLAYLIST_CHANGED has nothing open to end — that is the queue's first item arriving.
+            if (mediaItem != null) health.onItemEnded(PlaybackHealth.END_NEXT)
             if (mediaItem != null && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                 spans.transitionBegan(mediaItem.mediaId.hashCode(), transitionReason(reason))
             }
@@ -488,6 +501,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 // render that frame now, so drop them here or the slices run to the end of the
                 // capture and corrupt the very metric the benchmark reads.
                 spans.abandonAll()
+                // Unlike the spans, this one *is* reported: the item played, the user stopped it,
+                // and how it went while they watched is the whole point of the trace.
+                health.onItemEnded(PlaybackHealth.END_STOPPED)
             }
             watch.onItemChanged(
                 newMediaId = mediaItem?.mediaId,
@@ -565,6 +581,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                     cookie = newMediaId.hashCode(),
                     distanceMs = newPosition.positionMs - oldPosition.positionMs,
                 )
+                health.onSeek()
             }
             // A seek moves the bar's line too. The tick job runs only while playing, so without
             // this a scrub made while paused leaves the mini-player bar holding the pre-seek
@@ -602,6 +619,13 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            // Buffering after the first frame is a rebuffer; before it, it is the startup the
+            // player_startup span already measures. PlaybackHealth knows which it is.
+            when (playbackState) {
+                Player.STATE_BUFFERING -> health.onBuffering()
+                Player.STATE_READY -> health.onReady()
+                Player.STATE_ENDED -> health.onItemEnded(PlaybackHealth.END_ENDED)
+            }
             if (playbackState != Player.STATE_ENDED) return
             watch.onEnded(player?.duration?.takeIf { it != C.TIME_UNSET }).perform()
         }
@@ -687,14 +711,16 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private inner class StartupTraceListener : Player.Listener {
         override fun onRenderedFirstFrame() {
             val uri = player?.currentMediaItem?.localConfiguration?.uri
-            spans.firstFrame(
-                source = if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) {
-                    PlaybackSpans.SOURCE_HLS
-                } else {
-                    PlaybackSpans.SOURCE_DIRECT
-                },
-                demo = uri?.scheme == DEMO_SAMPLE_SCHEME,
-            )
+            val source = if (uri?.lastPathSegment == Playback.HLS_PLAYLIST) {
+                PlaybackSpans.SOURCE_HLS
+            } else {
+                PlaybackSpans.SOURCE_DIRECT
+            }
+            val demo = uri?.scheme == DEMO_SAMPLE_SCHEME
+            spans.firstFrame(source = source, demo = demo)
+            // The same frame opens the item's own trace — or leaves the open one alone, which is
+            // what happens when the item renders again after a seek.
+            health.onFirstFrame(player?.currentMediaItem?.mediaId, source = source, demo = demo)
         }
 
         override fun onPlayerError(error: PlaybackException) {

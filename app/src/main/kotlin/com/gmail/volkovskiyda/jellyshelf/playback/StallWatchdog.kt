@@ -67,6 +67,15 @@ internal class StallWatchdog(
      */
     private val player: () -> ExoPlayer?,
     private val rule: StallRule = StallRule(),
+    /**
+     * Told that a recovery happened, so it can be counted. Called on the application looper, right
+     * after the log line and before the player is touched — a recovery that throws is still one
+     * that was attempted.
+     *
+     * Declared before the clock for the same reason it is in [IdleReconnectDataSource]: a callback
+     * added after a defaulted lambda silently captures any trailing lambda at a call site.
+     */
+    private val onRecover: () -> Unit = {},
     private val elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : Player.Listener {
 
@@ -144,6 +153,7 @@ internal class StallWatchdog(
             "stall: nothing loaded for ${STALL_TIMEOUT_MS / MILLIS_PER_SECOND}s while buffering " +
                 "${player.currentMediaItem?.mediaId} at ${player.currentPosition}ms — re-preparing",
         )
+        onRecover()
         player.stop()
         player.prepare()
     }

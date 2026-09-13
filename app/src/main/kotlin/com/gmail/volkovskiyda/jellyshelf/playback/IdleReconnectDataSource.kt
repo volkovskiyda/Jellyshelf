@@ -64,6 +64,14 @@ import timber.log.Timber
 internal class IdleReconnectDataSource(
     private val upstream: DataSource,
     private val idleReopenMs: Long = IDLE_REOPEN_MS,
+    /**
+     * Told that a reopen happened, so it can be counted. Called on **this loadable's loader
+     * thread**, not the main one — whatever is passed here has to be safe off the main thread.
+     *
+     * Declared before the clock deliberately: the tests pass the clock as a trailing lambda, and a
+     * callback added after it would have silently swallowed that lambda instead.
+     */
+    private val onReopen: () -> Unit = {},
     private val elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : DataSource {
 
@@ -130,6 +138,7 @@ internal class IdleReconnectDataSource(
             "reopening ${stripCredentials(spec.uri.toString())} after ${idleMs / MILLIS_PER_SECOND}s " +
                 "idle at byte $resumeAt",
         )
+        onReopen()
         upstream.close()
         // subrange(0) hands back the same spec, so a stream idled before its first byte simply
         // reconnects where it was.
