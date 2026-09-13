@@ -22,6 +22,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import kotlinx.coroutines.CoroutineScope
@@ -111,6 +112,7 @@ class DemoActionsInstrumentedTest {
             settings = settings,
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
+            metrics = fakeMetrics(),
             sources = LibrarySources(
                 JellyfinDataSource(JellyfinClient(httpClient)),
                 ApiSource(httpClient, dispatchers, json),

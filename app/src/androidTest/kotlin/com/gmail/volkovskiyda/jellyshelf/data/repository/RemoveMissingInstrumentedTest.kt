@@ -20,6 +20,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNWATCHED
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -171,6 +172,7 @@ class RemoveMissingInstrumentedTest {
             settings = settings,
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
+            metrics = fakeMetrics(),
             sources = LibrarySources(
                 dataSource,
                 ApiSource(httpClient, dispatchers, json),

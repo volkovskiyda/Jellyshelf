@@ -17,6 +17,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -168,6 +169,7 @@ class RemoveWatchedInstrumentedTest {
             settings = settings,
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
+            metrics = fakeMetrics(),
             // Not a demo install, so every removal here goes to the MockEngine rather than the
             // demo backend — [DemoActionsInstrumentedTest] covers the other side.
             sources = LibrarySources(

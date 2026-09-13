@@ -21,6 +21,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_YTDLP
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -195,6 +196,7 @@ class SyncInstrumentedTest {
             settings = settings,
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
+            metrics = fakeMetrics(),
             // The demo backend is never consulted: none of these syncs is a demo.
             sources = LibrarySources(
                 dataSource,

@@ -155,13 +155,17 @@ android {
         // Instrumented tests share them too — the sync suite needs the same in-memory
         // SettingsRepository the host-side tests use.
         getByName("androidTest") { kotlin.directories += "src/testShared/kotlin" }
-        // A no-op monitoring() for keyless checkouts. The Kotzilla plugin below is switched off
-        // when app/kotzilla.json is missing, and a disabled plugin generates no code whatsoever,
-        // so JellyshelfApplication's call would not resolve. Same condition as the kotzilla block,
-        // and never both: when the file is there, the generated function is the only one.
-        if (!file("kotzilla.json").exists()) {
-            getByName("main") { kotlin.directories += "src/kotzillaDisabled/kotlin" }
-        }
+        // The app's half of the Kotzilla seam — exactly one of the two directories, never both.
+        // The plugin below is switched off when app/kotzilla.json is missing, and a disabled
+        // plugin generates no code and adds no SDK runtime, so both JellyshelfApplication's
+        // monitoring() call and everything behind util.MetricsSink would fail to resolve. A
+        // keyless checkout therefore compiles hand-written no-ops (src/kotzillaDisabled); a keyed
+        // one compiles the real calls (src/kotzillaEnabled) beside the generated monitoring().
+        // Same condition as the kotzilla block below. Since no build compiles both, only running
+        // both compiles proves they still match: CI's keyless jobs cover one, any local build the
+        // other.
+        val kotzillaSeam = if (file("kotzilla.json").exists()) "kotzillaEnabled" else "kotzillaDisabled"
+        getByName("main") { kotlin.directories += "src/$kotzillaSeam/kotlin" }
     }
     buildFeatures {
         compose = true

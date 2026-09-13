@@ -15,6 +15,7 @@ import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +74,7 @@ class DemoLibrarySearchInstrumentedTest {
             settings = FakeSettingsRepository(),
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
+            metrics = fakeMetrics(),
             sources = LibrarySources(
                 JellyfinDataSource(JellyfinClient(httpClient)),
                 ApiSource(httpClient, dispatchers, json),

@@ -64,6 +64,11 @@ import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel
 import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
+import com.gmail.volkovskiyda.jellyshelf.util.CloudTraces
+import com.gmail.volkovskiyda.jellyshelf.util.FirebaseCloudTraces
+import com.gmail.volkovskiyda.jellyshelf.util.KotzillaSink
+import com.gmail.volkovskiyda.jellyshelf.util.Metrics
+import com.gmail.volkovskiyda.jellyshelf.util.MetricsSink
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -130,6 +135,17 @@ val appModule = module {
     singleOf(::DefaultScrollPositionRepository) { bind<ScrollPositionRepository>() }
     singleOf(::AppSettingsState)
     single<TimeProvider> { DefaultTimeProvider() }
+    // Every measured span, written to the system trace, Kotzilla and Firebase under one name.
+    // Injected rather than reached for globally so a test can substitute a recording fake. Both
+    // sinks are graph definitions of their own so this can stay a constructor reference; each has
+    // exactly one implementation, and KotzillaSink is whichever source-set twin the build compiled.
+    single<MetricsSink> { KotzillaSink }
+    singleOf(::FirebaseCloudTraces) { bind<CloudTraces>() }
+    // The type arguments are spelled out on purpose: the constructor's third parameter is the
+    // monotonic clock, defaulted for production and replaced in tests, and without them the
+    // constructor reference binds at its full arity and Koin would resolve `() -> Long` from the
+    // graph instead of letting the default stand.
+    singleOf<Metrics, MetricsSink, CloudTraces>(::Metrics)
     singleOf(::UpdateChecker)
     singleOf(::NotificationPrompt)
     singleOf(::LocalNetworkPrompt)

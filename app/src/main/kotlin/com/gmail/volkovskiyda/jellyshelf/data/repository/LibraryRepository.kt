@@ -48,7 +48,10 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.PlaystateRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
+import com.gmail.volkovskiyda.jellyshelf.util.CloudTrace
+import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.SESSION_EXPIRED_MESSAGE
+import com.gmail.volkovskiyda.jellyshelf.util.Spans
 import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
@@ -59,8 +62,6 @@ import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
 import com.gmail.volkovskiyda.jellyshelf.util.yearMonthOf
 import com.gmail.volkovskiyda.jellyshelf.util.yearOf
-import com.google.firebase.perf.FirebasePerformance
-import com.google.firebase.perf.metrics.Trace
 import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -418,32 +419,25 @@ internal class BulkRunner(private val scope: CoroutineScope) {
 }
 
 /**
- * Wraps a real (non-demo) sync in the Firebase Performance `library_sync` trace. The names are
- * API — the console keys off trace `library_sync`, attribute `result` (`success`|`error`), metric
- * `items` — so don't rename them. `result` starts as `error` so every exit other than the explicit
- * success flip — early error returns, thrown or cancelled syncs, all closed by the finally —
- * reports as one. Debug builds create a no-op trace (collection is disabled in
- * [com.gmail.volkovskiyda.jellyshelf.JellyshelfApplication]). Top-level and inline so the block's
- * non-local `return` works and the trace adds almost nothing to [DefaultLibraryRepository], which
- * stays close to detekt's LargeClass ceiling even with the playstate slice split out.
+ * Wraps a real (non-demo) sync in the [Spans.LIBRARY_SYNC] span — the system-trace section
+ * [Traces.LIBRARY_SYNC] for Perfetto and the benchmark, a mark pair on Kotzilla's session timeline,
+ * and the Firebase Performance `library_sync` trace. [Metrics] is what keeps the three named alike.
  *
- * The same span is also written as the system-trace section [Traces.LIBRARY_SYNC]. The two answer
- * different questions and are kept together here so they can never drift apart: Firebase samples
- * real installs and reports minutes later, while the section is local, exact, free, and the one a
- * macrobenchmark can assert on. `trace { }` is inline too, so the non-local `return` this function
- * exists to allow still works through both, and its own `finally` closes the section on the way
- * out — including when the sync throws or is cancelled.
+ * The names are API — the Firebase console keys off trace `library_sync`, attribute `result`
+ * (`success`|`error`) and metric `items` — so don't rename them. `result` starts as `error` so
+ * every exit other than the explicit success flip — early error returns, thrown or cancelled
+ * syncs, all closed by the facade's own `finally` — reports as one.
+ *
+ * Top-level and inline so the block's non-local `return` works, and so this adds almost nothing to
+ * [DefaultLibraryRepository], which stays close to detekt's LargeClass ceiling even with the
+ * playstate slice split out. That inline chain is load-bearing: [Metrics.span] is inline for the
+ * same reason, because a block handed to an interface method could not carry the `return` out.
  */
-internal inline fun <T> tracedSync(block: (Trace) -> T): T = trace(Traces.LIBRARY_SYNC) {
-    val trace = FirebasePerformance.getInstance().newTrace("library_sync")
-    trace.start()
-    trace.putAttribute("result", "error")
-    try {
+internal inline fun <T> tracedSync(metrics: Metrics, block: (CloudTrace) -> T): T =
+    metrics.span(Spans.LIBRARY_SYNC) { trace ->
+        trace.attribute("result", "error")
         block(trace)
-    } finally {
-        trace.stop()
     }
-}
 
 // TooManyFunctions: the app's single library-domain facade.
 // LongParameterList: the primary constructor is private plumbing rather than an API — the secondary
@@ -457,6 +451,7 @@ class DefaultLibraryRepository private constructor(
     private val settings: SettingsRepository,
     private val dispatchers: DispatcherProvider,
     private val time: TimeProvider,
+    private val metrics: Metrics,
     sources: LibrarySources,
     private val writes: LibraryWrites,
     private val repoScope: CoroutineScope,
@@ -481,12 +476,14 @@ class DefaultLibraryRepository private constructor(
         settings: SettingsRepository,
         dispatchers: DispatcherProvider,
         time: TimeProvider,
+        metrics: Metrics,
         sources: LibrarySources,
     ) : this(
         db = db,
         settings = settings,
         dispatchers = dispatchers,
         time = time,
+        metrics = metrics,
         sources = sources,
         writes = LibraryWrites(time),
         // Long-running work (the bulk runs, playback reports) happens here so it outlives the
@@ -688,7 +685,7 @@ class DefaultLibraryRepository private constructor(
             )
         }
 
-        return tracedSync { trace ->
+        return tracedSync(metrics) { trace ->
             _syncPhase.value = SyncPhase.LoadingLibrary
             val fetchStartedAt = time.now()
             val items = runCatchingCancellable {
@@ -745,8 +742,8 @@ class DefaultLibraryRepository private constructor(
                     apiAuthFailed = api.authFailed,
                 )
             }
-            trace.putAttribute("result", "success")
-            trace.putMetric("items", items.size.toLong())
+            trace.attribute("result", "success")
+            trace.metric("items", items.size.toLong())
 
             // Strictly *outside* the lock: the sync above is committed and has already succeeded,
             // and every write the auto-fill makes takes [LibraryWrites.mutex] per video for itself. Running

@@ -23,6 +23,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.LAST_PLAYED_LIMIT
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
 import com.gmail.volkovskiyda.jellyshelf.util.parseTimecodes
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -87,6 +88,7 @@ class DemoSeedInstrumentedTest {
             settings = settings,
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
+            metrics = fakeMetrics(),
             // Seeding never asks the demo backend for anything — the dataset comes straight off
             // the asset — but it is what every action *after* the seed goes through.
             sources = LibrarySources(
