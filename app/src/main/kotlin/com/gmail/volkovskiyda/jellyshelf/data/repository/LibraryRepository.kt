@@ -626,9 +626,17 @@ class DefaultLibraryRepository private constructor(
         .firstContent(metrics, Spans.CATEGORY_VIDEOS, TRACK_LIBRARY) { it.size }
         .flowOn(dispatchers.default)
 
+    /**
+     * One stored video, whole.
+     *
+     * Read by five callers, only one of which is a screen: the detail screen and the player screen
+     * collect it, while the service reads it to restore the last item, to find a resume position on
+     * every queue advance, and to look up an id for the transcode fallback. That is why
+     * [Spans.DETAIL_LOAD] is applied by the detail screen's own ViewModel rather than here — a span
+     * on this flow would report a screen opening every time the queue moved on.
+     */
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }
-            .firstContent(metrics, Spans.DETAIL_LOAD, TRACK_LIBRARY) { if (it == null) 0 else 1 }
             .flowOn(dispatchers.default)
 
     override suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video> =

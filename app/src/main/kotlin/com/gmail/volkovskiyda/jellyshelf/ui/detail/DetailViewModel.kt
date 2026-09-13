@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.data.repository.TRACK_LIBRARY
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.FetchResult
@@ -13,7 +14,10 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
+import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
+import com.gmail.volkovskiyda.jellyshelf.util.Spans
+import com.gmail.volkovskiyda.jellyshelf.util.firstContent
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,10 +41,18 @@ class DetailViewModel(
     private val repo: LibraryRepository,
     settingsState: AppSettingsState,
     private val settingsRepository: SettingsRepository,
+    metrics: Metrics,
     private val youtubeId: String,
 ) : ViewModel() {
 
+    /**
+     * Time to first content, measured here rather than in the repository: the flow underneath is
+     * read by the player screen and by the service on every queue advance as well, and a span down
+     * there would report a detail screen opening each time any of them read a row. A video that is
+     * not there is a legitimate first emission and reports zero rows.
+     */
     val video: StateFlow<VideoDetailState> = repo.observeVideo(youtubeId)
+        .firstContent(metrics, Spans.DETAIL_LOAD, TRACK_LIBRARY) { if (it == null) 0 else 1 }
         .map { it?.let(VideoDetailState::Loaded) ?: VideoDetailState.NotFound }
         .stateIn(viewModelScope, WhileUiSubscribed, VideoDetailState.Loading)
 
