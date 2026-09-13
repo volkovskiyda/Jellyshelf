@@ -405,8 +405,12 @@ which is what makes this look like a device problem rather than a timing one.
 Two things it reports beyond the framework's startup timings:
 
 - **This app's own trace sections** — `Jellyshelf.app.onCreate`, `Jellyshelf.app.startKoin`,
-  `Jellyshelf.activity.onCreate`, `Jellyshelf.library.browse` — written with `androidx.tracing`
-  from `app/.../util/Traces.kt`. Startup time says a launch got slower; these say where.
+  `Jellyshelf.activity.onCreate`, `Jellyshelf.library.browse` and
+  `Jellyshelf.library.browse.first` — written with `androidx.tracing` from `app/.../util/Traces.kt`
+  and opened by `app/.../util/Metrics.kt`. Startup time says a launch got slower; these say where.
+  The last of them is the launch-to-first-rows number the whole profile exists to move: the one
+  above it times a single emission's row mapping, while `.first` times from the flow being
+  collected to those rows arriving. The suffix keeps the two from being summed into one metric.
 - **Whether the profile was applied at all.** `CompilationMode.Partial(BaselineProfileMode.Require)`
   fails the run rather than quietly measuring an unprofiled app. Nothing else in this project
   catches a profile that shipped broken, which is worth more than the numbers on some days.

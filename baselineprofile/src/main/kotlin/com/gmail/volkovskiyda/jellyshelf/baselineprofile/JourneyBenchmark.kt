@@ -130,6 +130,8 @@ class JourneyBenchmark {
             TraceSectionMetric(ACTIVITY_ON_CREATE, TraceSectionMetric.Mode.Sum),
             // The first browse emission, which a launch onto the Library tab always pays.
             TraceSectionMetric(LIBRARY_BROWSE, TraceSectionMetric.Mode.Sum),
+            // And the wait that contains it: collecting the flow through to those rows arriving.
+            TraceSectionMetric(LIBRARY_FIRST, TraceSectionMetric.Mode.Sum),
         ),
         compilationMode = CompilationMode.Partial(BaselineProfileMode.Require),
         startupMode = StartupMode.COLD,
@@ -478,6 +480,23 @@ class JourneyBenchmark {
         const val PLAYER_RESOLVE = "Jellyshelf.player.resolve"
         const val PLAYER_STARTUP = "Jellyshelf.player.startup"
         const val PLAYER_TRANSITION = "Jellyshelf.player.transition"
+
+        /**
+         * A launch to the first library rows being ready: the whole point of the baseline profile,
+         * as one number. `LIBRARY_BROWSE` above times one emission's mapping; this times from the
+         * flow being collected to the first emission arriving, which is what the user waits for.
+         *
+         * The `.first` suffix is not decoration — `Metrics.firstContent` opens a section under that
+         * name precisely so this measurement cannot be summed into `LIBRARY_BROWSE` and inflate it.
+         */
+        const val LIBRARY_FIRST = "Jellyshelf.library.browse.first"
+
+        /**
+         * A seek to the frame it produces. Declared to keep this list a complete mirror of the
+         * player's sections, and measured by nothing yet: no journey here scrubs. Adding one is
+         * backlog item B4 of `20260913-performance-metrics-plan`.
+         */
+        const val PLAYER_SEEK = "Jellyshelf.player.seek"
 
         /**
          * Enough for a median to mean something without the device heating up, which changes the

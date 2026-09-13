@@ -386,19 +386,31 @@ Regenerate when the startup path changes shape rather than on every commit, and 
 before committing it — two failure modes produce a plausible-looking but worthless profile. Runbook:
 [docs/BASELINE-PROFILE.md](docs/BASELINE-PROFILE.md).
 
-**Tracing and the benchmark.** The app writes its own system-trace sections with
-`androidx.tracing` on the paths worth watching — `Application.onCreate` and the Koin graph inside
-it, `MainActivity.onCreate`, one library browse emission (with the row count beside it as a
-counter, because that cost is per row), one ranked-search emission, a full sync, and the player's
-media-id resolution. They are named in one place, `app/.../util/Traces.kt`, they cost a branch when
-nothing is recording, and they are in every build type rather than gated to one. Open a recording
-in [Perfetto](https://ui.perfetto.dev) and every one of them is a labelled slice under
-`Jellyshelf.`.
+**One span, three readers.** Everything this app measures is measured once and written to three
+places at the same moment, under one name — `app/.../util/Metrics.kt` is the facade that does it,
+and `Spans` there is the catalogue. A span covers a cold launch and the Koin graph inside it, the
+wait for each list's first rows (library, a category's videos, the Categories tab, its search, its
+"Others" counts, a video's details), each ranked search emission, a full sync, each screen visit,
+and on the player: resolving a tap into playable items, the wait to the first frame, a queue
+advance, a seek, and how each item behaved while it played.
 
-The same sections are what makes a regression measurable rather than anecdotal.
-`JourneyBenchmark`, beside the profile generator, replays a cold launch and a library scroll
-against the `benchmarkRelease` build — R8-minified, baseline profile required — and reports each
-section as a metric alongside the framework's startup and frame timings:
+The three readers want different things, which is why all three are worth writing:
+
+- **The system trace** — a labelled slice under `Jellyshelf.` in
+  [Perfetto](https://ui.perfetto.dev), and the only one a benchmark can assert on. Section names
+  live in `app/.../util/Traces.kt`; they cost a branch when nothing is recording and are in every
+  build type rather than gated to one.
+- **Kotzilla** — one session at a time, on debug builds too, which is what makes it useful while
+  building.
+- **Firebase Performance** — release only, sampled, aggregated, and the only one that describes
+  real installs.
+
+**The benchmark** is what makes a regression measurable rather than anecdotal. `JourneyBenchmark`,
+beside the profile generator, replays a cold launch and a library scroll against the
+`benchmarkRelease` build — R8-minified, baseline profile required — and reports each section as a
+metric alongside the framework's startup and frame timings. It repeats the section names as
+constants of its own, because a `com.android.test` module cannot see app classes; renaming one side
+alone does not fail to compile, it silently measures nothing.
 
 ```bash
 ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest   # same device rules as above
@@ -415,16 +427,25 @@ generates its config, and `monitoring()` attaches it to Koin last inside `startK
 types report, into separate keys, so development sessions inform the graph diagnostics without
 diluting production data — deliberately unlike Firebase, which is release-only here, because this
 tool is most useful while building. Its keys live in the git-ignored `app/kotzilla.json`, and
-without that file the plugin disables itself and the app builds exactly as it did before. The
-companion MCP server is how it is queried from Claude Code:
+without that file the plugin disables itself and the app builds exactly as it did before, no-ops in
+`src/kotzillaDisabled` standing in for every call. The companion MCP server is how it is queried
+from Claude Code:
 
 ```bash
 claude mcp add kotzilla --transport http https://mcp.kotzilla.io/mcp
 ```
 
-Firebase Performance covers the same two of these spans in the field (`library_sync`,
-`player_startup`) and is not a substitute — that one samples real installs and reports minutes
-later, on release builds only; these are local, exact, free, and available on any build.
+Its Compose screen tracking is wired by hand. The SDK's compiler plugin only rewrites the
+`entryProvider { entry<Key> { } }` navigation DSL, and this app builds its `NavEntry`s directly, so
+until `MainActivity`'s `entry` helper called `KotzillaScreenHost` itself the console listed exactly
+one screen for the whole app.
+
+**What each console costs.** Firebase Performance has no notion of a Compose destination — its
+screen rendering is per `Activity`, and this app is one — so per-screen numbers there come from
+the app counting its own frames with `JankStats` and reporting a trace per visit. A device sends at
+most 300 trace events per 10 minutes, shared with network traces, which is why the list spans
+report their **first** emission per collection rather than every one: a search flow re-collects on
+every debounced keystroke.
 
 ## Testing
 
