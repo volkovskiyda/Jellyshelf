@@ -545,6 +545,12 @@ class DefaultLibraryRepository private constructor(
     // main thread and jank the UI. The browse paths below map a projected row instead, which is
     // cheaper but still per-row, so they keep the dispatcher too.
     // Room already runs the queries themselves on its own executor; this moves the mapping too.
+    //
+    // The detail screen's two single-item flows follow the same rule, and for a while did not: one
+    // row is one row, so they looked exempt. They are not. A whole VideoEntity carries three JSON
+    // columns — chapters, tags, youtubeCategories — that the browse projection exists precisely to
+    // avoid, and their converters ran wherever Room happened to emit, which for a Main.immediate
+    // collector is the main thread.
 
     /**
      * The row→domain mapping every browse flow ends in, inside [span]'s own section.
@@ -622,6 +628,7 @@ class DefaultLibraryRepository private constructor(
 
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }
+            .flowOn(dispatchers.default)
 
     override suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video> =
         withContext(dispatchers.default) {
@@ -643,6 +650,7 @@ class DefaultLibraryRepository private constructor(
 
     override fun observeCategoriesForVideo(youtubeId: String): Flow<List<Category>> =
         categoryDao.observeForVideo(youtubeId).map { rows -> rows.map { it.toDomain() } }
+            .flowOn(dispatchers.default)
 
     override fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
         categoryDao.searchWithCounts(escapeLikePattern(query))
