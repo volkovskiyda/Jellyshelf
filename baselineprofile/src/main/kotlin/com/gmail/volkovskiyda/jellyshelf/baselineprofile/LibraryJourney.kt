@@ -270,6 +270,58 @@ internal fun MacrobenchmarkScope.grantJourneyPermissions() {
     }
 }
 
+/**
+ * Waits for the Categories tab to have listed something.
+ *
+ * A row, not the list around it: the list exists before it holds anything, and what a journey is
+ * waiting for is content. Any synced library has auto categories — by channel, year and month — so
+ * an empty list here is a broken query or a broken resource-id bridge, never a legitimate state.
+ */
+internal fun MacrobenchmarkScope.awaitCategories(timeoutMs: Long = TIMEOUT_MS) {
+    await(By.res(CATEGORY_ROW), timeoutMs) {
+        "The Categories tab never listed anything. A synced library always has auto categories, " +
+            "so check the resource-id bridge (testTagsAsResourceId on MainActivity's Scaffold) " +
+            "before suspecting the query."
+    }
+}
+
+/**
+ * Narrows the Categories tab to [query] and waits for what matches.
+ *
+ * One letter rather than a name, because the journey has to work against both the seeded demo
+ * library and whatever a real server holds, and a single common letter matches a channel or a month
+ * in either. A query matching nothing fails here with this message rather than somewhere later.
+ */
+internal fun MacrobenchmarkScope.searchCategories(
+    query: String = CATEGORY_QUERY,
+    timeoutMs: Long = TIMEOUT_MS,
+) {
+    setText(CATEGORY_SEARCH, query)
+    await(By.res(CATEGORY_ROW), timeoutMs) {
+        "No category matched \"$query\". Every library this runs against should have one; if this " +
+            "one does not, pass a letter that its category names contain."
+    }
+}
+
+/**
+ * Opens the first category on screen and waits for its videos.
+ *
+ * Called after [searchCategories] it opens the first *match*, which is the point: the journey never
+ * returns to the list, so each of the three category spans fires exactly once per iteration. Going
+ * back would re-compose the tab, re-collect its flow, and report a second list load into the same
+ * sum.
+ */
+internal fun MacrobenchmarkScope.openFirstCategory(timeoutMs: Long = TIMEOUT_MS) {
+    await(By.res(CATEGORY_ROW), timeoutMs) {
+        "No category to open — did [awaitCategories] pass and the list then empty?"
+    }.click()
+    device.waitForIdle()
+    await(By.res(CATEGORY_VIDEO_ROW), timeoutMs) {
+        "The category opened but listed no videos. A category with no videos in it is not offered, " +
+            "so this is the screen failing to load rather than an empty category."
+    }
+}
+
 /** Taps a bottom-navigation tab, waiting for it rather than assuming it is already there. */
 internal fun MacrobenchmarkScope.openTab(label: String) {
     await(By.text(label), TIMEOUT_MS) { "The $label tab is not on screen." }.click()
@@ -546,6 +598,9 @@ internal fun MacrobenchmarkScope.await(
 internal const val LIBRARY_LIST = "library_list"
 internal const val LIBRARY_ROW = "library_row"
 internal const val ROW_DETAILS = "video_row_details"
+internal const val CATEGORY_ROW = "category_row"
+internal const val CATEGORY_SEARCH = "category_search"
+internal const val CATEGORY_VIDEO_ROW = "category_video_row"
 internal const val SERVER_URL_FIELD = "server_url_field"
 internal const val USERNAME_FIELD = "username_field"
 internal const val PASSWORD_FIELD = "password_field"
@@ -614,6 +669,13 @@ internal const val SYNC_TIMEOUT_MS = 300_000L
 
 /** How many flings a browse is worth, in both the generator and the benchmark. */
 internal const val SCROLLS = 3
+
+/**
+ * What [searchCategories] types. A letter rather than a word: it has to match something in the
+ * seeded demo library and in whatever a real server holds, and the measurement is of the query
+ * doing work, not of which rows come back.
+ */
+internal const val CATEGORY_QUERY = "a"
 
 /** How far in from a scrollable's top and bottom edge a swipe starts and ends. */
 internal const val SCROLL_EDGE_INSET_FRACTION = 6

@@ -179,6 +179,62 @@ class JourneyBenchmark {
     }
 
     /**
+     * The Categories tab: listing it, narrowing it, and opening one category's videos.
+     *
+     * Three waits the user actually sits through, and the only journey that produces any of them.
+     * [CATEGORIES_LIST_FIRST] is the tab's own list, whose per-row video count is a correlated
+     * subquery — it grows with the number of categories *and* with the library behind them.
+     * [CATEGORIES_SEARCH_FIRST] is the most expensive thing this tab can be asked to do: the query
+     * under it scans every video's description with `LIKE '%…%'`, on every debounced keystroke.
+     * [CATEGORY_VIDEOS_FIRST] is one category's videos, which until the spans were split was
+     * indistinguishable from the library's own list.
+     *
+     * **The order is load-bearing.** Search narrows the list and then the first *match* is opened,
+     * so the tab is entered once and each section fires exactly once. Pressing back to the list
+     * instead would re-compose the tab, re-collect its flow, and add a second list load to a `Sum`
+     * that reads as a regression.
+     *
+     * Warm rather than cold: a cold launch is [startup]'s subject, and what is being timed here is
+     * three queries, not a process start. That choice is what the setup has to undo. A warm start
+     * recreates the Activity but keeps the **process**, so `CategoriesFilterState` — a Koin single —
+     * carries the previous iteration's search query across it, and the tab would open already
+     * narrowed: the browse path never runs and [CATEGORIES_LIST_FIRST] reports zero from the second
+     * iteration on. Measured that way before the clear was added: count 1 on the first iteration and
+     * 0 on the rest, for a median of 0, which reads as "the list is free" rather than "the list was
+     * never loaded". The setup also walks back to the Library tab, because each iteration ends
+     * inside a category and the back stack is persisted.
+     */
+    @OptIn(ExperimentalMetricApi::class)
+    @Test
+    fun categories() = rule.measureRepeated(
+        packageName = targetPackage,
+        metrics = listOf(
+            TraceSectionMetric(CATEGORIES_LIST_FIRST, TraceSectionMetric.Mode.Sum),
+            TraceSectionMetric(CATEGORIES_SEARCH_FIRST, TraceSectionMetric.Mode.Sum),
+            TraceSectionMetric(CATEGORY_VIDEOS_FIRST, TraceSectionMetric.Mode.Sum),
+        ),
+        compilationMode = CompilationMode.Partial(BaselineProfileMode.Require),
+        startupMode = StartupMode.WARM,
+        iterations = ITERATIONS,
+        setupBlock = {
+            pressHome()
+            startActivityAndWait()
+            returnToTopLevel()
+            // Both of these are undone state, not setup for its own sake: the query survives a warm
+            // start in a process-lifetime single, and the back stack reopens inside a category.
+            openTab(TAB_CATEGORIES)
+            setText(CATEGORY_SEARCH, "")
+            openTab(TAB_LIBRARY)
+            awaitLibrary(LIBRARY_TIMEOUT_MS)
+        },
+    ) {
+        openTab(TAB_CATEGORIES)
+        awaitCategories()
+        searchCategories()
+        openFirstCategory()
+    }
+
+    /**
      * Opening a video and advancing to the next one, which is the whole of what this app's playback
      * performance is: a tap to the first frame, and a queue advance to the next first frame.
      *
@@ -381,84 +437,6 @@ class JourneyBenchmark {
         awaitPlaybackUnderway()
     }
 
-    /**
-     * The Perfetto config [playback] records with, replacing Macrobenchmark's default.
-     *
-     * **Without this the benchmark reports zero for all three sections, and the zero is a lie.**
-     * The default config stops delivering data about 0.7 s into the measured block: the session
-     * itself stays up — it goes on asking for flushes — but its data stops reaching the file, and
-     * the trace ends with Macrobenchmark's own `measureBlock` slice still open (`dur = -1`). A
-     * launch fits in that window, which is why [startup] and [libraryScroll] were never affected
-     * and why this went unnoticed until something was measured 30 s in. Measured on a Pixel 5
-     * (API 34) on 2026-08-27: `traced_flushes_requested = 6`, `traced_flushes_failed = 4`,
-     * 572 chunks discarded, and every app slice inside the first 523 ms.
-     *
-     * Two differences from the default, both taken from a hand-driven `adb shell perfetto` capture
-     * that recorded the same APK on the same device for 45 s without losing anything:
-     *
-     *  - **One large in-memory ring buffer, and no `write_into_file`.** The default dumps to file
-     *    every 2.5 s and flushes every 5 s, and it is those periodic flushes that fail here. A
-     *    buffer big enough to hold the whole block removes the need for them, and with none
-     *    requested none can fail. The measured block runs about 10 s and a 45 s hand capture of
-     *    the same journey came to 46 MB, so 256 MB is several times the headroom needed.
-     *  - **Named apps rather than `atrace_apps: "*"`.** The default asks the framework to enable
-     *    app tracing for every process on the device; only two matter here, and asking for two is
-     *    the shape that was verified working.
-     *
-     * The data sources are the minimum [TraceSectionMetric] needs. It matches slices by name and
-     * filters them by process, so app atrace sections plus process names is the whole requirement
-     * — it never reads `sched`, and it does not restrict itself to the measured window either.
-     * That last part is why playback must stay in the measure block rather than move to
-     * `setupBlock`: sections written during setup would be counted just the same.
-     *
-     * With this config the same run reports `measureBlock` closed at 10.0 s and all three sections
-     * present, `Count = 1` each — against a `dur = -1` block and three zeros without it.
-     *
-     * One cosmetic cost: dropping the `sched` events means late-created threads never get named, so
-     * the app's `ExoPlayer:*` threads do not appear by name in these traces. Nothing here reads
-     * thread names; add `sched/sched_switch` back if a future metric does.
-     *
-     * Keep this in sync with nothing — it is deliberately standalone. If a future Macrobenchmark
-     * fixes the flush failure, delete this and the [ExperimentalConfig] argument with it, and
-     * confirm the sections still report non-zero.
-     */
-    @OptIn(ExperimentalPerfettoCaptureApi::class)
-    private fun playbackTraceConfig(): PerfettoConfig {
-        val instrumentation = InstrumentationRegistry.getInstrumentation().context.packageName
-        return PerfettoConfig.Text(
-            """
-            buffers {
-                size_kb: 262144
-                fill_policy: RING_BUFFER
-            }
-            data_sources {
-                config {
-                    name: "linux.ftrace"
-                    ftrace_config {
-                        ftrace_events: "task/task_newtask"
-                        ftrace_events: "task/task_rename"
-                        ftrace_events: "sched/sched_process_exit"
-                        ftrace_events: "sched/sched_process_free"
-                        atrace_categories: "am"
-                        atrace_categories: "view"
-                        atrace_categories: "wm"
-                        atrace_apps: "$targetPackage"
-                        atrace_apps: "$instrumentation"
-                    }
-                }
-            }
-            data_sources {
-                config {
-                    name: "linux.process_stats"
-                    process_stats_config {
-                        scan_all_processes_on_start: true
-                    }
-                }
-            }
-            """.trimIndent(),
-        )
-    }
-
     private companion object {
         /**
          * The section names, repeated from `:app`'s `util/Traces.kt`.
@@ -499,6 +477,14 @@ class JourneyBenchmark {
         const val PLAYER_SEEK = "Jellyshelf.player.seek"
 
         /**
+         * The three waits [categories] measures, all of them first-content sections rather than
+         * per-emission ones — what the user sits through, not what one mapping costs.
+         */
+        const val CATEGORIES_LIST_FIRST = "Jellyshelf.categories.list.first"
+        const val CATEGORIES_SEARCH_FIRST = "Jellyshelf.categories.search.first"
+        const val CATEGORY_VIDEOS_FIRST = "Jellyshelf.category.videos.first"
+
+        /**
          * Enough for a median to mean something without the device heating up, which changes the
          * answer more than most code does. Raise it when chasing a small difference, and let the
          * device cool between runs.
@@ -508,4 +494,85 @@ class JourneyBenchmark {
         /** Long enough for a launch to render its first rows, short enough to fail fast. */
         const val LIBRARY_TIMEOUT_MS = 10_000L
     }
+}
+
+/**
+ * The Perfetto config [playback] records with, replacing Macrobenchmark's default.
+ *
+ * **Without this the benchmark reports zero for all three sections, and the zero is a lie.**
+ * The default config stops delivering data about 0.7 s into the measured block: the session
+ * itself stays up — it goes on asking for flushes — but its data stops reaching the file, and
+ * the trace ends with Macrobenchmark's own `measureBlock` slice still open (`dur = -1`). A
+ * launch fits in that window, which is why [startup] and [libraryScroll] were never affected
+ * and why this went unnoticed until something was measured 30 s in. Measured on a Pixel 5
+ * (API 34) on 2026-08-27: `traced_flushes_requested = 6`, `traced_flushes_failed = 4`,
+ * 572 chunks discarded, and every app slice inside the first 523 ms.
+ *
+ * Two differences from the default, both taken from a hand-driven `adb shell perfetto` capture
+ * that recorded the same APK on the same device for 45 s without losing anything:
+ *
+ *  - **One large in-memory ring buffer, and no `write_into_file`.** The default dumps to file
+ *    every 2.5 s and flushes every 5 s, and it is those periodic flushes that fail here. A
+ *    buffer big enough to hold the whole block removes the need for them, and with none
+ *    requested none can fail. The measured block runs about 10 s and a 45 s hand capture of
+ *    the same journey came to 46 MB, so 256 MB is several times the headroom needed.
+ *  - **Named apps rather than `atrace_apps: "*"`.** The default asks the framework to enable
+ *    app tracing for every process on the device; only two matter here, and asking for two is
+ *    the shape that was verified working.
+ *
+ * The data sources are the minimum [TraceSectionMetric] needs. It matches slices by name and
+ * filters them by process, so app atrace sections plus process names is the whole requirement
+ * — it never reads `sched`, and it does not restrict itself to the measured window either.
+ * That last part is why playback must stay in the measure block rather than move to
+ * `setupBlock`: sections written during setup would be counted just the same.
+ *
+ * With this config the same run reports `measureBlock` closed at 10.0 s and all three sections
+ * present, `Count = 1` each — against a `dur = -1` block and three zeros without it.
+ *
+ * One cosmetic cost: dropping the `sched` events means late-created threads never get named, so
+ * the app's `ExoPlayer:*` threads do not appear by name in these traces. Nothing here reads
+ * thread names; add `sched/sched_switch` back if a future metric does.
+ *
+ * Top-level rather than a member for the same reason the journey's own helpers are: the class sits
+ * at detekt's function threshold, and this needs nothing from it but the package name.
+ *
+ * Keep this in sync with nothing — it is deliberately standalone. If a future Macrobenchmark
+ * fixes the flush failure, delete this and the [ExperimentalConfig] argument with it, and
+ * confirm the sections still report non-zero.
+ */
+@OptIn(ExperimentalPerfettoCaptureApi::class)
+private fun playbackTraceConfig(): PerfettoConfig {
+    val instrumentation = InstrumentationRegistry.getInstrumentation().context.packageName
+    return PerfettoConfig.Text(
+        """
+        buffers {
+            size_kb: 262144
+            fill_policy: RING_BUFFER
+        }
+        data_sources {
+            config {
+                name: "linux.ftrace"
+                ftrace_config {
+                    ftrace_events: "task/task_newtask"
+                    ftrace_events: "task/task_rename"
+                    ftrace_events: "sched/sched_process_exit"
+                    ftrace_events: "sched/sched_process_free"
+                    atrace_categories: "am"
+                    atrace_categories: "view"
+                    atrace_categories: "wm"
+                    atrace_apps: "${JourneyConfig.targetPackage}"
+                    atrace_apps: "$instrumentation"
+                }
+            }
+        }
+        data_sources {
+            config {
+                name: "linux.process_stats"
+                process_stats_config {
+                    scan_all_processes_on_start: true
+                }
+            }
+        }
+        """.trimIndent(),
+    )
 }

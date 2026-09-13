@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -54,6 +55,19 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+
+/**
+ * Handles for the baseline-profile generator and `JourneyBenchmark`, which drive this screen through
+ * UiAutomator and so cannot match on Compose semantics the way the instrumented tests do. Named in
+ * resource-id style because that is what they become: MainActivity's root Scaffold sets
+ * `testTagsAsResourceId`, which republishes every tag below it as an Android resource id. They have
+ * no other meaning — nothing in the app or the test suite reads them.
+ *
+ * A row rather than the list around it: a list exists before it has anything in it, and what a
+ * journey has to wait for is content.
+ */
+internal const val CATEGORY_ROW_TAG = "category_row"
+internal const val CATEGORY_SEARCH_TAG = "category_search"
 
 /**
  * Categories tab: binds [CategoriesViewModel] to the stateless [CategoriesContent] below, which
@@ -115,6 +129,7 @@ internal fun CategoriesContent(
             query = query,
             onQueryChange = onQueryChange,
             placeholder = stringResource(R.string.search_categories),
+            modifier = Modifier.testTag(CATEGORY_SEARCH_TAG),
         )
 
         val searching = query.isNotBlank()
@@ -311,7 +326,8 @@ private fun CategoryRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick(item.category.id, item.category.name) }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .testTag(CATEGORY_ROW_TAG),
     ) {
         Text(item.category.name, style = MaterialTheme.typography.bodyLarge)
         val count = pluralStringResource(R.plurals.video_count, item.videoCount, item.videoCount)

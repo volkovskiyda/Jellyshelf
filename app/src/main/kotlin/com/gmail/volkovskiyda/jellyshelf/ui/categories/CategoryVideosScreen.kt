@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -54,6 +55,14 @@ import com.gmail.volkovskiyda.jellyshelf.ui.selection.playlistMessage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
+
+/**
+ * Handle for `JourneyBenchmark`, published as a resource id by MainActivity's `testTagsAsResourceId`
+ * — see the same constants in `LibraryScreen`. A row rather than the list, because a list exists
+ * before it has anything in it and what a journey waits for is content. Distinct from the library's
+ * own row tag so a journey can tell which screen it is looking at.
+ */
+internal const val CATEGORY_VIDEO_ROW_TAG = "category_video_row"
 
 /**
  * One category's videos: binds [CategoryVideosViewModel] to the stateless
@@ -421,6 +430,7 @@ private fun CategoryVideoList(
             items(videos, key = { it.youtubeId }) { video ->
                 VideoRow(
                     video = video,
+                    modifier = Modifier.testTag(CATEGORY_VIDEO_ROW_TAG),
                     onPlay = { onPlayVideo(video) },
                     onOpenDetails = { onOpenDetails(video) },
                     thumbnailModel = thumbnailModel(video),
