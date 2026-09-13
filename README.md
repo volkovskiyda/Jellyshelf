@@ -447,6 +447,15 @@ most 300 trace events per 10 minutes, shared with network traces, which is why t
 report their **first** emission per collection rather than every one: a search flow re-collects on
 every debounced keystroke.
 
+One consequence worth knowing before it surprises someone: **`gateway.kotzilla.io` is one of the
+larger rows in Performance's own network table** — 1.5k samples against the Jellyfin server's 5.5k
+over the week to 2026-09-13. Kotzilla's SDK uploads over `java.net.HttpURLConnection` every 15
+seconds (its own floor; the interval cannot go lower and raising it would only make its timelines
+staler), and Performance instruments that class like any other. Nothing can be done about it in
+code: the Perf Gradle plugin has exactly one switch, `setInstrumentationEnabled`, per build type
+and with no per-host list, so silencing Kotzilla would take the Jellyfin rows with it. One
+monitoring tool measuring another is the price of running both, and it is left knowingly paid.
+
 ## Testing
 
 One command runs every layer available and prints a single verdict:

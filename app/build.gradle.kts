@@ -117,6 +117,15 @@ android {
             }
             // Debug never reports perf data (JellyshelfApplication gates collection to release),
             // so the perf plugin's bytecode weaving would only slow every debug build.
+            //
+            // This flag is also the *only* thing the perf plugin exposes — `FirebasePerfExtension`
+            // has one setter and no include/exclude list — which is why release keeps it on despite
+            // what that weaving picks up. Kotzilla's SDK uploads over `java.net.HttpURLConnection`,
+            // which Performance instruments like any other, so `gateway.kotzilla.io/**` shows up in
+            // the Network requests tab: 1.5k samples against the Jellyfin server's 5.5k over the
+            // week to 2026-09-13, roughly a fifth of the rows. There is no way to exclude one host,
+            // and turning the flag off here to be rid of it would take `jf.nwolf.app/**` — the row
+            // the tab exists for — with it. So the noise stays, knowingly. See the README.
             configure<com.google.firebase.perf.plugin.FirebasePerfExtension> {
                 setInstrumentationEnabled(false)
             }
