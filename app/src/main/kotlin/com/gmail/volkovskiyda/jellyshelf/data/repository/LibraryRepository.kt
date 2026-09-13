@@ -51,10 +51,12 @@ import com.gmail.volkovskiyda.jellyshelf.util.CLEARTEXT_BLOCKED_MESSAGE
 import com.gmail.volkovskiyda.jellyshelf.util.CloudTrace
 import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.SESSION_EXPIRED_MESSAGE
+import com.gmail.volkovskiyda.jellyshelf.util.Span
 import com.gmail.volkovskiyda.jellyshelf.util.Spans
 import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.gmail.volkovskiyda.jellyshelf.util.YoutubeId
 import com.gmail.volkovskiyda.jellyshelf.util.escapeLikePattern
+import com.gmail.volkovskiyda.jellyshelf.util.firstContent
 import com.gmail.volkovskiyda.jellyshelf.util.isCleartextBlocked
 import com.gmail.volkovskiyda.jellyshelf.util.isUnauthorized
 import com.gmail.volkovskiyda.jellyshelf.util.millisToTicks
@@ -419,6 +421,14 @@ internal class BulkRunner(private val scope: CoroutineScope) {
 }
 
 /**
+ * Kotzilla groups this area's marks under its own track — the library's reads and its sync.
+ *
+ * `internal` rather than private because [tracedSync] below is an inline function, and an inline
+ * function can only reach declarations at least as visible as itself.
+ */
+internal const val TRACK_LIBRARY = "library"
+
+/**
  * Wraps a real (non-demo) sync in the [Spans.LIBRARY_SYNC] span — the system-trace section
  * [Traces.LIBRARY_SYNC] for Perfetto and the benchmark, a mark pair on Kotzilla's session timeline,
  * and the Firebase Performance `library_sync` trace. [Metrics] is what keeps the three named alike.
@@ -434,7 +444,7 @@ internal class BulkRunner(private val scope: CoroutineScope) {
  * same reason, because a block handed to an interface method could not carry the `return` out.
  */
 internal inline fun <T> tracedSync(metrics: Metrics, block: (CloudTrace) -> T): T =
-    metrics.span(Spans.LIBRARY_SYNC) { trace ->
+    metrics.span(Spans.LIBRARY_SYNC, track = TRACK_LIBRARY) { trace ->
         trace.attribute("result", "error")
         block(trace)
     }
@@ -537,18 +547,22 @@ class DefaultLibraryRepository private constructor(
     // Room already runs the queries themselves on its own executor; this moves the mapping too.
 
     /**
-     * The row→domain mapping every browse flow ends in, inside the [Traces.LIBRARY_BROWSE] section.
+     * The row→domain mapping every browse flow ends in, inside [span]'s own section.
      *
-     * One helper rather than the same `map` written three times, because the section has to cover
+     * One helper rather than the same `map` written twice, because the section has to cover
      * exactly the mapping and nothing else: Room runs the query on its own executor and then emits,
      * so a section wrapped around the flow rather than around the block would time the
      * subscription, not the work. The row count rides along as a counter — this cost is per row,
      * and a duration without the size that produced it says nothing (`BrowseCostBenchmark` exists
      * because the same emission is hundreds of ms at 10,000 rows and unmeasurable at 60).
+     *
+     * The section is a parameter because the library's list and one category's videos both end
+     * here and are not the same measurement — see [Traces.CATEGORY_VIDEOS]. The row counter is
+     * shared: it is a Perfetto track, and one is enough.
      */
-    private fun Flow<List<VideoBrowseRow>>.mapToDomainTraced(): Flow<List<Video>> =
+    private fun Flow<List<VideoBrowseRow>>.mapToDomainTraced(span: Span): Flow<List<Video>> =
         map { rows ->
-            trace(Traces.LIBRARY_BROWSE) {
+            trace(span.section) {
                 SystemTrace.setCounter(Traces.BROWSE_ROWS, rows.size)
                 rows.map(VideoBrowseRow::toDomain)
             }
@@ -562,7 +576,8 @@ class DefaultLibraryRepository private constructor(
      * [observeVideo] for those.
      */
     override fun observeVideos(): Flow<List<Video>> =
-        videoDao.observeAllBrowse().mapToDomainTraced()
+        videoDao.observeAllBrowse().mapToDomainTraced(Spans.LIBRARY_BROWSE)
+            .firstContent(metrics, Spans.LIBRARY_BROWSE, TRACK_LIBRARY) { it.size }
             .flowOn(dispatchers.default)
 
     /**
@@ -583,6 +598,7 @@ class DefaultLibraryRepository private constructor(
                     SearchRanking.rankVideos(query, rows).map(VideoEntity::toDomain)
                 }
             }
+            .firstContent(metrics, Spans.LIBRARY_SEARCH, TRACK_LIBRARY) { it.size }
             .flowOn(dispatchers.default)
 
     /**
@@ -600,7 +616,9 @@ class DefaultLibraryRepository private constructor(
         VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatchedBrowse()
         VIRTUAL_CATEGORY_MISSING -> videoDao.observeMissingBrowse()
         else -> videoDao.observeByCategoryBrowse(categoryId)
-    }.mapToDomainTraced().flowOn(dispatchers.default)
+    }.mapToDomainTraced(Spans.CATEGORY_VIDEOS)
+        .firstContent(metrics, Spans.CATEGORY_VIDEOS, TRACK_LIBRARY) { it.size }
+        .flowOn(dispatchers.default)
 
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }
@@ -618,7 +636,9 @@ class DefaultLibraryRepository private constructor(
         }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> =
-        categoryDao.observeWithCounts().map { rows -> rows.map { it.toDomain() } }
+        categoryDao.observeWithCounts()
+            .map { rows -> trace(Traces.CATEGORIES_LIST) { rows.map { it.toDomain() } } }
+            .firstContent(metrics, Spans.CATEGORIES_LIST, TRACK_LIBRARY) { it.size }
             .flowOn(dispatchers.default)
 
     override fun observeCategoriesForVideo(youtubeId: String): Flow<List<Category>> =
@@ -626,7 +646,12 @@ class DefaultLibraryRepository private constructor(
 
     override fun searchCategories(query: String): Flow<List<CategoryWithCount>> =
         categoryDao.searchWithCounts(escapeLikePattern(query))
-            .map { ranked -> SearchRanking.rankCategories(query, ranked).map { it.toDomain() } }
+            .map { ranked ->
+                trace(Traces.CATEGORIES_SEARCH) {
+                    SearchRanking.rankCategories(query, ranked).map { it.toDomain() }
+                }
+            }
+            .firstContent(metrics, Spans.CATEGORIES_SEARCH, TRACK_LIBRARY) { it.size }
             .flowOn(dispatchers.default)
 
     /**
@@ -645,16 +670,18 @@ class DefaultLibraryRepository private constructor(
         videoDao.countWatched(),
         videoDao.countMissing(),
     ) { counts ->
-        listOf(
-            VIRTUAL_CATEGORY_UNCATEGORIZED to "Uncategorized",
-            VIRTUAL_CATEGORY_CONTINUE to "Continue watching",
-            VIRTUAL_CATEGORY_LAST_PLAYED to "Last played",
-            VIRTUAL_CATEGORY_UNWATCHED to "Unwatched",
-            VIRTUAL_CATEGORY_WATCHED to "Watched",
-            VIRTUAL_CATEGORY_MISSING to "Missing from server",
-        ).zip(counts.toList()) { (id, name), count -> virtualRow(id, name, count) }
-            .filter { it.videoCount > 0 }
-    }
+        trace(Traces.CATEGORIES_OTHERS) {
+            listOf(
+                VIRTUAL_CATEGORY_UNCATEGORIZED to "Uncategorized",
+                VIRTUAL_CATEGORY_CONTINUE to "Continue watching",
+                VIRTUAL_CATEGORY_LAST_PLAYED to "Last played",
+                VIRTUAL_CATEGORY_UNWATCHED to "Unwatched",
+                VIRTUAL_CATEGORY_WATCHED to "Watched",
+                VIRTUAL_CATEGORY_MISSING to "Missing from server",
+            ).zip(counts.toList()) { (id, name), count -> virtualRow(id, name, count) }
+                .filter { it.videoCount > 0 }
+        }
+    }.firstContent(metrics, Spans.CATEGORIES_OTHERS, TRACK_LIBRARY) { it.size }
 
     private fun virtualRow(id: String, name: String, count: Int) = CategoryWithCount(
         category = Category(id = id, name = name, type = CATEGORY_TYPE_OTHERS, createdAt = 0L),

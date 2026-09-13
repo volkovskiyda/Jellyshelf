@@ -44,6 +44,28 @@ object Spans {
     val PLAYER_STARTUP = Span(Traces.PLAYER_STARTUP, "player_startup")
 
     /**
+     * The library's own list, one collection at a time: how long from subscribing to the first rows
+     * being ready, and how many there were. The per-emission section [Traces.LIBRARY_BROWSE] still
+     * records every emission beside it.
+     */
+    val LIBRARY_BROWSE = Span(Traces.LIBRARY_BROWSE, "library_browse")
+
+    /** One ranked search of the library, per debounced query. */
+    val LIBRARY_SEARCH = Span(Traces.LIBRARY_SEARCH, "library_search")
+
+    /** One category's videos. Separate from [LIBRARY_BROWSE] — see [Traces.CATEGORY_VIDEOS]. */
+    val CATEGORY_VIDEOS = Span(Traces.CATEGORY_VIDEOS, "category_videos")
+
+    /** The Categories tab's list, with its per-row counts. */
+    val CATEGORIES_LIST = Span(Traces.CATEGORIES_LIST, "categories_list")
+
+    /** One ranked search of the categories, per debounced query. */
+    val CATEGORIES_SEARCH = Span(Traces.CATEGORIES_SEARCH, "categories_search")
+
+    /** The "Others" tab's six counts. */
+    val CATEGORIES_OTHERS = Span(Traces.CATEGORIES_OTHERS, "categories_others")
+
+    /**
      * One visit to one screen, from the moment it is composed to the moment it is disposed.
      *
      * Kotzilla reports these itself, per destination, once the navigation entry registers them.

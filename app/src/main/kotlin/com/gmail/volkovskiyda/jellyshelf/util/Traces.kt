@@ -58,6 +58,38 @@ object Traces {
     const val LIBRARY_SYNC = "Jellyshelf.library.sync"
 
     /**
+     * One emission of a single category's videos: the same projected-row mapping [LIBRARY_BROWSE]
+     * covers, for the list behind a category rather than the library's own.
+     *
+     * Its own name because it was not distinguishable before. Both lists end in the same helper, so
+     * a recording — and `JourneyBenchmark`'s `Mode.Sum` over [LIBRARY_BROWSE] — counted a category's
+     * emissions as the library's. The benchmark's journey never opens a category, which is the only
+     * reason that number was ever right.
+     */
+    const val CATEGORY_VIDEOS = "Jellyshelf.category.videos"
+
+    /**
+     * One emission of the Categories tab's list: every category with its video count.
+     *
+     * Worth its own section because the count is a correlated subquery per row — the cost grows
+     * with the number of categories *and* with the library behind them.
+     */
+    const val CATEGORIES_LIST = "Jellyshelf.categories.list"
+
+    /**
+     * One emission of a category search, scored and mapped. Runs on every debounced keystroke, and
+     * the query underneath it scans every video's description with `LIKE '%…%'` — the most
+     * expensive thing the Categories tab can be asked to do.
+     */
+    const val CATEGORIES_SEARCH = "Jellyshelf.categories.search"
+
+    /**
+     * One emission of the "Others" tab: six count queries combined into virtual categories. Cheap
+     * per row and six flows wide, so what this measures is the fan-in, not the mapping.
+     */
+    const val CATEGORIES_OTHERS = "Jellyshelf.categories.others"
+
+    /**
      * Turning the bare media ids a controller sends into playable items — stream URL, notification
      * metadata, resume position — on the path a tap actually takes (`onSetMediaItems`). It is the
      * first measurable slice of what Firebase's `player_startup` trace covers whole, and the only

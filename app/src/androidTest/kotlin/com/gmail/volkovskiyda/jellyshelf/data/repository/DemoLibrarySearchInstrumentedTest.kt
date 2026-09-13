@@ -15,7 +15,7 @@ import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
-import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
+import com.gmail.volkovskiyda.jellyshelf.util.RecordingMetrics
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import kotlinx.coroutines.CoroutineScope
@@ -60,6 +60,8 @@ class DemoLibrarySearchInstrumentedTest {
             CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     }
 
+    private val recorder = RecordingMetrics()
+
     @Before
     fun setUp() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -74,7 +76,7 @@ class DemoLibrarySearchInstrumentedTest {
             settings = FakeSettingsRepository(),
             dispatchers = dispatchers,
             time = DefaultTimeProvider(),
-            metrics = fakeMetrics(),
+            metrics = recorder.metrics,
             sources = LibrarySources(
                 JellyfinDataSource(JellyfinClient(httpClient)),
                 ApiSource(httpClient, dispatchers, json),
@@ -107,6 +109,31 @@ class DemoLibrarySearchInstrumentedTest {
     fun search_thatMatchesNothing_returnsEmptyRatherThanTheLibrary() {
         assertTrue("the library must be populated for this to mean anything", titles().size >= 50)
         assertEquals(emptyList<String>(), titles(query = "zeppelin"))
+    }
+
+    /**
+     * One collection, one cloud event — the rule the whole first-content shape rests on.
+     *
+     * A list flow re-emits on every database change and a search flow is re-collected on every
+     * debounced keystroke, so reporting each emission would spend a device's entire Firebase
+     * budget (300 trace events per 10 minutes, shared with network traces) on one search session.
+     * Nothing in the app would look different if it did.
+     */
+    @Test
+    fun aSearch_reportsOneSpanCarryingItsRowCount() {
+        val matches = titles(query = "ferry")
+
+        assertEquals(listOf("library_search"), recorder.reported())
+        assertEquals(matches.size.toLong(), recorder.trace("library_search").metrics["rows"])
+    }
+
+    /** The library's own list and a category's videos are no longer the same measurement. */
+    @Test
+    fun browsingAndSearching_reportUnderDifferentNames() {
+        results()
+        runBlocking { repo.observeVideos().first() }
+
+        assertEquals(listOf("library_search", "library_browse"), recorder.reported())
     }
 
     /**
