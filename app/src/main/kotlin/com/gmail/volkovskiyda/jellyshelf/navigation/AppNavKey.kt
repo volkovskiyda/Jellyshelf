@@ -31,6 +31,43 @@ sealed class AppNavKey : NavKey {
 }
 
 /**
+ * What the analytics call this destination.
+ *
+ * The class's own simple name, but written out as literals rather than read from `this::class`:
+ * release builds are minified, and a reflected simple name would arrive in the console as whatever
+ * R8 renamed the class to that build. Kotzilla's compiler plugin resolves the same name at compile
+ * time for the routes it rewrites, so these strings are also what the automatic path would have
+ * sent — keep them equal to the class names.
+ */
+fun AppNavKey.screenName(): String = when (this) {
+    AppNavKey.Library -> "Library"
+    AppNavKey.Categories -> "Categories"
+    AppNavKey.Settings -> "Settings"
+    is AppNavKey.CategoryVideos -> "CategoryVideos"
+    is AppNavKey.Detail -> "Detail"
+    is AppNavKey.Player -> "Player"
+}
+
+/**
+ * The identifying arguments of this destination, for the analytics that record a screen visit.
+ *
+ * Ids only, never a title: enough to tell one visit apart from another in a session timeline,
+ * without sending what is in the user's library to a third party. The destinations that carry no
+ * argument carry none here either, and [PlayerOrigin] is left out — it says where the user came
+ * from, which the sequence of visits already shows.
+ *
+ * Lives here rather than beside the analytics call because it names no analytics type: a checkout
+ * with no Kotzilla keys has no SDK on the classpath at all, and everything in this file has to
+ * compile there.
+ */
+fun AppNavKey.routeArgs(): Map<String, String> = when (this) {
+    is AppNavKey.CategoryVideos -> mapOf("categoryId" to categoryId)
+    is AppNavKey.Detail -> mapOf("youtubeId" to youtubeId)
+    is AppNavKey.Player -> mapOf("youtubeId" to youtubeId)
+    AppNavKey.Library, AppNavKey.Categories, AppNavKey.Settings -> emptyMap()
+}
+
+/**
  * The list a video was opened from, carried to the player so previous/next and auto-advance
  * follow the order the user was browsing rather than the whole library.
  *

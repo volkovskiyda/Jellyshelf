@@ -97,6 +97,7 @@ import com.gmail.volkovskiyda.jellyshelf.playback.endsCurrentPlayback
 import com.gmail.volkovskiyda.jellyshelf.playback.pipAspect
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallProgressEffect
 import com.gmail.volkovskiyda.jellyshelf.ui.InstallSnackbarHost
+import com.gmail.volkovskiyda.jellyshelf.ui.KotzillaScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.LocalSnackbarHostState
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.MiniPlayerBar
@@ -715,7 +716,15 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             else -> bottomWithoutTabs
         }
 
-        /** One screen, holding its own [bottomFor] clear of the chrome and its own claim on it. */
+        /**
+         * One screen, holding its own [bottomFor] clear of the chrome and its own claim on it.
+         *
+         * Also the one place every screen is registered with Kotzilla, by [KotzillaScreen]. That
+         * has to be done by hand because the SDK's compiler plugin only rewrites the
+         * `entryProvider { entry<Key> { } }` DSL, and these entries are built directly — see that
+         * function for the whole story. [OnScreen] stays outside it: what the chrome is sized from
+         * must not depend on anything an analytics wrapper does.
+         */
         fun entry(
             key: AppNavKey,
             metadata: Map<String, Any> = emptyMap(),
@@ -723,14 +732,16 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         ): NavEntry<NavKey> =
             NavEntry(key, metadata = metadata) {
                 OnScreen(key, onScreen)
-                // The PiP flag is read here, in the entry's own composition, and not inside
-                // [bottomFor]: NavDisplay keeps the entry it built, and that entry's lambda holds
-                // the [bottomFor] of the composition that built it — one from before the flag
-                // flipped still reserved the live navigation-bar inset for a pass after entering
-                // PiP, while the top padding above, applied directly, had already gone. See
-                // [pipInsetFree].
-                val bottom = if (LocalIsInPip.current) 0.dp else bottomFor(key)
-                BottomChrome(bottom, content)
+                KotzillaScreen(key) {
+                    // The PiP flag is read here, in the entry's own composition, and not inside
+                    // [bottomFor]: NavDisplay keeps the entry it built, and that entry's lambda
+                    // holds the [bottomFor] of the composition that built it — one from before the
+                    // flag flipped still reserved the live navigation-bar inset for a pass after
+                    // entering PiP, while the top padding above, applied directly, had already
+                    // gone. See [pipInsetFree].
+                    val bottom = if (LocalIsInPip.current) 0.dp else bottomFor(key)
+                    BottomChrome(bottom, content)
+                }
             }
 
         // Every screen under here can post to the Scaffold's snackbar host without that host being
