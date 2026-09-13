@@ -42,6 +42,25 @@ object Spans {
 
     /** A tap to the first frame it produces. Firebase history too — never rename it. */
     val PLAYER_STARTUP = Span(Traces.PLAYER_STARTUP, "player_startup")
+
+    /**
+     * One visit to one screen, from the moment it is composed to the moment it is disposed.
+     *
+     * Kotzilla reports these itself, per destination, once the navigation entry registers them.
+     * Firebase cannot: its screen rendering is measured per `Activity` and this app has one, so
+     * these spans are how a Compose destination gets a row in that console at all. The numbers
+     * therefore exist in both places on purpose.
+     *
+     * The section names are not in [Traces] because nothing reads them back — `Traces` is the
+     * contract with `JourneyBenchmark`, and a per-visit slice is for a human looking at a
+     * recording. `ui.ScreenFrames` maps a navigation key to one of these.
+     */
+    val SCREEN_LIBRARY = Span("Jellyshelf.screen.Library", "screen_library")
+    val SCREEN_CATEGORIES = Span("Jellyshelf.screen.Categories", "screen_categories")
+    val SCREEN_CATEGORY_VIDEOS = Span("Jellyshelf.screen.CategoryVideos", "screen_category_videos")
+    val SCREEN_DETAIL = Span("Jellyshelf.screen.Detail", "screen_detail")
+    val SCREEN_PLAYER = Span("Jellyshelf.screen.Player", "screen_player")
+    val SCREEN_SETTINGS = Span("Jellyshelf.screen.Settings", "screen_settings")
 }
 
 /**

@@ -54,6 +54,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
 import com.gmail.volkovskiyda.jellyshelf.playback.ResumableCache
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
+import com.gmail.volkovskiyda.jellyshelf.ui.ScreenFrames
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosViewModel
@@ -146,6 +147,9 @@ val appModule = module {
     // constructor reference binds at its full arity and Koin would resolve `() -> Long` from the
     // graph instead of letting the default stand.
     singleOf<Metrics, MetricsSink, CloudTraces>(::Metrics)
+    // Per-screen frame counting for the Firebase visit traces; reads BuildInfo to stay release-only.
+    // Type arguments for the same reason as Metrics above — the third parameter is its clock.
+    singleOf<ScreenFrames, Metrics, BuildInfo>(::ScreenFrames)
     singleOf(::UpdateChecker)
     singleOf(::NotificationPrompt)
     singleOf(::LocalNetworkPrompt)

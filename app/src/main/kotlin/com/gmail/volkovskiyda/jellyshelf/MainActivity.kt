@@ -101,6 +101,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.KotzillaScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.LocalSnackbarHostState
 import com.gmail.volkovskiyda.jellyshelf.ui.MainViewModel
 import com.gmail.volkovskiyda.jellyshelf.ui.MiniPlayerBar
+import com.gmail.volkovskiyda.jellyshelf.ui.ScreenFrames
 import com.gmail.volkovskiyda.jellyshelf.ui.UpdateDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesScreen
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosScreen
@@ -385,6 +386,11 @@ internal fun JellyshelfApp(viewModel: MainViewModel = koinViewModel()) {
 // see [chromeIgnoringVisibility] for why the chrome reserves bars that are not currently showing.
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel) {
+    // Frame counting for the per-screen Firebase traces the entries below open. Tied to this
+    // composition rather than to the Activity's own callbacks, so the tracker cannot outlive the
+    // window it was built from. A no-op on debug builds, which report no performance data at all.
+    val screenFrames: ScreenFrames = koinInject()
+    screenFrames.Track()
     val backStack = rememberNavBackStack(*startStack.toTypedArray())
     val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
     val viewModelStoreDecorator = rememberViewModelStoreNavEntryDecorator<NavKey>()
@@ -732,6 +738,9 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         ): NavEntry<NavKey> =
             NavEntry(key, metadata = metadata) {
                 OnScreen(key, onScreen)
+                // The other half of the screen telemetry, beside [KotzillaScreen] rather than
+                // inside it: the two sinks measure the same visit and neither nests in the other.
+                screenFrames.Visit(key)
                 KotzillaScreen(key) {
                     // The PiP flag is read here, in the entry's own composition, and not inside
                     // [bottomFor]: NavDisplay keeps the entry it built, and that entry's lambda

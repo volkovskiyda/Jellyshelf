@@ -112,6 +112,16 @@ uiautomator = "2.4.0"
 # `trace("label") { }` and `traceAsync` now come from `tracing` itself. Declaring both would add a
 # dependency that contributes no code.
 androidxTracing = "2.0.2"
+# Frame timings for the per-screen visit trace Firebase Performance carries. Perf's own screen
+# rendering is measured per Activity, and this app has one — so the only way a Compose destination
+# gets a frame count in that console is for the app to count frames itself, which is what JankStats
+# does: one callback per frame, with the UI-thread duration and its own jank verdict.
+#
+# Declared here rather than leaned on transitively. Kotzilla's Compose SDK already pulls this
+# artifact in, but that dependency disappears with app/kotzilla.json, and a keyless checkout must
+# build the same app. 1.0.0 is the only stable release of it (the catalogue on
+# dl.google.com was last touched 2025-10-08).
+androidxMetrics = "1.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -202,6 +212,7 @@ firebase-appdistribution-api = { group = "com.google.firebase", name = "firebase
 firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
 firebase-config = { group = "com.google.firebase", name = "firebase-config" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "androidxBrowser" }
+androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-performance", version.ref = "androidxMetrics" }
 androidx-tracing = { group = "androidx.tracing", name = "tracing", version.ref = "androidxTracing" }
 
 [plugins]
