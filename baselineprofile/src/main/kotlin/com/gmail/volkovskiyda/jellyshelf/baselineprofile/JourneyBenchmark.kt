@@ -238,12 +238,14 @@ class JourneyBenchmark {
      * Opening a video and advancing to the next one, which is the whole of what this app's playback
      * performance is: a tap to the first frame, and a queue advance to the next first frame.
      *
-     * Three sections, and they answer different questions. [PLAYER_RESOLVE] is our own work — a
+     * Four sections, and they answer different questions. [PLAYER_RESOLVE] is our own work — a
      * settings read and a Room read per item — and is the only one that is not mostly waiting.
      * [PLAYER_STARTUP] is the whole tap-to-first-frame window `player_startup` reports in the
      * field. [PLAYER_TRANSITION] is the queue advance, and is the only one an ExoPlayer flag about
      * per-stream media progression can move; measuring startup alone would return a clean null
-     * result and be believed.
+     * result and be believed. [PLAYER_SEEK] is a scrub inside the item already playing, which is
+     * the one wait here that no call site in the app can see — the seek bar fires its own `seekTo`
+     * from inside media3, so only the player's position discontinuity reports it.
      *
      * **Live and demo numbers are not comparable to each other.** With a filled `.test.env` this
      * streams from a real Jellyfin over the network; without one it reads a bundled `asset:` clip
@@ -265,6 +267,7 @@ class JourneyBenchmark {
             TraceSectionMetric(PLAYER_STARTUP, TraceSectionMetric.Mode.Sum),
             TraceSectionMetric(PLAYER_RESOLVE, TraceSectionMetric.Mode.Sum),
             TraceSectionMetric(PLAYER_TRANSITION, TraceSectionMetric.Mode.Sum),
+            TraceSectionMetric(PLAYER_SEEK, TraceSectionMetric.Mode.Sum),
         ),
         iterations = ITERATIONS,
         experimentalConfig = ExperimentalConfig(perfettoConfig = playbackTraceConfig()),
@@ -275,6 +278,11 @@ class JourneyBenchmark {
         startActivityAndWait()
         awaitLibrary(LIBRARY_TIMEOUT_MS)
         startFirstVideo()
+
+        // Before the advance, and backwards: see [scrubBackward] for why the direction is not a
+        // preference. It is the only seek any journey here performs, so [PLAYER_SEEK] is measured
+        // nowhere else.
+        scrubBackward()
 
         advanceToNextItem()
 
@@ -469,11 +477,7 @@ class JourneyBenchmark {
          */
         const val LIBRARY_FIRST = "Jellyshelf.library.browse.first"
 
-        /**
-         * A seek to the frame it produces. Declared to keep this list a complete mirror of the
-         * player's sections, and measured by nothing yet: no journey here scrubs. Adding one is
-         * backlog item B4 of `20260913-performance-metrics-plan`.
-         */
+        /** A seek to the frame it produces, measured by [playback]'s scrub. */
         const val PLAYER_SEEK = "Jellyshelf.player.seek"
 
         /**
