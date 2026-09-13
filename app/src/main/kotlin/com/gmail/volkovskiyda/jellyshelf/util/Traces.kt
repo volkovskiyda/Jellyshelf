@@ -69,6 +69,17 @@ object Traces {
     const val CATEGORY_VIDEOS = "Jellyshelf.category.videos"
 
     /**
+     * Loading one video for the detail screen: the whole stored row, mapped through the three JSON
+     * converters the browse projection exists to skip.
+     *
+     * One row rather than a list, so what this measures is the converters rather than a per-row
+     * cost. The screen's second flow — the categories a video appears in — is deliberately not
+     * measured: it is the same visit, and spanning it would double the events for a number nobody
+     * asked for.
+     */
+    const val DETAIL_LOAD = "Jellyshelf.detail.load"
+
+    /**
      * One emission of the Categories tab's list: every category with its video count.
      *
      * Worth its own section because the count is a correlated subquery per row — the cost grows

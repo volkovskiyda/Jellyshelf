@@ -628,6 +628,7 @@ class DefaultLibraryRepository private constructor(
 
     override fun observeVideo(youtubeId: String): Flow<Video?> =
         videoDao.observe(youtubeId).map { it?.toDomain() }
+            .firstContent(metrics, Spans.DETAIL_LOAD, TRACK_LIBRARY) { if (it == null) 0 else 1 }
             .flowOn(dispatchers.default)
 
     override suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video> =

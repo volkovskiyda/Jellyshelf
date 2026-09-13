@@ -66,6 +66,12 @@ object Spans {
     val CATEGORIES_OTHERS = Span(Traces.CATEGORIES_OTHERS, "categories_others")
 
     /**
+     * Opening one video's detail screen, up to the row being ready. A missing video is a legitimate
+     * first emission and reports zero rows.
+     */
+    val DETAIL_LOAD = Span(Traces.DETAIL_LOAD, "detail_load")
+
+    /**
      * One visit to one screen, from the moment it is composed to the moment it is disposed.
      *
      * Kotzilla reports these itself, per destination, once the navigation entry registers them.
