@@ -9,6 +9,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.runBlocking
 import org.koin.dsl.module
@@ -130,7 +131,26 @@ internal fun liveJellyfinClient(
 /**
  * Fast reachability probe with a short timeout, so a down server skips the live tests quickly
  * instead of hanging on each of them. `/System/Info/Public` needs no credentials.
+ */
+internal fun serverReachable(serverUrl: String): Boolean =
+    reachable(serverUrl, "/System/Info/Public") { it.isSuccess() }
+
+/**
+ * The same probe for the metadata API host, which [LiveMetadataApiTest] needs separately: it is a
+ * different server from Jellyfin, on a name of its own, so a reachable Jellyfin says nothing about
+ * whether the bot server can be reached. The two routinely differ — a Jellyfin published to a
+ * public name resolves from anywhere, while a LAN-only metadata API resolves only on the subnet,
+ * which is why an emulator (public DNS) fails to find a host the developer's machine finds.
  *
+ * **Any HTTP answer counts as reachable, 401 included.** The suite's whole subject is what the
+ * server answers — that the token is enforced, that the documents carry what the merge needs — so
+ * anything short of a transport failure must reach the assertions rather than skip past them.
+ * The probe deliberately sends no token: it asks whether the host is there, not whether auth works.
+ */
+internal fun metadataApiReachable(apiUrl: String): Boolean =
+    reachable(apiUrl, "/videos") { true }
+
+/**
  * It grants the journey permissions first, because the probe is subject to the same
  * `ACCESS_LOCAL_NETWORK` rule as the app: the instrumented process runs under the app's uid, so
  * on API 37 a server on the device's own subnet is dropped for this probe exactly as it would be
@@ -139,7 +159,11 @@ internal fun liveJellyfinClient(
  * behind this assumption. Here rather than in each test so the guard and its precondition cannot
  * drift apart.
  */
-internal fun serverReachable(serverUrl: String): Boolean = runCatching {
+private fun reachable(
+    baseUrl: String,
+    path: String,
+    accept: (HttpStatusCode) -> Boolean,
+): Boolean = runCatching {
     grantJourneyPermissions()
     runBlocking {
         HttpClient(OkHttp) {
@@ -149,8 +173,7 @@ internal fun serverReachable(serverUrl: String): Boolean = runCatching {
                 socketTimeoutMillis = PROBE_TIMEOUT_MS
             }
         }.use { probe ->
-            val base = serverUrl.trim().removeSuffix("/")
-            probe.get("$base/System/Info/Public").status.isSuccess()
+            accept(probe.get("${baseUrl.trim().removeSuffix("/")}$path").status)
         }
     }
 }.getOrDefault(false)

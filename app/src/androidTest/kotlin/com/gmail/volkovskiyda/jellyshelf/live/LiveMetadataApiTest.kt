@@ -56,8 +56,12 @@ import org.koin.test.inject
  * are the three ways this integration breaks in production without a single test turning red.
  *
  * Opt-in and tolerant, like [LiveEndpointTest]: no `.test.env`, no metadata API pair, or an
- * unreachable server all **skip**. Only a *half*-filled pair fails, since a URL with no token can
- * only ever produce 401s and silently skipping it would look exactly like the deliberate blank.
+ * unreachable server all **skip** — and *both* servers are probed, because the metadata API is its
+ * own host and a reachable Jellyfin says nothing about it. A metadata API published only on the
+ * LAN is reachable from a device on that subnet and not from an emulator, which resolves through
+ * public DNS; that is a skip on the emulator and a real run on the phone, not a failure on both.
+ * Only a *half*-filled pair fails, since a URL with no token can only ever produce 401s and
+ * silently skipping it would look exactly like the deliberate blank.
  *
  * Read-only against Jellyfin — the sync test writes to the device (the app's own database and
  * settings, wiped at both ends like [LiveUiJourneyTest] does) and never to the server.
@@ -103,6 +107,13 @@ class LiveMetadataApiTest : KoinTest {
         assumeTrue(
             "Jellyfin server unreachable — skipping the live metadata API tests",
             serverReachable(config.serverUrl),
+        )
+        assumeTrue(
+            "the metadata API at ${config.metadataApiUrl} is unreachable from this device — " +
+                "skipping the live metadata API tests. It is a different host from Jellyfin, so " +
+                "a reachable server says nothing about it: a LAN-only API resolves on a device " +
+                "on that subnet and not on an emulator, which uses public DNS.",
+            metadataApiReachable(config.metadataApiUrl),
         )
     }
 
