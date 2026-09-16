@@ -38,6 +38,14 @@ data class JellyfinTestConfig(
      * nothing else in the library is ever written to.
      */
     val testItemId: String,
+    /**
+     * Base URL of the metadata API on the bot server, blank when not configured — and blank is the
+     * normal state: only [LiveMetadataApiTest] reads it, and every other live test runs without it
+     * on purpose, so a plain live run proves the app syncs with no metadata API at all.
+     */
+    val metadataApiUrl: String,
+    /** The bearer token that API requires. Useless without [metadataApiUrl] and vice versa. */
+    val metadataApiToken: String,
     private val explicitIndexUrl: String,
 ) {
     /** Live tests skip (assumeTrue) unless a server URL + username + password are present. */
@@ -53,6 +61,18 @@ data class JellyfinTestConfig(
      * a whole server through the app, which is not a thing a test may start.
      */
     val hasSyncScope: Boolean get() = syncFolder.isNotBlank() || syncFolderId.isNotBlank()
+
+    /**
+     * Whether the metadata API is configured — **both** halves, since a URL without its token can
+     * only produce 401s and a token without a URL is never sent anywhere. Half-filled counts as
+     * unconfigured here, and [LiveMetadataApiTest] fails rather than skips on it: a run that
+     * silently skipped would look exactly like the deliberate blank state.
+     */
+    val hasMetadataApi: Boolean get() = metadataApiUrl.isNotBlank() && metadataApiToken.isNotBlank()
+
+    /** True when exactly one half of the metadata API pair is filled in — a misconfiguration. */
+    val metadataApiHalfConfigured: Boolean
+        get() = metadataApiUrl.isNotBlank() != metadataApiToken.isNotBlank()
 
     /**
      * `JELLYFIN_INDEX_URL` when set, otherwise the convention the app's own "fill from server"
@@ -81,6 +101,8 @@ val liveTestModule = module {
             syncFolder = args.getString("jellyfinSyncFolder").orEmpty(),
             syncFolderId = args.getString("jellyfinSyncFolderId").orEmpty(),
             testItemId = args.getString("jellyfinTestItemId").orEmpty(),
+            metadataApiUrl = args.getString("jellyfinMetadataApiUrl").orEmpty(),
+            metadataApiToken = args.getString("jellyfinMetadataApiToken").orEmpty(),
             explicitIndexUrl = args.getString("jellyfinIndexUrl").orEmpty(),
         )
     }

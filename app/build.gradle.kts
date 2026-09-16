@@ -59,8 +59,10 @@ android {
         // `-e jellyfinIndexUrl -e jellyfinSyncFolder …` — the next flag becomes the value, every
         // pair after it shifts, and `am` answers "Invalid userId -2" having run *no* tests, while
         // the Gradle task still reports success. Measured on the API 37 tablet AVD on 2026-09-10,
-        // with the two optional keys unset. Values with spaces would break the same way; none of
-        // these carry one.
+        // with the two optional keys unset. Values with whitespace break the same way, which is
+        // what the guard below refuses rather than leaves to be diagnosed as "Invalid userId -2"
+        // — it is the metadata API token that makes this reachable: unlike every other value here
+        // it is an opaque secret, so nothing about it says it may not contain a space.
         testInstrumentationRunnerArguments += mapOf(
             "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"],
             "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"],
@@ -69,7 +71,19 @@ android {
             "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"],
             "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"],
             "jellyfinTestItemId" to testEnv["JELLYFIN_TEST_ITEM_ID"],
+            // The metadata API pair is the one config LiveMetadataApiTest owns: filled, that suite
+            // runs; blank, it skips and the live run covers the no-metadata-API path every other
+            // live test already exercises. See .example.test.env.
+            "jellyfinMetadataApiUrl" to testEnv["JELLYFIN_METADATA_API_URL"],
+            "jellyfinMetadataApiToken" to testEnv["JELLYFIN_METADATA_API_TOKEN"],
         ).filterValues { !it.isNullOrBlank() }.mapValues { (_, value) -> value!! }
+            .onEach { (key, value) ->
+                require(value.none { it.isWhitespace() }) {
+                    "$key contains whitespace. It reaches the device on one unquoted `am instrument` " +
+                        "command line, where a space shifts every argument after it and the run " +
+                        "executes no tests at all — fix the value in .test.env."
+                }
+            }
 
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers
         // virtually all modern physical devices and keeps the APK from ballooning across ABIs.

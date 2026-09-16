@@ -539,13 +539,15 @@ every push to `main` and every PR, and uploads the summary and reports as artifa
 ### Demo and live tests
 
 Almost everything runs with **no server**: demo mode is the fixture, and `scripts/run-tests.sh` on a
-fresh checkout is green with nothing configured. Two tests in `src/androidTest/…/live/` are the
+fresh checkout is green with nothing configured. The classes in `src/androidTest/…/live/` are the
 exception — they need a real Jellyfin, and they are the only ones that do.
 
 | | Needs | Touches the server |
 |---|---|---|
 | **Demo / offline tests** — everything else | nothing | no |
 | **`LiveEndpointTest`** — endpoints deserialize against a live server | `.test.env` | reads only |
+| **`LiveStreamReconnectTest`** — a paused stream resumes mid-file | `.test.env` **with `JELLYFIN_SYNC_FOLDER_ID`** | reads only |
+| **`LiveMetadataApiTest`** — the bot server's metadata API, and a sync with vs. without it | `.test.env` **with the metadata API pair** | reads only (writes the device) |
 | **`LiveUiJourneyTest`** — the real app against that server, end to end | `.test.env` **with a sync scope** | writes, then undoes |
 
 All of it runs from `scripts/run-tests.sh`. To run one class on its own, filter through the
@@ -556,7 +558,7 @@ instrumentation runner — `--tests` is a unit-test option and `connectedAndroid
   -Pandroid.testInstrumentationRunnerArguments.class=com.gmail.volkovskiyda.jellyshelf.live.LiveUiJourneyTest
 ```
 
-To enable both: copy `.example.test.env` → `.test.env` and fill in the server URL and a username +
+To enable them: copy `.example.test.env` → `.test.env` and fill in the server URL and a username +
 password — ideally a dedicated **non-admin** test user. The tests sign in the way the app does
 (`AuthenticateByName`) and drive everything with the returned user-scoped token; no admin API key is
 involved. They **skip automatically** (never fail) when the config is missing or the server is
@@ -565,7 +567,7 @@ sheet for smoke-testing a release build by hand ([docs/RELEASING.md](docs/RELEAS
 config the baseline-profile generator reads
 ([docs/BASELINE-PROFILE.md](docs/BASELINE-PROFILE.md)).
 
-Once `.test.env` is filled, both run as part of a plain `scripts/run-tests.sh` — deliberately, since
+Once `.test.env` is filled, they run as part of a plain `scripts/run-tests.sh` — deliberately, since
 a live check nobody remembers to run is a live check nobody runs. Add about a minute for the journey.
 One caveat there: `SyncSchedulerInstrumentedTest` swaps WorkManager for its test double, and that
 swap is process-wide, so in a *whole-suite* run no worker can execute afterwards. The journey detects
@@ -591,6 +593,19 @@ restores an item that started at 0 and cannot restore one that started at 3. Eve
 read-only, and the bulk **Remove watched videos** action is never touched — it deletes files from the
 server, which no test may do.
 
+**With and without the metadata API.** `JELLYFIN_METADATA_API_URL` + `JELLYFIN_METADATA_API_TOKEN`
+are the one pair in `.test.env` that a *single* suite owns. Every other live test leaves them unset
+on purpose, so an ordinary live run is the **without** case — the app signing in, syncing and
+playing with no metadata API configured, which is what an install that has never heard of the bot
+server does. Filling the pair in adds `LiveMetadataApiTest`, the **with** case: the real token is
+accepted, a wrong or blank one comes back 401 (which is what the app turns into a red token field
+rather than "unreachable"), the live entries carry the `fetchedAt` and the ids the merge is built
+on, and a library synced **without** the API then re-synced **with** it only ever gains provenance
+— no row loses its metadata, and no row appears or disappears. Both halves of the split are
+therefore real runs of the same suite with one config file changed. Blank both keys and it skips;
+fill only one and it fails, since a URL with no token can only produce 401s and a silent skip there
+would look exactly like the deliberate blank.
+
 ### Environment config
 
 Local config lives in git-ignored `KEY=VALUE` files at the repo root, **not** `local.properties`.
@@ -598,7 +613,7 @@ Both are optional; copy the committed `.example.*` template and fill it in when 
 
 | File | Committed? | Purpose |
 |------|-----------|---------|
-| `.test.env` | git-ignored | Live-test + release smoke-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_USERNAME`, `JELLYFIN_PASSWORD`, plus optional `JELLYFIN_INDEX_URL` (defaults to `<server>/jellyshelf-index.json`), `JELLYFIN_SYNC_FOLDER` / `JELLYFIN_SYNC_FOLDER_ID` (the sync scope — `LiveUiJourneyTest` needs one of them), `JELLYFIN_TEST_ITEM_ID` (the one item the journey may write to). Absent → the live tests skip. |
+| `.test.env` | git-ignored | Live-test + release smoke-test config: `JELLYFIN_SERVER_URL`, `JELLYFIN_USERNAME`, `JELLYFIN_PASSWORD`, plus optional `JELLYFIN_INDEX_URL` (defaults to `<server>/jellyshelf-index.json`), `JELLYFIN_SYNC_FOLDER` / `JELLYFIN_SYNC_FOLDER_ID` (the sync scope — `LiveUiJourneyTest` needs one of them), `JELLYFIN_TEST_ITEM_ID` (the one item the journey may write to), and `JELLYFIN_METADATA_API_URL` / `JELLYFIN_METADATA_API_TOKEN` (the bot server's metadata API — `LiveMetadataApiTest` alone reads them, and blank is the deliberate *without* case). Absent → the live tests skip. |
 | `.example.test.env` | committed | Template for `.test.env`. |
 | `keystore.properties` | git-ignored | Release signing: `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`. Absent → release builds are unsigned. |
 | `.example.keystore.properties` | committed | Template for `keystore.properties`. |

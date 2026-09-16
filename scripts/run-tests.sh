@@ -19,10 +19,13 @@ set -uo pipefail
 # guard (an onlyIf on connected*AndroidTest), but that one still builds both APKs before it
 # skips; deciding here saves that work and makes the reason visible.
 #
-# That layer also carries the two live tests, which hit a real Jellyfin when the repo root has a
-# filled .test.env and skip themselves when it does not — LiveEndpointTest reads, LiveUiJourneyTest
-# drives the app end to end and undoes every write. Nothing here switches them on or off; the
-# config file is the switch. See "Demo and live tests" in the README.
+# That layer also carries the live tests, which hit a real Jellyfin when the repo root has a filled
+# .test.env and skip themselves when it does not — LiveEndpointTest and LiveStreamReconnectTest
+# read, LiveUiJourneyTest drives the app end to end and undoes every write, LiveMetadataApiTest
+# syncs the device's library with and without the bot server's metadata API. Nothing here switches
+# them on or off; the config file is the switch — and which *keys* are filled decides which of them
+# run, so a live run with the metadata API pair blank is the without-the-API case rather than a gap.
+# See "Demo and live tests" in the README.
 #
 # Which device runs that layer matters, because Gradle's default is every attached one **at once**.
 # That is measured rather than assumed: the same class across two devices took max(13s, 5s), not

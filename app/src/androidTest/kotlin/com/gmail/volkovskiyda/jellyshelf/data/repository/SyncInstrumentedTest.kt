@@ -39,6 +39,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -311,6 +312,39 @@ class SyncInstrumentedTest {
         assertFalse(result.apiDegraded)
         // The sync itself still completed.
         assertEquals(listOf("aaaaaaaaaaa"), storedIds())
+    }
+
+    /**
+     * The *unconfigured* metadata API — the state almost every install is in, and the one every
+     * live test but `LiveMetadataApiTest` runs in on purpose (see `.example.test.env`).
+     *
+     * The API serves an entry for this very video, which is what makes the stored row the
+     * assertion: a sync that fetched anyway would carry the API's title. And because the mock
+     * engine checks the bearer token itself, `apiAuthFailed` staying false proves no request was
+     * made at all rather than merely that none succeeded — a blank token would have come back 401.
+     *
+     * Neither flag may be raised either way: nothing is configured, so there is nothing to be
+     * degraded about, and a warning on the settings line of an install that never asked for the
+     * API would be permanent and unfixable.
+     *
+     * The row ends up `YTDLP` rather than `JELLYFIN` because the sync's own auto-fill pass closes
+     * the gap the missing feeds left — which is exactly what an install with no metadata API does,
+     * and why the assertion is "not the API's" rather than a single expected source.
+     */
+    @Test
+    fun sync_ignoresTheApiEntirelyWhenNoApiIsConfigured() = runBlocking {
+        val repo = repository(
+            serverIds = listOf("aaaaaaaaaaa"),
+            api = listOf(IndexEntry(id = "aaaaaaaaaaa", title = "Api A", fetchedAt = 6_000L)),
+        )
+
+        val result = repo.sync() as SyncResult.Success
+
+        assertFalse(result.apiDegraded)
+        assertFalse(result.apiAuthFailed)
+        val stored = db.videoDao().get("aaaaaaaaaaa")!!
+        assertNotEquals(METADATA_SOURCE_API, stored.metadataSource)
+        assertNotEquals("the API's entry reached a row with no metadata API configured", "Api A", stored.title)
     }
 
     /** A previously indexed row must survive a failed index fetch rather than downgrade. */
