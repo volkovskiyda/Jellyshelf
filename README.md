@@ -62,6 +62,7 @@ download then, not on every visit to this page.
 ```
 videos/*.mp4  ──fetch-youtube-metadata.sh──►  *.info.json (sidecars)
 *.info.json   ──build-library-index.sh────►  jellyshelf-index.json  ──HTTP──┐
+your bot server (optional)  ──metadata API, same entries, live──────────────┤
                                                                             ▼
 Jellyfin  ──REST (MediaBrowser auth)──►  items + watch state  ──join by YouTube id──►  Room  ──►  UI
                                                                             ▲
@@ -94,10 +95,17 @@ Jellyfin  ──REST (MediaBrowser auth)──►  items + watch state  ──jo
 3. **The app** pulls Jellyfin items (→ Jellyfin ItemId, watch state, duration) and the
    index (→ channel, tags, upload date, description, chapters, thumbnail), joins them by
    YouTube id into Room, and auto-groups along five dimensions: channel, year, month,
-   duration band and YouTube category. The index URL is optional — without it the app
-   falls back to Jellyfin's own metadata (no channel grouping).
-4. **The app can also skip the scripts entirely.** It bundles yt-dlp
-   (youtubedl-android), so any video Jellyfin has but the index doesn't can be filled in
+   duration band and YouTube category. The index URL is optional, like the API in the next
+   step — with neither feed configured the app falls back to Jellyfin's own metadata (no
+   channel grouping).
+4. **A metadata API can stand in for the file, or run beside it.** If the machine that
+   downloads the videos can serve their metadata over HTTP, point the app at it and the
+   entries arrive live — a video is described the moment it lands, rather than when the
+   index is next rebuilt. Same document format, one bearer-token endpoint, and both feeds
+   merge per field, newest extraction first. Also optional: see
+   [The metadata API](#the-metadata-api).
+5. **The app can also skip the scripts entirely.** It bundles yt-dlp
+   (youtubedl-android), so any video Jellyfin has but the feeds don't can be filled in
    from the device: per video from its detail screen, in bulk from the **Others →
    Uncategorized** filter, and automatically during a sync while fewer than ten videos are
    missing metadata. Newest extraction wins, so an in-app fetch is not overwritten by a
@@ -108,7 +116,8 @@ Jellyfin  ──REST (MediaBrowser auth)──►  items + watch state  ──jo
 `jellyshelf-index.json` just needs to be reachable from the phone over HTTP(S) at a stable
 URL you paste into **Settings → Metadata index URL**. Any static file server works; two
 common setups below. Regenerate the file (step 2) and it's picked up on the next sync — no
-server restart needed.
+server restart needed. Serving the same entries from an endpoint instead of a file is the other
+option: [The metadata API](#the-metadata-api).
 
 ### nginx
 
@@ -166,6 +175,100 @@ one certificate/host. Index URL: `https://media.example.com/jellyshelf-index.jso
 > on a release build fails before it reaches the network; the app says so instead of surfacing
 > the platform's raw "CLEARTEXT communication … not permitted" error.
 
+## The metadata API
+
+A second source of the same metadata, optional like the first: use it instead of
+[serving the index file](#serving-the-index), alongside it, or not at all. The case for it is
+freshness — the index is a snapshot you rebuild, so a newly downloaded video stays undescribed
+until you next run `build-library-index.sh`. If the machine that downloads the videos can serve
+what it already knows over HTTP, the app reads it live, and a new video arrives with its channel,
+chapters and categories the first time it is synced.
+
+There is nothing to install on the app side, and nothing here is specific to any one bot: it is one
+endpoint you expose however you like.
+
+### The contract
+
+```
+GET <base>/videos?exported=true
+Authorization: Bearer <token>
+```
+
+`<base>` is what you type into the app; it appends `/videos` itself. `exported=true` asks for only
+the videos that actually made it into the media library — anything else can never join a Jellyfin
+item, so shipping it is pure payload.
+
+The response is the **same JSON array `jellyshelf-index.json` holds**, so one document format
+serves both feeds (`app/src/main/assets/demo/library.json` is a worked example of it, and
+`scripts/build-library-index.sh` emits it):
+
+```json
+[
+  {
+    "id": "dQw4w9WgXcQ",
+    "title": "Video title",
+    "channel": "Channel name",
+    "channelId": "UC…",
+    "duration": 212,
+    "uploadDate": "20260315",
+    "tags": ["tag"],
+    "categories": ["Music"],
+    "description": "…",
+    "thumbnail": "https://…/maxresdefault.jpg",
+    "chapters": [{ "start": 0.0, "title": "Intro" }],
+    "fetchedAt": 1771200000
+  }
+]
+```
+
+Only `id` — the 11-character YouTube id, which is what both feeds and the library join on — is
+required; every other field may be absent. **Do emit `fetchedAt`** (yt-dlp's `epoch`, in *seconds*)
+even so: it is what decides which feed wins a field, and an entry without one counts as the oldest
+there is, so the index quietly outranks the API on every field it carries.
+
+Any non-2xx is treated as a failed fetch, with one exception the app cares about: **401** means the
+token, and is reported differently from an unreachable server (below).
+
+### Configuring it in the app
+
+**Settings → Advanced** holds three fields: the metadata index URL, and the API's URL and token.
+The section unlocks once there are credentials to use it with — a sign-in, or the advanced API key.
+**Fill** writes `<server>/api`, which is the right value only when the API is served from the
+Jellyfin host; otherwise type the bot's own base URL. The token is masked, opted out of autofill,
+and never leaves the device except as the `Authorization` header of that one request.
+
+All three lock once a sync has run, behind a deliberate unlock that is not remembered: a mistyped
+feed URL produces a half-populated library with no obvious cause, which is a bad thing to do by
+mis-tap. **Sign out** clears them along with everything else that describes a server.
+
+HTTPS is recommended and, on release builds, **required** — a plain `http://` URL fails before it
+reaches the network, exactly as it does for the index.
+
+### How the two feeds combine
+
+Per video, per field, newest extraction first: the fresher entry wins every field it actually
+carries and the older one fills the rest, so recency and completeness both win and neither feed can
+null out a value the other has. The result is merged against the stored row under the same
+newest-wins rule, which is why an in-app yt-dlp fetch is not overwritten by a staler feed entry.
+
+A video's detail screen names the source it ended up with: **API**, **Index**, **API + index**,
+**In-app** (yt-dlp on the device), or **Jellyfin** (no metadata beyond the item itself).
+
+**A feed that fails never costs you metadata.** A row is downgraded to bare Jellyfin fields only
+when every feed that vouched for it was fetched successfully *and* genuinely no longer lists it —
+an outage, a 404 or a rejected token leaves existing metadata exactly where it is. The sync still
+says what happened rather than reporting an unqualified success:
+
+| What you see | What it means |
+|---|---|
+| `… • metadata API unavailable` on the sync status line | The URL is set but the fetch failed. Metadata was kept; new videos stay uncategorized until it is reachable. |
+| **The metadata API rejected this token** under the token field | The last sync got a 401. A configuration error, so it marks the field rather than qualifying the summary. |
+| **Required when a metadata API URL is set** | A URL with no token, which can only ever produce 401s. |
+
+The live tests for all of this are opt-in and covered under
+[Demo and live tests](#demo-and-live-tests) — `LiveMetadataApiTest` is the one suite that reads the
+API config, and leaving it blank is how the *without-the-API* path stays tested.
+
 ## Demo mode — try it without a server
 
 **Settings → Try demo** fills the library with ~60 seeded videos and opens it. No server, no
@@ -214,7 +317,9 @@ draws the thumbnails, and [`scripts/make-demo-clip.sh`](scripts/make-demo-clip.s
 2. **Username + password → Sign in** — exchanges them for a *user-scoped* access token
    (`POST /Users/AuthenticateByName`). Only the token is stored; the password is discarded as
    soon as the token comes back. The token identifies the user, so there is nothing to pick.
-3. **Metadata index URL** (optional) — where you serve `jellyshelf-index.json`.
+3. **Metadata feeds** (optional, under **Advanced**) — the **Metadata index URL** where you
+   serve `jellyshelf-index.json`, and the **Metadata API URL + token** of the machine that
+   downloads the videos. Either, both or neither; see [The metadata API](#the-metadata-api).
 4. **Sync scope** (optional) — browse the server's collections and pick one folder to sync
    instead of everything. Narrowing it deletes the now-out-of-scope videos locally right away;
    videos that merely stop appearing in an unchanged scope get a grace period of three syncs
