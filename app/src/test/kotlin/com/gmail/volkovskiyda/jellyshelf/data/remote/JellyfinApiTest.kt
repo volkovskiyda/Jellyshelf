@@ -2,7 +2,9 @@ package com.gmail.volkovskiyda.jellyshelf.data.remote
 
 import com.gmail.volkovskiyda.jellyshelf.data.repository.isPermanentFailure
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
+import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
+import com.gmail.volkovskiyda.jellyshelf.ui.FAKE_DEVICE_ID
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -23,6 +25,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -37,6 +40,11 @@ class JellyfinApiTest {
 
     private val parser = Json.Default
 
+    /** The header [testJellyfinClient] builds for a credential — the real builder, so these tests
+     *  guard the production shape rather than a copy of it. */
+    private fun authorization(credential: String) =
+        mediaBrowserAuthHeader(testDeviceInfo, FAKE_DEVICE_ID, credential)
+
     private class Captured {
         lateinit var request: HttpRequestData
         var body: String = ""
@@ -47,7 +55,7 @@ class JellyfinApiTest {
      * [responseBody] at [status]. Uses [provideJson] so the wire-fidelity assertions guard the real
      * production Json config, not a copy.
      */
-    private fun mockApi(
+    private suspend fun mockApi(
         baseUrl: String = "http://server:8096/",
         apiKey: String = "APIKEY",
         status: HttpStatusCode = HttpStatusCode.OK,
@@ -67,7 +75,7 @@ class JellyfinApiTest {
             expectSuccess = true
             install(ContentNegotiation) { json(provideJson()) }
         }
-        return JellyfinClient(base).create(baseUrl, apiKey) to captured
+        return testJellyfinClient(base).create(baseUrl, apiKey) to captured
     }
 
     // --- 1. Request wire-fidelity (guards encodeDefaults=true / explicitNulls=false) ---
@@ -164,6 +172,10 @@ class JellyfinApiTest {
 
     // --- 2. URL / param / header construction ---
 
+    /**
+     * Jellyfin 12 accepts a credential in the `Authorization` header and nowhere else: the
+     * `X-Emby-Token` this used to send, and the `api_key` query parameter, both answer 401.
+     */
     @Test
     fun getUsers_normalizesBaseUrlAndSendsAuthAndAcceptHeaders() = runTest {
         // Base URL without a trailing slash must normalize so "Users" resolves under it.
@@ -171,8 +183,32 @@ class JellyfinApiTest {
         api.getUsers()
 
         assertEquals("http://server:8096/Users", cap.request.url.toString())
-        assertEquals("APIKEY", cap.request.headers["X-Emby-Token"])
+        assertEquals(authorization("APIKEY"), cap.request.headers[HttpHeaders.Authorization])
+        assertNull(cap.request.headers["X-Emby-Token"])
         assertEquals("application/json", cap.request.headers[HttpHeaders.Accept])
+    }
+
+    /**
+     * The one call made before a token exists. It sends the same header the rest of the API does,
+     * minus the `Token` field — the identity half is what Jellyfin requires here, and there is no
+     * credential yet to put in it.
+     */
+    @Test
+    fun authenticateByName_sendsIdentityHeaderWithoutAToken() = runTest {
+        val result = """{"AccessToken":"tok","User":{"Id":"u1","Name":"wolf"}}"""
+        val (api, cap) = mockApi(apiKey = "", responseBody = result)
+
+        val decoded = api.authenticateByName(AuthenticateByNameBody(username = "wolf", password = "pw"))
+
+        assertEquals("tok", decoded.accessToken)
+        assertEquals("http://server:8096/Users/AuthenticateByName", cap.request.url.toString())
+        val header = cap.request.headers[HttpHeaders.Authorization]
+        assertEquals(mediaBrowserAuthHeader(testDeviceInfo, FAKE_DEVICE_ID), header)
+        assertFalse(header!!, header.contains("Token="))
+
+        val body = parser.parseToJsonElement(cap.body).jsonObject
+        assertEquals("wolf", body["Username"]?.jsonPrimitive?.content)
+        assertEquals("pw", body["Pw"]?.jsonPrimitive?.content)
     }
 
     @Test

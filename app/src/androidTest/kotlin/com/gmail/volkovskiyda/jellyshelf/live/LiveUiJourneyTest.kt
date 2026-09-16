@@ -40,7 +40,6 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.data.repository.dataStore
 import com.gmail.volkovskiyda.jellyshelf.data.worker.SyncScheduler
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
-import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.grantJourneyPermissions
@@ -52,6 +51,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.settings.PASSWORD_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SERVER_URL_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.USERNAME_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -138,13 +138,20 @@ class LiveUiJourneyTest : KoinTest {
     val composeRule = createEmptyComposeRule(UnconfinedTestDispatcher())
 
     private val config by inject<JellyfinTestConfig>()
-    private val jellyfinClient by inject<JellyfinClient>()
-    private val dataSource by inject<JellyfinDataSource>()
+    private val baseHttpClient by inject<HttpClient>()
+    private val deviceInfo by inject<DeviceInfo>()
+
+    /**
+     * Reaches Jellyfin as its own device: the journey signs the *app* in mid-test, and on a
+     * shared device id Jellyfin would invalidate this observer's token the moment it did.
+     * See [liveJellyfinClient].
+     */
+    private val jellyfinClient by lazy { liveJellyfinClient(baseHttpClient, deviceInfo, DEVICE_ID) }
+    private val dataSource by lazy { JellyfinDataSource(jellyfinClient) }
     private val library by inject<LibraryRepository>()
     private val syncScheduler by inject<SyncScheduler>()
     private val libraryFilterState by inject<LibraryFilterState>()
     private val settings by inject<SettingsRepository>()
-    private val deviceInfo by inject<DeviceInfo>()
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
@@ -189,14 +196,13 @@ class LiveUiJourneyTest : KoinTest {
 
         grantJourneyPermissions()
         api = runBlocking {
-            // A fixed device id, so a live run shows up as one stable device on the Jellyfin
-            // dashboard rather than one per run. Distinct from the endpoint test's, so the two are
-            // told apart there, and distinct from the app's, so this session is never the app's.
+            // Signs in through this suite's own [DEVICE_ID] — see [liveJellyfinClient]. The app
+            // signs itself in later in the journey, and on a shared device id Jellyfin would
+            // invalidate this observer's token the moment it did.
             val auth = dataSource.authenticate(
                 serverUrl = config.serverUrl,
                 username = config.username,
                 password = config.password,
-                authorization = mediaBrowserAuthHeader(deviceInfo, deviceId = "jellyshelf-live-ui-test"),
             )
             userId = auth.user.id
             jellyfinClient.create(config.serverUrl, auth.accessToken)
@@ -787,6 +793,9 @@ class LiveUiJourneyTest : KoinTest {
     }
 
     private companion object {
+        /** This suite's Jellyfin device id — fixed, and distinct from every other live suite's. */
+        const val DEVICE_ID = "jellyshelf-live-ui-test"
+
         /** Ordinary on-screen waits: a state change already in flight. */
         const val AWAIT_TIMEOUT_MS = 15_000L
 

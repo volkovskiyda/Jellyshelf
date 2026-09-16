@@ -44,7 +44,12 @@ class JellyfinDataSource(
 
     private val cached = MutableStateFlow<CachedApi?>(null)
 
-    private fun api(serverUrl: String, credential: String): JellyfinApi {
+    /**
+     * The API for [serverUrl] + [credential], built at most once per pair. Suspends only on a
+     * cache miss — [JellyfinClient.create] reads the install's device id for the authorization
+     * header, and that id is stable for the life of the install, so it is not part of the key.
+     */
+    private suspend fun api(serverUrl: String, credential: String): JellyfinApi {
         val key = "$serverUrl|$credential"
         cached.value?.let { if (it.key == key) return it.api }
         return client.create(serverUrl, credential).also { cached.value = CachedApi(key, it) }
@@ -53,17 +58,16 @@ class JellyfinDataSource(
     /**
      * Exchanges a password for a user-scoped token. The only call that takes credentials rather
      * than a [Settings.credential][com.gmail.volkovskiyda.jellyshelf.domain.model.Settings]: there
-     * is nothing to authenticate with yet, so it passes a blank one and identifies the app through
-     * the `MediaBrowser` header instead.
+     * is nothing to authenticate with yet, so it passes a blank one — which leaves the `Token`
+     * field off the `MediaBrowser` header and sends the app's identity alone, exactly what this
+     * endpoint wants.
      */
     suspend fun authenticate(
         serverUrl: String,
         username: String,
         password: String,
-        authorization: String,
     ): AuthenticationResult = api(serverUrl, credential = "").authenticateByName(
         AuthenticateByNameBody(username = username, password = password),
-        authorization = authorization,
     )
 
     suspend fun getUsers(serverUrl: String, credential: String): List<UserDto> =

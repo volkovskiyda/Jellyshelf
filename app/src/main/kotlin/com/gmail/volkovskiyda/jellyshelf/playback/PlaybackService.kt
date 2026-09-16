@@ -31,6 +31,7 @@ import com.gmail.volkovskiyda.jellyshelf.di.MEDIA_HTTP_CLIENT
 import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserTokenHeader
 import com.gmail.volkovskiyda.jellyshelf.domain.model.DEMO_ITEM_ID
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlayMethod
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
@@ -73,7 +74,7 @@ import java.util.UUID
  * media3 takes one start position per playlist — so [ResumeSeedingListener] covers the rest of
  * the queue as it is reached.
  *
- * The credential travels only as an `X-Emby-Token` request header ([Playback.TOKEN_HEADER]).
+ * The credential travels only as a `MediaBrowser` `Authorization` request header ([Playback.TOKEN_HEADER]).
  * The `tokenInQuery` setting is an escape hatch for external players and is deliberately not
  * consulted here.
  *
@@ -179,7 +180,11 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             IdleReconnectDataSource(
                 KtorDataSource.Factory(mediaHttpClient)
                     .setDefaultRequestProperties(
-                        mapOf(Playback.TOKEN_HEADER to settingsState.settings.value?.credential.orEmpty()),
+                        mapOf(
+                            Playback.TOKEN_HEADER to mediaBrowserTokenHeader(
+                                settingsState.settings.value?.credential.orEmpty(),
+                            ),
+                        ),
                     )
                     .createDataSource(),
                 // Counted from the loader thread this runs on; the counters are built for that.

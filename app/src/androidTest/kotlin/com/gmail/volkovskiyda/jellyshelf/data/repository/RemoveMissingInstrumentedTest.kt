@@ -9,9 +9,9 @@ import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexEntry
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
-import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
+import com.gmail.volkovskiyda.jellyshelf.data.remote.testJellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
@@ -163,7 +163,7 @@ class RemoveMissingInstrumentedTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val dataSource = JellyfinDataSource(JellyfinClient(httpClient))
+        val dataSource = testJellyfinDataSource(httpClient)
         val indexSource =
             IndexSource(ApplicationProvider.getApplicationContext(), httpClient, dispatchers, json)
         val ytDlp = UnusedYtDlp(ApplicationProvider.getApplicationContext(), dispatchers)

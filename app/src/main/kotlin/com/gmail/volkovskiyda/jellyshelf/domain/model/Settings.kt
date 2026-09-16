@@ -71,9 +71,10 @@ data class Settings(
     val demoMode: Boolean = false,
 ) {
     /**
-     * The single value every authenticated request sends as `X-Emby-Token`: the user token when
-     * signed in, otherwise the advanced API key. Jellyfin accepts either in that header, which is
-     * what lets one credential flow through the whole data layer regardless of how it was obtained.
+     * The single value every authenticated request sends in its `MediaBrowser` authorization
+     * header: the user token when signed in, otherwise the advanced API key. Jellyfin draws no
+     * distinction between the two there, which is what lets one credential flow through the whole
+     * data layer regardless of how it was obtained.
      *
      * Resolution lives here, in one place, so no call site has to decide which one it holds.
      */

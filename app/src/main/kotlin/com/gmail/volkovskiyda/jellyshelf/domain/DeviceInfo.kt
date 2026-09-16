@@ -41,25 +41,52 @@ fun deviceDisplayName(userDeviceName: String?, manufacturer: String, model: Stri
 }
 
 /**
- * The `Authorization: MediaBrowser …` header Jellyfin requires on `AuthenticateByName` (there is
- * no token yet to put in `X-Emby-Token`).
+ * The `Authorization: MediaBrowser …` header — the *only* way Jellyfin 12 accepts a credential.
  *
- * It is also what fixes the reporting symptom this item was raised for: authenticating with an API
- * key attaches no client identity at all, so sessions showed up as user "Unknown", player
- * "Jellyfin Server", and the *server's* SystemId as the device. These four fields are what
- * Jellyfin displays instead.
+ * Up to 12.0 a token could also travel as `X-Emby-Token`, `X-MediaBrowser-Token` or an `api_key`
+ * query parameter. All three now answer 401 (measured against a 12.0.0 server on 2026-09-16); the
+ * server's own OpenAPI declares a single security scheme, an api-key in the `Authorization`
+ * header. So this header carries the credential for every authenticated call, not just the login.
+ *
+ * [token] is absent for exactly one call — `AuthenticateByName`, which is what mints it. Every
+ * other request passes the user access token or the advanced admin API key, and Jellyfin makes no
+ * distinction between the two here.
+ *
+ * Sending the identity fields alongside the token is also what fixes the reporting symptom this
+ * was first raised for: an admin API key carries no client identity of its own, so sessions showed
+ * up as user "Unknown", player "Jellyfin Server", and the *server's* SystemId as the device. A
+ * user token is bound to the device it was issued to, but the API key is not — these four fields
+ * are what Jellyfin displays instead.
  *
  * Values are sanitized because this is an HTTP header: quotes would terminate a field early, and
  * `Build.MODEL` is free-form vendor text that is not guaranteed to be ASCII.
  */
-fun mediaBrowserAuthHeader(info: DeviceInfo, deviceId: String): String = listOf(
-    "Client" to info.clientName,
-    "Device" to info.deviceName,
-    "DeviceId" to deviceId,
-    "Version" to info.version,
-).joinToString(", ", prefix = "MediaBrowser ") { (name, value) ->
-    """$name="${headerSafe(value)}""""
-}
+fun mediaBrowserAuthHeader(info: DeviceInfo, deviceId: String, token: String? = null): String =
+    buildList {
+        add("Client" to info.clientName)
+        add("Device" to info.deviceName)
+        add("DeviceId" to deviceId)
+        add("Version" to info.version)
+        // Last, matching the order the official clients send — and omitted entirely rather than
+        // sent blank, so the login request carries identity without an empty credential field.
+        if (!token.isNullOrBlank()) add("Token" to token)
+    }.joinToString(", ", prefix = "$MEDIA_BROWSER_SCHEME ") { (name, value) ->
+        """$name="${headerSafe(value)}""""
+    }
+
+/**
+ * The same header with nothing but the credential — what the media stack sends.
+ *
+ * The identity fields are dropped there on purpose: a stream request is not what registers a
+ * session (the `Sessions/Playing` trio is, and that goes through the API client above), and the
+ * ExoPlayer datasource factory and the external-player intent are both built on threads that
+ * cannot read the persisted device id. A token already identifies its own device to the server.
+ */
+fun mediaBrowserTokenHeader(token: String): String =
+    """$MEDIA_BROWSER_SCHEME Token="${headerSafe(token)}""""
+
+/** Jellyfin's auth scheme name. Matched case-insensitively by the server, sent as it documents it. */
+private const val MEDIA_BROWSER_SCHEME = "MediaBrowser"
 
 // Printable US-ASCII, the only range an HTTP header field value may contain unescaped.
 private const val ASCII_SPACE = 0x20

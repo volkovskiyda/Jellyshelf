@@ -12,7 +12,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.di.MEDIA_HTTP_CLIENT
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
-import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
+import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserTokenHeader
 import com.gmail.volkovskiyda.jellyshelf.playback.IdleReconnectDataSource
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import io.ktor.client.HttpClient
@@ -55,9 +55,15 @@ import org.koin.test.inject
 class LiveStreamReconnectTest : KoinTest {
 
     private val config by inject<JellyfinTestConfig>()
-    private val jellyfinClient by inject<JellyfinClient>()
-    private val dataSource by inject<JellyfinDataSource>()
+    private val baseHttpClient by inject<HttpClient>()
     private val deviceInfo by inject<DeviceInfo>()
+
+    /**
+     * Reaches Jellyfin as its own device, so its session is never the app's or another live suite's.
+     * See [liveJellyfinClient].
+     */
+    private val jellyfinClient by lazy { liveJellyfinClient(baseHttpClient, deviceInfo, DEVICE_ID) }
+    private val dataSource by lazy { JellyfinDataSource(jellyfinClient) }
     private val mediaHttpClient by inject<HttpClient>(named(MEDIA_HTTP_CLIENT))
 
     @Before
@@ -88,7 +94,6 @@ class LiveStreamReconnectTest : KoinTest {
             serverUrl = config.serverUrl,
             username = config.username,
             password = config.password,
-            authorization = mediaBrowserAuthHeader(deviceInfo, deviceId = "jellyshelf-live-reconnect-test"),
         )
         val api = jellyfinClient.create(config.serverUrl, auth.accessToken)
         // getItems already narrows to video item types; a folder or a zero-length entry would have
@@ -133,7 +138,7 @@ class LiveStreamReconnectTest : KoinTest {
 
     /** A media source built exactly as `PlaybackService` builds one, credential header included. */
     private fun streamSource(token: String): DataSource = KtorDataSource.Factory(mediaHttpClient)
-        .setDefaultRequestProperties(mapOf(Playback.TOKEN_HEADER to token))
+        .setDefaultRequestProperties(mapOf(Playback.TOKEN_HEADER to mediaBrowserTokenHeader(token)))
         .createDataSource()
 
     /** Opens [spec], runs [block], and closes even when it throws — the [DataSource] contract. */
@@ -161,6 +166,9 @@ class LiveStreamReconnectTest : KoinTest {
     }
 
     private companion object {
+        /** This suite's Jellyfin device id — fixed, and distinct from every other live suite's. */
+        const val DEVICE_ID = "jellyshelf-live-reconnect-test"
+
         /** How far into the file to start, so the reconnect is a genuine mid-file resume. */
         const val START = 1_000_000L
 

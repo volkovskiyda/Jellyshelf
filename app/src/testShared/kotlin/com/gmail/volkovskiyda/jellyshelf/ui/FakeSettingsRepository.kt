@@ -31,6 +31,8 @@ val emptySettings = Settings(
 @Suppress("TooManyFunctions") // mirrors the interface it fakes
 class FakeSettingsRepository(
     initial: Settings = emptySettings,
+    /** Overridden by a live test that must reach Jellyfin as a device of its own. */
+    private val deviceId: String = FAKE_DEVICE_ID,
     backStackJson: String? = null,
     selectedCategoryType: String? = null,
     themeState: ThemeState = ThemeState(),
@@ -111,7 +113,7 @@ class FakeSettingsRepository(
     }
 
     /** Fixed rather than random: a test asserting on the auth header needs a predictable id. */
-    override suspend fun deviceId(): String = FAKE_DEVICE_ID
+    override suspend fun deviceId(): String = deviceId
 
     override suspend fun setLibrary(libraryId: String, libraryName: String) {
         _settings.value = _settings.value.copy(libraryId = libraryId, libraryName = libraryName)

@@ -4,18 +4,16 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 
 /**
  * Hand-written Ktor client for the Jellyfin REST endpoints. Wraps a per-server-configured
- * [HttpClient] (base URL + X-Emby-Token + Accept applied via DefaultRequest in [JellyfinClient]).
+ * [HttpClient] (base URL + `Authorization` + Accept applied via DefaultRequest in [JellyfinClient]).
  * Relative paths resolve against that base; [parameter] skips null values, so a null `parentId`
  * omits its query param. The playstate writes return Ktor's [HttpResponse]; with the base client's
  * `expectSuccess = true`, a non-2xx already threw before the caller sees it.
@@ -26,19 +24,16 @@ class JellyfinApi(private val client: HttpClient) {
     /**
      * Exchanges a username and password for a user-scoped access token.
      *
-     * [authorization] is the `MediaBrowser …` header (see
-     * [com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader]): Jellyfin rejects the
-     * login without it, and there is no token yet for `X-Emby-Token` to carry. A wrong
+     * Needs no header of its own: the client's `MediaBrowser …` authorization header identifies
+     * the app on every request, and for this one it is built without a Token field because the
+     * token is what the call returns. Jellyfin rejects the login without that header. A wrong
      * username/password comes back 401, which `expectSuccess = true` turns into a throw.
      */
-    suspend fun authenticateByName(
-        body: AuthenticateByNameBody,
-        authorization: String,
-    ): AuthenticationResult = client.post("Users/AuthenticateByName") {
-        header(HttpHeaders.Authorization, authorization)
-        contentType(ContentType.Application.Json)
-        setBody(body)
-    }.body()
+    suspend fun authenticateByName(body: AuthenticateByNameBody): AuthenticationResult =
+        client.post("Users/AuthenticateByName") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 
     suspend fun getUsers(): List<UserDto> =
         client.get("Users").body()

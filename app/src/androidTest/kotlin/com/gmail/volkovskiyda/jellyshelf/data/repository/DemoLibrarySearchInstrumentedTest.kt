@@ -8,9 +8,9 @@ import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
-import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
+import com.gmail.volkovskiyda.jellyshelf.data.remote.testJellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
@@ -78,7 +78,7 @@ class DemoLibrarySearchInstrumentedTest {
             time = DefaultTimeProvider(),
             metrics = recorder.metrics,
             sources = LibrarySources(
-                JellyfinDataSource(JellyfinClient(httpClient)),
+                testJellyfinDataSource(httpClient),
                 ApiSource(httpClient, dispatchers, json),
                 indexSource,
                 YtDlpMetadataSource(context, dispatchers, json),

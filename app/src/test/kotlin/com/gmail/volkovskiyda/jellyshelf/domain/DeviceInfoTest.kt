@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,12 +16,40 @@ class DeviceInfoTest {
         DeviceInfo(clientName = "Jellyshelf Android", deviceName = "Wolf Pixel 5", version = "1.2.3")
 
     @Test
-    fun `builds the four fields Jellyfin expects, in order`() {
+    fun `builds the four identity fields Jellyfin expects, in order`() {
         assertEquals(
             """MediaBrowser Client="Jellyshelf Android", Device="Wolf Pixel 5", """ +
                 """DeviceId="abc-123", Version="1.2.3"""",
             mediaBrowserAuthHeader(info, "abc-123"),
         )
+    }
+
+    /**
+     * Since Jellyfin 12 this header is the only carrier for a credential — `X-Emby-Token` and the
+     * `api_key` query parameter both answer 401 — so every authenticated call appends `Token`.
+     */
+    @Test
+    fun `appends the credential as a trailing Token field`() {
+        assertEquals(
+            """MediaBrowser Client="Jellyshelf Android", Device="Wolf Pixel 5", """ +
+                """DeviceId="abc-123", Version="1.2.3", Token="TOK"""",
+            mediaBrowserAuthHeader(info, "abc-123", token = "TOK"),
+        )
+    }
+
+    /** A blank credential must leave the field off entirely, not send `Token=""`. */
+    @Test
+    fun `omits the Token field when there is no credential`() {
+        listOf(null, "", "  ").forEach { token ->
+            val header = mediaBrowserAuthHeader(info, "abc-123", token = token)
+            assertFalse(header, header.contains("Token="))
+        }
+    }
+
+    /** What the media stack sends: the credential alone, since a token identifies its own device. */
+    @Test
+    fun `builds a token-only header for the media stack`() {
+        assertEquals("""MediaBrowser Token="TOK"""", mediaBrowserTokenHeader("TOK"))
     }
 
     /** A quote would close the field early and corrupt every field after it. */

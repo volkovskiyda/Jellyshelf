@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.core.net.toUri
 import com.gmail.volkovskiyda.jellyshelf.R
+import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserTokenHeader
 import timber.log.Timber
 import java.net.URLEncoder
 
@@ -26,8 +27,12 @@ object Playback {
     /**
      * The header Jellyfin accepts a credential in — the same one every API call uses. Public so
      * the in-app player's HTTP layer sends the credential the same way (never in the URL).
+     *
+     * `X-Emby-Token` until Jellyfin 12, which answers 401 to it. The value goes with it:
+     * [mediaBrowserTokenHeader], and see [com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader]
+     * for why that is now the only carrier.
      */
-    const val TOKEN_HEADER = "X-Emby-Token"
+    const val TOKEN_HEADER = "Authorization"
 
     /**
      * MX Player's request-headers extra: a String array of alternating name, value. VLC and other
@@ -38,8 +43,11 @@ object Playback {
     private fun base(serverUrl: String) = serverUrl.trim().removeSuffix("/")
 
     /**
-     * Direct static stream URL. [credential] is appended as `api_key` only when it is non-null —
-     * pass null to keep it out of the URL entirely and hand it over as a header instead.
+     * Direct static stream URL. [credential] is appended as a query parameter only when it is
+     * non-null — pass null to keep it out of the URL entirely and hand it over as a header instead.
+     *
+     * The parameter is `ApiKey`, capitals included: Jellyfin 12 dropped the old `api_key` spelling
+     * and ignores it, which on a server that requires auth for streams is a 401.
      *
      * URL-encoded, matching [authorizedImageUrl]: a token is server-generated and in practice
      * URL-safe, but the two credential paths disagreeing about encoding is the kind of difference
@@ -48,7 +56,7 @@ object Playback {
     fun streamUrl(serverUrl: String, itemId: String, credential: String?): String {
         val url = "${base(serverUrl)}/Videos/$itemId/stream?static=true"
         if (credential.isNullOrBlank()) return url
-        return "$url&api_key=${URLEncoder.encode(credential, "UTF-8")}"
+        return "$url&$CREDENTIAL_PARAM=${URLEncoder.encode(credential, "UTF-8")}"
     }
 
     /** The HLS variant playlist's file name — also how an already-transcoding item is recognized. */
@@ -134,7 +142,7 @@ object Playback {
             if (!title.isNullOrBlank()) putExtra("title", title)
             // MX Player: return position/end_by/duration to us when playback ends.
             putExtra("return_result", true)
-            if (!tokenInQuery) putExtra(EXTRA_HEADERS, arrayOf(TOKEN_HEADER, credential))
+            if (!tokenInQuery) putExtra(EXTRA_HEADERS, arrayOf(TOKEN_HEADER, mediaBrowserTokenHeader(credential)))
             if (resumeMs > 0) {
                 putExtra(EXTRA_POSITION, resumeMs.toInt()) // MX Player resume (int ms)
                 putExtra(EXTRA_VLC_POSITION, resumeMs) // VLC resume (long ms)

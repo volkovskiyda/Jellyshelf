@@ -19,13 +19,17 @@ class StreamUrlTest {
         val url = Playback.streamUrl(server, itemId, credential = null)
 
         assertEquals("$server/Videos/$itemId/stream?static=true", url)
-        assertFalse(url, url.contains("api_key"))
+        assertFalse(url, url.contains(CREDENTIAL_PARAM, ignoreCase = true))
     }
 
+    /**
+     * `ApiKey`, not the `api_key` Jellyfin accepted up to 12.0 — the old spelling is now ignored,
+     * which on a server that requires auth for streams reads as an anonymous request.
+     */
     @Test
     fun `appends the credential when it is to travel in the query`() {
         assertEquals(
-            "$server/Videos/$itemId/stream?static=true&api_key=TOKEN",
+            "$server/Videos/$itemId/stream?static=true&ApiKey=TOKEN",
             Playback.streamUrl(server, itemId, credential = "TOKEN"),
         )
     }
@@ -39,7 +43,7 @@ class StreamUrlTest {
     fun `url-encodes a credential with reserved characters`() {
         val url = Playback.streamUrl(server, itemId, credential = "a+b&c=d/e")
 
-        assertEquals("$server/Videos/$itemId/stream?static=true&api_key=a%2Bb%26c%3Dd%2Fe", url)
+        assertEquals("$server/Videos/$itemId/stream?static=true&ApiKey=a%2Bb%26c%3Dd%2Fe", url)
     }
 
     @Test
@@ -75,6 +79,6 @@ class StreamUrlTest {
 
         assertEquals(expected, Playback.hlsUrl(server, itemId, playSessionId = "SESSION"))
         assertEquals(expected, Playback.hlsUrl("$server/", itemId, playSessionId = "SESSION"))
-        assertFalse(expected, expected.contains("api_key"))
+        assertFalse(expected, expected.contains(CREDENTIAL_PARAM, ignoreCase = true))
     }
 }

@@ -1,7 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.live
 
 import androidx.test.platform.app.InstrumentationRegistry
+import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
+import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
 import com.gmail.volkovskiyda.jellyshelf.grantJourneyPermissions
+import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -82,6 +85,25 @@ val liveTestModule = module {
         )
     }
 }
+
+/**
+ * A [JellyfinClient] that reaches Jellyfin as a device of its own, named by [deviceId].
+ *
+ * Live tests cannot share the app's `JellyfinClient` from `appModule`, because that one reads the
+ * install's persisted device id — the app's. Jellyfin keys a session on the device, and issuing a
+ * second token for one invalidates the first, so a test holding an app-device token loses it the
+ * moment the journey signs the app in and every later call 401s. A distinct id per test class also
+ * keeps the dashboard showing one stable device per suite rather than one per run.
+ *
+ * Everything else is the real thing: [baseClient] is `appModule`'s tuned Ktor client and
+ * [deviceInfo] the app's own, so the stack under test is the shipped one. The settings fake is
+ * there for [SettingsRepository.deviceId] and nothing else — that is all a client reads from it.
+ */
+internal fun liveJellyfinClient(
+    baseClient: HttpClient,
+    deviceInfo: DeviceInfo,
+    deviceId: String,
+): JellyfinClient = JellyfinClient(baseClient, FakeSettingsRepository(deviceId = deviceId), deviceInfo)
 
 /**
  * Fast reachability probe with a short timeout, so a down server skips the live tests quickly

@@ -8,9 +8,9 @@ import com.gmail.volkovskiyda.jellyshelf.data.DefaultTimeProvider
 import com.gmail.volkovskiyda.jellyshelf.data.local.JellyshelfDatabase
 import com.gmail.volkovskiyda.jellyshelf.data.remote.ApiSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
-import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.remote.TestDemoBackend
 import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
+import com.gmail.volkovskiyda.jellyshelf.data.remote.testJellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_CHANNEL
@@ -92,7 +92,7 @@ class DemoSeedInstrumentedTest {
             // Seeding never asks the demo backend for anything — the dataset comes straight off
             // the asset — but it is what every action *after* the seed goes through.
             sources = LibrarySources(
-                JellyfinDataSource(JellyfinClient(httpClient)),
+                testJellyfinDataSource(httpClient),
                 ApiSource(httpClient, dispatchers, json),
                 indexSource,
                 YtDlpMetadataSource(context, dispatchers, json),

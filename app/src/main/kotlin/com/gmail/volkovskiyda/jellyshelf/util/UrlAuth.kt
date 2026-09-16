@@ -25,6 +25,16 @@ fun normalizeServerUrl(input: String): String {
 }
 
 /**
+ * The query parameter Jellyfin reads a credential from, for the two URLs the app can't attach a
+ * header to (an image handed to Coil, a stream handed to another app).
+ *
+ * Spelled with capitals because Jellyfin 12 matches it exactly: the lowercase `api_key` every
+ * earlier version accepted is now ignored, and an ignored credential is an unauthenticated
+ * request. [CREDENTIAL_PARAMS] still knows both spellings, since stripping is the opposite job.
+ */
+const val CREDENTIAL_PARAM = "ApiKey"
+
+/**
  * Appends [apiKey] to a Jellyfin-hosted image [url] at display time; other URLs pass through.
  * The key is attached only to URLs on the configured [serverUrl]: index thumbnails are remote
  * input, so a URL merely *shaped* like a Jellyfin image path must never receive the server's
@@ -32,17 +42,23 @@ fun normalizeServerUrl(input: String): String {
  */
 fun authorizedImageUrl(url: String?, serverUrl: String?, apiKey: String?): String? {
     if (url.isNullOrBlank() || apiKey.isNullOrBlank()) return url
-    if (!isJellyfinImageUrl(url) || "api_key=" in url) return url
+    if (!isJellyfinImageUrl(url) || hasCredential(url)) return url
     val base = serverUrl?.trim()?.removeSuffix("/")
     if (base.isNullOrBlank() || !url.startsWith("$base/")) return url
     val separator = if ('?' in url) '&' else '?'
-    return "$url${separator}api_key=${URLEncoder.encode(apiKey, "UTF-8")}"
+    return "$url$separator$CREDENTIAL_PARAM=${URLEncoder.encode(apiKey, "UTF-8")}"
 }
 
+/** True when [url] already carries a credential under any of the spellings Jellyfin has used. */
+private fun hasCredential(url: String): Boolean = url
+    .substringAfter('?', "")
+    .split('&')
+    .any { it.substringBefore('=').lowercase() in CREDENTIAL_PARAMS }
+
 /**
- * Query parameter names that carry a Jellyfin credential, lowercased. `api_key` is what this app
- * appends and what Jellyfin's own web client uses; the others are spellings Jellyfin also accepts,
- * so a URL that arrived from elsewhere can carry them.
+ * Query parameter names that carry a Jellyfin credential, lowercased. `apikey` is what this app
+ * appends today ([CREDENTIAL_PARAM]); the others are spellings earlier servers accepted, kept
+ * because a stored thumbnail URL or one that arrived from elsewhere can still carry them.
  *
  * The user access token and the admin API key travel under the *same* parameter names — Jellyfin
  * makes no distinction — so stripping these covers both.

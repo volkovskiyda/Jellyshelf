@@ -5,7 +5,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.IndexSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.JellyfinClient
 import com.gmail.volkovskiyda.jellyshelf.data.repository.JellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.domain.DeviceInfo
-import com.gmail.volkovskiyda.jellyshelf.domain.mediaBrowserAuthHeader
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,10 +39,16 @@ import org.koin.test.inject
 class LiveEndpointTest : KoinTest {
 
     private val config by inject<JellyfinTestConfig>()
-    private val jellyfinClient by inject<JellyfinClient>()
-    private val dataSource by inject<JellyfinDataSource>()
-    private val indexSource by inject<IndexSource>()
+    private val baseHttpClient by inject<HttpClient>()
     private val deviceInfo by inject<DeviceInfo>()
+
+    /**
+     * Reaches Jellyfin as one stable device on the Jellyfin dashboard per suite rather than one per run.
+     * See [liveJellyfinClient].
+     */
+    private val jellyfinClient by lazy { liveJellyfinClient(baseHttpClient, deviceInfo, DEVICE_ID) }
+    private val dataSource by lazy { JellyfinDataSource(jellyfinClient) }
+    private val indexSource by inject<IndexSource>()
 
     @Before
     fun setUp() {
@@ -58,14 +64,15 @@ class LiveEndpointTest : KoinTest {
     fun tearDown() = unloadKoinModules(liveTestModule)
 
     /**
-     * The app's sign-in exchange, verbatim: a fixed DeviceId keeps Jellyfin's dashboard showing
-     * one stable "device" for every live run instead of one per test.
+     * The app's sign-in exchange, verbatim — the `MediaBrowser` header included, which the data
+     * source now builds itself off the install's persisted DeviceId. That id is stable for the
+     * life of the install, so Jellyfin's dashboard still shows one "device" across live runs, and
+     * it is the same one the app itself signs in with.
      */
     private suspend fun signIn(): AuthenticationResult = dataSource.authenticate(
         serverUrl = config.serverUrl,
         username = config.username,
         password = config.password,
-        authorization = mediaBrowserAuthHeader(deviceInfo, deviceId = "jellyshelf-live-test"),
     )
 
     @Test
@@ -139,5 +146,10 @@ class LiveEndpointTest : KoinTest {
         // is unset — the same convention the app's "fill from server" affordance applies.
         val entries = indexSource.fetchIndex(config.indexUrl)
         assertTrue(entries.size >= 0)
+    }
+
+    private companion object {
+        /** This suite's Jellyfin device id — fixed, and distinct from every other live suite's. */
+        const val DEVICE_ID = "jellyshelf-live-test"
     }
 }

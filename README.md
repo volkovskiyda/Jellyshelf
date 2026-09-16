@@ -63,7 +63,7 @@ download then, not on every visit to this page.
 videos/*.mp4  ──fetch-youtube-metadata.sh──►  *.info.json (sidecars)
 *.info.json   ──build-library-index.sh────►  jellyshelf-index.json  ──HTTP──┐
                                                                             ▼
-Jellyfin  ──REST (X-Emby-Token)──►  items + watch state  ──join by YouTube id──►  Room  ──►  UI
+Jellyfin  ──REST (MediaBrowser auth)──►  items + watch state  ──join by YouTube id──►  Room  ──►  UI
                                                                             ▲
                               bundled yt-dlp  ──in-app fetch, per video──────┘
 ```
@@ -241,8 +241,8 @@ setups where a password login isn't an option. It is a deliberate second choice:
 key is **server-wide and admin-scoped**, so any leak — player history, casting, server access
 logs — exposes the whole server rather than one user. In this mode you also have to
 **Connect & load users** and pick whose watch state to read and write, because the key alone
-doesn't say. Whichever credential is in play travels as the `X-Emby-Token` header; the user
-token wins whenever one is present.
+doesn't say. Whichever credential is in play travels in the `MediaBrowser` `Authorization`
+header; the user token wins whenever one is present.
 
 ## Watching a video
 
@@ -289,7 +289,7 @@ Denied, playback still works — the notification just stays hidden.
 
 ### Where the credential goes
 
-The in-app player always sends it as an `X-Emby-Token` request header, never in the URL.
+The in-app player always sends it as a `MediaBrowser` `Authorization` request header, never in the URL.
 
 For the **external player** that is the default too, passed via the intent's `headers` extra,
 because an `ACTION_VIEW` URL is handed to whichever app the user picks and then persists in that
@@ -320,12 +320,27 @@ threshold: a partway stop there writes its resume position directly to the item'
 is what puts it in "Continue Watching". MX Player and VLC report their position back on exit, so
 the external path records progress too; other players simply won't.
 
+## How the credential reaches the server
+
+Every authenticated request carries it in one header:
+
+```
+Authorization: MediaBrowser Client="Jellyshelf Android", Device="…", DeviceId="…", Version="…", Token="…"
+```
+
+Jellyfin 12 accepts nothing else. The `X-Emby-Token` header, `X-MediaBrowser-Token`, and the
+lowercase `api_key` query parameter all answer 401 on a 12.0 server; the query parameter's
+surviving spelling is `ApiKey`, which is what the two URLs that can't carry a header — a
+thumbnail handed to Coil, a stream handed to an external player — now use. The identity fields
+ride along with the token rather than only on the login, which is also what gives an
+admin-API-key session a real client name in the dashboard instead of "Unknown".
+
 ## Endpoints to verify against your Jellyfin version
 
 The client (`data/remote/JellyfinApi.kt`) — hand-written Ktor calls, not a Retrofit interface —
 targets standard endpoints; confirm these against your server build and adjust if needed:
 - `POST /Users/AuthenticateByName` — sign-in. Needs the `MediaBrowser …` authorization header,
-  which is the one call that doesn't carry `X-Emby-Token`.
+  which is the one call whose copy of it carries no `Token` field.
 - `GET /Users` — the user list, in advanced API-key mode only.
 - `GET /Users/{userId}/Views`, `GET /Items?IsFolder=true` — the sync-scope folder browser.
 - `GET /Items` — the paged library listing (`SortName` ascending, 200 per page). Watch state

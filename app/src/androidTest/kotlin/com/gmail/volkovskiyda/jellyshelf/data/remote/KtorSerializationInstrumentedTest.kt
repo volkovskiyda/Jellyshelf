@@ -32,7 +32,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class KtorSerializationInstrumentedTest {
 
-    private fun api(responseBody: String, captureBody: (String) -> Unit = {}): JellyfinApi {
+    private suspend fun api(responseBody: String, captureBody: (String) -> Unit = {}): JellyfinApi {
         val engine = MockEngine { request ->
             captureBody(request.body.toByteArray().decodeToString())
             respond(responseBody, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -41,7 +41,7 @@ class KtorSerializationInstrumentedTest {
             expectSuccess = true
             install(ContentNegotiation) { json(provideJson()) }
         }
-        return JellyfinClient(client).create("http://server:8096", "APIKEY")
+        return testJellyfinClient(client).create("http://server:8096", "APIKEY")
     }
 
     @Test

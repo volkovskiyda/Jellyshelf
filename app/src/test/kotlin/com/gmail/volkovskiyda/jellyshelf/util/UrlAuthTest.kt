@@ -12,7 +12,7 @@ class UrlAuthTest {
     @Test
     fun `appends api key to jellyfin image urls on the configured server`() {
         assertEquals(
-            "$jellyfinThumb&api_key=KEY",
+            "$jellyfinThumb&ApiKey=KEY",
             authorizedImageUrl(jellyfinThumb, server, "KEY"),
         )
     }
@@ -20,7 +20,7 @@ class UrlAuthTest {
     @Test
     fun `uses question mark when the url has no query yet`() {
         assertEquals(
-            "$server/Items/abc/Images/Primary?api_key=KEY",
+            "$server/Items/abc/Images/Primary?ApiKey=KEY",
             authorizedImageUrl("$server/Items/abc/Images/Primary", server, "KEY"),
         )
     }
@@ -28,7 +28,7 @@ class UrlAuthTest {
     @Test
     fun `tolerates a trailing slash and padding on the configured server url`() {
         assertEquals(
-            "$jellyfinThumb&api_key=KEY",
+            "$jellyfinThumb&ApiKey=KEY",
             authorizedImageUrl(jellyfinThumb, " $server/ ", "KEY"),
         )
     }
@@ -48,7 +48,7 @@ class UrlAuthTest {
     @Test
     fun `url-encodes the api key`() {
         assertEquals(
-            "$jellyfinThumb&api_key=K%26Y%3D1",
+            "$jellyfinThumb&ApiKey=K%26Y%3D1",
             authorizedImageUrl(jellyfinThumb, server, "K&Y=1"),
         )
     }
@@ -60,9 +60,19 @@ class UrlAuthTest {
     }
 
     @Test
-    fun `does not double-append to a legacy url that already carries a key`() {
+    fun `does not double-append to a url that already carries a key, in either spelling`() {
         val legacy = "$jellyfinThumb&api_key=OLD"
         assertEquals(legacy, authorizedImageUrl(legacy, server, "NEW"))
+
+        val current = "$jellyfinThumb&ApiKey=OLD"
+        assertEquals(current, authorizedImageUrl(current, server, "NEW"))
+    }
+
+    /** A parameter that merely *starts* with the name is not a credential — see `api_key_hint`. */
+    @Test
+    fun `appends to a url whose query only resembles a credential parameter`() {
+        val hinted = "$jellyfinThumb&api_key_hint=none"
+        assertEquals("$hinted&ApiKey=KEY", authorizedImageUrl(hinted, server, "KEY"))
     }
 
     @Test
