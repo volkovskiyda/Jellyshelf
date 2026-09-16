@@ -1,5 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
@@ -13,7 +16,6 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
-import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateCheckError
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.model.UpdateSource
@@ -21,6 +23,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_LAST_PLAY
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
+import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesContent
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryList
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryVideosContent
@@ -44,6 +47,22 @@ import com.gmail.volkovskiyda.jellyshelf.ui.settings.StatusLine
 
 private const val PHONE_WIDTH = 400
 private const val PHONE_HEIGHT = 800
+
+/**
+ * The same phone on its side. 800 dp wide is past Material's 600 dp medium breakpoint, so this is
+ * the narrowest window that gets the rail and the two-pane detail — and the shortest, which is
+ * what makes it the one to watch: whatever does not fit here is below the fold on a real phone.
+ */
+private const val LANDSCAPE_WIDTH = PHONE_HEIGHT
+private const val LANDSCAPE_HEIGHT = PHONE_WIDTH
+
+/**
+ * A Pixel Tablet in landscape, in dp: the README's tablet screenshots are shot at this size. Turned
+ * upright it is still 800 dp wide — past the medium breakpoint — so it keeps the rail and the two
+ * panes, which the portrait goldens below are there to show.
+ */
+private const val TABLET_WIDTH = 1280
+private const val TABLET_HEIGHT = 800
 
 /**
  * Tall enough to hold the whole Updates section and the version line under it, which sit at the
@@ -209,18 +228,86 @@ private fun LibraryPopulatedDark() {
     }
 }
 
-private val previewSettings = Settings(
-    serverUrl = "https://jellyfin.example.org",
-    apiKey = "00000000000000000000000000000000",
-    accessToken = "",
-    userId = "user-id",
-    userName = "Sample User",
-    libraryId = "",
-    libraryName = "",
-    indexUrl = "https://jellyfin.example.org/jellyshelf-index.json",
-    lastSyncAt = 0L,
-    lastSyncLibraryId = "",
-)
+/**
+ * The Library as a wide window shows it: the tabs down the start edge as a rail rather than along
+ * the bottom. The nav host draws the rail over the screen and pads the screen clear of it, which is
+ * what this `Row` renders to the pixel; the difference is only in how a transition is handled.
+ *
+ * On a `Surface` because the nav host's `Scaffold` paints the window's background in the app and
+ * `LibraryContent` paints none of its own — without one the dark golden is a dark rail and top bar
+ * over the preview's white, which is not a layout the app can show.
+ */
+@Composable
+private fun LibraryWithRail() {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        Row {
+            TopLevelNavigationRail(selected = AppNavKey.Library, enabled = true, onSelect = {})
+            LibraryContent(
+                videosOrNull = LibraryVideos(librarySample, ""),
+                query = "",
+                totalCount = librarySample.size,
+                onQueryChange = {},
+                onPlayVideo = {},
+                onOpenDetails = {},
+                scrollStore = FakeScrollPositionRepository(),
+                thumbnailModel = { null },
+            )
+        }
+    }
+}
+
+/** A phone on its side: the rail's three items and the list beside it, in 400 dp of height. */
+@PreviewTest
+@Preview(widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT, showBackground = true)
+@Composable
+private fun LibraryRailLandscape() {
+    PreviewTheme { LibraryWithRail() }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun LibraryRailTablet() {
+    PreviewTheme { LibraryWithRail() }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun LibraryRailTabletDark() {
+    PreviewTheme(darkTheme = true) { LibraryWithRail() }
+}
+
+/** The tablet upright: 800 dp is still a medium window, so the tabs stay in the rail. */
+@PreviewTest
+@Preview(widthDp = TABLET_HEIGHT, heightDp = TABLET_WIDTH, showBackground = true)
+@Composable
+private fun LibraryRailTabletPortrait() {
+    PreviewTheme { LibraryWithRail() }
+}
+
+/**
+ * The compact form of the same tabs, on its own: the nav host that composes it is not previewable,
+ * so this is the one golden the bottom bar has. Categories selected, so the golden shows the
+ * indicator on an item that is not the first.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, showBackground = true)
+@Composable
+private fun TopLevelTabsBar() {
+    PreviewTheme {
+        TopLevelNavigationBar(selected = AppNavKey.Categories, enabled = true, onSelect = {})
+    }
+}
+
+@PreviewTest
+@Preview(heightDp = LANDSCAPE_HEIGHT, showBackground = true)
+@Composable
+private fun TopLevelTabsRail() {
+    PreviewTheme {
+        TopLevelNavigationRail(selected = AppNavKey.Categories, enabled = true, onSelect = {})
+    }
+}
 
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
@@ -242,6 +329,70 @@ private fun DetailLoaded() {
             onRemove = {},
         )
     }
+}
+
+/** [DetailLoaded]'s state, rendered for every wide golden below. */
+@Composable
+private fun DetailLoadedContent(video: Video = sampleVideo, categories: List<Category> = sampleVideoCategories) {
+    DetailContent(
+        videoState = VideoDetailState.Loaded(video),
+        settings = previewSettings,
+        fetching = false,
+        thumbnailModel = null,
+        categories = categories,
+        onOpenCategory = {},
+        onBack = {},
+        onPlay = { _, _, _ -> },
+        onSelectMode = {},
+        onToggleWatched = {},
+        onFetchMetadata = {},
+        onRemove = {},
+    )
+}
+
+/**
+ * The two-pane detail on a phone held sideways: the cover and the "Appears in" chips in the start
+ * pane, the title, provenance, actions and description beside them. At 400 dp of height this is
+ * the layout that used to be a screenful of thumbnail and nothing else.
+ */
+@PreviewTest
+@Preview(widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT, showBackground = true)
+@Composable
+private fun DetailLoadedLandscape() {
+    PreviewTheme { DetailLoadedContent() }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun DetailLoadedTablet() {
+    PreviewTheme { DetailLoadedContent() }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun DetailLoadedTabletDark() {
+    PreviewTheme(darkTheme = true) { DetailLoadedContent() }
+}
+
+/** The two panes on the tablet upright, where the cover pane is 300 dp wide. */
+@PreviewTest
+@Preview(widthDp = TABLET_HEIGHT, heightDp = TABLET_WIDTH, showBackground = true)
+@Composable
+private fun DetailLoadedTabletPortrait() {
+    PreviewTheme { DetailLoadedContent() }
+}
+
+/**
+ * The wide layout's one extra row: Remove keeps a full-width line of its own under the flowing
+ * actions, so the destructive button never lines up beside Play.
+ */
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun DetailMissingFromServerTablet() {
+    PreviewTheme { DetailLoadedContent(video = missingVideo, categories = emptyList()) }
 }
 
 /** The missing-from-server notice plus the Remove action, which only this state shows. */

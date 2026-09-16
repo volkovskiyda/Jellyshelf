@@ -7,6 +7,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YEAR
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_AUTO_YT_CATEGORY
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 
 /**
@@ -59,3 +60,21 @@ internal val partWatchedVideo = sampleVideo.copy(playbackPositionTicks = 3_016_0
 
 /** The server's listing has stopped including it — see [Video.missingFromServer]. */
 internal val missingVideo = sampleVideo.copy(missedSyncs = 1)
+
+/**
+ * A connected, non-demo install. Non-demo matters: demo mode hides the playback-mode menu and
+ * forces every video to play in app, so a preview using it could never show the split button's
+ * chevron or any source but the first.
+ */
+internal val previewSettings = Settings(
+    serverUrl = "https://jellyfin.example.org",
+    apiKey = "00000000000000000000000000000000",
+    accessToken = "",
+    userId = "user-id",
+    userName = "Sample User",
+    libraryId = "",
+    libraryName = "",
+    indexUrl = "https://jellyfin.example.org/jellyshelf-index.json",
+    lastSyncAt = 0L,
+    lastSyncLibraryId = "",
+)
