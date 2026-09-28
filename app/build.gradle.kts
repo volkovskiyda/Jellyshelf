@@ -792,9 +792,10 @@ dependencies {
     // No app code names an okhttp type — OkHttp arrives only as Ktor's engine and as a
     // firebase-perf transitive. A constraint rather than an `implementation` is the honest way to
     // say that: it raises the version wherever the module already appears, and adds nothing to the
-    // graph if it stops appearing. Both requesters ask for something older (measured on
-    // releaseRuntimeClasspath: Ktor 3.5.2 asks 5.3.2, firebase-perf 22.0.6 asks 4.12.0), so without
-    // this every HTTP call in the app quietly drops to 5.3.2.
+    // graph if it stops appearing. Measured on releaseRuntimeClasspath: Ktor 3.6.0 asks for 5.5.0,
+    // firebase-perf 22.0.6 for 4.12.0. So today the constraint raises nothing, but it is still the
+    // floor: under Ktor 3.5.2 (which asked 5.3.2) it was the only thing keeping HTTP calls current,
+    // and it keeps a lagging requester from quietly pulling the app back again.
     constraints {
         implementation(libs.okhttp)
     }
