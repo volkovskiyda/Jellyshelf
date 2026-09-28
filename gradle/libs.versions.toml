@@ -21,7 +21,7 @@ agp = "9.4.1"
 # only once Kotzilla drops the supertype — see internal/plan/20260911-kotzilla-mcp-plan.
 # Suppressed: the newer-version inspection would only ever point at a Kotzilla-incompatible Kotlin.
 #noinspection NewerVersionAvailable,GradleDependency
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 coreKtx = "1.19.1"
 junit = "4.13.2"
 lifecycle = "2.11.0"
@@ -35,7 +35,7 @@ composeBom = "2026.09.00"
 # for the same Kotzilla incompatibility.
 # Suppressed: newer KSP needs Kotlin 2.4.20, which Kotzilla cannot use.
 #noinspection GradleDependency
-googleDevtoolsKsp = "2.3.11"
+googleDevtoolsKsp = "2.3.12"
 kotlinxSerializationJson = "1.11.0"
 navigation3 = "1.2.0"
 adaptive = "1.3.0"
