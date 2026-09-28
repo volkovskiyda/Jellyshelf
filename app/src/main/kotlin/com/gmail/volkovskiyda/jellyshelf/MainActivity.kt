@@ -1014,7 +1014,7 @@ private val Fade: AnimatedContentTransitionScope<Scene<NavKey>>.() -> ContentTra
  *
  * Carried as entry metadata rather than matched on the key, because a [Scene] is reached here
  * without its keys: `NavEntry.key` is private to the navigation library, and the `contentKey` that
- * a [Scene] does expose is a derived pair, not the [AppNavKey] itself. `NavDisplay` has per-entry
+ * a [Scene] does expose is a derived string, not the [AppNavKey] itself. `NavDisplay` has per-entry
  * transition metadata of its own, but only consults it on `Scene.metadata`, which the built-in
  * single-pane scenes never populate from their entries — so the entries are read directly.
  */

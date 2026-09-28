@@ -32,7 +32,7 @@ composeBom = "2026.09.00"
 # release targets one Kotlin version (2.3.11 -> 2.4.10, 2.3.12 -> 2.4.20). Held back with Kotlin.
 googleDevtoolsKsp = "2.3.11"
 kotlinxSerializationJson = "1.11.0"
-navigation3 = "1.1.7"
+navigation3 = "1.2.0"
 adaptive = "1.3.0"
 roomRuntime = "2.8.5"
 # One ref for coil-compose and coil-network-ktor3: same release train, bumped together.
