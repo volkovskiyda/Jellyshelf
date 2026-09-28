@@ -19,6 +19,8 @@ agp = "9.4.1"
 # (verified by listing both kotlin-compiler-embeddable jars). Disabling composeInstrumentation does
 # not unwire the compiler plugin, so there is no way to stay on 2.4.20 and keep Kotzilla. Raise this
 # only once Kotzilla drops the supertype — see internal/plan/20260911-kotzilla-mcp-plan.
+# Suppressed: the newer-version inspection would only ever point at a Kotzilla-incompatible Kotlin.
+#noinspection NewerVersionAvailable,GradleDependency
 kotlin = "2.4.10"
 coreKtx = "1.19.1"
 junit = "4.13.2"
@@ -29,7 +31,10 @@ activityCompose = "1.13.0"
 androidxBrowser = "1.10.0"
 composeBom = "2026.09.00"
 # Paired with the kotlin ref above, not bumped on its own: KSP embeds a Kotlin compiler, and each
-# release targets one Kotlin version (2.3.11 -> 2.4.10, 2.3.12 -> 2.4.20). Held back with Kotlin.
+# release targets one Kotlin version (2.3.11 -> 2.4.10, 2.3.12 -> 2.4.20). Held back with Kotlin
+# for the same Kotzilla incompatibility.
+# Suppressed: newer KSP needs Kotlin 2.4.20, which Kotzilla cannot use.
+#noinspection GradleDependency
 googleDevtoolsKsp = "2.3.11"
 kotlinxSerializationJson = "1.11.0"
 navigation3 = "1.2.0"
