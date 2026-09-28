@@ -630,6 +630,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 Player.STATE_BUFFERING -> health.onBuffering()
                 Player.STATE_READY -> health.onReady()
                 Player.STATE_ENDED -> health.onItemEnded(PlaybackHealth.END_ENDED)
+                Player.STATE_IDLE -> Unit
             }
             if (playbackState != Player.STATE_ENDED) return
             watch.onEnded(player?.duration?.takeIf { it != C.TIME_UNSET }).perform()
