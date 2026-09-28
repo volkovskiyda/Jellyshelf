@@ -36,7 +36,12 @@
 
   <!-- allowBackup off: DataStore holds the Jellyfin api key in plaintext, which must not end
        up in device/cloud backups. Cleartext HTTP is permitted only in debug builds (see the
-       debug manifest overlay). -->
+       debug manifest overlay).
+
+       PictureInPictureIssue wants setAutoEnterEnabled(true) alongside setSourceRectHint. The
+       hint is set (MainActivity.updatePipParams); auto-enter is left off on purpose, since PiP
+       opens only from the player's button (51b24a7: entering on the Home gesture surprised
+       more than it helped). -->
   <application
     android:name=".JellyshelfApplication"
     android:allowBackup="false"
@@ -45,7 +50,7 @@
     android:roundIcon="@mipmap/ic_launcher_round"
     android:supportsRtl="true"
     android:theme="@style/Theme.Jellyshelf"
-    tools:ignore="DataExtractionRules">
+    tools:ignore="DataExtractionRules,PictureInPictureIssue">
 
     <!-- uiMode handled in-process: a system dark-mode flip repaints the composition in place
          instead of tearing the activity down (and in a forced light/dark mode it changes
