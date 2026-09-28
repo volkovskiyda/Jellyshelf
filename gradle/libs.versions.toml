@@ -11,7 +11,7 @@ targetSdk = "37"
 # One ref per artifact family (navigation3, adaptive, coroutines, room, ktor): the members ship as
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.
-agp = "9.4.0"
+agp = "9.4.1"
 # Held one release below the current 2.4.20, deliberately, for the Kotzilla plugin (below). Kotlin
 # 2.4.20 deleted the K1 `ComponentRegistrar` interface; io.kotzilla.gradle.kcp.KotzillaPluginRegistrar
 # still declares it as a supertype, so the class cannot even be defined and *every* compileKotlin
@@ -20,7 +20,7 @@ agp = "9.4.0"
 # not unwire the compiler plugin, so there is no way to stay on 2.4.20 and keep Kotzilla. Raise this
 # only once Kotzilla drops the supertype — see internal/plan/20260911-kotzilla-mcp-plan.
 kotlin = "2.4.10"
-coreKtx = "1.19.0"
+coreKtx = "1.19.1"
 junit = "4.13.2"
 lifecycle = "2.11.0"
 activityCompose = "1.13.0"
@@ -36,7 +36,7 @@ navigation3 = "1.1.7"
 adaptive = "1.3.0"
 roomRuntime = "2.8.5"
 # One ref for coil-compose and coil-network-ktor3: same release train, bumped together.
-coil = "3.6.2"
+coil = "3.6.3"
 ktor = "3.5.2"
 # Nothing declares OkHttp: it arrives under both HTTP clients in di/AppModule.kt as Ktor's engine
 # (which asks for 5.3.2) and again through firebase-perf (4.12.0). This ref feeds a *constraint* in
@@ -111,7 +111,7 @@ uiautomator = "2.4.0"
 # 2.0.0, but its classes.jar holds nothing but a version marker (checked, not assumed), so
 # `trace("label") { }` and `traceAsync` now come from `tracing` itself. Declaring both would add a
 # dependency that contributes no code.
-androidxTracing = "2.0.2"
+androidxTracing = "2.0.3"
 # Frame timings for the per-screen visit trace Firebase Performance carries. Perf's own screen
 # rendering is measured per Activity, and this app has one — so the only way a Compose destination
 # gets a frame count in that console is for the app to count frames itself, which is what JankStats
