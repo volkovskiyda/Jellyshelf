@@ -157,14 +157,14 @@ internal class StallWatchdog(
         player.stop()
         player.prepare()
     }
-}
 
-/**
- * Whether what is loaded is the bundled demo clip, which is read from the APK and has no connection
- * to lose. The same check [PlaybackService]'s two error listeners make, for the same reason.
- */
-private fun ExoPlayer.isPlayingDemoClip(): Boolean =
-    currentMediaItem?.localConfiguration?.uri?.scheme == DEMO_CLIP_SCHEME
+    /**
+     * Whether what is loaded is the bundled demo clip, which is read from the APK and has no connection
+     * to lose. The same check [PlaybackService]'s two error listeners make, for the same reason.
+     */
+    private fun ExoPlayer.isPlayingDemoClip(): Boolean =
+        currentMediaItem?.localConfiguration?.uri?.scheme == DEMO_CLIP_SCHEME
+}
 
 /**
  * Media3's own scheme for an APK asset. Spelled out here rather than shared with `PlaybackService`'s

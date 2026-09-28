@@ -110,33 +110,33 @@ private class LoadLogger : AnalyticsListener {
     override fun onIsLoadingChanged(eventTime: AnalyticsListener.EventTime, isLoading: Boolean) {
         Timber.tag(Playback.TAG).d("isLoading=$isLoading")
     }
-}
 
-/** The load's URI with any embedded credential removed — see [LoadLogger]. */
-private fun LoadEventInfo.scrubbedUri(): String? = stripCredentials(uri.toString())
+    /** The load's URI with any embedded credential removed — see the class KDoc. */
+    private fun LoadEventInfo.scrubbedUri(): String? = stripCredentials(uri.toString())
 
-/**
- * How far a load got and how long it took, which together say whether a stream was dead or merely
- * slow. Shared by the three callbacks that report a finished attempt.
- */
-private fun LoadEventInfo.progress(): String =
-    "${scrubbedUri()} bytes=$bytesLoaded ms=$loadDurationMs"
+    /**
+     * How far a load got and how long it took, which together say whether a stream was dead or merely
+     * slow. Shared by the three callbacks that report a finished attempt.
+     */
+    private fun LoadEventInfo.progress(): String =
+        "${scrubbedUri()} bytes=$bytesLoaded ms=$loadDurationMs"
 
-/**
- * The exception classes wrapping the real cause, innermost last.
- *
- * **This is the whole diagnostic value of the error line.** media3 wraps a datasource failure in a
- * load error before it reaches a listener, so the outermost class is always the generic wrapper; the
- * cause chain is where a Ktor `SocketTimeoutException` can be told apart from a
- * `ConnectException`, a `ResourceNotFoundException`-shaped `InvalidResponseCodeException`, or an
- * `InterruptedIOException` from a cancelled read. Empty when the exception has no cause.
- *
- * `javaClass.simpleName` rather than `this::class.simpleName`: an anonymous or synthetic exception
- * class makes the Kotlin reflection property null, and a blank name is the one thing this must not
- * print.
- */
-private fun IOException.causeChain(): String {
-    val chain = generateSequence(cause) { it.cause }
-        .joinToString(" <- ") { "${it.javaClass.simpleName}: ${it.message}" }
-    return if (chain.isEmpty()) "" else " (caused by $chain)"
+    /**
+     * The exception classes wrapping the real cause, innermost last.
+     *
+     * **This is the whole diagnostic value of the error line.** media3 wraps a datasource failure in a
+     * load error before it reaches a listener, so the outermost class is always the generic wrapper; the
+     * cause chain is where a Ktor `SocketTimeoutException` can be told apart from a
+     * `ConnectException`, a `ResourceNotFoundException`-shaped `InvalidResponseCodeException`, or an
+     * `InterruptedIOException` from a cancelled read. Empty when the exception has no cause.
+     *
+     * `javaClass.simpleName` rather than `this::class.simpleName`: an anonymous or synthetic exception
+     * class makes the Kotlin reflection property null, and a blank name is the one thing this must not
+     * print.
+     */
+    private fun IOException.causeChain(): String {
+        val chain = generateSequence(cause) { it.cause }
+            .joinToString(" <- ") { "${it.javaClass.simpleName}: ${it.message}" }
+        return if (chain.isEmpty()) "" else " (caused by $chain)"
+    }
 }
