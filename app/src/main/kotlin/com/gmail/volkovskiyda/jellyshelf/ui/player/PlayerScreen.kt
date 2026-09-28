@@ -132,6 +132,7 @@ import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberCopyToClipboard
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
+import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import kotlinx.coroutines.delay
@@ -222,47 +223,53 @@ fun PlayerScreen(
         onBack()
     }
 
-    Box(modifier.fillMaxSize().background(Color.Black)) {
-        val c = controller
-        // Nothing at all once this is no longer the screen — see [leaving]. Its own black is
-        // what is left, and that is the point: a video surface is a hardware layer that a
-        // transition's alpha never reaches, so anything still on it would sit fully opaque over
-        // the screen taking over.
-        if (leaving) {
-            Unit
-        } else if (c == null) {
-            // Still connecting to the service. The back arrow stays reachable regardless — with
-            // no controller yet there is nothing to stop, so this is a plain leave.
-            PlayerPoster(poster, Modifier.matchParentSize())
-            CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-            BackButton(
-                onClick = leave,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .windowInsetsPadding(WindowInsets.displayCutout)
-                    .padding(4.dp),
-                tint = Color.White,
-            )
-        } else {
-            PlayerWithControls(
-                controller = c,
-                // The file name, not the YouTube title: it names the actual file being played,
-                // and the overlay title's tap copies it (see PlayerControls).
-                title = video?.fileName,
-                poster = poster,
-                chapters = chapters,
-                onSpeedPicked = viewModel::savePlaybackSpeed,
-                scaleMode = scaleMode,
-                onScaleModePicked = viewModel::setVideoScaleMode,
-                isInPip = isInPip,
-                onBack = leave,
-                // The nav layer's plain pop: no stopPlayback, so the session survives and the
-                // mini-player bar picks it up on the screen underneath.
-                onMinimize = onBack,
-                onEnterPip = { (activity as? MainActivity)?.enterPip() },
-                onRotateToLandscape = { (activity as? MainActivity)?.landscape?.request() },
-                onSurfaceBounds = { (activity as? MainActivity)?.updatePipParams(rect = it) },
-            )
+    // Always the dark scheme, whatever the app's theme: everything here sits on a black video
+    // surface. media3's BottomControls fades its gradient into colorScheme.background, which in
+    // the light scheme is near-white — a pale band at the screen edge under white time labels —
+    // and the speed menu and the chapters panel's highlight read the scheme too.
+    JellyshelfTheme(darkTheme = true) {
+        Box(modifier.fillMaxSize().background(Color.Black)) {
+            val c = controller
+            // Nothing at all once this is no longer the screen — see [leaving]. Its own black is
+            // what is left, and that is the point: a video surface is a hardware layer that a
+            // transition's alpha never reaches, so anything still on it would sit fully opaque over
+            // the screen taking over.
+            if (leaving) {
+                Unit
+            } else if (c == null) {
+                // Still connecting to the service. The back arrow stays reachable regardless — with
+                // no controller yet there is nothing to stop, so this is a plain leave.
+                PlayerPoster(poster, Modifier.matchParentSize())
+                CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+                BackButton(
+                    onClick = leave,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .windowInsetsPadding(WindowInsets.displayCutout)
+                        .padding(4.dp),
+                    tint = Color.White,
+                )
+            } else {
+                PlayerWithControls(
+                    controller = c,
+                    // The file name, not the YouTube title: it names the actual file being played,
+                    // and the overlay title's tap copies it (see PlayerControls).
+                    title = video?.fileName,
+                    poster = poster,
+                    chapters = chapters,
+                    onSpeedPicked = viewModel::savePlaybackSpeed,
+                    scaleMode = scaleMode,
+                    onScaleModePicked = viewModel::setVideoScaleMode,
+                    isInPip = isInPip,
+                    onBack = leave,
+                    // The nav layer's plain pop: no stopPlayback, so the session survives and the
+                    // mini-player bar picks it up on the screen underneath.
+                    onMinimize = onBack,
+                    onEnterPip = { (activity as? MainActivity)?.enterPip() },
+                    onRotateToLandscape = { (activity as? MainActivity)?.landscape?.request() },
+                    onSurfaceBounds = { (activity as? MainActivity)?.updatePipParams(rect = it) },
+                )
+            }
         }
     }
 }
