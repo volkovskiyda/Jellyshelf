@@ -50,6 +50,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -675,6 +676,16 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         val layoutDirection = LocalLayoutDirection.current
         // See [pipInsetFree].
         val isInPip = LocalIsInPip.current
+        // The Scaffold's start, top and end — system bars *and* the display cutout, which is what
+        // material3's default content insets are. Each entry applies them itself in [entry] rather
+        // than one Box around the NavDisplay, because the player must not: immersive mode zeroes the
+        // status bar but never the cutout, so a shared Box kept a cutout-high band of the app's
+        // background above the video. Read through a State, so an entry whose lambda NavDisplay
+        // built in an earlier composition still sees the live value.
+        //
+        // Nothing at all in a PiP window — see [pipInsetFree].
+        val sides = if (isInPip) PaddingValues() else innerPadding.sides(layoutDirection)
+        val liveSides by rememberUpdatedState(sides)
         // The space the system navigation bar takes when it is showing, which is not the space it
         // takes right now — see [chromeIgnoringVisibility].
         val navigationInset = WindowInsets.navigationBarsIgnoringVisibility
@@ -754,10 +765,16 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     // flag flipped still reserved the live navigation-bar inset for a pass after
                     // entering PiP, while the top padding above, applied directly, had already
                     // gone. See [pipInsetFree].
-                    val chrome = if (LocalIsInPip.current) {
-                        PaddingValues()
-                    } else {
-                        PaddingValues(start = startFor(key), bottom = bottomFor(key))
+                    val chrome = when {
+                        LocalIsInPip.current -> PaddingValues()
+                        // Video to every edge; the controls keep themselves clear of the cutout.
+                        key is AppNavKey.Player -> PaddingValues(bottom = bottomFor(key))
+                        else -> PaddingValues(
+                            start = liveSides.calculateStartPadding(layoutDirection) + startFor(key),
+                            top = liveSides.calculateTopPadding(),
+                            end = liveSides.calculateEndPadding(layoutDirection),
+                            bottom = bottomFor(key),
+                        )
                     }
                     ScreenChrome(chrome, content)
                 }
@@ -766,15 +783,11 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         // Every screen under here can post to the Scaffold's snackbar host without that host being
         // threaded through NavDisplay and each entry that happens to want one.
         CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
-            // Sides and top only: the bottom is the one edge the screens do not agree on, and each
-            // applies its own in [entry] above. consumeWindowInsets keeps each screen's own
-            // TopAppBar from applying the status-bar inset a second time on top of the scaffold
-            // padding. The keyboard is handled inside [ScreenChrome], not here: out here the ime
-            // inset would stack on top of the chrome reservation each entry applies within.
-            //
-            // Nothing at all in a PiP window — see [pipInsetFree].
-            val sides = if (isInPip) PaddingValues() else innerPadding.sides(layoutDirection)
-            Box(Modifier.fillMaxSize().padding(sides).consumeWindowInsets(sides)) {
+            // No padding here: every edge is applied per screen in [entry] above — the bottom
+            // because the screens do not agree on it, the sides and top because the player takes
+            // none of them (see [sides]). [ScreenChrome] consumes what it applies, which keeps each
+            // screen's own TopAppBar from adding the status-bar inset a second time.
+            Box(Modifier.fillMaxSize()) {
                 NavDisplay(
                     backStack = backStack,
                     entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
@@ -863,9 +876,10 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 }
                 // The rail, over the start edge of whichever tab screen reserved [startFor] for
                 // it. Held, faded and disabled by exactly the rules the bottom bar follows; only
-                // the edge differs. No insets of its own: the Box has already applied and consumed
-                // the start and top ones, and the bottom is the mini-player bar's or the system
-                // bar's, which the rail is padded clear of rather than drawn under.
+                // the edge differs. It pads the start and top insets itself, the ones its tab screen
+                // sits inside, but takes no end padding, which would widen it and so [startFor].
+                // The bottom is the mini-player bar's or the system bar's, which the rail is padded
+                // clear of rather than drawn under.
                 if (showTabs && useRail) {
                     TopLevelNavigationRail(
                         selected = chromeOwner as? AppNavKey,
@@ -875,7 +889,11 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxHeight()
-                            .padding(bottom = innerPadding.calculateBottomPadding())
+                            .padding(
+                                start = sides.calculateStartPadding(layoutDirection),
+                                top = sides.calculateTopPadding(),
+                                bottom = innerPadding.calculateBottomPadding(),
+                            )
                             .graphicsLayer { alpha = tabsAlpha }
                             .onSizeChanged { railWidth = with(density) { it.width.toDp() } },
                     )
