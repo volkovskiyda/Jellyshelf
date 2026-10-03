@@ -695,8 +695,9 @@ private fun PlayerPoster(model: String?, modifier: Modifier = Modifier) {
 }
 
 /**
- * The controls overlay: top bar (back + minimize + title + speed menu + chapters), centre transport
- * row, bottom chapter-step row and position–seek–duration bar with chapter tick markers.
+ * The controls overlay: top bar (back + title + speed menu + chapters + minimize + PiP +
+ * rotate/scale), centre transport row, bottom chapter-step row and position–seek–duration bar with
+ * chapter tick markers.
  *
  * The three rows are media3's [PlayerDefaults] layouts filled with our own buttons — we take the
  * layouts, the fade and the bottom gradient, not the default slot contents, whose icons and
@@ -768,13 +769,6 @@ internal fun PlayerControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     BackButton(onClick = onBack, tint = Color.White)
-                    IconButton(onClick = onMinimize) {
-                        Icon(
-                            Icons.Filled.KeyboardArrowDown,
-                            contentDescription = stringResource(R.string.player_minimize),
-                            tint = Color.White,
-                        )
-                    }
                     // Tapping the title copies it (it carries the file name). The tap lands on
                     // the bar, not the surface, so it can't double as a controls-hide toggle.
                     val copyFileName = rememberCopyToClipboard(R.string.file_name_copied)
@@ -805,6 +799,13 @@ internal fun PlayerControls(
                                 tint = Color.White,
                             )
                         }
+                    }
+                    IconButton(onClick = onMinimize) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.player_minimize),
+                            tint = Color.White,
+                        )
                     }
                     // Always enabled, even paused: unlike the auto-enter this replaced, a tap is
                     // an explicit ask, so a still-frame window can't be a surprise.

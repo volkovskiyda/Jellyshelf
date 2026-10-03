@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -189,6 +190,38 @@ class PlayerControlsTest {
         onDescription(R.string.player_pip).performClick()
 
         assertEquals(1, pips)
+    }
+
+    /**
+     * Minimize sits in the right-hand cluster — after chapters, or after the speed chip when there
+     * are none — and just before PiP, well away from Back. The two exits do opposite things to the
+     * session (back stops it, minimize keeps it running), so side by side they were two adjacent
+     * 48 dp targets one slip apart. Goldens show the order but nothing asserts it, hence this pair.
+     */
+    @Test
+    fun minimize_sitsBetweenChaptersAndPictureInPicture() {
+        setControls(chapters = chapters)
+
+        val speed = composeRule.onNodeWithText(speedLabel(1f)).getBoundsInRoot()
+        val chapterList = onDescription(R.string.chapters).getBoundsInRoot()
+        val minimize = onDescription(R.string.player_minimize).getBoundsInRoot()
+        val pip = onDescription(R.string.player_pip).getBoundsInRoot()
+
+        assertTrue(speed.right <= chapterList.left)
+        assertTrue(chapterList.right <= minimize.left)
+        assertTrue(minimize.right <= pip.left)
+    }
+
+    @Test
+    fun withoutChapters_minimizeSitsBetweenSpeedAndPictureInPicture() {
+        setControls()
+
+        val speed = composeRule.onNodeWithText(speedLabel(1f)).getBoundsInRoot()
+        val minimize = onDescription(R.string.player_minimize).getBoundsInRoot()
+        val pip = onDescription(R.string.player_pip).getBoundsInRoot()
+
+        assertTrue(speed.right <= minimize.left)
+        assertTrue(minimize.right <= pip.left)
     }
 
     /**
