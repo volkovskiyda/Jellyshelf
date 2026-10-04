@@ -908,7 +908,7 @@ internal const val NEXT_VIDEO = "Next video"
  * the player with the session alive. Back is the stop sequence, so a journey that wants the
  * mini-player bar on screen goes through this and nothing else.
  */
-internal const val MINIMIZE_PLAYER = "Minimize player"
+internal const val MINIMIZE_PLAYER = "Minimize and show details"
 
 /** The mini-player bar's stop button, by content description — the bar's presence marker. */
 internal const val MINI_PLAYER_STOP = "Stop playback"

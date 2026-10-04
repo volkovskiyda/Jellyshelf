@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Forward30
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
@@ -47,6 +46,7 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -128,6 +128,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
+import com.gmail.volkovskiyda.jellyshelf.navigation.minimizedBackStack
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberCopyToClipboard
@@ -161,8 +162,9 @@ internal const val PLAYER_POSITION_TAG = "player_position"
  *
  *  - **Back** — the back arrow or the system gesture — stops playback, reports the position to the
  *    server and drops the media notification. Back means *done watching*, and that is unchanged.
- *  - **Minimize** — the down-chevron in the top bar — pops this screen and leaves playback running.
- *    The mini-player bar then appears on whatever screen is underneath, and is the way back here.
+ *  - **Minimize** — the info button in the top bar — pops this screen and leaves playback running,
+ *    landing on the Detail screen of whatever is playing *now* (see [minimizedBackStack]); the
+ *    mini-player bar is then the way back here.
  *
  * Merely hiding the app also keeps playing. Picture-in-Picture is a *third* exit, and only ever
  * on request — the PiP button in the top bar, never automatically on leaving the app (auto-enter
@@ -188,6 +190,7 @@ internal const val PLAYER_POSITION_TAG = "player_position"
 fun PlayerScreen(
     youtubeId: String,
     onBack: () -> Unit,
+    onMinimize: (nowPlayingId: String) -> Unit,
     modifier: Modifier = Modifier,
     origin: PlayerOrigin = PlayerOrigin.None,
     leaving: Boolean = false,
@@ -195,6 +198,7 @@ fun PlayerScreen(
     val viewModel: PlayerViewModel = koinViewModel { parametersOf(AppNavKey.Player(youtubeId, origin)) }
     val controller by viewModel.controller.collectAsStateWithLifecycle()
     val video by viewModel.video.collectAsStateWithLifecycle()
+    val currentId by viewModel.currentId.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val scaleMode by viewModel.videoScaleMode.collectAsStateWithLifecycle()
     val isInPip = LocalIsInPip.current
@@ -262,9 +266,9 @@ fun PlayerScreen(
                     onScaleModePicked = viewModel::setVideoScaleMode,
                     isInPip = isInPip,
                     onBack = leave,
-                    // The nav layer's plain pop: no stopPlayback, so the session survives and the
-                    // mini-player bar picks it up on the screen underneath.
-                    onMinimize = onBack,
+                    // No stopPlayback here, so the session survives and the mini-player bar picks
+                    // it up on the Detail screen the nav layer lands on — the playing video's.
+                    onMinimize = { onMinimize(currentId) },
                     onEnterPip = { (activity as? MainActivity)?.enterPip() },
                     onRotateToLandscape = { (activity as? MainActivity)?.landscape?.request() },
                     onSurfaceBounds = { (activity as? MainActivity)?.updatePipParams(rect = it) },
@@ -802,7 +806,7 @@ internal fun PlayerControls(
                     }
                     IconButton(onClick = onMinimize) {
                         Icon(
-                            Icons.Filled.KeyboardArrowDown,
+                            Icons.Outlined.Info,
                             contentDescription = stringResource(R.string.player_minimize),
                             tint = Color.White,
                         )

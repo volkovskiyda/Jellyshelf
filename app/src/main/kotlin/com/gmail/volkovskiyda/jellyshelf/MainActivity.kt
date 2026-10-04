@@ -83,6 +83,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
+import com.gmail.volkovskiyda.jellyshelf.navigation.minimizedBackStack
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
 import com.gmail.volkovskiyda.jellyshelf.playback.PipAspect
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
@@ -586,6 +587,17 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         backStack.add(key)
     }
 
+    // The player's minimize: lands on the playing video's Detail screen — see minimizedBackStack
+    // for which entries that replaces. Only the tail that differs is rewritten, in place and inside
+    // the one click, so the entries both stacks share keep their state and no frame sees a stack
+    // halfway through the change.
+    fun minimizePlayer(nowPlayingId: String) {
+        val target = minimizedBackStack(backStack.toList(), nowPlayingId)
+        val shared = backStack.zip(target).takeWhile { (a, b) -> a == b }.size
+        while (backStack.size > shared) backStack.removeAt(backStack.lastIndex)
+        backStack.addAll(target.drop(shared))
+    }
+
     /**
      * Opening the player on a *chosen* video — the one navigation that also ends what is playing.
      *
@@ -868,6 +880,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                                 // the outgoing entry recompose when the stack changes under it.
                                 leaving = backStack.lastOrNull() != key,
                                 onBack = { navThrottle { pop() } },
+                                onMinimize = { id -> navThrottle { minimizePlayer(id) } },
                             )
                         }
 

@@ -65,16 +65,18 @@ class PlayerViewModel(
     private val youtubeId = key.youtubeId
     private val origin = key.origin
 
+    private val _currentId = MutableStateFlow(youtubeId)
+
     /**
      * What is playing *now*, which stops being the video the screen was opened with as soon as
      * the queue advances — by the next button or by a video ending. Everything the screen shows
      * about the video hangs off this, so a title and a chapter list can never describe the
-     * previous item.
+     * previous item. Minimize reads it too, to land on this video's Detail screen.
      */
-    private val currentId = MutableStateFlow(youtubeId)
+    val currentId: StateFlow<String> = _currentId.asStateFlow()
 
     /** The video row, for the title over the controls; null until it loads. */
-    val video: StateFlow<Video?> = currentId
+    val video: StateFlow<Video?> = _currentId
         .flatMapLatest { repo.observeVideo(it) }
         .stateIn(viewModelScope, WhileUiSubscribed, null)
 
@@ -167,7 +169,7 @@ class PlayerViewModel(
             // the last id there leaves the title in place while the screen finishes leaving.
             controller.addListener(object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    currentId.value = mediaItem?.mediaId ?: currentId.value
+                    _currentId.value = mediaItem?.mediaId ?: _currentId.value
                     // The new item's tracks have not been read yet, and the old item's chapters
                     // must not survive into it — a stale list is worse than none, since every
                     // entry seeks to the wrong place.

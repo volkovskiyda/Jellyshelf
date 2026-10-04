@@ -384,8 +384,8 @@ class JourneyBenchmark {
      * they are hidden, one tap brings them back — one, never a loop: two in quick succession are
      * a double tap, which seeks.
      *
-     * Minimizing lands where the player was opened from — the detail screen — so the walk back to
-     * the library is explicit rather than assumed.
+     * Minimizing lands on the detail screen of the video playing at that moment, not on a tab, so
+     * the walk back to the library is explicit rather than assumed.
      */
     private fun MacrobenchmarkScope.minimizePlayer() {
         if (!device.hasObject(By.desc(MINIMIZE_PLAYER))) {
