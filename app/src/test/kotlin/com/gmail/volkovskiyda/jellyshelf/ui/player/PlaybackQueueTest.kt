@@ -2,9 +2,12 @@ package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -60,6 +63,25 @@ class PlaybackQueueTest {
         val bare = MediaItem.Builder().setMediaId("zzz").build()
 
         assertEquals(listOf(QueueEntry("zzz", null, null, null)), queueEntries(1) { bare })
+    }
+
+    @Test
+    fun `the last video reaching its end leaves the player`() {
+        assertTrue(endsThePlayer(Player.STATE_ENDED, mediaItemCount = 1))
+        assertTrue(endsThePlayer(Player.STATE_ENDED, mediaItemCount = 5))
+    }
+
+    @Test
+    fun `the end a stopping exit causes by clearing the queue does not leave a second time`() {
+        // Back's stopPlayback clears the queue, which also reports STATE_ENDED — with nothing left.
+        assertFalse(endsThePlayer(Player.STATE_ENDED, mediaItemCount = 0))
+    }
+
+    @Test
+    fun `no other playback state leaves the player`() {
+        listOf(Player.STATE_IDLE, Player.STATE_BUFFERING, Player.STATE_READY).forEach { state ->
+            assertFalse(endsThePlayer(state, mediaItemCount = 1))
+        }
     }
 
     private fun queued(id: String, title: String?, channel: String?): MediaItem =

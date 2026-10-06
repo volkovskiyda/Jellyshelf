@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -175,6 +176,11 @@ internal const val PLAYER_POSITION_TAG = "player_position"
  *    landing on the Detail screen of whatever is playing *now* (see [minimizedBackStack]); the
  *    mini-player bar is then the way back here.
  *
+ * A fourth exit is not a control: when the last video in the queue reaches its end — it ran out,
+ * or the chapter row's next arrow skipped it there — playback stops and the screen lands on that
+ * video's Detail the way minimize does. Nothing is left to watch, so "done watching" and "show me
+ * this video's page" coincide. With a video after it, an end is just the queue advancing.
+ *
  * Merely hiding the app also keeps playing. Picture-in-Picture is a *third* exit, and only ever
  * on request — the PiP button in the top bar, never automatically on leaving the app (auto-enter
  * on the Home gesture surprised more than it helped). Expanding that window comes back here with
@@ -235,6 +241,14 @@ fun PlayerScreen(
         viewModel.stopPlayback()
         onBack()
     }
+    // The stopping exit that lands on Details, for a queue that has played out. The id is read
+    // before the stop, since clearing the queue moves currentId; the completed report was already
+    // filed when the video ended, so the clear files nothing more (see stopPlayback).
+    val finished = {
+        val id = currentId
+        viewModel.stopPlayback()
+        onMinimize(id)
+    }
 
     // Always the dark scheme, whatever the app's theme: everything here sits on a black video
     // surface. media3's BottomControls fades its gradient into colorScheme.background, which in
@@ -278,6 +292,7 @@ fun PlayerScreen(
                     // No stopPlayback here, so the session survives and the mini-player bar picks
                     // it up on the Detail screen the nav layer lands on — the playing video's.
                     onMinimize = { onMinimize(currentId) },
+                    onFinished = finished,
                     onEnterPip = { (activity as? MainActivity)?.enterPip() },
                     onRotateToLandscape = { (activity as? MainActivity)?.landscape?.request() },
                     onSurfaceBounds = { (activity as? MainActivity)?.updatePipParams(rect = it) },
@@ -300,6 +315,7 @@ private fun PlayerWithControls(
     isInPip: Boolean,
     onBack: () -> Unit,
     onMinimize: () -> Unit,
+    onFinished: () -> Unit,
     onEnterPip: () -> Unit,
     onRotateToLandscape: () -> Unit,
     onSurfaceBounds: (Rect) -> Unit,
@@ -311,6 +327,9 @@ private fun PlayerWithControls(
     var isBuffering by remember { mutableStateOf(controller.playbackState == Player.STATE_BUFFERING) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var transcodingNotice by remember { mutableStateOf(false) }
+    // Read from the listener below, which is registered once per controller.
+    val currentIsInPip by rememberUpdatedState(isInPip)
+    val currentOnFinished by rememberUpdatedState(onFinished)
 
     DisposableEffect(controller) {
         // The first decode failure isn't terminal — the service is already swapping in the HLS
@@ -324,6 +343,11 @@ private fun PlayerWithControls(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
+                // A PiP window is left where it is: navigating under it would change the screen
+                // the user expands back into, and the frame it holds is the end they watched.
+                if (endsThePlayer(playbackState, controller.mediaItemCount) && !currentIsInPip) {
+                    currentOnFinished()
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -639,6 +663,10 @@ private fun PlayerWithControls(
                 // Only the chapter row and the chapters panel seek through us now; the seek bar's
                 // own seek is ProgressSlider's, fired just before its onValueChangeFinished.
                 onSeek = controller::seekTo,
+                // Media3 takes it from there: with a video after this one the queue advances, and
+                // otherwise the end it reports is the listener's cue to leave. An unknown duration
+                // makes the tap a no-op rather than a seek to zero.
+                onFinish = { if (durationMs > 0) controller.seekTo(durationMs) },
                 onSetSpeed = { speed ->
                     playbackSpeed.updatePlaybackSpeed(speed)
                     // Only a menu pick is a choice worth keeping. Press-and-hold's speed is a
@@ -776,6 +804,7 @@ internal fun PlayerControls(
     onNext: () -> Unit,
     onOpenQueue: () -> Unit,
     onSeek: (Long) -> Unit,
+    onFinish: () -> Unit,
     onSetSpeed: (Float) -> Unit,
     rotateFirst: Boolean,
     scaleMode: VideoScaleMode,
@@ -932,7 +961,11 @@ internal fun PlayerControls(
                 player = player,
                 visible = visible,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                above = { if (chapters.isNotEmpty()) ChapterStepRow(chapters, shownMs, onSeek, onOpenChapters) },
+                above = {
+                    if (chapters.isNotEmpty()) {
+                        ChapterStepRow(chapters, shownMs, onSeek, onFinish, onOpenChapters)
+                    }
+                },
                 left = {
                     // The tag the baseline profile's playback leg waits on. PositionText formats
                     // through Util.getStringForTime — "%02d:%02d" below an hour, so zero reads
@@ -1093,6 +1126,9 @@ private fun topControlsGradient(): Brush = Brush.verticalGradient(
  * The name follows the scrubbed position, so dragging previews the chapter you would land in
  * rather than the one still playing.
  *
+ * The next arrow never goes dead while the row shows: inside the last chapter it skips to the end
+ * of the video ([onFinish]), and says so in its description rather than claiming a next chapter.
+ *
  * The name is also the way into the chapter list, which is why it spans the whole gap between the
  * arrows at a button's height and carries a chevron: the top bar has no spare slot for an icon on
  * a portrait phone. Before the first chapter starts the name is empty, but the target and the
@@ -1103,6 +1139,7 @@ private fun ChapterStepRow(
     chapters: List<Chapter>,
     shownMs: Long,
     onSeek: (Long) -> Unit,
+    onFinish: () -> Unit,
     onOpenChapters: () -> Unit,
 ) {
     val previousMs = previousChapterStartMs(chapters, shownMs)
@@ -1145,18 +1182,20 @@ private fun ChapterStepRow(
                 modifier = Modifier.size(16.dp),
             )
         }
-        IconButton(onClick = { nextMs?.let(onSeek) }, enabled = nextMs != null) {
+        IconButton(onClick = { if (nextMs != null) onSeek(nextMs) else onFinish() }) {
             Icon(
                 Icons.Filled.FastForward,
-                contentDescription = stringResource(R.string.next_chapter),
-                tint = transportTint(nextMs != null),
+                contentDescription = stringResource(
+                    if (nextMs != null) R.string.next_chapter else R.string.skip_to_end,
+                ),
+                tint = Color.White,
                 modifier = Modifier.size(20.dp),
             )
         }
     }
 }
 
-/** White when it does something, visibly dimmed at the ends of a queue or a chapter list. */
+/** White when it does something, visibly dimmed at the ends of a queue or at the first chapter. */
 private fun transportTint(enabled: Boolean): Color =
     if (enabled) Color.White else Color.White.copy(alpha = DISABLED_ALPHA)
 

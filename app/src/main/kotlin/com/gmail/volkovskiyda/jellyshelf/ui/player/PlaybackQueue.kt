@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 
 /** What the session is handed: the ids to queue, and which one to start on. */
@@ -50,6 +51,18 @@ internal fun queueEntries(count: Int, itemAt: (Int) -> MediaItem): List<QueueEnt
             artworkUri = metadata.artworkUri?.toString(),
         )
     }
+
+/**
+ * Whether a playback-state change means the player screen is done: the last video in the queue
+ * reached its end, whether it ran out or the chapter row's next arrow skipped it there.
+ *
+ * A queue with a video after it never reports [Player.STATE_ENDED] — media3 advances instead — so
+ * the state alone already means "nothing follows". The item count is the other half: clearing the
+ * queue, which every stopping exit does, also lands the player in `STATE_ENDED`, and that end must
+ * not send a screen that is already leaving off to a Detail page as well.
+ */
+internal fun endsThePlayer(playbackState: Int, mediaItemCount: Int): Boolean =
+    playbackState == Player.STATE_ENDED && mediaItemCount > 0
 
 /**
  * Where the previous-chapter button goes: back to the start of the current chapter when more

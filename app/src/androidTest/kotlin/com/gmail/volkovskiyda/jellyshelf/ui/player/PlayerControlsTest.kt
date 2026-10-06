@@ -100,6 +100,7 @@ class PlayerControlsTest {
         onNext: () -> Unit = {},
         onOpenQueue: () -> Unit = {},
         onSeek: (Long) -> Unit = {},
+        onFinish: () -> Unit = {},
         onOpenChapters: () -> Unit = {},
         onBack: () -> Unit = {},
         onMinimize: () -> Unit = {},
@@ -126,6 +127,7 @@ class PlayerControlsTest {
                     onNext = onNext,
                     onOpenQueue = onOpenQueue,
                     onSeek = onSeek,
+                    onFinish = onFinish,
                     onSetSpeed = onSetSpeed,
                     rotateFirst = rotateFirst,
                     scaleMode = scaleMode,
@@ -466,6 +468,7 @@ class PlayerControlsTest {
 
         onDescription(R.string.previous_chapter).assertDoesNotExist()
         onDescription(R.string.next_chapter).assertDoesNotExist()
+        onDescription(R.string.skip_to_end).assertDoesNotExist()
         // The chapter title is the only way into the chapter list, so a chapterless video offers
         // no opener anywhere.
         onDescription(R.string.chapters).assertDoesNotExist()
@@ -514,12 +517,34 @@ class PlayerControlsTest {
         onDescription(R.string.next_chapter).assertIsEnabled()
     }
 
+    /**
+     * The next arrow never goes dead: in the last chapter it finishes the video, and its
+     * description changes with it so TalkBack never announces a next chapter that is not there.
+     */
     @Test
-    fun nextChapter_isDisabledInsideTheLastChapter() {
+    fun nextChapter_insideTheLastChapter_skipsToTheEnd() {
+        var finishes = 0
+        var seekedTo: Long? = null
+        // Just past the last chapter's start, and short of the harness's 600 000 ms duration.
+        setControls(
+            chapters = chapters,
+            positionMs = 600_500L,
+            onFinish = { finishes++ },
+            onSeek = { seekedTo = it },
+        )
+
+        onDescription(R.string.next_chapter).assertDoesNotExist()
+        onDescription(R.string.skip_to_end).assertIsEnabled().performClick()
+
+        assertEquals(1, finishes)
+        assertNull(seekedTo)
+    }
+
+    @Test
+    fun previousChapter_insideTheLastChapter_stillStepsBack() {
+        // Past the restart threshold into the last chapter, so previous still has work to do.
         setControls(chapters = chapters, positionMs = 610_000L)
 
-        onDescription(R.string.next_chapter).assertIsNotEnabled()
-        // Past the restart threshold into the last chapter, so previous still has work to do.
         onDescription(R.string.previous_chapter).assertIsEnabled()
     }
 
