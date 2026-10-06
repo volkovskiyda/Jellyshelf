@@ -1,7 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui
 
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
-import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filterNotNull
@@ -75,10 +74,10 @@ class NavigationStackTest {
     }
 
     /**
-     * A Detail entry written before the player origin existed carries no `origin` field. It has
-     * to decode — an in-place upgrade restores this stack on the very first launch, and a
-     * required field here would send that launch down the unreadable-stack path below, silently
-     * dropping the user back to Library.
+     * A Detail entry written before the player origin existed carries no `origin` field — the
+     * shape Detail has again now that the field is gone. It has to decode: an in-place upgrade
+     * restores this stack on the very first launch, and a failed decode would send that launch
+     * down the unreadable-stack path below, silently dropping the user back to Library.
      */
     @Test
     fun `a Detail entry saved before origins existed still restores`() = runTest {
@@ -91,19 +90,19 @@ class NavigationStackTest {
             """.trimIndent(),
         )
         assertEquals(
-            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I", PlayerOrigin.None)),
+            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I")),
             startStackOf(repo),
         )
     }
 
     /**
-     * The other half of that upgrade: while `origin` was nullable the encoder wrote an explicit
-     * `"origin": null` for every Detail opened from the notification path. Now that the field is
-     * non-null, only `coerceInputValues` keeps that from failing the decode — and a failed decode
-     * here is the same silent drop back to Library.
+     * Detail carried an `origin` for a while — first nullable, so the encoder wrote an explicit
+     * `"origin": null` for every Detail opened from the notification path, then a full object.
+     * The field is gone and Detail no longer reads it; `ignoreUnknownKeys` has to skip it either
+     * way, or the decode fails into the same silent drop back to Library.
      */
     @Test
-    fun `a Detail entry saved with a null origin restores as None`() = runTest {
+    fun `a Detail entry saved with a null origin restores once the field is gone`() = runTest {
         val repo = FakeSettingsRepository(
             emptySettings.copy(serverUrl = "https://example.org", apiKey = "key"),
             backStackJson = """
@@ -113,7 +112,28 @@ class NavigationStackTest {
             """.trimIndent(),
         )
         assertEquals(
-            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I", PlayerOrigin.None)),
+            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I")),
+            startStackOf(repo),
+        )
+    }
+
+    /**
+     * The stack every user who minimized the player on the 2026-10-04 build carries: the landed
+     * Detail was written with the Player's origin as a full object.
+     */
+    @Test
+    fun `a Detail entry saved with an origin object restores once the field is gone`() = runTest {
+        val repo = FakeSettingsRepository(
+            emptySettings.copy(serverUrl = "https://example.org", apiKey = "key"),
+            backStackJson = """
+                [{"type":"com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey.Library"},
+                 {"type":"com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey.Detail",
+                  "youtubeId":"1ubm7Q6DL-I",
+                  "origin":{"type":"com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin.Library"}}]
+            """.trimIndent(),
+        )
+        assertEquals(
+            listOf(AppNavKey.Library, AppNavKey.Detail("1ubm7Q6DL-I")),
             startStackOf(repo),
         )
     }

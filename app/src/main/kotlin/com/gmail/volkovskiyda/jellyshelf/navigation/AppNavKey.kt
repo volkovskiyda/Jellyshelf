@@ -18,10 +18,7 @@ sealed class AppNavKey : NavKey {
     data class CategoryVideos(val categoryId: String, val title: String) : AppNavKey()
 
     @Serializable
-    data class Detail(
-        val youtubeId: String,
-        val origin: PlayerOrigin = PlayerOrigin.None,
-    ) : AppNavKey()
+    data class Detail(val youtubeId: String) : AppNavKey()
 
     @Serializable
     data class Player(
@@ -79,9 +76,9 @@ fun AppNavKey.routeArgs(): Map<String, String> = when (this) {
 @Serializable
 sealed class PlayerOrigin {
     /**
-     * No list context: the media-notification path, and the default a back stack persisted
-     * before origins existed decodes with. Plays the one video alone, both transport buttons
-     * disabled — exactly the behavior the player had before queues.
+     * No list context: the media-notification path, a video opened from Detail, and the default a
+     * back stack persisted before origins existed decodes with. Plays the one video alone, both
+     * transport buttons disabled — exactly the behavior the player had before queues.
      */
     @Serializable
     data object None : PlayerOrigin()

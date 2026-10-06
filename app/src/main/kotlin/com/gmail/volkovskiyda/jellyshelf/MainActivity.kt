@@ -814,17 +814,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     when (key) {
                         is AppNavKey.Library -> entry(key) {
                             LibraryScreen(
-                                // A thumbnail tap goes straight to the player, carrying the same origin the
-                                // detour through Detail would have handed it: the queue is the library as
-                                // the user has it narrowed, either way in.
+                                // A thumbnail tap goes straight to the player: the queue is the library as
+                                // the user has it narrowed.
                                 onPlayVideo = {
                                     navThrottle { openPlayer(it.youtubeId, PlayerOrigin.Library) }
                                 },
-                                onOpenDetails = {
-                                    // The origin rides on Detail so that Play, one screen later, still
-                                    // knows which list the user was in — Detail itself never reads it.
-                                    navThrottle { push(AppNavKey.Detail(it.youtubeId, PlayerOrigin.Library)) }
-                                },
+                                onOpenDetails = { navThrottle { push(AppNavKey.Detail(it.youtubeId)) } },
                             )
                         }
 
@@ -851,9 +846,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                                 onPlayVideo = {
                                     navThrottle { openPlayer(it.youtubeId, origin) }
                                 },
-                                onOpenDetails = {
-                                    navThrottle { push(AppNavKey.Detail(it.youtubeId, origin)) }
-                                },
+                                onOpenDetails = { navThrottle { push(AppNavKey.Detail(it.youtubeId)) } },
                                 onBack = { navThrottle { pop() } },
                             )
                         }
@@ -862,7 +855,10 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                             DetailScreen(
                                 youtubeId = key.youtubeId,
                                 onBack = { navThrottle { pop() } },
-                                onPlayInApp = { id -> navThrottle { openPlayer(id, key.origin) } },
+                                // Opening Detail is picking this one video, so its Play hands the player no
+                                // list and nothing plays after it. The row taps on the library and on a
+                                // category are the "play from here" path that queues the whole list.
+                                onPlayInApp = { id -> navThrottle { openPlayer(id, PlayerOrigin.None) } },
                                 // The "Appears in" chips land on the same screen a Categories-tab tap
                                 // does, pushed on top so Back returns to this video.
                                 onOpenCategory = { id, title ->

@@ -19,10 +19,12 @@ import androidx.navigation3.runtime.NavKey
  *    reopened the player from the bar or the notification — is kept, and the Player alone is
  *    replaced. The list keeps its scroll position one Back further down.
  *
- * The new Detail carries the Player key's origin, so its Play reopens the same queue. It is never
- * left directly on top of a Detail of the same video: two adjacent equal keys collide in the
- * saveable-state and ViewModel stores (see `push` in MainActivity), so the existing one is landed
- * on instead. A stack whose top is not a Player is returned unchanged.
+ * The new Detail is an ordinary one and carries no list: while the video plays, its Play attaches to
+ * the running session and the queue goes on untouched; once playback has stopped, Play starts that
+ * video alone, as from any Detail. It is never left directly on top of a Detail of the same video:
+ * two adjacent equal keys collide in the saveable-state and ViewModel stores (see `push` in
+ * MainActivity), so the existing one is landed on instead. A stack whose top is not a Player is
+ * returned unchanged.
  */
 fun minimizedBackStack(stack: List<NavKey>, nowPlayingId: String): List<NavKey> {
     val player = stack.lastOrNull() as? AppNavKey.Player ?: return stack
@@ -31,7 +33,7 @@ fun minimizedBackStack(stack: List<NavKey>, nowPlayingId: String): List<NavKey> 
     if (under.isDetailOf(nowPlayingId)) return below
     val kept = if (under.isDetailOf(player.youtubeId)) below.dropLast(1) else below
     if (kept.lastOrNull().isDetailOf(nowPlayingId)) return kept
-    return kept + AppNavKey.Detail(nowPlayingId, player.origin)
+    return kept + AppNavKey.Detail(nowPlayingId)
 }
 
 private fun NavKey?.isDetailOf(youtubeId: String): Boolean =

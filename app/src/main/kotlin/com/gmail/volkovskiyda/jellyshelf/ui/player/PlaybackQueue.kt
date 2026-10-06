@@ -9,9 +9,9 @@ internal data class PlaybackQueue(val ids: List<String>, val startIndex: Int)
  * The queue for playing [youtubeId] out of the list it was opened from.
  *
  * Falls back to just that video whenever [originIds] cannot position it — no origin at all (the
- * media-notification path), or a snapshot taken before the video was added. The fallback is not
- * an error case: a single-item queue is exactly the behavior the player had before queues
- * existed, down to both transport buttons being disabled.
+ * media-notification path, a video opened from Detail), or a snapshot taken before the video was
+ * added. The fallback is not an error case: a single-item queue is exactly the behavior the player
+ * had before queues existed, down to both transport buttons being disabled.
  */
 internal fun playbackQueue(originIds: List<String>, youtubeId: String): PlaybackQueue {
     val start = originIds.indexOf(youtubeId)
