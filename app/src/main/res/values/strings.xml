@@ -198,6 +198,7 @@
     <string name="playback_transcoding_fallback">Direct play failed, switching to transcoding…</string>
     <string name="chapters">Chapters</string>
     <string name="queue">Queue</string>
+    <string name="remove_from_queue">Remove from queue</string>
     <string name="copy_chapter">Copy chapter</string>
     <string name="chapter_copied">Chapter copied</string>
     <string name="player_minimize">Minimize and show details</string>

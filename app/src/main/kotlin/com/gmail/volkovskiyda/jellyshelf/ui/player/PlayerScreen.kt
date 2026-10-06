@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Forward30
@@ -690,6 +691,13 @@ private fun PlayerWithControls(
                 onEntryClick = {
                     playlist.seekToMediaItem(it)
                     queueOpen = false
+                },
+                // Re-checked at the call: the timeline can change between the tap and here (a
+                // remove from another controller), and the playing item must never be dropped.
+                onRemove = {
+                    if (it != playlist.currentMediaItemIndex && it < playlist.mediaItemCount) {
+                        controller.removeMediaItem(it)
+                    }
                 },
                 onDismiss = { queueOpen = false },
             )
@@ -1350,14 +1358,19 @@ internal fun ChaptersPanel(
  * already-played rows included, so going back two videos is one tap; it opens scrolled so the
  * playing row sits second from the top, with the one before it still in view.
  *
- * A tap jumps to that row ([onEntryClick] gets its index). Tapping outside (or Back, handled by
- * the caller) dismisses.
+ * A tap jumps to that row ([onEntryClick] gets its index). Every row but the playing one ends in a
+ * remove button ([onRemove]); the playing row has none on purpose — dropping the item under
+ * playback is what Next already does, and media3 would report it as a playlist change, which skips
+ * the resume seed the next video is owed. The panel stays open after a removal, even one that
+ * leaves a single row: the user is mid-edit, and dismisses it themselves. Tapping outside (or
+ * Back, handled by the caller) dismisses.
  */
 @Composable
 internal fun QueuePanel(
     entries: List<QueueEntry>,
     currentIndex: Int,
     onEntryClick: (Int) -> Unit,
+    onRemove: (Int) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1375,7 +1388,7 @@ internal fun QueuePanel(
                         .heightIn(min = MIN_TOUCH_TARGET)
                         .clickable { onEntryClick(index) }
                         .semantics { selected = highlight }
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                        .padding(start = 20.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1402,6 +1415,19 @@ internal fun QueuePanel(
                                 style = MaterialTheme.typography.labelMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    if (highlight) {
+                        // Same width as the button, so the playing row's title ends where the
+                        // others do.
+                        Spacer(Modifier.size(MIN_TOUCH_TARGET))
+                    } else {
+                        IconButton(onClick = { onRemove(index) }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.remove_from_queue),
+                                tint = Color.White.copy(alpha = 0.7f),
                             )
                         }
                     }

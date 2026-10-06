@@ -576,8 +576,8 @@ private fun PlayerControlsPortrait() {
 
 /**
  * The player's queue panel over a video, mid-queue: the playing row highlighted and scrolled so
- * the row before it stays in view. Artwork is null so the golden never depends on the network;
- * one row has no channel and one an overlong title.
+ * the row before it stays in view, every other row ending in a remove button. Artwork is null so
+ * the golden never depends on the network; one row has no channel and one an overlong title.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
@@ -598,6 +598,7 @@ private fun QueuePanelPreview() {
             ),
             currentIndex = 1,
             onEntryClick = {},
+            onRemove = {},
             onDismiss = {},
         )
     }

@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -521,13 +523,18 @@ class PlayerControlsTest {
         onDescription(R.string.previous_chapter).assertIsEnabled()
     }
 
-    private fun setQueuePanel(currentIndex: Int = 1, onEntryClick: (Int) -> Unit = {}) {
+    private fun setQueuePanel(
+        currentIndex: Int = 1,
+        onEntryClick: (Int) -> Unit = {},
+        onRemove: (Int) -> Unit = {},
+    ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
                 QueuePanel(
                     entries = queue,
                     currentIndex = currentIndex,
                     onEntryClick = onEntryClick,
+                    onRemove = onRemove,
                     onDismiss = {},
                 )
             }
@@ -563,6 +570,45 @@ class PlayerControlsTest {
         composeRule.onNodeWithText("Second video").assertIsSelected()
         composeRule.onNodeWithText("Third video").assertIsNotSelected()
         composeRule.onNodeWithText("Channel B").assertIsDisplayed()
+    }
+
+    @Test
+    fun theRemoveButton_dropsThatRow() {
+        var removed: Int? = null
+        var jumpedTo: Int? = null
+        setQueuePanel(currentIndex = 1, onEntryClick = { jumpedTo = it }, onRemove = { removed = it })
+
+        // Rows 0 and 2 carry one each; the second is row 2's.
+        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))[1]
+            .performClick()
+
+        assertEquals(2, removed)
+        assertNull(jumpedTo)
+    }
+
+    /**
+     * Dropping the item under playback would reach media3 as a playlist change, which skips the next
+     * video's resume seed — so the playing row offers no way to do it.
+     */
+    @Test
+    fun thePlayingRow_hasNoRemoveButton() {
+        setQueuePanel(currentIndex = 1)
+
+        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))
+            .assertCountEquals(queue.size - 1)
+    }
+
+    /** The button beside it must not swallow the row's own click. */
+    @Test
+    fun aRowWithARemoveButton_stillJumpsWhenTapped() {
+        var removed: Int? = null
+        var jumpedTo: Int? = null
+        setQueuePanel(currentIndex = 1, onEntryClick = { jumpedTo = it }, onRemove = { removed = it })
+
+        composeRule.onNodeWithText("Third video").performClick()
+
+        assertEquals(2, jumpedTo)
+        assertNull(removed)
     }
 
     private fun setChaptersPanel(onChapterClick: (Chapter) -> Unit = {}) {
