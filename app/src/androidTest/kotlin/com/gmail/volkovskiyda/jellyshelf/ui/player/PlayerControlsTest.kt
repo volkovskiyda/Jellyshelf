@@ -14,6 +14,8 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
@@ -91,8 +93,10 @@ class PlayerControlsTest {
         positionMs: Long = 10_000L,
         hasPrevious: Boolean = false,
         hasNext: Boolean = false,
+        hasQueue: Boolean = false,
         onPrevious: () -> Unit = {},
         onNext: () -> Unit = {},
+        onOpenQueue: () -> Unit = {},
         onSeek: (Long) -> Unit = {},
         onOpenChapters: () -> Unit = {},
         onBack: () -> Unit = {},
@@ -115,8 +119,10 @@ class PlayerControlsTest {
                     speed = speed,
                     hasPrevious = hasPrevious,
                     hasNext = hasNext,
+                    hasQueue = hasQueue,
                     onPrevious = onPrevious,
                     onNext = onNext,
+                    onOpenQueue = onOpenQueue,
                     onSeek = onSeek,
                     onSetSpeed = onSetSpeed,
                     rotateFirst = rotateFirst,
@@ -213,6 +219,38 @@ class PlayerControlsTest {
         setControls(chapters = chapters)
 
         assertMinimizeSitsBetweenSpeedAndPictureInPicture()
+    }
+
+    /** The queue fills the slot the chapters icon left: after the speed chip, before minimize. */
+    @Test
+    fun withAQueue_theQueueButtonSitsBetweenSpeedAndMinimize() {
+        setControls(hasQueue = true)
+
+        val speed = composeRule.onNodeWithText(speedLabel(1f)).getBoundsInRoot()
+        val queue = onDescription(R.string.queue).getBoundsInRoot()
+        val minimize = onDescription(R.string.player_minimize).getBoundsInRoot()
+
+        assertTrue(speed.right <= queue.left)
+        assertTrue(queue.right <= minimize.left)
+        assertMinimizeSitsBetweenSpeedAndPictureInPicture()
+    }
+
+    /** A video opened from Detail plays alone; a one-row queue list would only restate the title. */
+    @Test
+    fun theQueueButton_isAbsentOnASingleVideo() {
+        setControls(hasQueue = false)
+
+        onDescription(R.string.queue).assertDoesNotExist()
+    }
+
+    @Test
+    fun theQueueButton_opensTheQueue() {
+        var opens = 0
+        setControls(hasQueue = true, onOpenQueue = { opens++ })
+
+        onDescription(R.string.queue).performClick()
+
+        assertEquals(1, opens)
     }
 
     private fun assertMinimizeSitsBetweenSpeedAndPictureInPicture() {
@@ -483,6 +521,50 @@ class PlayerControlsTest {
         onDescription(R.string.previous_chapter).assertIsEnabled()
     }
 
+    private fun setQueuePanel(currentIndex: Int = 1, onEntryClick: (Int) -> Unit = {}) {
+        composeRule.setContent {
+            JellyshelfTheme(dynamicColor = false) {
+                QueuePanel(
+                    entries = queue,
+                    currentIndex = currentIndex,
+                    onEntryClick = onEntryClick,
+                    onDismiss = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun tappingAQueueRow_jumpsToIt() {
+        var jumpedTo: Int? = null
+        setQueuePanel(onEntryClick = { jumpedTo = it })
+
+        composeRule.onNodeWithText("Third video").performClick()
+
+        assertEquals(2, jumpedTo)
+    }
+
+    /** Already-played rows stay listed, so going back is one tap too. */
+    @Test
+    fun aPlayedQueueRow_isListedAndJumpable() {
+        var jumpedTo: Int? = null
+        setQueuePanel(currentIndex = 2, onEntryClick = { jumpedTo = it })
+
+        composeRule.onNodeWithText("First video").performClick()
+
+        assertEquals(0, jumpedTo)
+    }
+
+    @Test
+    fun thePlayingRow_isSelected() {
+        setQueuePanel(currentIndex = 1)
+
+        // The clickable row merges its texts, so finding a title finds the row that carries the flag.
+        composeRule.onNodeWithText("Second video").assertIsSelected()
+        composeRule.onNodeWithText("Third video").assertIsNotSelected()
+        composeRule.onNodeWithText("Channel B").assertIsDisplayed()
+    }
+
     private fun setChaptersPanel(onChapterClick: (Chapter) -> Unit = {}) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -551,6 +633,12 @@ class PlayerControlsTest {
     }
 
     private companion object {
+        val queue = listOf(
+            QueueEntry("aaaaaaaaaaa", "First video", "Channel A", null),
+            QueueEntry("bbbbbbbbbbb", "Second video", "Channel B", null),
+            QueueEntry("ccccccccccc", "Third video", null, null),
+        )
+
         val chapters = listOf(
             Chapter(0L, "Intro"),
             Chapter(120_000L, "Main part"),

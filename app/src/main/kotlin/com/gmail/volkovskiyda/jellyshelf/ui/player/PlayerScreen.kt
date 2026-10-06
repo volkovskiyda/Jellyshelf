@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -31,14 +32,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
@@ -69,6 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -88,6 +94,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -381,6 +388,7 @@ private fun PlayerWithControls(
     var controlsTouched by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
     var chaptersOpen by remember { mutableStateOf(false) }
+    var queueOpen by remember { mutableStateOf(false) }
     var speedMenuOpen by remember { mutableStateOf(false) }
     // A PiP window is a thumbnail of the video and nothing else. Anything overlaid on it is
     // unreadable at that size and unusable through the platform's own tap handling, so the panels
@@ -390,12 +398,13 @@ private fun PlayerWithControls(
         if (isInPip) {
             controlsVisible = false
             chaptersOpen = false
+            queueOpen = false
             speedMenuOpen = false
         }
     }
-    // Auto-hide while playing; scrubbing, the open chapter panel or the speed menu pins the
-    // controls (hiding them would tear the open menu out of the composition mid-use).
-    val controlsPinned = scrubbing || chaptersOpen || speedMenuOpen
+    // Auto-hide while playing; scrubbing, an open panel or the speed menu pins the controls
+    // (hiding them would tear the open menu out of the composition mid-use).
+    val controlsPinned = scrubbing || chaptersOpen || queueOpen || speedMenuOpen
     // controlsTouched and isPortrait are keys so a tap — and the rotation one of them asks for —
     // restart the 3 s rather than letting it run out mid-sequence: reaching Stretch from portrait
     // takes four taps, and the controls hiding between them would strand the user.
@@ -408,7 +417,13 @@ private fun PlayerWithControls(
     // One handler for both meanings of Back, so their priority is in the code rather than in the
     // dispatcher's registration order: an open panel consumes the press (closing it must not pop
     // the screen), and otherwise Back is the explicit leave that stops playback.
-    BackHandler { if (chaptersOpen) chaptersOpen = false else onBack() }
+    BackHandler {
+        when {
+            queueOpen -> queueOpen = false
+            chaptersOpen -> chaptersOpen = false
+            else -> onBack()
+        }
+    }
 
     // Only the double-tap gesture reads these here; the transport buttons hold their own,
     // remembered against the same controller inside their slot composables.
@@ -433,6 +448,8 @@ private fun PlayerWithControls(
     // move on while one is up — the transport arrows sit beside them, and the previous video can
     // simply end — so every transition closes both, rather than leaving the next video's chapter
     // list (or, without chapters, a bare heading over a scrim) or a menu where the last one's was.
+    // The queue panel is left out on purpose: it is never stale after a transition, its highlight
+    // just moves — so it stays up across an auto-advance.
     LaunchedEffect(playlist.currentMediaItemIndex) {
         chaptersOpen = false
         speedMenuOpen = false
@@ -612,6 +629,8 @@ private fun PlayerWithControls(
                 speed = playbackSpeed.playbackSpeed,
                 hasPrevious = hasPrevious,
                 hasNext = hasNext,
+                hasQueue = playlist.mediaItemCount > 1,
+                onOpenQueue = { queueOpen = true },
                 // The explicit *MediaItem* variants: seekToPrevious() would restart the current
                 // video once past its threshold, which is a different button entirely.
                 onPrevious = controller::seekToPreviousMediaItem,
@@ -659,6 +678,22 @@ private fun PlayerWithControls(
                 onDismiss = { chaptersOpen = false },
             )
         }
+        if (queueOpen && !isInPip) {
+            // Keyed on the timeline, which media3 replaces on every queue edit, so a removal
+            // recomposes the rows; a transition alone only moves the highlight.
+            val entries = remember(playlist.timeline) {
+                queueEntries(playlist.mediaItemCount, playlist::getMediaItemAt)
+            }
+            QueuePanel(
+                entries = entries,
+                currentIndex = playlist.currentMediaItemIndex,
+                onEntryClick = {
+                    playlist.seekToMediaItem(it)
+                    queueOpen = false
+                },
+                onDismiss = { queueOpen = false },
+            )
+        }
         gestureIndicator?.takeIf { !isInPip }?.let { indicator ->
             GestureIndicatorPill(
                 indicator,
@@ -700,8 +735,8 @@ private fun PlayerPoster(model: String?, modifier: Modifier = Modifier) {
 }
 
 /**
- * The controls overlay: top bar (back + title + speed menu + minimize + PiP + rotate/scale), centre
- * transport row, bottom chapter-step row (which also opens the chapter list) and
+ * The controls overlay: top bar (back + title + speed menu + queue + minimize + PiP +
+ * rotate/scale), centre transport row, bottom chapter-step row (which also opens the chapter list) and
  * position–seek–duration bar with chapter tick markers.
  *
  * The three rows are media3's [PlayerDefaults] layouts filled with our own buttons — we take the
@@ -728,8 +763,10 @@ internal fun PlayerControls(
     speed: Float,
     hasPrevious: Boolean,
     hasNext: Boolean,
+    hasQueue: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onOpenQueue: () -> Unit,
     onSeek: (Long) -> Unit,
     onSetSpeed: (Float) -> Unit,
     rotateFirst: Boolean,
@@ -796,6 +833,17 @@ internal fun PlayerControls(
                         onSetSpeed = onSetSpeed,
                         onMenuChanged = onSpeedMenuChanged,
                     )
+                    // A single video has no queue worth showing — a one-row list would only
+                    // restate the title.
+                    if (hasQueue) {
+                        IconButton(onClick = onOpenQueue) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.PlaylistPlay,
+                                contentDescription = stringResource(R.string.queue),
+                                tint = Color.White,
+                            )
+                        }
+                    }
                     IconButton(onClick = onMinimize) {
                         Icon(
                             Icons.Outlined.Info,
@@ -1200,18 +1248,16 @@ private fun Modifier.chapterTicks(chapters: List<Chapter>, durationMs: Long): Mo
     }
 
 /**
- * The tappable chapter list over a full-screen scrim: timestamp + title per row, the current
- * chapter in the primary colour. Tapping outside (or Back, handled by the caller) dismisses.
- * Long-pressing a row copies its title to the clipboard and leaves the panel open, so the next
- * one can be copied without reopening it.
+ * The shell both player panels share: a full-screen scrim that dismisses on a tap, and a
+ * bottom-anchored, height-capped column with a heading over [content]. One shell, so the chapter
+ * list and the queue cannot drift apart in how they look or close.
  */
 @Composable
-internal fun ChaptersPanel(
-    chapters: List<Chapter>,
-    currentChapter: Chapter?,
-    onChapterClick: (Chapter) -> Unit,
+private fun PlayerPanel(
+    title: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(
         modifier
@@ -1231,47 +1277,133 @@ internal fun ChaptersPanel(
                 .pointerInput(Unit) { detectTapGestures { } },
         ) {
             Text(
-                stringResource(R.string.chapters),
+                title,
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
-            val copyChapter = rememberCopyToClipboard(R.string.chapter_copied)
-            val copyLabel = stringResource(R.string.copy_chapter)
-            LazyColumn {
-                items(chapters, key = Chapter::startMs) { chapter ->
-                    val highlight = chapter == currentChapter
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            // A row of label-sized text is 40 dp on its own: short of the 48 dp
-                            // touch target the accessibility checks in PlayerControlsTest enforce.
-                            .heightIn(min = MIN_TOUCH_TARGET)
-                            .combinedClickable(
-                                onClick = { onChapterClick(chapter) },
-                                onLongClick = { copyChapter(chapter.title) },
-                                onLongClickLabel = copyLabel,
-                            )
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            formatPosition(chapter.startMs),
-                            color = if (highlight) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                Color.White.copy(alpha = 0.7f)
-                            },
-                            style = MaterialTheme.typography.labelMedium,
+            content()
+        }
+    }
+}
+
+/**
+ * The tappable chapter list over a full-screen scrim: timestamp + title per row, the current
+ * chapter in the primary colour. Tapping outside (or Back, handled by the caller) dismisses.
+ * Long-pressing a row copies its title to the clipboard and leaves the panel open, so the next
+ * one can be copied without reopening it.
+ */
+@Composable
+internal fun ChaptersPanel(
+    chapters: List<Chapter>,
+    currentChapter: Chapter?,
+    onChapterClick: (Chapter) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PlayerPanel(stringResource(R.string.chapters), onDismiss, modifier) {
+        val copyChapter = rememberCopyToClipboard(R.string.chapter_copied)
+        val copyLabel = stringResource(R.string.copy_chapter)
+        LazyColumn {
+            items(chapters, key = Chapter::startMs) { chapter ->
+                val highlight = chapter == currentChapter
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        // A row of label-sized text is 40 dp on its own: short of the 48 dp
+                        // touch target the accessibility checks in PlayerControlsTest enforce.
+                        .heightIn(min = MIN_TOUCH_TARGET)
+                        .combinedClickable(
+                            onClick = { onChapterClick(chapter) },
+                            onLongClick = { copyChapter(chapter.title) },
+                            onLongClickLabel = copyLabel,
                         )
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        formatPosition(chapter.startMs),
+                        color = if (highlight) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            Color.White.copy(alpha = 0.7f)
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        chapter.title,
+                        color = if (highlight) MaterialTheme.colorScheme.primary else Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The session's queue over a full-screen scrim, in play order: thumbnail, title and channel per
+ * row, the playing video in the primary colour and marked selected. The whole queue is listed,
+ * already-played rows included, so going back two videos is one tap; it opens scrolled so the
+ * playing row sits second from the top, with the one before it still in view.
+ *
+ * A tap jumps to that row ([onEntryClick] gets its index). Tapping outside (or Back, handled by
+ * the caller) dismisses.
+ */
+@Composable
+internal fun QueuePanel(
+    entries: List<QueueEntry>,
+    currentIndex: Int,
+    onEntryClick: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PlayerPanel(stringResource(R.string.queue), onDismiss, modifier) {
+        // The initial index rather than a scroll in an effect: the first frame is already in place.
+        val listState = rememberLazyListState(
+            initialFirstVisibleItemIndex = (currentIndex - 1).coerceAtLeast(0),
+        )
+        LazyColumn(state = listState) {
+            itemsIndexed(entries, key = { _, entry -> entry.mediaId }) { index, entry ->
+                val highlight = index == currentIndex
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = MIN_TOUCH_TARGET)
+                        .clickable { onEntryClick(index) }
+                        .semantics { selected = highlight }
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(
+                        model = entry.artworkUri,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(width = 64.dp, height = 36.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            chapter.title,
+                            entry.title.orEmpty(),
                             color = if (highlight) MaterialTheme.colorScheme.primary else Color.White,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        entry.channel?.let { channel ->
+                            Text(
+                                channel,
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }

@@ -1,5 +1,6 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
+import androidx.media3.common.MediaItem
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 
 /** What the session is handed: the ids to queue, and which one to start on. */
@@ -21,6 +22,34 @@ internal fun playbackQueue(originIds: List<String>, youtubeId: String): Playback
         PlaybackQueue(originIds, start)
     }
 }
+
+/** One row of the player's queue panel: what the session attached to the queued item. */
+internal data class QueueEntry(
+    val mediaId: String,
+    val title: String?,
+    val channel: String?,
+    val artworkUri: String?,
+)
+
+/**
+ * The queue panel's rows, read off the session's items in queue order.
+ *
+ * Takes the count and an accessor rather than media3-ui-compose's `PlaylistState`, so it stays a
+ * plain function the JVM tests can call. Every field is nullable because the service hands back an
+ * item with no metadata at all when a queued id no longer resolves to a video — a row with a
+ * blank title, not a crash.
+ */
+internal fun queueEntries(count: Int, itemAt: (Int) -> MediaItem): List<QueueEntry> =
+    List(count) { index ->
+        val item = itemAt(index)
+        val metadata = item.mediaMetadata
+        QueueEntry(
+            mediaId = item.mediaId,
+            title = metadata.title?.toString(),
+            channel = metadata.artist?.toString(),
+            artworkUri = metadata.artworkUri?.toString(),
+        )
+    }
 
 /**
  * Where the previous-chapter button goes: back to the start of the current chapter when more

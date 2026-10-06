@@ -1,5 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.player
 
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -35,6 +37,36 @@ class PlaybackQueueTest {
         // list without it would play something the user did not ask for.
         assertEquals(PlaybackQueue(listOf("zzz"), 0), playbackQueue(origin, "zzz"))
     }
+
+    @Test
+    fun `queue rows carry the title and channel the session attached, in queue order`() {
+        val items = listOf(
+            queued("aaa", title = "First", channel = "Channel A"),
+            queued("bbb", title = "Second", channel = null),
+        )
+
+        assertEquals(
+            listOf(
+                QueueEntry("aaa", "First", "Channel A", null),
+                QueueEntry("bbb", "Second", null, null),
+            ),
+            queueEntries(items.size, items::get),
+        )
+    }
+
+    @Test
+    fun `a queued item with no metadata becomes a blank row rather than a crash`() {
+        // What resolve() hands back for an id that no longer resolves to a video.
+        val bare = MediaItem.Builder().setMediaId("zzz").build()
+
+        assertEquals(listOf(QueueEntry("zzz", null, null, null)), queueEntries(1) { bare })
+    }
+
+    private fun queued(id: String, title: String?, channel: String?): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(id)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(channel).build())
+            .build()
 
     private val chapters = listOf(
         Chapter(0L, "Intro"),

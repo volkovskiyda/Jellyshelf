@@ -36,6 +36,8 @@ import com.gmail.volkovskiyda.jellyshelf.ui.player.FakePlayer
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicator
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicatorPill
 import com.gmail.volkovskiyda.jellyshelf.ui.player.PlayerControls
+import com.gmail.volkovskiyda.jellyshelf.ui.player.QueueEntry
+import com.gmail.volkovskiyda.jellyshelf.ui.player.QueuePanel
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsActions
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsContent
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsUiState
@@ -445,10 +447,10 @@ private fun DetailMissingFromServerDark() {
 }
 
 /**
- * The player's controls overlay with chapters, landscape: the chapters button in the top bar,
- * tick markers on the seek bar, and the chapter-step row above it. Mid-queue, so both transport
- * arrows are live. Black background standing in for the video surface the overlay normally
- * covers.
+ * The player's controls overlay with chapters, landscape: tick markers on the seek bar, and the
+ * chapter-step row above it whose title opens the chapter list. Mid-queue, so both transport
+ * arrows are live and the top bar offers the queue. Black background standing in for the video
+ * surface the overlay normally covers.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_HEIGHT, heightDp = PHONE_WIDTH, showBackground = true, backgroundColor = 0xFF000000)
@@ -469,8 +471,10 @@ private fun PlayerControlsWithChapters() {
             speed = 1f,
             hasPrevious = true,
             hasNext = true,
+            hasQueue = true,
             onPrevious = {},
             onNext = {},
+            onOpenQueue = {},
             onSeek = {},
             onSetSpeed = {},
             rotateFirst = false,
@@ -489,8 +493,9 @@ private fun PlayerControlsWithChapters() {
 }
 
 /**
- * The same overlay at the end of a single-video queue — the notification-reopen case: both
- * transport arrows dimmed, and no chapter-step row at all because the video has no chapters.
+ * The same overlay at the end of a single-video queue — the notification-reopen and Detail case:
+ * both transport arrows dimmed, no queue button, and no chapter-step row at all because the video
+ * has no chapters.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_HEIGHT, heightDp = PHONE_WIDTH, showBackground = true, backgroundColor = 0xFF000000)
@@ -507,8 +512,10 @@ private fun PlayerControlsSingleVideo() {
             speed = 1f,
             hasPrevious = false,
             hasNext = false,
+            hasQueue = false,
             onPrevious = {},
             onNext = {},
+            onOpenQueue = {},
             onSeek = {},
             onSetSpeed = {},
             rotateFirst = false,
@@ -528,7 +535,8 @@ private fun PlayerControlsSingleVideo() {
 
 /**
  * The same overlay in portrait, where the last slot in the top bar is the rotate button rather than
- * the scale cycle — the only visual difference, and one no landscape preview can show.
+ * the scale cycle — one no landscape preview can show. At the head of a queue, so the bar carries
+ * its fullest set of icons and this is the golden that proves the title still has room.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
@@ -538,15 +546,17 @@ private fun PlayerControlsPortrait() {
         PlayerControls(
             player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
             visible = true,
-            title = "The only video in the queue",
+            title = "The first video in the queue",
             positionMs = 200_000L,
             durationMs = 754_000L,
             chapters = emptyList(),
             speed = 1f,
             hasPrevious = false,
-            hasNext = false,
+            hasNext = true,
+            hasQueue = true,
             onPrevious = {},
             onNext = {},
+            onOpenQueue = {},
             onSeek = {},
             onSetSpeed = {},
             rotateFirst = true,
@@ -560,6 +570,35 @@ private fun PlayerControlsPortrait() {
             onBack = {},
             onMinimize = {},
             onEnterPip = {},
+        )
+    }
+}
+
+/**
+ * The player's queue panel over a video, mid-queue: the playing row highlighted and scrolled so
+ * the row before it stays in view. Artwork is null so the golden never depends on the network;
+ * one row has no channel and one an overlong title.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun QueuePanelPreview() {
+    PreviewTheme(darkTheme = true) {
+        QueuePanel(
+            entries = listOf(
+                QueueEntry("aaaaaaaaaaa", "Building a workbench from pallets", "Workshop Diaries", null),
+                QueueEntry("bbbbbbbbbbb", "The video playing right now", "Some Channel", null),
+                QueueEntry(
+                    "ccccccccccc",
+                    "A reasonably long video title that will not fit on a single row of the panel",
+                    "Another Channel",
+                    null,
+                ),
+                QueueEntry("ddddddddddd", "A video with no channel", null, null),
+            ),
+            currentIndex = 1,
+            onEntryClick = {},
+            onDismiss = {},
         )
     }
 }
