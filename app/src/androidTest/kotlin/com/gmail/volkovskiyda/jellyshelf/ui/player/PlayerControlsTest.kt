@@ -94,6 +94,7 @@ class PlayerControlsTest {
         onPrevious: () -> Unit = {},
         onNext: () -> Unit = {},
         onSeek: (Long) -> Unit = {},
+        onOpenChapters: () -> Unit = {},
         onBack: () -> Unit = {},
         onMinimize: () -> Unit = {},
         onEnterPip: () -> Unit = {},
@@ -125,7 +126,7 @@ class PlayerControlsTest {
                     onScrubbingChanged = {},
                     speedMenuOpen = speedMenuOpen,
                     onSpeedMenuChanged = { speedMenuOpen = it },
-                    onOpenChapters = {},
+                    onOpenChapters = onOpenChapters,
                     onBack = onBack,
                     onMinimize = onMinimize,
                     onEnterPip = onEnterPip,
@@ -193,29 +194,28 @@ class PlayerControlsTest {
     }
 
     /**
-     * Minimize sits in the right-hand cluster — after chapters, or after the speed chip when there
-     * are none — and just before PiP, well away from Back. The two exits do opposite things to the
-     * session (back stops it, minimize keeps it running), so side by side they were two adjacent
-     * 48 dp targets one slip apart. Goldens show the order but nothing asserts it, hence this pair.
+     * Minimize sits in the right-hand cluster, after the speed chip and just before PiP, well away
+     * from Back. The two exits do opposite things to the session (back stops it, minimize keeps it
+     * running), so side by side they were two adjacent 48 dp targets one slip apart. Goldens show
+     * the order but nothing asserts it, hence these. The chapters icon that once sat between the
+     * chip and minimize moved to the chapter row, so the order no longer depends on chapters — the
+     * slot it left is the queue button's.
      */
     @Test
-    fun minimize_sitsBetweenChaptersAndPictureInPicture() {
-        setControls(chapters = chapters)
+    fun minimize_sitsBetweenSpeedAndPictureInPicture() {
+        setControls()
 
-        val speed = composeRule.onNodeWithText(speedLabel(1f)).getBoundsInRoot()
-        val chapterList = onDescription(R.string.chapters).getBoundsInRoot()
-        val minimize = onDescription(R.string.player_minimize).getBoundsInRoot()
-        val pip = onDescription(R.string.player_pip).getBoundsInRoot()
-
-        assertTrue(speed.right <= chapterList.left)
-        assertTrue(chapterList.right <= minimize.left)
-        assertTrue(minimize.right <= pip.left)
+        assertMinimizeSitsBetweenSpeedAndPictureInPicture()
     }
 
     @Test
-    fun withoutChapters_minimizeSitsBetweenSpeedAndPictureInPicture() {
-        setControls()
+    fun withChapters_minimizeStillSitsBetweenSpeedAndPictureInPicture() {
+        setControls(chapters = chapters)
 
+        assertMinimizeSitsBetweenSpeedAndPictureInPicture()
+    }
+
+    private fun assertMinimizeSitsBetweenSpeedAndPictureInPicture() {
         val speed = composeRule.onNodeWithText(speedLabel(1f)).getBoundsInRoot()
         val minimize = onDescription(R.string.player_minimize).getBoundsInRoot()
         val pip = onDescription(R.string.player_pip).getBoundsInRoot()
@@ -426,6 +426,31 @@ class PlayerControlsTest {
 
         onDescription(R.string.previous_chapter).assertDoesNotExist()
         onDescription(R.string.next_chapter).assertDoesNotExist()
+        // The chapter title is the only way into the chapter list, so a chapterless video offers
+        // no opener anywhere.
+        onDescription(R.string.chapters).assertDoesNotExist()
+    }
+
+    /**
+     * The top bar has no chapters icon any more: the current chapter's name is the opener. The
+     * bounds pin *which* control answers to "Chapters" — the old top-bar icon carried the same
+     * description and would satisfy the click alone.
+     */
+    @Test
+    fun theChapterTitle_opensTheChapterList() {
+        var opens = 0
+        setControls(chapters = chapters, positionMs = 124_000L, onOpenChapters = { opens++ })
+
+        val previous = onDescription(R.string.previous_chapter).getBoundsInRoot()
+        val opener = onDescription(R.string.chapters).getBoundsInRoot()
+        val next = onDescription(R.string.next_chapter).getBoundsInRoot()
+        assertTrue(previous.right <= opener.left)
+        assertTrue(opener.right <= next.left)
+        assertTrue(opener.top < next.bottom && next.top < opener.bottom)
+
+        onDescription(R.string.chapters).performClick()
+
+        assertEquals(1, opens)
     }
 
     @Test

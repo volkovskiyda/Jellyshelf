@@ -33,11 +33,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
@@ -86,6 +86,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -699,9 +700,9 @@ private fun PlayerPoster(model: String?, modifier: Modifier = Modifier) {
 }
 
 /**
- * The controls overlay: top bar (back + title + speed menu + chapters + minimize + PiP +
- * rotate/scale), centre transport row, bottom chapter-step row and position–seek–duration bar with
- * chapter tick markers.
+ * The controls overlay: top bar (back + title + speed menu + minimize + PiP + rotate/scale), centre
+ * transport row, bottom chapter-step row (which also opens the chapter list) and
+ * position–seek–duration bar with chapter tick markers.
  *
  * The three rows are media3's [PlayerDefaults] layouts filled with our own buttons — we take the
  * layouts, the fade and the bottom gradient, not the default slot contents, whose icons and
@@ -795,15 +796,6 @@ internal fun PlayerControls(
                         onSetSpeed = onSetSpeed,
                         onMenuChanged = onSpeedMenuChanged,
                     )
-                    if (chapters.isNotEmpty()) {
-                        IconButton(onClick = onOpenChapters) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.FormatListBulleted,
-                                contentDescription = stringResource(R.string.chapters),
-                                tint = Color.White,
-                            )
-                        }
-                    }
                     IconButton(onClick = onMinimize) {
                         Icon(
                             Icons.Outlined.Info,
@@ -884,7 +876,7 @@ internal fun PlayerControls(
                 player = player,
                 visible = visible,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                above = { if (chapters.isNotEmpty()) ChapterStepRow(chapters, shownMs, onSeek) },
+                above = { if (chapters.isNotEmpty()) ChapterStepRow(chapters, shownMs, onSeek, onOpenChapters) },
                 left = {
                     // The tag the baseline profile's playback leg waits on. PositionText formats
                     // through Util.getStringForTime — "%02d:%02d" below an hour, so zero reads
@@ -1044,9 +1036,19 @@ private fun topControlsGradient(): Brush = Brush.verticalGradient(
  *
  * The name follows the scrubbed position, so dragging previews the chapter you would land in
  * rather than the one still playing.
+ *
+ * The name is also the way into the chapter list, which is why it spans the whole gap between the
+ * arrows at a button's height and carries a chevron: the top bar has no spare slot for an icon on
+ * a portrait phone. Before the first chapter starts the name is empty, but the target and the
+ * chevron stay.
  */
 @Composable
-private fun ChapterStepRow(chapters: List<Chapter>, shownMs: Long, onSeek: (Long) -> Unit) {
+private fun ChapterStepRow(
+    chapters: List<Chapter>,
+    shownMs: Long,
+    onSeek: (Long) -> Unit,
+    onOpenChapters: () -> Unit,
+) {
     val previousMs = previousChapterStartMs(chapters, shownMs)
     val nextMs = nextChapterStartMs(chapters, shownMs)
     Row(
@@ -1061,15 +1063,32 @@ private fun ChapterStepRow(chapters: List<Chapter>, shownMs: Long, onSeek: (Long
                 modifier = Modifier.size(20.dp),
             )
         }
-        Text(
-            currentChapter(chapters, shownMs)?.title.orEmpty(),
-            color = Color.White.copy(alpha = 0.8f),
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.weight(1f),
-        )
+        val chaptersLabel = stringResource(R.string.chapters)
+        Row(
+            Modifier
+                .weight(1f)
+                .heightIn(min = MIN_TOUCH_TARGET)
+                .clickable(onClickLabel = chaptersLabel, role = Role.Button) { onOpenChapters() }
+                .semantics { contentDescription = chaptersLabel },
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                currentChapter(chapters, shownMs)?.title.orEmpty(),
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Icon(
+                Icons.Filled.KeyboardArrowUp,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.size(16.dp),
+            )
+        }
         IconButton(onClick = { nextMs?.let(onSeek) }, enabled = nextMs != null) {
             Icon(
                 Icons.Filled.FastForward,
