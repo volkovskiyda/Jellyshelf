@@ -66,6 +66,14 @@ set -uo pipefail
 # it for the cases where the collision cannot happen — no .test.env, or -Pandroid.testInstrumentation
 # filters away the live tests. See instrumented_lock_claim.
 #
+# Another UiAutomation client on the device is refused rather than run into. Only one process can
+# hold UiAutomation, and a Maestro driver left on a shared phone (or a `uiautomator dump`, or another
+# project's instrumentation) leaves this run's tests with none: every shell command they issue
+# answers "Not connected!", and every live test skips as "server unreachable". On 2026-10-06 that was
+# 23 failures and 11 skips in a suite with nothing wrong in it. It is named up front as a note, while
+# the host layers run, and checked again before the device layer, which it fails without starting —
+# see uiautomation_blocked. Nothing here stops the other process: it may be someone else's.
+#
 # --awake is the other end of a failure that does not look like one: a physical device whose screen
 # locks mid-run fails with `No compose hierarchies found`, which reads as a broken test rather than a
 # dark screen. The flag holds the screen on for the run and puts the three settings back when it
@@ -236,6 +244,46 @@ goldfish_selinux_hold() {
       printf 'selinux: %-24s could not go permissive — expect the live playback step to stall\n' "$serial" >&2
     fi
   done
+}
+
+# Every process on the chosen devices that holds, or is about to take, UiAutomation: an `am
+# instrument` (a Maestro driver is one, `dev.mobile.maestro.test`) or a uiautomator run. Printed as
+# `serial pid args`. Called before this run starts its own instrumentation, so anything found
+# belongs to someone else.
+uiautomation_holders() {
+  local serial
+  for serial in ${DEVICES[@]+"${DEVICES[@]}"}; do
+    "$ADB" -s "$serial" shell 'ps -A -o PID,ARGS' 2>/dev/null | tr -d '\r' |
+      grep -E 'com\.android\.commands\.(am\.Am instrument|uiautomator)' |
+      awk -v s="$serial" '{ pid = $1; $1 = ""; print s, pid, substr($0, 2) }'
+  done
+}
+
+# Prints what holds UiAutomation and how to free it, and answers whether the device layer must not
+# run. `note` only warns; `block` is the check that refuses the layer.
+uiautomation_blocked() {
+  local mode="$1" holders serial pid args
+  [[ -n "$ADB" ]] || return 1
+  holders="$(uiautomation_holders)"
+  [[ -n "$holders" ]] || return 1
+  echo
+  if [[ "$mode" == block ]]; then
+    echo "BLOCKED: another process holds UiAutomation, so the behavior tests would fail with"
+    echo "         \"Not connected!\" and the live ones skip as unreachable. Not running them:"
+  else
+    echo "NOTE:    another process holds UiAutomation — free it before the behavior tests start,"
+    echo "         or that layer will refuse to run:"
+  fi
+  while read -r serial pid args; do
+    printf '           %-22s pid %-6s %s\n' "$serial" "$pid" "${args:0:110}"
+    if [[ "$args" == *dev.mobile.maestro* ]]; then
+      echo "           a Maestro driver — stop it with: $ADB -s $serial shell am force-stop dev.mobile.maestro"
+    else
+      echo "           stop it with: $ADB -s $serial shell kill $pid   (check whose it is first)"
+    fi
+  done <<<"$holders"
+  echo
+  return 0
 }
 
 # One worktree at a time may drive a device, because the live tests make the *server* the contended
@@ -704,6 +752,7 @@ fi
 # layer at all, and the function gates itself to the emulators that need it.
 if [[ "$HOST_ONLY" -eq 0 && ${#DEVICES[@]} -gt 0 ]]; then
   goldfish_selinux_hold
+  uiautomation_blocked note
 fi
 echo
 
@@ -786,7 +835,10 @@ else
   # wait having already finished static analysis, the unit tests and the goldens — the layers that
   # need no device and no server. Nothing above this point touches either.
   instrumented_lock_claim
-  if [[ ${#DEVICES[@]} -eq 1 ]]; then
+  if uiautomation_blocked block; then
+    INSTRUMENTED_RESULT="FAILED (not run: UiAutomation held by another process)"
+    FAILED=1
+  elif [[ ${#DEVICES[@]} -eq 1 ]]; then
     # One device is one Gradle invocation: nothing to interleave, nothing to stash.
     if run_layer "behavior tests (on ${DEVICES[0]})" :app:connectedDebugAndroidTest; then
       INSTRUMENTED_RESULT="passed"

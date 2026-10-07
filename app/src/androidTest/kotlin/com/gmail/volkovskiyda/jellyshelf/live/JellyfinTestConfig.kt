@@ -163,8 +163,22 @@ private fun reachable(
     baseUrl: String,
     path: String,
     accept: (HttpStatusCode) -> Boolean,
-): Boolean = runCatching {
+): Boolean {
+    // Outside the catch below on purpose. A grant cannot fail on a healthy device — it is gated by
+    // API level and idempotent — so a throw here means the test process cannot run shell commands
+    // at all: another UiAutomation client holds the device (a Maestro driver, a `uiautomator dump`)
+    // and every call answers "Not connected!". Swallowed, that read as "server unreachable" and
+    // every live test skipped green on 2026-10-06 while the server was fine; thrown, the run fails
+    // naming the real cause.
     grantJourneyPermissions()
+    return probe(baseUrl, path, accept)
+}
+
+private fun probe(
+    baseUrl: String,
+    path: String,
+    accept: (HttpStatusCode) -> Boolean,
+): Boolean = runCatching {
     runBlocking {
         HttpClient(OkHttp) {
             install(HttpTimeout) {
