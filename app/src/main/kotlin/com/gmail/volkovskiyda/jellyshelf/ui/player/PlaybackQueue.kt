@@ -71,6 +71,18 @@ internal fun queueEntries(count: Int, itemAt: (Int) -> MediaItem): List<QueueEnt
 internal fun endsThePlayer(playbackState: Int, mediaItemCount: Int): Boolean =
     playbackState == Player.STATE_ENDED && mediaItemCount > 0
 
+/**
+ * Whether leaving Picture-in-Picture is the moment to take the exit [endsThePlayer] skipped.
+ *
+ * An end inside a PiP window is left on its final frame — navigating under the window would change
+ * the screen it expands back into. But the window going away, expanded or closed, is when that
+ * stops mattering, and without this the screen stayed on the final frame for good: the end is not
+ * reported again, so the listener never got a second chance. Only the transition out of PiP counts,
+ * so a player opened onto a video that ended elsewhere (from the mini bar) is left alone.
+ */
+internal fun leavesOnPipExit(wasInPip: Boolean, isInPip: Boolean, playbackState: Int, mediaItemCount: Int): Boolean =
+    wasInPip && !isInPip && endsThePlayer(playbackState, mediaItemCount)
+
 /** What the chapter row's "Skip to the end" does once it has put the video at its end. */
 internal enum class SkipToEnd {
     /** Playing: media3 reaches the end on its own — the queue advances, or the player leaves. */

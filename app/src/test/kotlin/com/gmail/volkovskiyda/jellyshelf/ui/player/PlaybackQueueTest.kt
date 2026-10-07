@@ -174,4 +174,30 @@ class PlaybackQueueTest {
     fun skipToEnd_whilePausedOnTheLastVideo_finishesIt() {
         assertEquals(SkipToEnd.Finish, skipToEnd(playWhenReady = false, hasNext = false))
     }
+
+    @Test
+    fun anEndInsidePip_isTakenWhenTheWindowGoes() {
+        assertTrue(leavesOnPipExit(wasInPip = true, isInPip = false, Player.STATE_ENDED, mediaItemCount = 1))
+    }
+
+    @Test
+    fun leavingPip_midVideo_staysOnThePlayer() {
+        assertFalse(leavesOnPipExit(wasInPip = true, isInPip = false, Player.STATE_READY, mediaItemCount = 1))
+    }
+
+    @Test
+    fun anEndedVideoOpenedOutsidePip_isLeftAlone() {
+        // The mini bar reopening a video that ended while minimized: no window was left.
+        assertFalse(leavesOnPipExit(wasInPip = false, isInPip = false, Player.STATE_ENDED, mediaItemCount = 1))
+    }
+
+    @Test
+    fun enteringPip_neverLeaves() {
+        assertFalse(leavesOnPipExit(wasInPip = false, isInPip = true, Player.STATE_ENDED, mediaItemCount = 1))
+    }
+
+    @Test
+    fun aClearedQueue_isNotAnEndToLeaveOn() {
+        assertFalse(leavesOnPipExit(wasInPip = true, isInPip = false, Player.STATE_ENDED, mediaItemCount = 0))
+    }
 }

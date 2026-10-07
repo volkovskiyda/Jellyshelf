@@ -352,7 +352,8 @@ private fun PlayerWithControls(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 // A PiP window is left where it is: navigating under it would change the screen
-                // the user expands back into, and the frame it holds is the end they watched.
+                // the user expands back into, and the frame it holds is the end they watched. The
+                // leave happens when the window goes instead — see leavesOnPipExit.
                 if (endsThePlayer(playbackState, controller.mediaItemCount) && !currentIsInPip) {
                     currentOnFinished()
                 }
@@ -434,6 +435,15 @@ private fun PlayerWithControls(
             queueOpen = false
             speedMenuOpen = false
         }
+    }
+    // The other half of the listener's PiP rule: an end it left alone inside the window is taken as
+    // soon as the window goes, expanded or closed (see leavesOnPipExit).
+    var wasInPip by remember { mutableStateOf(isInPip) }
+    LaunchedEffect(isInPip) {
+        if (leavesOnPipExit(wasInPip, isInPip, controller.playbackState, controller.mediaItemCount)) {
+            currentOnFinished()
+        }
+        wasInPip = isInPip
     }
     // Auto-hide while playing; scrubbing, an open panel or the speed menu pins the controls
     // (hiding them would tear the open menu out of the composition mid-use).
