@@ -12,16 +12,12 @@ targetSdk = "37"
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.
 agp = "9.4.1"
-# Held one release below the current 2.4.20, deliberately, for the Kotzilla plugin (below). Kotlin
-# 2.4.20 deleted the K1 `ComponentRegistrar` interface; io.kotzilla.gradle.kcp.KotzillaPluginRegistrar
-# still declares it as a supertype, so the class cannot even be defined and *every* compileKotlin
-# task dies with NoClassDefFoundError. 2.4.10 is the newest release that still ships the interface
-# (verified by listing both kotlin-compiler-embeddable jars). Disabling composeInstrumentation does
-# not unwire the compiler plugin, so there is no way to stay on 2.4.20 and keep Kotzilla. Raise this
-# only once Kotzilla drops the supertype — see internal/plan/20260911-kotzilla-mcp-plan.
-# Suppressed: the newer-version inspection would only ever point at a Kotzilla-incompatible Kotlin.
-#noinspection NewerVersionAvailable,GradleDependency
-kotlin = "2.4.10"
+# Was held at 2.4.10 from 2026-09-11 to 2026-10-07 for Kotzilla: 2.4.20 deleted the K1
+# `ComponentRegistrar` interface, and Kotzilla's compiler plugin up to 2.3.6 declared it as a
+# supertype, so every compileKotlin died with NoClassDefFoundError. Kotzilla 3.0.0 moved that to a
+# separate legacy class the K2 compiler never loads. Kotzilla's changelog lists the Kotlin versions it
+# supports — check it before going past what it names.
+kotlin = "2.4.20"
 coreKtx = "1.19.1"
 junit = "4.13.2"
 lifecycle = "2.11.0"
@@ -31,11 +27,8 @@ activityCompose = "1.13.0"
 androidxBrowser = "1.10.0"
 composeBom = "2026.09.00"
 # Paired with the kotlin ref above, not bumped on its own: KSP embeds a Kotlin compiler, and each
-# release targets one Kotlin version (2.3.11 -> 2.4.10, 2.3.12 -> 2.4.20). Held back with Kotlin
-# for the same Kotzilla incompatibility.
-# Suppressed: newer KSP needs Kotlin 2.4.20, which Kotzilla cannot use.
-#noinspection GradleDependency
-googleDevtoolsKsp = "2.3.11"
+# release targets one Kotlin version (2.3.11 -> 2.4.10, 2.3.12 -> 2.4.20).
+googleDevtoolsKsp = "2.3.12"
 kotlinxSerializationJson = "1.11.0"
 navigation3 = "1.2.0"
 adaptive = "1.3.0"

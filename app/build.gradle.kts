@@ -245,13 +245,13 @@ ksp {
 //
 // Everything else is left at the plugin's defaults on purpose — mapping upload, the build report,
 // Compose instrumentation and early start. Don't restate them here "for clarity"; a line in this
-// block is a decision to own, and the plan behind this (internal/, 20260911-kotzilla-mcp-plan)
+// block is a decision to own, and the plan behind this (internal/finished/, 20260911-kotzilla-mcp-plan)
 // records why each default stands. One that must never be set in a committed file is
 // displayLogs: it turns on runtime logging that prints bearer tokens.
 //
-// Compose instrumentation being on is what ties this project to Kotlin 2.4.10: it is a Kotlin
-// compiler plugin, and 2.3.6 still registers it through the K1 ComponentRegistrar interface that
-// Kotlin 2.4.20 deleted. See the kotlin ref in gradle/libs.versions.toml before bumping either.
+// Compose instrumentation is a Kotlin compiler plugin, so each Kotzilla release supports a range of
+// Kotlin versions (its changelog names them). Up to 2.3.6 that range stopped at 2.4.10, which held
+// the kotlin ref back until 3.0.0 — check both together before bumping either.
 kotzilla {
     enabled = file("kotzilla.json").exists()
 }
