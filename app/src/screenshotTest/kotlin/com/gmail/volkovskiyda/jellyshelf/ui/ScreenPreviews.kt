@@ -3,8 +3,10 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
@@ -33,6 +35,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.detail.DetailContent
 import com.gmail.volkovskiyda.jellyshelf.ui.detail.VideoDetailState
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryContent
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryVideos
+import com.gmail.volkovskiyda.jellyshelf.ui.player.ChaptersPanel
 import com.gmail.volkovskiyda.jellyshelf.ui.player.FakePlayer
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicator
 import com.gmail.volkovskiyda.jellyshelf.ui.player.GestureIndicatorPill
@@ -620,6 +623,29 @@ private fun QueuePanelPreview() {
             onRemove = {},
             onDismiss = {},
         )
+    }
+}
+
+/**
+ * The chapter list with the playing chapter marked, under a scheme whose `primary` is near-white —
+ * what Android's monochrome theme hands a dynamic-colour app (the Pixel 5's palette, 2026-10-06).
+ * The marker used to be the primary colour alone and vanished there; the tinted row and bold title
+ * must still single out "Main part".
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun ChaptersPanelMonochromePreview() {
+    val chapters = listOf(
+        Chapter(startMs = 0L, title = "Intro"),
+        Chapter(startMs = 95_000L, title = "Setting up"),
+        Chapter(startMs = 200_000L, title = "Main part"),
+        Chapter(startMs = 480_000L, title = "Outro"),
+    )
+    PreviewTheme(darkTheme = true) {
+        MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFE3E3E3))) {
+            ChaptersPanel(chapters = chapters, currentChapter = chapters[2], onChapterClick = {}, onDismiss = {})
+        }
     }
 }
 

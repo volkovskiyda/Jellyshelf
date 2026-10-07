@@ -102,6 +102,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1348,10 +1349,21 @@ private fun PlayerPanel(
 }
 
 /**
+ * The background that marks a panel's current row — the playing video, the current chapter — with
+ * its title set bold beside it. Colour alone is not a marker here: the app takes its palette from
+ * the wallpaper, and under Android's monochrome theme `primary` renders as near-white, the very
+ * colour of every other row's text (measured on the Pixel 5, 2026-10-06), so a primary-only title
+ * vanished. A tint of `primary` reads as a grey band in that palette and as a coloured one in all
+ * the others.
+ */
+@Composable
+private fun currentRowTint(): Color = MaterialTheme.colorScheme.primary.copy(alpha = CURRENT_ROW_TINT_ALPHA)
+
+/**
  * The tappable chapter list over a full-screen scrim: timestamp + title per row, the current
- * chapter in the primary colour. Tapping outside (or Back, handled by the caller) dismisses.
- * Long-pressing a row copies its title to the clipboard and leaves the panel open, so the next
- * one can be copied without reopening it.
+ * chapter's row tinted with a bold title (see [currentRowTint]). Tapping outside (or Back, handled
+ * by the caller) dismisses. Long-pressing a row copies its title to the clipboard and leaves the
+ * panel open, so the next one can be copied without reopening it.
  */
 @Composable
 internal fun ChaptersPanel(
@@ -1364,6 +1376,7 @@ internal fun ChaptersPanel(
     PlayerPanel(stringResource(R.string.chapters), onDismiss, modifier) {
         val copyChapter = rememberCopyToClipboard(R.string.chapter_copied)
         val copyLabel = stringResource(R.string.copy_chapter)
+        val currentRowTint = currentRowTint()
         LazyColumn {
             items(chapters, key = Chapter::startMs) { chapter ->
                 val highlight = chapter == currentChapter
@@ -1373,6 +1386,7 @@ internal fun ChaptersPanel(
                         // A row of label-sized text is 40 dp on its own: short of the 48 dp
                         // touch target the accessibility checks in PlayerControlsTest enforce.
                         .heightIn(min = MIN_TOUCH_TARGET)
+                        .background(if (highlight) currentRowTint else Color.Transparent)
                         .combinedClickable(
                             onClick = { onChapterClick(chapter) },
                             onLongClick = { copyChapter(chapter.title) },
@@ -1394,6 +1408,7 @@ internal fun ChaptersPanel(
                     Text(
                         chapter.title,
                         color = if (highlight) MaterialTheme.colorScheme.primary else Color.White,
+                        fontWeight = if (highlight) FontWeight.Bold else null,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1406,7 +1421,8 @@ internal fun ChaptersPanel(
 
 /**
  * The session's queue over a full-screen scrim, in play order: thumbnail, title, channel and
- * duration per row, the playing video in the primary colour and marked selected. A row also
+ * duration per row, the playing row tinted with a bold title (see [currentRowTint]) and marked
+ * selected. A row also
  * carries the library row's watch markers from [watchStates] (by media id) — the resume bar over
  * a part-watched thumbnail, the watched tick on a played video — and neither when it is missing
  * from the map. The whole queue is listed, already-played rows included, so going back two
@@ -1436,6 +1452,7 @@ internal fun QueuePanel(
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = (currentIndex - 1).coerceAtLeast(0),
         )
+        val currentRowTint = currentRowTint()
         LazyColumn(state = listState) {
             itemsIndexed(entries, key = { _, entry -> entry.mediaId }) { index, entry ->
                 val highlight = index == currentIndex
@@ -1443,6 +1460,7 @@ internal fun QueuePanel(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = MIN_TOUCH_TARGET)
+                        .background(if (highlight) currentRowTint else Color.Transparent)
                         .clickable { onEntryClick(index) }
                         .semantics { selected = highlight }
                         .padding(start = 20.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
@@ -1477,6 +1495,7 @@ internal fun QueuePanel(
                         Text(
                             entry.title.orEmpty(),
                             color = if (highlight) MaterialTheme.colorScheme.primary else Color.White,
+                            fontWeight = if (highlight) FontWeight.Bold else null,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1604,6 +1623,7 @@ private const val TOP_GRADIENT_ALPHA = 0.5f
 private const val DISABLED_ALPHA = 0.35f
 private const val PANEL_SCRIM_ALPHA = 0.6f
 private const val PANEL_BACKGROUND_ALPHA = 0.92f
+private const val CURRENT_ROW_TINT_ALPHA = 0.16f
 private val PANEL_MAX_HEIGHT = 360.dp
 private val MIN_TOUCH_TARGET = 48.dp
 private val CHAPTER_TICK_HEIGHT = 8.dp
