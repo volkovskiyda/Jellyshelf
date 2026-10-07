@@ -877,6 +877,10 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                                 leaving = backStack.lastOrNull() != key,
                                 onBack = { navThrottle { pop() } },
                                 onMinimize = { id -> navThrottle { minimizePlayer(id) } },
+                                // Not throttled: nobody tapped. The video ran out (or was skipped to its
+                                // end), the player has already stopped, and a swallowed navigation
+                                // would leave the user on an empty player.
+                                onFinished = { id -> minimizePlayer(id) },
                             )
                         }
 

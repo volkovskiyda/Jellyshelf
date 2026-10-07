@@ -212,6 +212,7 @@ fun PlayerScreen(
     youtubeId: String,
     onBack: () -> Unit,
     onMinimize: (nowPlayingId: String) -> Unit,
+    onFinished: (finishedId: String) -> Unit,
     modifier: Modifier = Modifier,
     origin: PlayerOrigin = PlayerOrigin.None,
     leaving: Boolean = false,
@@ -249,11 +250,14 @@ fun PlayerScreen(
     }
     // The stopping exit that lands on Details, for a queue that has played out. The id is read
     // before the stop, since clearing the queue moves currentId; the completed report was already
-    // filed when the video ended, so the clear files nothing more (see stopPlayback).
+    // filed when the video ended, so the clear files nothing more (see stopPlayback). Its own
+    // callback rather than onMinimize: that one is a tap and goes through the nav layer's click
+    // throttle, which would swallow this exit if it came within 500 ms of another navigation —
+    // after the stop, leaving an emptied player on screen.
     val finished = {
         val id = currentId
         viewModel.stopPlayback()
-        onMinimize(id)
+        onFinished(id)
     }
 
     // Always the dark scheme, whatever the app's theme: everything here sits on a black video
