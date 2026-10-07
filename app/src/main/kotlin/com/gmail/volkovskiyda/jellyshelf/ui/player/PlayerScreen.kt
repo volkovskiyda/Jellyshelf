@@ -1497,7 +1497,10 @@ internal fun QueuePanel(
                             color = if (highlight) MaterialTheme.colorScheme.primary else Color.White,
                             fontWeight = if (highlight) FontWeight.Bold else null,
                             style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
+                            // Two lines, as on the library rows: a title that only matched its
+                            // Jellyfin item carries a `YYYYMMDD_HHMMSS - ` prefix, which left one
+                            // line barely a dozen characters of the actual name.
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                         QueueEntryDetails(entry.channel, entry.durationMs)
