@@ -57,8 +57,22 @@ android {
 // looking for an app that is not installed. This is how the baseline-profile plugin itself derives
 // the `androidx.benchmark.targetPackageName` argument it passes alongside, so the two agree by
 // construction; reading that one instead would mean depending on another plugin's internals.
+//
+// The profiling variant also runs the generator alone. JourneyBenchmark shares the module, and its
+// MacrobenchmarkRule skips itself outside benchmarkRelease with an `assumeTrue` — which the AGP 9.4.1
+// connected-test engine counts as a failure, so `generateReleaseBaselineProfile` stopped at the test
+// task with every generator test green and never collected, merged or copied the profile (measured
+// 2026-10-06 on the Pixel 5). Naming a class on the command line still wins, as in :app.
 androidComponents {
     onVariants { variant ->
+        if (variant.buildType == "nonMinifiedRelease" &&
+            !providers.gradleProperty("android.testInstrumentationRunnerArguments.class").isPresent
+        ) {
+            variant.instrumentationRunnerArguments.put(
+                "class",
+                "com.gmail.volkovskiyda.jellyshelf.baselineprofile.BaselineProfileGenerator",
+            )
+        }
         val builtArtifacts = variant.artifacts.getBuiltArtifactsLoader()
         variant.instrumentationRunnerArguments.put(
             "targetAppId",

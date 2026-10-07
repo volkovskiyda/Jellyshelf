@@ -85,6 +85,19 @@ android {
                 }
             }
 
+        // Measurements out of the default run. BrowseCostBenchmark seeds 10,000 rows and times six
+        // paths (~50 s) and asserts nothing worth a suite run, so it is filtered out here rather than
+        // `@Ignore`d: since AGP 9.4.1 the connected-test engine fails the whole task on an ignored
+        // class — one empty <failure> on a case named "null" — which left every device run red with
+        // nothing failing. A filtered class is never handed to the runner, so it leaves no trace.
+        // Naming a class on the command line (`-Pandroid.testInstrumentationRunnerArguments.class=…`)
+        // drops the filter, so `class=…BrowseCostBenchmark` runs it with no edit — a blank override
+        // would not do, see the unquoted `am instrument` line above.
+        if (!providers.gradleProperty("android.testInstrumentationRunnerArguments.class").isPresent) {
+            testInstrumentationRunnerArguments["notClass"] =
+                "com.gmail.volkovskiyda.jellyshelf.data.local.BrowseCostBenchmark"
+        }
+
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers
         // virtually all modern physical devices and keeps the APK from ballooning across ABIs.
         ndk {
@@ -417,12 +430,13 @@ tasks.register("testSummary") {
         // totals would double-count, so only the first such element per file is read.
         //
         // One correction to the header: since AGP 9.4.0 the connected-test engine records two
-        // kinds of skip as a <failure> and counts them in `failures`, while the task itself still
-        // passes — an `assumeTrue` violation, whose text names AssumptionViolatedException, and a
-        // class-level @Ignore, which becomes one empty <failure></failure> on a case named "null".
-        // Every live test guards itself with the first and BrowseCostBenchmark carries the second,
-        // so both move from the failed column to the skipped one, or a run with no server in reach
-        // would report red for tests that ran nothing.
+        // kinds of skip as a <failure> and counts them in `failures` — an `assumeTrue` violation,
+        // whose text names AssumptionViolatedException, and a class-level @Ignore, which becomes one
+        // empty <failure></failure> on a case named "null". Every live test guards itself with the
+        // first, so both move from the failed column to the skipped one, or a run with no server in
+        // reach would report red for tests that ran nothing. (No class here is @Ignore'd any more:
+        // 9.4.1 fails the task on one, which is why BrowseCostBenchmark is filtered out by a runner
+        // argument in defaultConfig instead. The rule stays for the next one somebody adds.)
         val skipsRecordedAsFailures = { lines: List<String> ->
             lines.count {
                 it.contains("<failure") &&

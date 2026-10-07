@@ -12,7 +12,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.system.measureTimeMillis
@@ -40,13 +39,11 @@ import kotlin.system.measureTimeMillis
  * would turn a slow CI machine into a build failure. The assertions that *are* here only confirm
  * each path returned the rows it claimed to.
  *
- * `@Ignore`d on purpose: seeding 10,000 rows and timing six paths costs ~50 s, which is a lot to
- * add to every suite run for output nobody reads unless they are asking this question. Run it
- * deliberately, and re-run it to confirm whatever the verdict leads to.
- *
- * **Comment out the `@Ignore` first.** Naming the class on the command line does not override it —
- * the runner still reports the class as skipped, silently, and prints nothing. (Corrected
- * 2026-08-06: the command below was documented without that step and looks like it worked.)
+ * Kept out of the default run on purpose: seeding 10,000 rows and timing six paths costs ~50 s, which
+ * is a lot to add to every suite run for output nobody reads unless they are asking this question.
+ * It is excluded by a `notClass` runner argument in `app/build.gradle.kts` rather than `@Ignore`d —
+ * AGP 9.4.1's connected-test engine fails the whole task on an ignored class. Naming the class on
+ * the command line drops that filter, so it runs with no edit:
  *
  * ```
  * ./gradlew :app:connectedDebugAndroidTest \
@@ -61,7 +58,6 @@ import kotlin.system.measureTimeMillis
  * is not a number to draw a conclusion from.
  */
 @RunWith(AndroidJUnit4::class)
-@Ignore("Measurement, not a regression test — see the KDoc for how to run it")
 class BrowseCostBenchmark {
 
     private lateinit var db: JellyshelfDatabase
