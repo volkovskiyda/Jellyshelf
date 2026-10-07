@@ -44,6 +44,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGOR
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNWATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.PlaystateRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
@@ -73,6 +74,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -650,6 +653,19 @@ class DefaultLibraryRepository private constructor(
                 .flatMap { videoDao.getByIds(it) }
                 .associate { it.youtubeId to it.toDomain() }
         }
+
+    override fun observeWatchStates(youtubeIds: List<String>): Flow<Map<String, WatchState>> {
+        // Chunked for the same bind-variable ceiling as videosByIds: a whole-library queue is
+        // thousands of ids. One observed query per chunk, combined back into one map.
+        val chunks = youtubeIds.distinct().chunked(ID_CHUNK)
+        if (chunks.isEmpty()) return flowOf(emptyMap())
+        return combine(chunks.map(videoDao::observeWatchStates)) { rows ->
+            rows.asList().flatten().associate { it.youtubeId to it.toDomain() }
+        }
+            // Every write to `videos` re-runs the queries, most of them touching no queued video.
+            .distinctUntilChanged()
+            .flowOn(dispatchers.default)
+    }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> =
         categoryDao.observeWithCounts()

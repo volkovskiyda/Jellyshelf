@@ -23,6 +23,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_LAST_PLAY
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoriesContent
 import com.gmail.volkovskiyda.jellyshelf.ui.categories.CategoryList
@@ -581,7 +582,8 @@ private fun PlayerControlsPortrait() {
  * The player's queue panel over a video, mid-queue: the playing row highlighted and scrolled so
  * the row before it stays in view, only the rows still to come ending in a remove button. Artwork is null so
  * the golden never depends on the network; one row has no channel, one an overlong title and
- * channel (the duration must survive the ellipsis), one no known duration.
+ * channel (the duration must survive the ellipsis), one no known duration. The played row carries
+ * the watched tick, and the playing and one upcoming row a resume bar.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
@@ -601,6 +603,17 @@ private fun QueuePanelPreview() {
                 ),
                 QueueEntry("ddddddddddd", "A video with no channel", null, null, 61_000L),
                 QueueEntry("eeeeeeeeeee", "A video whose length was never fetched", "Some Channel", null),
+            ),
+            watchStates = mapOf(
+                "aaaaaaaaaaa" to WatchState(played = true, playbackPositionTicks = 0L, durationSeconds = 754L),
+                // A third of the way in, in 100 ns ticks.
+                "bbbbbbbbbbb" to
+                    WatchState(played = false, playbackPositionTicks = 12_410_000_000L, durationSeconds = 3_723L),
+                "ddddddddddd" to WatchState(
+                    played = false,
+                    playbackPositionTicks = 450_000_000L,
+                    durationSeconds = 61L,
+                ),
             ),
             currentIndex = 1,
             onEntryClick = {},

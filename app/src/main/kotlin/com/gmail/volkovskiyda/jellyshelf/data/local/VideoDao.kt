@@ -55,6 +55,16 @@ interface VideoDao {
     @Query("SELECT * FROM videos WHERE youtubeId IN (:youtubeIds) ORDER BY fileName")
     suspend fun getByIds(youtubeIds: List<String>): List<VideoEntity>
 
+    /**
+     * The watch state of every stored video among [youtubeIds], kept current — the player's queue
+     * panel. Ids with no row are absent, and callers chunk the list, both as for [getByIds].
+     */
+    @Query(
+        "SELECT youtubeId, played, playbackPositionTicks, durationSeconds FROM videos " +
+            "WHERE youtubeId IN (:youtubeIds)",
+    )
+    fun observeWatchStates(youtubeIds: List<String>): Flow<List<VideoWatchRow>>
+
     // --- Virtual "Others" filters: live lists ---
 
     @RewriteQueriesToDropUnusedColumns

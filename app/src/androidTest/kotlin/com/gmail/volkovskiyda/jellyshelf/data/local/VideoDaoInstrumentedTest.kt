@@ -89,6 +89,29 @@ class VideoDaoInstrumentedTest {
         assertEquals(42L, got?.playbackPositionTicks)
     }
 
+    /**
+     * The queue panel's watch states: only the asked ids, only the four columns, an id with no row
+     * simply absent. Each [first] is a fresh query, so the second read sees the write between them.
+     */
+    @Test
+    fun observeWatchStates_projectsTheAskedRowsAndFollowsWrites() = runTest {
+        dao.upsert(video("v1", positionTicks = 42L))
+        dao.upsert(video("v2", played = true))
+        dao.upsert(video("v3"))
+
+        assertEquals(
+            setOf(VideoWatchRow("v1", false, 42L, 100L), VideoWatchRow("v2", true, 0L, 100L)),
+            dao.observeWatchStates(listOf("v1", "v2", "missing")).first().toSet(),
+        )
+
+        dao.updateWatchState("v1", played = true, positionTicks = 0L)
+
+        assertEquals(
+            listOf(VideoWatchRow("v1", true, 0L, 100L)),
+            dao.observeWatchStates(listOf("v1")).first(),
+        )
+    }
+
     @Test
     fun updateServerWatchState_carriesThePlayCountToo() = runTest {
         dao.upsert(video("v1"))

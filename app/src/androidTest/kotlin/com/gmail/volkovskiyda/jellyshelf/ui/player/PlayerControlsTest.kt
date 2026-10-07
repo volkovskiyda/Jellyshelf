@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -19,6 +20,9 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -36,6 +40,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -551,6 +556,7 @@ class PlayerControlsTest {
 
     private fun setQueuePanel(
         currentIndex: Int = 1,
+        watchStates: Map<String, WatchState> = emptyMap(),
         onEntryClick: (Int) -> Unit = {},
         onRemove: (Int) -> Unit = {},
     ) {
@@ -558,6 +564,7 @@ class PlayerControlsTest {
             JellyshelfTheme(dynamicColor = false) {
                 QueuePanel(
                     entries = queue,
+                    watchStates = watchStates,
                     currentIndex = currentIndex,
                     onEntryClick = onEntryClick,
                     onRemove = onRemove,
@@ -607,6 +614,44 @@ class PlayerControlsTest {
         composeRule.onNodeWithText("1:02:03").assertIsDisplayed()
         // Rows merge their texts, so this counts rows: the second has no known length, and shows none.
         composeRule.onAllNodesWithText(":", substring = true).assertCountEquals(2)
+    }
+
+    /** The library row's markers: a tick on a played row, a resume bar on a part-watched one. */
+    @Test
+    fun queueRows_showTheirWatchState() {
+        setQueuePanel(
+            currentIndex = 1,
+            watchStates = mapOf(
+                "aaaaaaaaaaa" to WatchState(played = true, playbackPositionTicks = 0L, durationSeconds = 754L),
+                // Halfway: 377 s in 100 ns ticks.
+                "ccccccccccc" to
+                    WatchState(played = false, playbackPositionTicks = 3_770_000_000L, durationSeconds = 754L),
+            ),
+        )
+
+        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.watched))
+            .assertCountEquals(1)
+        // The tick merges into its row; the bar is a semantics node of its own beneath it.
+        composeRule.onNodeWithText("First video")
+            .assert(hasContentDescription(composeRule.activity.getString(R.string.watched)))
+        composeRule.onAllNodes(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.5f, 0f..1f)))
+            .assertCountEquals(1)
+        composeRule.onNodeWithText("Third video")
+            .assert(hasAnyDescendant(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.5f, 0f..1f))))
+    }
+
+    /** A played video shows the tick and no bar, whatever position the server left behind. */
+    @Test
+    fun aPlayedQueueRow_showsNoResumeBar() {
+        setQueuePanel(
+            watchStates = mapOf(
+                "aaaaaaaaaaa" to
+                    WatchState(played = true, playbackPositionTicks = 3_770_000_000L, durationSeconds = 754L),
+            ),
+        )
+
+        composeRule.onAllNodes(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.5f, 0f..1f)), useUnmergedTree = true)
+            .assertCountEquals(0)
     }
 
     @Test

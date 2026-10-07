@@ -11,6 +11,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -69,6 +70,15 @@ class FakeLibraryRepository(
     override suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video> {
         val wanted = youtubeIds.toSet()
         return videos.first().filter { it.youtubeId in wanted }.associateBy { it.youtubeId }
+    }
+
+    override fun observeWatchStates(youtubeIds: List<String>): Flow<Map<String, WatchState>> {
+        val wanted = youtubeIds.toSet()
+        return videos.map { list ->
+            list.filter { it.youtubeId in wanted }.associate {
+                it.youtubeId to WatchState(it.played, it.playbackPositionTicks, it.durationSeconds)
+            }
+        }
     }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> = notModelled()

@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.data.mapper
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryEntity
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoBrowseRow
 import com.gmail.volkovskiyda.jellyshelf.data.local.VideoEntity
+import com.gmail.volkovskiyda.jellyshelf.data.local.VideoWatchRow
 import com.gmail.volkovskiyda.jellyshelf.data.remote.BaseItemDto
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UserDto
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
@@ -10,10 +11,17 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.domain.model.MediaFolder
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount as RoomCategoryWithCount
 
 // Boundary mappers: the data layer maps its Room rows and network DTOs to domain models so nothing
 // above it depends on Room or Moshi. Applied at each repository's public Flow boundary.
+
+fun VideoWatchRow.toDomain(): WatchState = WatchState(
+    played = played,
+    playbackPositionTicks = playbackPositionTicks,
+    durationSeconds = durationSeconds,
+)
 
 fun VideoEntity.toDomain(): Video = Video(
     youtubeId = youtubeId,

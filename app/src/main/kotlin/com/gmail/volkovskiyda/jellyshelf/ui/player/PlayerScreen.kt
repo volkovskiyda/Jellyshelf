@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -58,6 +59,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -136,6 +138,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.navigation.minimizedBackStack
@@ -146,7 +149,9 @@ import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
+import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.text.NumberFormat
@@ -284,6 +289,7 @@ fun PlayerScreen(
                     title = video?.fileName,
                     poster = poster,
                     chapters = chapters,
+                    queueWatchStates = viewModel::queueWatchStates,
                     onSpeedPicked = viewModel::savePlaybackSpeed,
                     scaleMode = scaleMode,
                     onScaleModePicked = viewModel::setVideoScaleMode,
@@ -309,6 +315,7 @@ private fun PlayerWithControls(
     title: String?,
     poster: String?,
     chapters: List<Chapter>,
+    queueWatchStates: (List<String>) -> Flow<Map<String, WatchState>>,
     onSpeedPicked: (Float) -> Unit,
     scaleMode: VideoScaleMode,
     onScaleModePicked: (VideoScaleMode) -> Unit,
@@ -713,8 +720,13 @@ private fun PlayerWithControls(
             val entries = remember(playlist.timeline) {
                 queueEntries(playlist.mediaItemCount, playlist::getMediaItemAt)
             }
+            // Room, not the session: the metadata attached at resolve time never changes, while a
+            // video's progress moves as it plays. Collected only while the panel is open.
+            val watchStates by remember(entries) { queueWatchStates(entries.map(QueueEntry::mediaId)) }
+                .collectAsStateWithLifecycle(emptyMap())
             QueuePanel(
                 entries = entries,
+                watchStates = watchStates,
                 currentIndex = playlist.currentMediaItemIndex,
                 onEntryClick = {
                     playlist.seekToMediaItem(it)
@@ -1394,9 +1406,12 @@ internal fun ChaptersPanel(
 
 /**
  * The session's queue over a full-screen scrim, in play order: thumbnail, title, channel and
- * duration per row, the playing video in the primary colour and marked selected. The whole queue is listed,
- * already-played rows included, so going back two videos is one tap; it opens scrolled so the
- * playing row sits second from the top, with the one before it still in view.
+ * duration per row, the playing video in the primary colour and marked selected. A row also
+ * carries the library row's watch markers from [watchStates] (by media id) — the resume bar over
+ * a part-watched thumbnail, the watched tick on a played video — and neither when it is missing
+ * from the map. The whole queue is listed, already-played rows included, so going back two
+ * videos is one tap; it opens scrolled so the playing row sits second from the top, with the one
+ * before it still in view.
  *
  * A tap jumps to that row ([onEntryClick] gets its index). Only the rows still to come end in a
  * remove button ([onRemove]): a played row is already behind the playhead, so there is nothing
@@ -1409,6 +1424,7 @@ internal fun ChaptersPanel(
 @Composable
 internal fun QueuePanel(
     entries: List<QueueEntry>,
+    watchStates: Map<String, WatchState>,
     currentIndex: Int,
     onEntryClick: (Int) -> Unit,
     onRemove: (Int) -> Unit,
@@ -1433,14 +1449,30 @@ internal fun QueuePanel(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AsyncImage(
-                        model = entry.artworkUri,
-                        contentDescription = null,
-                        modifier = Modifier
+                    val watch = watchStates[entry.mediaId]
+                    Box(
+                        Modifier
                             .size(width = 64.dp, height = 36.dp)
                             .clip(RoundedCornerShape(4.dp)),
-                        contentScale = ContentScale.Crop,
-                    )
+                    ) {
+                        AsyncImage(
+                            model = entry.artworkUri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                        // The library row's rule: a played video shows the tick instead of a bar.
+                        val fraction =
+                            watch?.let { watchedFraction(it.playbackPositionTicks, it.durationSeconds) } ?: 0f
+                        if (fraction > 0f && watch?.played == false) {
+                            LinearProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.BottomCenter),
+                            )
+                        }
+                    }
                     Column(Modifier.weight(1f)) {
                         Text(
                             entry.title.orEmpty(),
@@ -1450,6 +1482,14 @@ internal fun QueuePanel(
                             overflow = TextOverflow.Ellipsis,
                         )
                         QueueEntryDetails(entry.channel, entry.durationMs)
+                    }
+                    if (watch?.played == true) {
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = stringResource(R.string.watched),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
                     }
                     if (index > currentIndex) {
                         IconButton(onClick = { onRemove(index) }) {

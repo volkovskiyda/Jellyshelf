@@ -10,6 +10,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncPhase
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -38,6 +39,14 @@ interface LibraryRepository : PlaystateRepository {
      * is what this replaces.
      */
     suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video>
+
+    /**
+     * The watch state of a batch of videos by id, kept current — for the player's queue panel,
+     * whose rows show a progress bar and a watched tick that move while the queue plays.
+     *
+     * Keyed like [videosByIds]: an id with no row is absent from the map.
+     */
+    fun observeWatchStates(youtubeIds: List<String>): Flow<Map<String, WatchState>>
     fun observeCategories(): Flow<List<CategoryWithCount>>
 
     /** The categories one video belongs to — every stored type; callers pick the dimensions they show. */

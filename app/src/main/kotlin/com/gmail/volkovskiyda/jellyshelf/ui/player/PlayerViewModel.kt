@@ -14,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
+import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
@@ -27,6 +28,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.parseTimecodes
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,6 +81,14 @@ class PlayerViewModel(
     val video: StateFlow<Video?> = _currentId
         .flatMapLatest { repo.observeVideo(it) }
         .stateIn(viewModelScope, WhileUiSubscribed, null)
+
+    /**
+     * The watch state of every video in the session's queue, for the queue panel's progress bars
+     * and watched ticks. Keyed on the ids rather than held here: the queue is the session's, the
+     * screen reads it off the controller's timeline, and the panel only collects this while open.
+     */
+    fun queueWatchStates(youtubeIds: List<String>): Flow<Map<String, WatchState>> =
+        repo.observeWatchStates(youtubeIds)
 
     /**
      * Chapters the media file carries itself, read by media3's extractors — empty for everything
