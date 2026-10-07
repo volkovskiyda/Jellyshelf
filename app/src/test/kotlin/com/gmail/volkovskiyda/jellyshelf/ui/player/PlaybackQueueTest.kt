@@ -158,4 +158,20 @@ class PlaybackQueueTest {
         assertNull(previousChapterStartMs(emptyList(), 10_000L))
         assertNull(nextChapterStartMs(emptyList(), 10_000L))
     }
+
+    @Test
+    fun skipToEnd_whilePlaying_leavesTheEndToMedia3() {
+        assertEquals(SkipToEnd.PlayOut, skipToEnd(playWhenReady = true, hasNext = true))
+        assertEquals(SkipToEnd.PlayOut, skipToEnd(playWhenReady = true, hasNext = false))
+    }
+
+    @Test
+    fun skipToEnd_whilePaused_opensTheNextVideo() {
+        assertEquals(SkipToEnd.NextVideo, skipToEnd(playWhenReady = false, hasNext = true))
+    }
+
+    @Test
+    fun skipToEnd_whilePausedOnTheLastVideo_finishesIt() {
+        assertEquals(SkipToEnd.Finish, skipToEnd(playWhenReady = false, hasNext = false))
+    }
 }

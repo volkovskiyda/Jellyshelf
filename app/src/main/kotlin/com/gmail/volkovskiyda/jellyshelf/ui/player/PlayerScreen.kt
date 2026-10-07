@@ -671,10 +671,23 @@ private fun PlayerWithControls(
                 // Only the chapter row and the chapters panel seek through us now; the seek bar's
                 // own seek is ProgressSlider's, fired just before its onValueChangeFinished.
                 onSeek = controller::seekTo,
-                // Media3 takes it from there: with a video after this one the queue advances, and
-                // otherwise the end it reports is the listener's cue to leave. An unknown duration
+                // The seek to the end comes first in every case: it is the position the tracker
+                // files for this video on the way out, so a skipped video counts as watched however
+                // the move happens. Playing, media3 takes it from there — the queue advances, or the
+                // end it reports is the listener's cue to leave. Paused, nothing would happen, so the
+                // skip moves on itself (see skipToEnd); finishing plays the last instant so the end
+                // arrives through that same listener, completed report and all. An unknown duration
                 // makes the tap a no-op rather than a seek to zero.
-                onFinish = { if (durationMs > 0) controller.seekTo(durationMs) },
+                onFinish = {
+                    if (durationMs > 0) {
+                        controller.seekTo(durationMs)
+                        when (skipToEnd(controller.playWhenReady, hasNext)) {
+                            SkipToEnd.PlayOut -> Unit
+                            SkipToEnd.NextVideo -> controller.seekToNextMediaItem()
+                            SkipToEnd.Finish -> controller.play()
+                        }
+                    }
+                },
                 onSetSpeed = { speed ->
                     playbackSpeed.updatePlaybackSpeed(speed)
                     // Only a menu pick is a choice worth keeping. Press-and-hold's speed is a

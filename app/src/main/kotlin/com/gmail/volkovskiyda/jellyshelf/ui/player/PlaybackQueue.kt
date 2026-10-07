@@ -71,6 +71,30 @@ internal fun queueEntries(count: Int, itemAt: (Int) -> MediaItem): List<QueueEnt
 internal fun endsThePlayer(playbackState: Int, mediaItemCount: Int): Boolean =
     playbackState == Player.STATE_ENDED && mediaItemCount > 0
 
+/** What the chapter row's "Skip to the end" does once it has put the video at its end. */
+internal enum class SkipToEnd {
+    /** Playing: media3 reaches the end on its own — the queue advances, or the player leaves. */
+    PlayOut,
+
+    /** Paused with a video after this one: open it, still paused. */
+    NextVideo,
+
+    /** Paused with nothing after it: finish this video, which leaves to its details. */
+    Finish,
+}
+
+/**
+ * Which [SkipToEnd] a tap means. Only a playing player reaches the end by itself: a paused one sits
+ * on the final frame without ever reporting `STATE_ENDED` (measured on an API 36 emulator and on the
+ * Pixel 5, 2026-10-06), so the tap looked like it did nothing. Paused, the skip therefore carries the
+ * move itself — and keeps the pause when it opens the next video, as the screen's transport does.
+ */
+internal fun skipToEnd(playWhenReady: Boolean, hasNext: Boolean): SkipToEnd = when {
+    playWhenReady -> SkipToEnd.PlayOut
+    hasNext -> SkipToEnd.NextVideo
+    else -> SkipToEnd.Finish
+}
+
 /**
  * Where the previous-chapter button goes: back to the start of the current chapter when more
  * than [CHAPTER_RESTART_THRESHOLD_MS] into it, otherwise to the start of the one before.
