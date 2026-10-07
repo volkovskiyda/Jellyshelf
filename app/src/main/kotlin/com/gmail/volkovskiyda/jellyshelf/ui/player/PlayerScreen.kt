@@ -721,9 +721,10 @@ private fun PlayerWithControls(
                     queueOpen = false
                 },
                 // Re-checked at the call: the timeline can change between the tap and here (a
-                // remove from another controller), and the playing item must never be dropped.
+                // remove from another controller, an auto-advance), and only a row still to come
+                // may be dropped — never the playing item, never one already played.
                 onRemove = {
-                    if (it != playlist.currentMediaItemIndex && it < playlist.mediaItemCount) {
+                    if (it > playlist.currentMediaItemIndex && it < playlist.mediaItemCount) {
                         controller.removeMediaItem(it)
                     }
                 },
@@ -1397,12 +1398,13 @@ internal fun ChaptersPanel(
  * already-played rows included, so going back two videos is one tap; it opens scrolled so the
  * playing row sits second from the top, with the one before it still in view.
  *
- * A tap jumps to that row ([onEntryClick] gets its index). Every row but the playing one ends in a
- * remove button ([onRemove]); the playing row has none on purpose — dropping the item under
- * playback is what Next already does, and media3 would report it as a playlist change, which skips
- * the resume seed the next video is owed. The panel stays open after a removal, even one that
- * leaves a single row: the user is mid-edit, and dismisses it themselves. Tapping outside (or
- * Back, handled by the caller) dismisses.
+ * A tap jumps to that row ([onEntryClick] gets its index). Only the rows still to come end in a
+ * remove button ([onRemove]): a played row is already behind the playhead, so there is nothing
+ * left to skip — it stays listed to be jumped back to, not edited. The playing row has none on
+ * purpose either — dropping the item under playback is what Next already does, and media3 would
+ * report it as a playlist change, which skips the resume seed the next video is owed. The panel
+ * stays open after a removal, even one that leaves a single row: the user is mid-edit, and
+ * dismisses it themselves. Tapping outside (or Back, handled by the caller) dismisses.
  */
 @Composable
 internal fun QueuePanel(
@@ -1457,11 +1459,7 @@ internal fun QueuePanel(
                             )
                         }
                     }
-                    if (highlight) {
-                        // Same width as the button, so the playing row's title ends where the
-                        // others do.
-                        Spacer(Modifier.size(MIN_TOUCH_TARGET))
-                    } else {
+                    if (index > currentIndex) {
                         IconButton(onClick = { onRemove(index) }) {
                             Icon(
                                 Icons.Filled.Close,
@@ -1469,6 +1467,10 @@ internal fun QueuePanel(
                                 tint = Color.White.copy(alpha = 0.7f),
                             )
                         }
+                    } else {
+                        // Same width as the button, so the titles of the playing and played rows
+                        // end where the upcoming ones do.
+                        Spacer(Modifier.size(MIN_TOUCH_TARGET))
                     }
                 }
             }

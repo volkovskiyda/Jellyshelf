@@ -579,7 +579,7 @@ private fun PlayerControlsPortrait() {
 
 /**
  * The player's queue panel over a video, mid-queue: the playing row highlighted and scrolled so
- * the row before it stays in view, every other row ending in a remove button. Artwork is null so
+ * the row before it stays in view, only the rows still to come ending in a remove button. Artwork is null so
  * the golden never depends on the network; one row has no channel and one an overlong title.
  */
 @PreviewTest

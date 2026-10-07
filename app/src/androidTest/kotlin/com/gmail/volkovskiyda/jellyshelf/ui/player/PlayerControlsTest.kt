@@ -603,8 +603,8 @@ class PlayerControlsTest {
         var jumpedTo: Int? = null
         setQueuePanel(currentIndex = 1, onEntryClick = { jumpedTo = it }, onRemove = { removed = it })
 
-        // Rows 0 and 2 carry one each; the second is row 2's.
-        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))[1]
+        // Row 2 is the only one still to come, so its button is the only one there is.
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))
             .performClick()
 
         assertEquals(2, removed)
@@ -613,14 +613,27 @@ class PlayerControlsTest {
 
     /**
      * Dropping the item under playback would reach media3 as a playlist change, which skips the next
-     * video's resume seed — so the playing row offers no way to do it.
+     * video's resume seed — so the playing row offers no way to do it. Played last here, so no row
+     * at all is left to carry a button.
      */
     @Test
     fun thePlayingRow_hasNoRemoveButton() {
+        setQueuePanel(currentIndex = 2)
+
+        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))
+            .assertCountEquals(0)
+    }
+
+    /**
+     * A played row is behind the playhead: there is nothing left to skip, only to jump back to.
+     * One button for three rows, and [theRemoveButton_dropsThatRow] pins it as the upcoming row's.
+     */
+    @Test
+    fun aPlayedRow_hasNoRemoveButton() {
         setQueuePanel(currentIndex = 1)
 
         composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))
-            .assertCountEquals(queue.size - 1)
+            .assertCountEquals(1)
     }
 
     /** The button beside it must not swallow the row's own click. */
