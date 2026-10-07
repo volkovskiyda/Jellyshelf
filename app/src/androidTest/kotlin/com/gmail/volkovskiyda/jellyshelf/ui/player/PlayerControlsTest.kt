@@ -23,6 +23,7 @@ import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -597,6 +598,17 @@ class PlayerControlsTest {
         composeRule.onNodeWithText("Channel B").assertIsDisplayed()
     }
 
+    /** After the channel like the library row's details; standing alone when there is none. */
+    @Test
+    fun aQueueRow_showsItsDuration() {
+        setQueuePanel(currentIndex = 1)
+
+        composeRule.onNodeWithText("  •  12:34").assertIsDisplayed()
+        composeRule.onNodeWithText("1:02:03").assertIsDisplayed()
+        // Rows merge their texts, so this counts rows: the second has no known length, and shows none.
+        composeRule.onAllNodesWithText(":", substring = true).assertCountEquals(2)
+    }
+
     @Test
     fun theRemoveButton_dropsThatRow() {
         var removed: Int? = null
@@ -718,9 +730,9 @@ class PlayerControlsTest {
 
     private companion object {
         val queue = listOf(
-            QueueEntry("aaaaaaaaaaa", "First video", "Channel A", null),
+            QueueEntry("aaaaaaaaaaa", "First video", "Channel A", null, durationMs = 754_000L),
             QueueEntry("bbbbbbbbbbb", "Second video", "Channel B", null),
-            QueueEntry("ccccccccccc", "Third video", null, null),
+            QueueEntry("ccccccccccc", "Third video", null, null, durationMs = 3_723_000L),
         )
 
         val chapters = listOf(

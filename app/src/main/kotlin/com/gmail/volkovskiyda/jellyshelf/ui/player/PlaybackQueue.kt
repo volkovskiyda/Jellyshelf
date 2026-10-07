@@ -24,12 +24,18 @@ internal fun playbackQueue(originIds: List<String>, youtubeId: String): Playback
     }
 }
 
-/** One row of the player's queue panel: what the session attached to the queued item. */
+/**
+ * One row of the player's queue panel: what the session attached to the queued item.
+ *
+ * [durationMs] is the stored length, null when it is unknown — a row whose metadata was never
+ * fetched shows no duration rather than a misleading `0:00`.
+ */
 internal data class QueueEntry(
     val mediaId: String,
     val title: String?,
     val channel: String?,
     val artworkUri: String?,
+    val durationMs: Long? = null,
 )
 
 /**
@@ -49,6 +55,7 @@ internal fun queueEntries(count: Int, itemAt: (Int) -> MediaItem): List<QueueEnt
             title = metadata.title?.toString(),
             channel = metadata.artist?.toString(),
             artworkUri = metadata.artworkUri?.toString(),
+            durationMs = metadata.durationMs?.takeIf { it > 0 },
         )
     }
 

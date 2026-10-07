@@ -1393,8 +1393,8 @@ internal fun ChaptersPanel(
 }
 
 /**
- * The session's queue over a full-screen scrim, in play order: thumbnail, title and channel per
- * row, the playing video in the primary colour and marked selected. The whole queue is listed,
+ * The session's queue over a full-screen scrim, in play order: thumbnail, title, channel and
+ * duration per row, the playing video in the primary colour and marked selected. The whole queue is listed,
  * already-played rows included, so going back two videos is one tap; it opens scrolled so the
  * playing row sits second from the top, with the one before it still in view.
  *
@@ -1449,15 +1449,7 @@ internal fun QueuePanel(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        entry.channel?.let { channel ->
-                            Text(
-                                channel,
-                                color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                        QueueEntryDetails(entry.channel, entry.durationMs)
                     }
                     if (index > currentIndex) {
                         IconButton(onClick = { onRemove(index) }) {
@@ -1474,6 +1466,40 @@ internal fun QueuePanel(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * A queue row's second line: channel and duration, joined by the library row's separator so a
+ * queue row reads like the row it came from. Either half is left out when the session has nothing
+ * for it. Two texts rather than one joined string so a long channel name ellipsizes and the
+ * duration after it stays readable.
+ */
+@Composable
+private fun QueueEntryDetails(channel: String?, durationMs: Long?) {
+    if (channel == null && durationMs == null) return
+    val color = Color.White.copy(alpha = 0.7f)
+    val style = MaterialTheme.typography.labelMedium
+    Row {
+        channel?.let {
+            Text(
+                it,
+                modifier = Modifier.weight(1f, fill = false),
+                color = color,
+                style = style,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        durationMs?.let {
+            val duration = formatPosition(it)
+            Text(
+                if (channel == null) duration else "  •  $duration",
+                color = color,
+                style = style,
+                maxLines = 1,
+            )
         }
     }
 }

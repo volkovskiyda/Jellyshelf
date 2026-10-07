@@ -58,6 +58,17 @@ class PlaybackQueueTest {
     }
 
     @Test
+    fun `queue rows carry the stored duration, and only a known one`() {
+        val items = listOf(
+            queued("aaa", title = "First", channel = null, durationMs = 754_000L),
+            queued("bbb", title = "Second", channel = null, durationMs = 0L),
+            queued("ccc", title = "Third", channel = null),
+        )
+
+        assertEquals(listOf(754_000L, null, null), queueEntries(items.size, items::get).map { it.durationMs })
+    }
+
+    @Test
     fun `a queued item with no metadata becomes a blank row rather than a crash`() {
         // What resolve() hands back for an id that no longer resolves to a video.
         val bare = MediaItem.Builder().setMediaId("zzz").build()
@@ -84,10 +95,12 @@ class PlaybackQueueTest {
         }
     }
 
-    private fun queued(id: String, title: String?, channel: String?): MediaItem =
+    private fun queued(id: String, title: String?, channel: String?, durationMs: Long? = null): MediaItem =
         MediaItem.Builder()
             .setMediaId(id)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(channel).build())
+            .setMediaMetadata(
+                MediaMetadata.Builder().setTitle(title).setArtist(channel).setDurationMs(durationMs).build(),
+            )
             .build()
 
     private val chapters = listOf(

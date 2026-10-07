@@ -580,7 +580,8 @@ private fun PlayerControlsPortrait() {
 /**
  * The player's queue panel over a video, mid-queue: the playing row highlighted and scrolled so
  * the row before it stays in view, only the rows still to come ending in a remove button. Artwork is null so
- * the golden never depends on the network; one row has no channel and one an overlong title.
+ * the golden never depends on the network; one row has no channel, one an overlong title and
+ * channel (the duration must survive the ellipsis), one no known duration.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
@@ -589,15 +590,17 @@ private fun QueuePanelPreview() {
     PreviewTheme(darkTheme = true) {
         QueuePanel(
             entries = listOf(
-                QueueEntry("aaaaaaaaaaa", "Building a workbench from pallets", "Workshop Diaries", null),
-                QueueEntry("bbbbbbbbbbb", "The video playing right now", "Some Channel", null),
+                QueueEntry("aaaaaaaaaaa", "Building a workbench from pallets", "Workshop Diaries", null, 754_000L),
+                QueueEntry("bbbbbbbbbbb", "The video playing right now", "Some Channel", null, 3_723_000L),
                 QueueEntry(
                     "ccccccccccc",
                     "A reasonably long video title that will not fit on a single row of the panel",
-                    "Another Channel",
+                    "A channel whose name is far too long to leave room for anything after it",
                     null,
+                    95_000L,
                 ),
-                QueueEntry("ddddddddddd", "A video with no channel", null, null),
+                QueueEntry("ddddddddddd", "A video with no channel", null, null, 61_000L),
+                QueueEntry("eeeeeeeeeee", "A video whose length was never fetched", "Some Channel", null),
             ),
             currentIndex = 1,
             onEntryClick = {},

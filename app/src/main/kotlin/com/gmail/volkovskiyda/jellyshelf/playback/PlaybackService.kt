@@ -1044,6 +1044,10 @@ internal fun resolve(item: MediaItem, video: Video?, settings: Settings): MediaI
                 // A demo row's artwork is a `file:///android_asset/` URL, which the loader
                 // reads directly — verified on device; the notification shows the thumbnail.
                 .setArtworkUri(artworkUrl?.toUri())
+                // The stored length, for the player's queue panel: the timeline only learns an
+                // item's real duration once it is prepared, and most of a queue never is. Zero
+                // means "not fetched yet" and is left unset rather than claimed as a length.
+                .setDurationMs(video.durationSeconds.takeIf { it > 0 }?.times(MILLIS_PER_SECOND))
                 .build(),
         )
         .build()
@@ -1055,6 +1059,9 @@ internal fun resolve(item: MediaItem, video: Video?, settings: Settings): MediaI
  * it, since a private top-level declaration is visible across the whole file.
  */
 private const val DEMO_SAMPLE_SCHEME = "asset"
+
+/** [resolve] turns the row's stored seconds into the metadata's milliseconds. */
+private const val MILLIS_PER_SECOND = 1_000L
 
 /**
  * The bundled clip every demo video plays — a Big Buck Bunny excerpt, CC-BY 3.0, credited in the
