@@ -109,10 +109,16 @@ profile wants.
 ## Generate
 
 ```sh
-./gradlew :app:generateReleaseBaselineProfile
+scripts/generate-baseline-profile.sh
 ```
 
-That is the whole command. It chains, in order:
+That script is the command now, not `./gradlew :app:generateReleaseBaselineProfile`. Since AGP 9.4.1
+the connected-test engine fails the device task even when every generator test passes (a plain
+`am instrument` of the same run reports `OK (3 tests)`), and a failed test task stops the chain
+before anything is collected, so the one-liner leaves no profile behind. The script runs the device
+task, accepts it only if its XML shows exactly the three generator tests with nothing failed or
+skipped, then runs the rest with the test task excluded. Without that bug it would be the same chain,
+in order:
 
 ```
 :baselineprofile:connectedNonMinifiedReleaseAndroidTest    # drives the app on the device

@@ -60,9 +60,10 @@ android {
 //
 // The profiling variant also runs the generator alone. JourneyBenchmark shares the module, and its
 // MacrobenchmarkRule skips itself outside benchmarkRelease with an `assumeTrue` — which the AGP 9.4.1
-// connected-test engine counts as a failure, so `generateReleaseBaselineProfile` stopped at the test
-// task with every generator test green and never collected, merged or copied the profile (measured
-// 2026-10-06 on the Pixel 5). Naming a class on the command line still wins, as in :app.
+// connected-test engine counts as a failure. That is not the only thing it counts: with the five
+// skips gone the task still fails over three passing generator tests, so the profile is generated
+// through scripts/generate-baseline-profile.sh rather than the plugin's one-liner (2026-10-07).
+// Naming a class on the command line still wins, as in :app.
 androidComponents {
     onVariants { variant ->
         if (variant.buildType == "nonMinifiedRelease" &&
