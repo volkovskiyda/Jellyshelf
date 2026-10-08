@@ -271,9 +271,8 @@ fun PlayerScreen(
             // what is left, and that is the point: a video surface is a hardware layer that a
             // transition's alpha never reaches, so anything still on it would sit fully opaque over
             // the screen taking over.
-            if (leaving) {
-                Unit
-            } else if (c == null) {
+            if (leaving) return@Box
+            if (c == null) {
                 // Still connecting to the service. The back arrow stays reachable regardless — with
                 // no controller yet there is nothing to stop, so this is a plain leave.
                 PlayerPoster(poster, Modifier.matchParentSize())
