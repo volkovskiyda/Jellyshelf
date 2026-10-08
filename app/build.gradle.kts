@@ -374,62 +374,67 @@ tasks.register("testSummary") {
     description =
         "Aggregate test results (unit, screenshot, instrumented) and static analysis " +
         "(detekt, ktlint, lint) into one HTML report."
-    // Paths resolved at configuration time; all file access happens in doLast.
-    val buildDir = layout.buildDirectory.get().asFile
+    // The build directories are kept as providers and resolved inside doLast, alongside every
+    // path derived from them; nothing here is read before the action runs. `rootProject` is
+    // touched only at configuration time — a task action must not reach for a Project.
+    val buildDirProvider = layout.buildDirectory.asFile
     // detekt is applied to the root project (it scans app/src from there), so its reports land in
     // the root build directory, not this module's.
-    val rootBuildDir = rootProject.layout.buildDirectory.get().asFile
-    val outFile = buildDir.resolve("test-summary/index.html")
-    val layers = listOf(
-        Triple("Unit tests", "test-results/testDebugUnitTest", "reports/tests/testDebugUnitTest/index.html"),
-        // The screenshot plugin writes per-class HTML (with reference/actual/diff images on a
-        // failure) rather than an index.html, so the layer links to that directory's entry page.
-        Triple(
-            "Screenshot goldens",
-            "test-results/validateDebugScreenshotTest",
-            "reports/screenshotTest/preview/debug/com.gmail.volkovskiyda.jellyshelf.ui.html",
-        ),
-        Triple(
-            "Behavior tests (device)",
-            "outputs/androidTest-results/connected",
-            "reports/androidTests/connected/debug/index.html",
-        ),
-    ).map { (label, results, report) -> Triple(label, buildDir.resolve(results), buildDir.resolve(report)) }
-    // Static analysis: findings rather than tests, so these get their own table. All three tools
-    // write an XML report next to the HTML one a human opens; the second element of each entry is
-    // where to look for that XML — a file, or a directory to walk — and the third is the HTML to
-    // link to, or null when there is no single one to name (see ktlint below).
-    val checks = listOf(
-        Triple(
-            "detekt",
-            listOf(rootBuildDir.resolve("reports/detekt/detekt.xml")),
-            rootBuildDir.resolve("reports/detekt/detekt.html"),
-        ),
-        // Directories rather than files, and three of them: ktlint runs per project and per source
-        // set, so :app alone writes one report for main, one for test, one for androidTest, one for
-        // screenshotTest and one for its build script, with the root project and :baselineprofile
-        // adding theirs. Summing them is the only way to get one number, and there is no single
-        // HTML page to link to — the link is resolved below, to whichever report has findings.
-        Triple(
-            "ktlint",
-            listOf(
-                buildDir.resolve("reports/ktlint"),
-                rootBuildDir.resolve("reports/ktlint"),
-                rootProject.file("baselineprofile/build/reports/ktlint"),
-            ),
-            null,
-        ),
-        // lintDebug only, matching scripts/run-tests.sh — the release variant reports the same
-        // findings a second time.
-        Triple(
-            "Android lint (debug)",
-            listOf(buildDir.resolve("reports/lint-results-debug.xml")),
-            buildDir.resolve("reports/lint-results-debug.html"),
-        ),
-    )
+    val rootBuildDirProvider = rootProject.layout.buildDirectory.asFile
+    val baselineKtlintReports = rootProject.file("baselineprofile/build/reports/ktlint")
     outputs.upToDateWhen { false }
 
     doLast {
+        val buildDir = buildDirProvider.get()
+        val rootBuildDir = rootBuildDirProvider.get()
+        val outFile = buildDir.resolve("test-summary/index.html")
+        val layers = listOf(
+            Triple("Unit tests", "test-results/testDebugUnitTest", "reports/tests/testDebugUnitTest/index.html"),
+            // The screenshot plugin writes per-class HTML (with reference/actual/diff images on a
+            // failure) rather than an index.html, so the layer links to that directory's entry page.
+            Triple(
+                "Screenshot goldens",
+                "test-results/validateDebugScreenshotTest",
+                "reports/screenshotTest/preview/debug/com.gmail.volkovskiyda.jellyshelf.ui.html",
+            ),
+            Triple(
+                "Behavior tests (device)",
+                "outputs/androidTest-results/connected",
+                "reports/androidTests/connected/debug/index.html",
+            ),
+        ).map { (label, results, report) -> Triple(label, buildDir.resolve(results), buildDir.resolve(report)) }
+        // Static analysis: findings rather than tests, so these get their own table. All three tools
+        // write an XML report next to the HTML one a human opens; the second element of each entry is
+        // where to look for that XML — a file, or a directory to walk — and the third is the HTML to
+        // link to, or null when there is no single one to name (see ktlint below).
+        val checks = listOf(
+            Triple(
+                "detekt",
+                listOf(rootBuildDir.resolve("reports/detekt/detekt.xml")),
+                rootBuildDir.resolve("reports/detekt/detekt.html"),
+            ),
+            // Directories rather than files, and three of them: ktlint runs per project and per source
+            // set, so :app alone writes one report for main, one for test, one for androidTest, one for
+            // screenshotTest and one for its build script, with the root project and :baselineprofile
+            // adding theirs. Summing them is the only way to get one number, and there is no single
+            // HTML page to link to — the link is resolved below, to whichever report has findings.
+            Triple(
+                "ktlint",
+                listOf(
+                    buildDir.resolve("reports/ktlint"),
+                    rootBuildDir.resolve("reports/ktlint"),
+                    baselineKtlintReports,
+                ),
+                null,
+            ),
+            // lintDebug only, matching scripts/run-tests.sh — the release variant reports the same
+            // findings a second time.
+            Triple(
+                "Android lint (debug)",
+                listOf(buildDir.resolve("reports/lint-results-debug.xml")),
+                buildDir.resolve("reports/lint-results-debug.html"),
+            ),
+        )
         val summaryDir = outFile.parentFile
 
         // Sums the testsuite header attributes across a layer's JUnit XML; null when the layer
