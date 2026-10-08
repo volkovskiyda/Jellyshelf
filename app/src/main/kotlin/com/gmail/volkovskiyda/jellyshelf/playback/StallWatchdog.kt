@@ -128,11 +128,17 @@ internal class StallWatchdog(
      */
     private fun reevaluate() {
         val player = player() ?: return
-        val stalling = player.playbackState == Player.STATE_BUFFERING &&
-            player.playWhenReady &&
-            !player.isPlayingDemoClip()
+        val buffering = player.playbackState == Player.STATE_BUFFERING
+        val stalling = buffering && player.playWhenReady && !player.isPlayingDemoClip()
         if (stalling) rule.onBuffering(elapsedRealtime()) else rule.onNotBuffering()
         job?.cancel()
+        // Said out loud, because it is the one buffering spell nothing will end on the player's
+        // behalf: a paused player waits for data it has no reason to want yet, and whether the user
+        // gets a frame when they press play is then entirely up to the load that is (or is not) in
+        // flight. See BufferingLogger for what that load looks like from here.
+        if (buffering && !player.playWhenReady) {
+            Timber.tag(Playback.TAG).d("stall watch: buffering while paused, not watching")
+        }
         if (!stalling) return
         job = scope.launch {
             while (isActive) {

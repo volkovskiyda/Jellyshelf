@@ -148,6 +148,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberCopyToClipboard
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
+import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.currentChapter
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
@@ -155,6 +156,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import timber.log.Timber
 import java.text.NumberFormat
 import java.util.Formatter
 import java.util.Locale
@@ -679,11 +681,20 @@ private fun PlayerWithControls(
                 onOpenQueue = { queueOpen = true },
                 // The explicit *MediaItem* variants: seekToPrevious() would restart the current
                 // video once past its threshold, which is a different button entirely.
-                onPrevious = controller::seekToPreviousMediaItem,
-                onNext = controller::seekToNextMediaItem,
+                onPrevious = {
+                    controller.logTransport("previous item")
+                    controller.seekToPreviousMediaItem()
+                },
+                onNext = {
+                    controller.logTransport("next item")
+                    controller.seekToNextMediaItem()
+                },
                 // Only the chapter row and the chapters panel seek through us now; the seek bar's
                 // own seek is ProgressSlider's, fired just before its onValueChangeFinished.
-                onSeek = controller::seekTo,
+                onSeek = { targetMs ->
+                    controller.logTransport("chapter seek to ${targetMs}ms")
+                    controller.seekTo(targetMs)
+                },
                 // The seek to the end comes first in every case: it is the position the tracker
                 // files for this video on the way out, so a skipped video counts as watched however
                 // the move happens. Playing, media3 takes it from there — the queue advances, or the
@@ -693,8 +704,10 @@ private fun PlayerWithControls(
                 // makes the tap a no-op rather than a seek to zero.
                 onFinish = {
                     if (durationMs > 0) {
+                        val skip = skipToEnd(controller.playWhenReady, hasNext)
+                        controller.logTransport("skip to end ${durationMs}ms -> $skip")
                         controller.seekTo(durationMs)
-                        when (skipToEnd(controller.playWhenReady, hasNext)) {
+                        when (skip) {
                             SkipToEnd.PlayOut -> Unit
                             SkipToEnd.NextVideo -> controller.seekToNextMediaItem()
                             SkipToEnd.Finish -> controller.play()
@@ -735,6 +748,7 @@ private fun PlayerWithControls(
                 chapters = chapters,
                 currentChapter = currentChapter(chapters, positionMs),
                 onChapterClick = {
+                    controller.logTransport("chapter panel seek to ${it.startMs}ms")
                     controller.seekTo(it.startMs)
                     chaptersOpen = false
                 },
@@ -1661,3 +1675,16 @@ private val CHAPTER_TICK_WIDTH = 2.dp
 /** Integer window pixels, as `PictureInPictureParams` wants them; a whole-pixel rounding, not a truncation. */
 private fun androidx.compose.ui.geometry.Rect.toAndroidRect(): Rect =
     Rect(left.roundToInt(), top.roundToInt(), right.roundToInt(), bottom.roundToInt())
+
+/**
+ * One line per transport tap, before the player is told anything, so a stall's log trail starts with
+ * what the user did rather than with the seek it turned into. Debug only in effect: no Timber tree is
+ * planted in release (`JellyshelfApplication`). The state is read at the tap, which is what the
+ * player's own event lines are then compared against.
+ */
+private fun Player.logTransport(action: String) {
+    Timber.tag(Playback.TAG).d(
+        "transport: $action (item=${currentMediaItem?.mediaId} pos=${currentPosition}ms " +
+            "playWhenReady=$playWhenReady state=$playbackState)",
+    )
+}
