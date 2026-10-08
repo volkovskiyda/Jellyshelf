@@ -1420,16 +1420,16 @@ private fun PlayerPanel(
                 .background(Color.Black.copy(alpha = PANEL_BACKGROUND_ALPHA))
                 // Swallow taps on the panel body so only the outside scrim dismisses.
                 .pointerInput(Unit) { detectTapGestures { } },
-            // No cutout padding here: each row steps around the cutout itself, inside its own
-            // highlight, so every row spans the full width and only one beside the camera moves.
+            // No cutout padding, here or on the rows: every row spans the full width and keeps
+            // one alignment. A row stepping around the camera on its own broke the column's left
+            // edge and jumped sideways as it scrolled past the hole; padding the whole panel cut
+            // the current row's highlight short. A row passing the camera is a moment in a scroll.
         ) {
             Text(
                 title,
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier
-                    .cutoutPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
             content()
         }
@@ -1480,7 +1480,6 @@ internal fun ChaptersPanel(
                             onLongClick = { copyChapter(chapter.title) },
                             onLongClickLabel = copyLabel,
                         )
-                        .cutoutPadding()
                         .padding(horizontal = 20.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1552,7 +1551,6 @@ internal fun QueuePanel(
                         .background(if (highlight) currentRowTint else Color.Transparent)
                         .clickable { onEntryClick(index) }
                         .semantics { selected = highlight }
-                        .cutoutPadding()
                         .padding(start = 20.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
