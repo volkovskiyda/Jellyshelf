@@ -17,16 +17,24 @@ plugins {
 // yields an empty map. Both callers read a git-ignored file that has a committed .example.*
 // template: .test.env carries the opt-in live-endpoint test config, keystore.properties the
 // release signing values.
-fun loadEnv(file: java.io.File): Map<String, String> =
-    file.takeIf { it.exists() }?.readLines()
-        ?.mapNotNull { line ->
-            line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
-                ?.split("=", limit = 2)?.takeIf { it.size == 2 }
-                ?.let { (k, v) -> k.trim() to v.trim() }
-        }?.toMap().orEmpty()
+//
+// Read through `providers.fileContents` rather than `File.readLines()`, so the file is a declared
+// input of the configuration rather than an ambient read. The map is still resolved here: every
+// consumer below is a plain-valued AGP DSL field (signing passwords, runner arguments), none of
+// which takes a Provider.
+fun loadEnv(name: String): Map<String, String> =
+    providers.fileContents(layout.settingsDirectory.file(name)).asText
+        .map { text ->
+            text.lineSequence().mapNotNull { line ->
+                line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
+                    ?.split("=", limit = 2)?.takeIf { it.size == 2 }
+                    ?.let { (k, v) -> k.trim() to v.trim() }
+            }.toMap()
+        }
+        .getOrElse(emptyMap())
 
-val testEnv = loadEnv(rootProject.file(".test.env"))
-val keystoreEnv = loadEnv(rootProject.file("keystore.properties"))
+val testEnv = loadEnv(".test.env")
+val keystoreEnv = loadEnv("keystore.properties")
 
 // Versioning is a CI concern; nothing here is edited per release. Both workflows pass
 // -PbuildNumber=$(git rev-list --count HEAD) — one monotonic versionCode shared by App Distribution

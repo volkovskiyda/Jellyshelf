@@ -5,15 +5,18 @@ plugins {
 
 // Same loadEnv as :app (see app/build.gradle.kts): the generator's real-server journey reads the
 // live-test credentials from the git-ignored .test.env and skips itself when they are absent.
-fun loadEnv(file: java.io.File): Map<String, String> =
-    file.takeIf { it.exists() }?.readLines()
-        ?.mapNotNull { line ->
-            line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
-                ?.split("=", limit = 2)?.takeIf { it.size == 2 }
-                ?.let { (k, v) -> k.trim() to v.trim() }
-        }?.toMap().orEmpty()
+fun loadEnv(name: String): Map<String, String> =
+    providers.fileContents(layout.settingsDirectory.file(name)).asText
+        .map { text ->
+            text.lineSequence().mapNotNull { line ->
+                line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
+                    ?.split("=", limit = 2)?.takeIf { it.size == 2 }
+                    ?.let { (k, v) -> k.trim() to v.trim() }
+            }.toMap()
+        }
+        .getOrElse(emptyMap())
 
-val testEnv = loadEnv(rootProject.file(".test.env"))
+val testEnv = loadEnv(".test.env")
 
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf.baselineprofile"
