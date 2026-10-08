@@ -64,13 +64,14 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 //
 // `./gradlew ktlintCheck` runs the task in every project that has one, so the aggregate command
 // stays a single word; `ktlintFormat` is the same set, fixing rather than reporting.
-val ktlintVersion = libs.versions.ktlint.get()
+val ktlintVersion: Provider<String> = libs.versions.ktlint
 allprojects {
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
 
     extensions.configure<KtlintExtension> {
         // Pinned from the catalog. Left unset, the plugin picks its own default, which moves with
-        // every plugin bump and takes the whole codebase's formatting with it.
+        // every plugin bump and takes the whole codebase's formatting with it. Handed over as the
+        // catalog's provider, not its value: `version` is a Property, so nothing needs resolving here.
         version.set(ktlintVersion)
         // No baseline and no tolerance, matching detekt's `maxIssues: 0`: a finding fails the
         // build. `ktlintFormat` fixes the great majority of them in place.
