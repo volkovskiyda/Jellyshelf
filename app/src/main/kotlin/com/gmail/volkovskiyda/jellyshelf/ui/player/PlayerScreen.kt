@@ -891,12 +891,12 @@ internal fun PlayerControls(
     // No full-screen scrim: BottomControls paints its own gradient behind the seek bar, so more of
     // the video stays visible while the controls are up. The centre buttons and the top bar then
     // sit on raw video and carry their own backings instead. The controls stay clear of the display
-    // cutout, whose insets — unlike the hidden system bars' — never drop to zero on notched devices.
-    Box(
-        modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.displayCutout),
-    ) {
+    // cutout, whose insets — unlike the hidden system bars' — never drop to zero on notched devices,
+    // but each row pads for it *inside* its gradient: padding this whole box instead would stop both
+    // gradients short of the cutout and leave a strip of undimmed video beside the camera. The
+    // centre row takes no cutout padding at all, so it stays centred on the video, not off by half
+    // an inset.
+    Box(modifier.fillMaxSize()) {
         // Each PlayerDefaults layout goes inside its own aligned Box rather than being handed a
         // Modifier.align: they apply the modifier they are given to the content *inside* their
         // AnimatedVisibility, so the parent data never reaches this Box and all three would stack
@@ -907,7 +907,11 @@ internal fun PlayerControls(
                 // rest rather than popping. Its own gradient stands in for the scrim that used to
                 // back it — without one the white title and icons wash out over a bright frame.
                 Row(
-                    Modifier.fillMaxWidth().background(topControlsGradient()).padding(4.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .background(topControlsGradient())
+                        .windowInsetsPadding(WindowInsets.displayCutout)
+                        .padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     BackButton(onClick = onBack, tint = Color.White)
@@ -1030,7 +1034,12 @@ internal fun PlayerControls(
             PlayerDefaults.BottomControls(
                 player = player,
                 visible = visible,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                // media3 paints the gradient on the AnimatedVisibility *around* this modifier, so
+                // the cutout padding here moves the row in while the gradient stays edge to edge.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(bottom = 12.dp),
                 above = {
                     if (chapters.isNotEmpty()) {
                         ChapterStepRow(chapters, shownMs, onSeek, onFinish, onOpenChapters)
