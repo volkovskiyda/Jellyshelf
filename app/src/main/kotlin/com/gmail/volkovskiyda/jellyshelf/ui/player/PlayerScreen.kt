@@ -22,14 +22,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -279,14 +276,17 @@ fun PlayerScreen(
                 // no controller yet there is nothing to stop, so this is a plain leave.
                 PlayerPoster(poster, Modifier.matchParentSize())
                 CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-                BackButton(
-                    onClick = leave,
-                    modifier = Modifier
+                // Full width, like the top bar it stands in for, so the cutout moves it exactly as
+                // it will move the bar's own back button — no jump when the controls arrive.
+                Box(
+                    Modifier
                         .align(Alignment.TopStart)
-                        .windowInsetsPadding(WindowInsets.displayCutout)
+                        .fillMaxWidth()
+                        .cutoutPadding()
                         .padding(4.dp),
-                    tint = Color.White,
-                )
+                ) {
+                    BackButton(onClick = leave, tint = Color.White)
+                }
             } else {
                 PlayerWithControls(
                     controller = c,
@@ -797,7 +797,7 @@ private fun PlayerWithControls(
                 indicator,
                 Modifier
                     .align(Alignment.TopCenter)
-                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .cutoutPadding()
                     .padding(top = 48.dp),
             )
         }
@@ -892,10 +892,10 @@ internal fun PlayerControls(
     // the video stays visible while the controls are up. The centre buttons and the top bar then
     // sit on raw video and carry their own backings instead. The controls stay clear of the display
     // cutout, whose insets — unlike the hidden system bars' — never drop to zero on notched devices,
-    // but each row pads for it *inside* its gradient: padding this whole box instead would stop both
-    // gradients short of the cutout and leave a strip of undimmed video beside the camera. The
-    // centre row takes no cutout padding at all, so it stays centred on the video, not off by half
-    // an inset.
+    // but each row steps around it *inside* its gradient, so the gradients run edge to edge, and
+    // only where the cutout really overlaps it (see cutoutPadding): a mid-height camera costs the
+    // top and bottom rows nothing. The centre row takes no cutout padding at all, so it stays
+    // centred on the video, not off by half an inset.
     Box(modifier.fillMaxSize()) {
         // Each PlayerDefaults layout goes inside its own aligned Box rather than being handed a
         // Modifier.align: they apply the modifier they are given to the content *inside* their
@@ -910,7 +910,7 @@ internal fun PlayerControls(
                     Modifier
                         .fillMaxWidth()
                         .background(topControlsGradient())
-                        .windowInsetsPadding(WindowInsets.displayCutout)
+                        .cutoutPadding()
                         .padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1038,7 +1038,7 @@ internal fun PlayerControls(
                 // the cutout padding here moves the row in while the gradient stays edge to edge.
                 modifier = Modifier
                     .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .cutoutPadding()
                     .padding(bottom = 12.dp),
                 above = {
                     if (chapters.isNotEmpty()) {
@@ -1409,9 +1409,8 @@ private fun PlayerPanel(
         modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = PANEL_SCRIM_ALPHA))
-            .pointerInput(Unit) { detectTapGestures { onDismiss() } }
-            // Scrim and tap-to-dismiss span everything; the panel stays out of the cutout.
-            .windowInsetsPadding(WindowInsets.displayCutout),
+            // Scrim and tap-to-dismiss span everything.
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
     ) {
         Column(
             Modifier
@@ -1420,7 +1419,9 @@ private fun PlayerPanel(
                 .heightIn(max = PANEL_MAX_HEIGHT)
                 .background(Color.Black.copy(alpha = PANEL_BACKGROUND_ALPHA))
                 // Swallow taps on the panel body so only the outside scrim dismisses.
-                .pointerInput(Unit) { detectTapGestures { } },
+                .pointerInput(Unit) { detectTapGestures { } }
+                // Inside the panel's own background, which then runs edge to edge like the bars'.
+                .cutoutPadding(),
         ) {
             Text(
                 title,
