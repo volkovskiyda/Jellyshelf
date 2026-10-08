@@ -464,6 +464,7 @@ private fun PlayerControlsWithChapters() {
         PlayerControls(
             player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
             visible = true,
+            buffering = false,
             title = "A reasonably long video title that wraps onto a second line",
             positionMs = 200_000L,
             durationMs = 754_000L,
@@ -510,6 +511,7 @@ private fun PlayerControlsSingleVideo() {
         PlayerControls(
             player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
             visible = true,
+            buffering = false,
             title = "The only video in the queue",
             positionMs = 200_000L,
             durationMs = 754_000L,
@@ -552,6 +554,7 @@ private fun PlayerControlsPortrait() {
         PlayerControls(
             player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
             visible = true,
+            buffering = false,
             title = "The first video in the queue",
             positionMs = 200_000L,
             durationMs = 754_000L,
@@ -579,6 +582,67 @@ private fun PlayerControlsPortrait() {
             onEnterPip = {},
         )
     }
+}
+
+/**
+ * The same controls while the stream buffers: the ring on the play button's rim, over the icon,
+ * where the centred spinner used to be. One golden for the row as a whole, so the ring's stroke
+ * and radius are checked against the disc it sits on and the icon it must not crowd.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun PlayerControlsBuffering() {
+    PreviewTheme(darkTheme = true) {
+        PlayerControlsPreview(visible = true, buffering = true)
+    }
+}
+
+/**
+ * Buffering with the controls hidden: only the centre button comes up, ring and all, in the spot
+ * the row would put it. Nothing else — no top bar, no seek bar — which is the point of the golden.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun PlayerControlsBufferingHidden() {
+    PreviewTheme(darkTheme = true) {
+        PlayerControlsPreview(visible = false, buffering = true)
+    }
+}
+
+@Composable
+private fun PlayerControlsPreview(visible: Boolean, buffering: Boolean) {
+    PlayerControls(
+        player = remember { FakePlayer(durationMs = 754_000L, positionMs = 200_000L) },
+        visible = visible,
+        buffering = buffering,
+        title = "The first video in the queue",
+        positionMs = 200_000L,
+        durationMs = 754_000L,
+        chapters = emptyList(),
+        speed = 1f,
+        hasPrevious = false,
+        hasNext = true,
+        hasQueue = true,
+        onPrevious = {},
+        onNext = {},
+        onOpenQueue = {},
+        onSeek = {},
+        onFinish = {},
+        onSetSpeed = {},
+        rotateFirst = true,
+        scaleMode = VideoScaleMode.FIT,
+        onCycleScaleMode = {},
+        onRotateToLandscape = {},
+        onScrubbingChanged = {},
+        speedMenuOpen = false,
+        onSpeedMenuChanged = {},
+        onOpenChapters = {},
+        onBack = {},
+        onMinimize = {},
+        onEnterPip = {},
+    )
 }
 
 /**

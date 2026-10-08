@@ -660,8 +660,15 @@ private fun PlayerWithControls(
             Box(Modifier.matchParentSize().background(Color.Black))
             PlayerPoster(poster, Modifier.matchParentSize())
         }
-        if (isBuffering) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+        // Buffering is shown on the play button's rim (see PlayPauseControl), which a PiP window
+        // never composes — so the window alone keeps a small spinner of its own, at a size that
+        // does not hide the frame it floats over.
+        if (isBuffering && isInPip) {
+            CircularProgressIndicator(
+                Modifier.align(Alignment.Center).size(PIP_SPINNER_SIZE),
+                color = Color.White,
+                strokeWidth = BUFFERING_RING_STROKE,
+            )
         }
         // PiP stays a hard `if` — a PiP window must not compose controls at all — while
         // controlsVisible moves inside, because PlayerDefaults' layouts animate on it and gating
@@ -670,6 +677,7 @@ private fun PlayerWithControls(
             PlayerControls(
                 player = controller,
                 visible = controlsVisible,
+                buffering = isBuffering,
                 title = title,
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -846,6 +854,7 @@ private fun PlayerPoster(model: String?, modifier: Modifier = Modifier) {
 internal fun PlayerControls(
     player: Player?,
     visible: Boolean,
+    buffering: Boolean,
     title: String?,
     positionMs: Long,
     durationMs: Long,
@@ -997,7 +1006,7 @@ internal fun PlayerControls(
                     )
                 },
                 back = { SeekBackControl(it) },
-                central = { PlayPauseControl(it) },
+                central = { PlayPauseControl(it, buffering) },
                 forward = { SeekForwardControl(it) },
                 forwardSecondary = {
                     TransportButton(
@@ -1008,6 +1017,13 @@ internal fun PlayerControls(
                     )
                 },
             )
+            // A rebuffer with the controls hidden would otherwise show nothing at all now that the
+            // spinner lives on the button: the centre button alone comes up with its ring, in the
+            // same spot the row would put it, and tapping it still pauses. The rest of the row
+            // stays down — this is a notice, not an invitation to scrub.
+            if (!visible && buffering) {
+                PlayPauseControl(player, buffering = true, modifier = Modifier.align(Alignment.Center))
+            }
         }
 
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
@@ -1133,19 +1149,39 @@ private fun SeekForwardControl(player: Player?) {
     }
 }
 
-/** The centre button, larger than the rest, off media3's own play/pause state. */
+/**
+ * The centre button, larger than the rest, off media3's own play/pause state.
+ *
+ * [buffering] draws an indeterminate ring on the disc's rim, over the icon: the player's "working"
+ * signal lives here rather than as a separate spinner in the middle of the frame, so a stall and
+ * the one control that answers it (pause, or play again) are the same thing on screen. The icon
+ * stays, because the button is still that button — a ring around Pause while a stream catches up
+ * is the state, not a replacement for it.
+ */
 @Composable
-private fun PlayPauseControl(player: Player?) {
+private fun PlayPauseControl(player: Player?, buffering: Boolean, modifier: Modifier = Modifier) {
     val state = rememberPlayPauseButtonState(player)
-    IconButton(onClick = state::onClick, modifier = Modifier.size(72.dp).controlBacking()) {
-        Icon(
-            if (state.showPlay) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-            contentDescription = stringResource(
-                if (state.showPlay) R.string.play else R.string.pause,
-            ),
-            tint = Color.White,
-            modifier = Modifier.size(56.dp),
-        )
+    IconButton(onClick = state::onClick, modifier = modifier.size(72.dp).controlBacking()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                if (state.showPlay) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                contentDescription = stringResource(
+                    if (state.showPlay) R.string.play else R.string.pause,
+                ),
+                tint = Color.White,
+                modifier = Modifier.size(56.dp),
+            )
+            if (buffering) {
+                // No track: the disc's own edge is the track, and a second faint ring there read
+                // as a progress bar rather than as activity (the 2026-10-08 variant render).
+                CircularProgressIndicator(
+                    Modifier.matchParentSize(),
+                    color = Color.White,
+                    strokeWidth = BUFFERING_RING_STROKE,
+                    trackColor = Color.Transparent,
+                )
+            }
+        }
     }
 }
 
@@ -1660,6 +1696,12 @@ private const val MILLIS_PER_SECOND = 1_000L
 
 /** The disc behind each centre transport button, now that no full-screen scrim backs them. */
 private const val CONTROL_BACKING_ALPHA = 0.35f
+
+/** Thin enough to sit on the disc's edge without eating into the 56 dp icon inside it. */
+private val BUFFERING_RING_STROKE = 3.dp
+
+/** The PiP window's own spinner: small, since it floats over a thumbnail-sized frame. */
+private val PIP_SPINNER_SIZE = 32.dp
 
 /** The top bar's own gradient, standing in for the scrim BottomControls replaced below. */
 private const val TOP_GRADIENT_ALPHA = 0.5f

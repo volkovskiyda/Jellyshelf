@@ -121,6 +121,7 @@ class PlayerControlsTest {
                     // hands it one frozen at a fixed position rather than plain values.
                     player = remember { FakePlayer(durationMs = 600_000L, positionMs = positionMs) },
                     visible = true,
+                    buffering = false,
                     title = "Sample video",
                     positionMs = positionMs,
                     durationMs = 600_000L,
