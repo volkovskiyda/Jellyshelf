@@ -213,6 +213,13 @@ firebase-config = { group = "com.google.firebase", name = "firebase-config" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "androidxBrowser" }
 androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-performance", version.ref = "androidxMetrics" }
 androidx-tracing = { group = "androidx.tracing", name = "tracing", version.ref = "androidxTracing" }
+# build-logic's classpath, nothing else's: the included build compiles the jellyshelf.* convention
+# plugins against AGP and ktlint-gradle. KGP is named too because AGP 9.4.1's POM asks for
+# kotlin-gradle-plugin 2.2.10 while the root resolves the kotlin ref through the plugins it applies;
+# listing it keeps the included build on the same version. All three ride the refs that already exist.
+android-gradle-plugin = { group = "com.android.tools.build", name = "gradle", version.ref = "agp" }
+kotlin-gradle-plugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
+ktlint-gradle-plugin = { group = "org.jlleitschuh.gradle", name = "ktlint-gradle", version.ref = "ktlintGradle" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

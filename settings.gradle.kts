@@ -1,4 +1,7 @@
 pluginManagement {
+    // The jellyshelf.* convention plugins (ktlint, and the Android module configuration) are
+    // compiled by this included build; the three project build scripts apply them by id.
+    includeBuild("build-logic")
     repositories {
         google {
             content {

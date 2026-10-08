@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.firebase.perf)
     alias(libs.plugins.kotzilla)
     alias(libs.plugins.androidx.baselineprofile)
+    id("jellyshelf.ktlint")
 }
 
 // Reads KEY=VALUE lines from a repo-root config file (blanks/comments ignored); a missing file

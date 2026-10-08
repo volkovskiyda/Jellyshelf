@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.test)
     alias(libs.plugins.androidx.baselineprofile)
+    id("jellyshelf.ktlint")
 }
 
 // Same loadEnv as :app (see app/build.gradle.kts): the generator's real-server journey reads the

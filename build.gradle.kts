@@ -1,6 +1,3 @@
-import org.jlleitschuh.gradle.ktlint.KtlintExtension
-import org.jlleitschuh.gradle.ktlint.reporter.ReporterType
-
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     alias(libs.plugins.android.application) apply false
@@ -23,13 +20,14 @@ plugins {
     // the symptom of getting it wrong is a compile error naming KotzillaScreenHost.
     alias(libs.plugins.kotzilla)
     alias(libs.plugins.detekt)
-    // Applied to every project below rather than here, so `apply false`.
-    alias(libs.plugins.ktlint) apply false
+    // Formatting. The convention plugin (build-logic/) applies and configures ktlint; :app and
+    // :baselineprofile name it in their own plugins blocks too, so every project is covered.
+    id("jellyshelf.ktlint")
 }
 
 // Static analysis for the whole repo, in two tools with no overlap between them. Android lint
 // covers the platform-specific checks (see app/build.gradle.kts, checkAllWarnings = true); detekt
-// covers Kotlin complexity, naming and style; ktlint below owns formatting.
+// covers Kotlin complexity, naming and style; ktlint (the jellyshelf.ktlint plugin) owns formatting.
 //
 // detekt used to own formatting too, through the detekt-formatting plugin — which is ktlint's rule
 // set wrapped in detekt rules, running whatever ktlint version detekt 1.23.8 happens to embed.
@@ -56,41 +54,12 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     }
 }
 
-// Formatting, applied to every project rather than pointed at source directories from here the way
-// detekt is. The two plugins discover files differently: detekt takes a `source` set of paths,
-// while ktlint walks each project's own Kotlin source sets (and, in an Android project, each
-// variant's). Applying it only at the root would therefore lint the three build scripts and not one
-// line of app code. `allprojects` includes the root, which is how the scripts stay covered.
-//
-// `./gradlew ktlintCheck` runs the task in every project that has one, so the aggregate command
-// stays a single word; `ktlintFormat` is the same set, fixing rather than reporting.
-val ktlintVersion: Provider<String> = libs.versions.ktlint
-allprojects {
-    apply(plugin = "org.jlleitschuh.gradle.ktlint")
-
-    extensions.configure<KtlintExtension> {
-        // Pinned from the catalog. Left unset, the plugin picks its own default, which moves with
-        // every plugin bump and takes the whole codebase's formatting with it. Handed over as the
-        // catalog's provider, not its value: `version` is a Property, so nothing needs resolving here.
-        version.set(ktlintVersion)
-        // No baseline and no tolerance, matching detekt's `maxIssues: 0`: a finding fails the
-        // build. `ktlintFormat` fixes the great majority of them in place.
-        ignoreFailures.set(false)
-        // Rule ids alongside the message, so a finding says which rule to look up (or to disable in
-        // .editorconfig) rather than only what it disliked.
-        verbose.set(true)
-        reporters {
-            // Read in the terminal during a run.
-            reporter(ReporterType.PLAIN)
-            // Read by :app:testSummary, which parses checkstyle XML for both static-analysis tools.
-            reporter(ReporterType.CHECKSTYLE)
-            // Read by a human afterwards, and what the summary page links to.
-            reporter(ReporterType.HTML)
-        }
-        filter {
-            // Generated Kotlin is on the variant source sets AGP hands the plugin — Room's and
-            // Koin's KSP output, and the screenshot plugin's — and none of it is ours to format.
-            exclude { it.file.path.contains("${File.separator}build${File.separator}") }
-        }
-    }
+// ktlint is applied per project by the jellyshelf.ktlint convention plugin (build-logic/); each of
+// the three build scripts names it in its own plugins block, and the plugin carries the explanation
+// of why it is per project. The root's aggregate tasks also reach into build-logic, which is an
+// included build and so outside `./gradlew ktlintCheck`'s own project set — without this, its
+// Kotlin would be the one folder nothing formats. Both names are the ktlint plugin's documented
+// lifecycle tasks with no actions of their own, so wiring them with dependsOn is the intended use.
+listOf("ktlintCheck", "ktlintFormat").forEach { name ->
+    tasks.named(name) { dependsOn(gradle.includedBuild("build-logic").task(":$name")) }
 }
