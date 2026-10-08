@@ -46,18 +46,7 @@ android {
         // The instrumentation runner and the live-test runner arguments (.test.env, with the
         // whitespace guard the unquoted `am instrument` line demands) are set by jellyshelf.android.
 
-        // Measurements out of the default run. BrowseCostBenchmark seeds 10,000 rows and times six
-        // paths (~50 s) and asserts nothing worth a suite run, so it is filtered out here rather than
-        // `@Ignore`d: since AGP 9.4.1 the connected-test engine fails the whole task on an ignored
-        // class — one empty <failure> on a case named "null" — which left every device run red with
-        // nothing failing. A filtered class is never handed to the runner, so it leaves no trace.
-        // Naming a class on the command line (`-Pandroid.testInstrumentationRunnerArguments.class=…`)
-        // drops the filter, so `class=…BrowseCostBenchmark` runs it with no edit — a blank override
-        // would not do, see the unquoted `am instrument` line in jellyshelf.android (build-logic/).
-        if (!providers.gradleProperty("android.testInstrumentationRunnerArguments.class").isPresent) {
-            testInstrumentationRunnerArguments["notClass"] =
-                "com.gmail.volkovskiyda.jellyshelf.data.local.BrowseCostBenchmark"
-        }
+        // The BrowseCostBenchmark filter is set through the variant API, in androidComponents below.
 
         // youtubedl-android bundles a Python runtime per ABI. Ship arm64 only — it covers
         // virtually all modern physical devices and keeps the APK from ballooning across ABIs.
@@ -224,6 +213,26 @@ kotzilla {
 // build type after any configureEach there has run, so this has to be the last word. benchmarkRelease
 // is deliberately left minified — that variant exists to be release-like.
 androidComponents {
+    // Measurements out of the default run. BrowseCostBenchmark seeds 10,000 rows and times six
+    // paths (~50 s) and asserts nothing worth a suite run, so it is filtered out here rather than
+    // `@Ignore`d: since AGP 9.4.1 the connected-test engine fails the whole task on an ignored
+    // class — one empty <failure> on a case named "null" — which left every device run red with
+    // nothing failing. A filtered class is never handed to the runner, so it leaves no trace.
+    // Naming a class on the command line (`-Pandroid.testInstrumentationRunnerArguments.class=…`)
+    // drops the filter, so `class=…BrowseCostBenchmark` runs it with no edit — a blank override
+    // would not do, see the unquoted `am instrument` line in jellyshelf.android (build-logic/).
+    //
+    // As a provider on the variant API's runner-argument map rather than an `isPresent` test on the
+    // DSL: the command-line property decides at execution time whether the filter goes in.
+    onVariants { variant ->
+        variant.deviceTests.values.forEach { test ->
+            test.instrumentationRunnerArguments.putAll(
+                providers.gradleProperty("android.testInstrumentationRunnerArguments.class")
+                    .map { emptyMap<String, String>() }
+                    .orElse(mapOf("notClass" to "com.gmail.volkovskiyda.jellyshelf.data.local.BrowseCostBenchmark")),
+            )
+        }
+    }
     finalizeDsl { android ->
         // Neither profiling variant may share the shipped app's application id. They did once, and
         // a generation run then installed *over* the release build on the device: it signed that

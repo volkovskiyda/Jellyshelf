@@ -1,5 +1,8 @@
 import com.android.build.api.dsl.CommonExtension
-import jellyshelf.loadEnv
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
+import com.android.build.api.variant.GeneratesTestApk
+import com.android.build.api.variant.TestAndroidComponentsExtension
+import jellyshelf.envFile
 import org.gradle.api.artifacts.VersionCatalogsExtension
 
 // Everything :app and :baselineprofile configure identically: the SDK levels, the Java level, the
@@ -35,7 +38,50 @@ pluginManager.withPlugin("com.android.base") {
     // same way, which is what the guard below refuses rather than leaves to be diagnosed as
     // "Invalid userId -2" — it is the metadata API token that makes this reachable: unlike every
     // other value here it is an opaque secret, so nothing about it says it may not contain a space.
-    val testEnv = loadEnv(".test.env")
+    //
+    // Lazy end to end: the file is read, filtered and guarded only when a connected-test task
+    // computes its arguments, through the variant API's MapProperty below. So the guard now fails
+    // the builds that would carry a bad value to a device, and no longer every build — a broken
+    // .test.env does not stop `assembleDebug`.
+    val liveTestArguments = envFile(".test.env").map { testEnv ->
+        mapOf(
+            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"],
+            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"],
+            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"],
+            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"],
+            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"],
+            "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"],
+            "jellyfinTestItemId" to testEnv["JELLYFIN_TEST_ITEM_ID"],
+            // The metadata API pair is the one config LiveMetadataApiTest owns: filled, that suite
+            // runs; blank, it skips and the live run covers the no-metadata-API path every other
+            // live test already exercises. See .example.test.env.
+            "jellyfinMetadataApiUrl" to testEnv["JELLYFIN_METADATA_API_URL"],
+            "jellyfinMetadataApiToken" to testEnv["JELLYFIN_METADATA_API_TOKEN"],
+        ).filterValues { !it.isNullOrBlank() }.mapValues { (_, value) -> value!! }
+            .onEach { (key, value) ->
+                require(value.none { it.isWhitespace() }) {
+                    "$key contains whitespace. It reaches the device on one unquoted `am instrument` " +
+                        "command line, where a space shifts every argument after it and the run " +
+                        "executes no tests at all — fix the value in .test.env."
+                }
+            }
+    }
+    // Every test APK the module builds: the device-test components of an application variant, or
+    // the variant itself in a com.android.test module. Both expose instrumentationRunnerArguments as
+    // a MapProperty, which takes the provider as is.
+    val addLiveTestArguments = { testApk: GeneratesTestApk ->
+        testApk.instrumentationRunnerArguments.putAll(liveTestArguments)
+    }
+    pluginManager.withPlugin("com.android.application") {
+        extensions.configure<ApplicationAndroidComponentsExtension> {
+            onVariants { variant -> variant.deviceTests.values.forEach(addLiveTestArguments) }
+        }
+    }
+    pluginManager.withPlugin("com.android.test") {
+        extensions.configure<TestAndroidComponentsExtension> {
+            onVariants(selector().all(), addLiveTestArguments)
+        }
+    }
     // Through the getters with `apply`: the `defaultConfig { }` and `compileOptions { }` block
     // forms exist only on the ApplicationExtension / TestExtension sub-interfaces (each with its
     // own DefaultConfig type), while CommonExtension — the one type both modules share — has the
@@ -46,27 +92,6 @@ pluginManager.withPlugin("com.android.base") {
         defaultConfig.apply {
             minSdk = sdk("minSdk")
             testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-            testInstrumentationRunnerArguments += mapOf(
-                "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"],
-                "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"],
-                "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"],
-                "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"],
-                "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"],
-                "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"],
-                "jellyfinTestItemId" to testEnv["JELLYFIN_TEST_ITEM_ID"],
-                // The metadata API pair is the one config LiveMetadataApiTest owns: filled, that
-                // suite runs; blank, it skips and the live run covers the no-metadata-API path
-                // every other live test already exercises. See .example.test.env.
-                "jellyfinMetadataApiUrl" to testEnv["JELLYFIN_METADATA_API_URL"],
-                "jellyfinMetadataApiToken" to testEnv["JELLYFIN_METADATA_API_TOKEN"],
-            ).filterValues { !it.isNullOrBlank() }.mapValues { (_, value) -> value!! }
-                .onEach { (key, value) ->
-                    require(value.none { it.isWhitespace() }) {
-                        "$key contains whitespace. It reaches the device on one unquoted `am instrument` " +
-                            "command line, where a space shifts every argument after it and the run " +
-                            "executes no tests at all — fix the value in .test.env."
-                    }
-                }
         }
 
         compileOptions.apply {

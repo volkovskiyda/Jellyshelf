@@ -12,7 +12,8 @@ android {
     // jellyshelf.android. The generator's real-server journey reads five of those arguments and
     // skips itself when they are absent; the other four (:app's test item and metadata API config)
     // arrive too and cost nothing — every test reads each extra with `orEmpty()`. The whitespace
-    // guard now applies here as well, which this module never had on its own.
+    // guard now applies here as well, which this module never had on its own. They are added
+    // through the variant API, so they sit beside the class and targetAppId arguments below.
     targetProjectPath = ":app"
 }
 
@@ -34,12 +35,14 @@ android {
 // Naming a class on the command line still wins, as in :app.
 androidComponents {
     onVariants { variant ->
-        if (variant.buildType == "nonMinifiedRelease" &&
-            !providers.gradleProperty("android.testInstrumentationRunnerArguments.class").isPresent
-        ) {
+        if (variant.buildType == "nonMinifiedRelease") {
+            // The command-line class when one is named, the generator otherwise — a provider, so
+            // nothing is decided before the task runs. Putting the command-line value back is a
+            // no-op: it is the value AGP would have passed anyway.
             variant.instrumentationRunnerArguments.put(
                 "class",
-                "com.gmail.volkovskiyda.jellyshelf.baselineprofile.BaselineProfileGenerator",
+                providers.gradleProperty("android.testInstrumentationRunnerArguments.class")
+                    .orElse("com.gmail.volkovskiyda.jellyshelf.baselineprofile.BaselineProfileGenerator"),
             )
         }
         val builtArtifacts = variant.artifacts.getBuiltArtifactsLoader()
