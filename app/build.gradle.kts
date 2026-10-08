@@ -334,14 +334,18 @@ val adbPath: Provider<String> = providers.environmentVariable("ANDROID_HOME")
     .map { "$it/platform-tools/adb" }
     .orElse("adb")
 
-tasks.matching { it.name.startsWith("connected") && it.name.endsWith("AndroidTest") }
+// `named` with a name filter rather than `matching`: the latter has to realise every task in the
+// project to test its predicate, this one tests names and configures only what matches.
+tasks.named { it.startsWith("connected") && it.endsWith("AndroidTest") }
     .configureEach {
-        // Resolved at configuration time (a declared build input); the probe itself runs in the
-        // onlyIf predicate, i.e. at execution time, so no build ever shells out to adb needlessly.
-        val adb = adbPath.get()
+        // The provider is captured as is and read inside the onlyIf predicate, i.e. at execution
+        // time — so neither the environment nor adb is consulted by a build that never gets here.
+        // Bound to a local first: a lambda that reached for the script-level `adbPath` directly
+        // would capture the whole build script, which the configuration cache cannot serialize.
+        val adb = adbPath
         onlyIf {
             val attached = runCatching {
-                ProcessBuilder(adb, "devices").redirectErrorStream(true).start()
+                ProcessBuilder(adb.get(), "devices").redirectErrorStream(true).start()
                     .inputStream.bufferedReader().readLines()
                     .drop(1) // "List of devices attached"
                     // Ignore "offline" and "unauthorized" — neither can run a test.
