@@ -796,11 +796,12 @@ if [[ "$RUN_CHECKS" -eq 1 ]]; then
   # lint the Android-specific checks. lintDebug only — the release variant would report the same
   # findings twice.
   #
-  # `ktlintCheck` unqualified, unlike the two beside it: ktlint is applied to every project (see the
-  # root build.gradle.kts), so the bare name runs it in all of them — the root's build scripts and
-  # settings.gradle.kts, :app's source sets and :baselineprofile's. Qualifying it would silently
-  # drop two thirds of the repo. A finding here is usually one command away from fixed:
-  # `./gradlew ktlintFormat`.
+  # `ktlintCheck` unqualified, unlike the two beside it: ktlint is applied to every project
+  # (through the `jellyshelf.ktlint` convention plugin in build-logic/, which the root's ktlintCheck
+  # also reaches into), so the bare name runs it in all of them — the root's build scripts and
+  # settings.gradle.kts, :app's source sets, :baselineprofile's, and build-logic's own convention
+  # plugins. Qualifying it would silently drop most of the repo. A finding here is usually one
+  # command away from fixed: `./gradlew ktlintFormat`.
   #
   # `--continue` is load-bearing, and it is the whole reason this layer names its own Gradle flag.
   # Without it Gradle stops at the first task that fails, so one detekt finding hides every ktlint

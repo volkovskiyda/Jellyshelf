@@ -35,7 +35,9 @@ plugins {
 // engines free to disagree, so detekt-formatting was dropped when ktlint arrived. Anything that
 // looks like a missing formatting rule now belongs in .editorconfig, not in detekt.yml.
 detekt {
-    source.from(files("app/src", "baselineprofile/src"))
+    // build-logic/src too: the convention plugins are Kotlin like the rest, and an included build
+    // is outside the root's own project set, so nothing else would check them.
+    source.from(files("app/src", "baselineprofile/src", "build-logic/src"))
     config.from(files("config/detekt/detekt.yml"))
     // The config file holds only this project's overrides; everything else comes from detekt's
     // defaults, so a version bump brings new rules instead of freezing a 500-line copy.

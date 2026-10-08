@@ -726,10 +726,13 @@ Both are optional; copy the committed `.example.*` template and fill it in when 
 | `app/kotzilla.json` | git-ignored | Kotzilla ingestion keys, one per build type. The odd one out: it sits in `app/`, not at the repo root, because that is where the plugin looks. Absent → the Kotzilla plugin turns itself off and the build is unchanged. |
 | `.example.kotzilla.json` | committed | Template for `app/kotzilla.json`. |
 
-Gradle's `loadEnv` reads both. The test config is passed to the instrumentation tests as runtime
-runner arguments (`am instrument -e` extras), so it is never compiled into any `BuildConfig` and
-changing it needs no rebuild. `app/kotzilla.json` is read by the Kotzilla Gradle plugin instead of
-`loadEnv`, and only the delivery CI jobs restore it — see [docs/RELEASING.md](docs/RELEASING.md).
+Gradle's `loadEnv` reads both. It lives in `build-logic/` (`jellyshelf/EnvFile.kt`), the included
+build that holds the project's convention plugins: the `jellyshelf.android` plugin reads `.test.env`
+for both Android modules, and `app/build.gradle.kts` reads `keystore.properties` for itself. The test
+config is passed to the instrumentation tests as runtime runner arguments (`am instrument -e`
+extras), so it is never compiled into any `BuildConfig` and changing it needs no rebuild.
+`app/kotzilla.json` is read by the Kotzilla Gradle plugin instead of `loadEnv`, and only the
+delivery CI jobs restore it — see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 
