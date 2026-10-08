@@ -86,11 +86,11 @@ composeScreenshot = "0.0.1-alpha16"
 # mapping file, perf-plugin weaves network/@AddTrace instrumentation into release bytecode
 # (2.0.1 is the first release compatible with AGP 9).
 googleServices = "4.5.0"
-firebaseBom = "34.19.0"
+firebaseBom = "35.0.0"
 # App Distribution is the exception to the BoM rule above: firebase-bom 34.17.0 lists 28 artifacts
 # and none of them is an App Distribution one (verified 2026-08-06), so these two pin their own
 # version — and need their own bump, which nothing else here does. Still upstream beta after years.
-firebaseAppDistribution = "16.0.0-beta20"
+firebaseAppDistribution = "16.0.0-beta21"
 firebaseCrashlyticsPlugin = "3.0.8"
 firebasePerfPlugin = "2.0.2"
 # Baseline profile. The benchmark family (the plugin and macro-junit4) ships as a set and shares one
