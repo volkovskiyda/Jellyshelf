@@ -57,3 +57,16 @@
     public *** wtf(...);
     public *** log(...);
 }
+
+# Firebase Performance serialises its traces with protobuf-javalite, whose generated messages
+# hand MessageSchema their field names as string literals ("name_", "packageName_", …) and let
+# it find each field by reflection. R8 renames those fields, and it only rewrites the literals
+# to match when it recognises the generated shape: it did for the protobuf 3.25.5 that
+# firebase-perf 22.0.6 pulled in, and does not for the 4.36.1 that 23.0.0 (Firebase BoM
+# 35.0.0) brought — every release launch then died in AppStartTrace with "NoSuchFieldException:
+# No field name_ in class TraceMetric", before Crashlytics or Kotzilla could report anything.
+# This is the rule the protobuf project documents for javalite. Only the field names need
+# keeping — that is all the schema looks up — so the classes themselves stay shrinkable.
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite {
+    <fields>;
+}
