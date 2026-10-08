@@ -1,7 +1,11 @@
+import jellyshelf.loadEnv
 import java.time.LocalDateTime
 
 plugins {
     alias(libs.plugins.android.application)
+    // SDK levels, Java level, runner and the live-test runner arguments — shared with
+    // :baselineprofile through build-logic/; it configures the plugin above once it is applied.
+    id("jellyshelf.android")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
@@ -14,27 +18,9 @@ plugins {
     id("jellyshelf.ktlint")
 }
 
-// Reads KEY=VALUE lines from a repo-root config file (blanks/comments ignored); a missing file
-// yields an empty map. Both callers read a git-ignored file that has a committed .example.*
-// template: .test.env carries the opt-in live-endpoint test config, keystore.properties the
-// release signing values.
-//
-// Read through `providers.fileContents` rather than `File.readLines()`, so the file is a declared
-// input of the configuration rather than an ambient read. The map is still resolved here: every
-// consumer below is a plain-valued AGP DSL field (signing passwords, runner arguments), none of
-// which takes a Provider.
-fun loadEnv(name: String): Map<String, String> =
-    providers.fileContents(layout.settingsDirectory.file(name)).asText
-        .map { text ->
-            text.lineSequence().mapNotNull { line ->
-                line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
-                    ?.split("=", limit = 2)?.takeIf { it.size == 2 }
-                    ?.let { (k, v) -> k.trim() to v.trim() }
-            }.toMap()
-        }
-        .getOrElse(emptyMap())
-
-val testEnv = loadEnv(".test.env")
+// Release signing values from the git-ignored keystore.properties (committed template:
+// .example.keystore.properties). The reader is build-logic's; the same one fills the live-test
+// runner arguments from .test.env inside jellyshelf.android, so this module reads only its own file.
 val keystoreEnv = loadEnv("keystore.properties")
 
 // Versioning is a CI concern; nothing here is edited per release. Both workflows pass
@@ -49,50 +35,16 @@ val buildNumber = (findProperty("buildNumber") as String?)?.toIntOrNull()
 
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf"
-    compileSdk = libs.versions.compileSdk.get().toInt()
+    // compileSdk comes from jellyshelf.android; targetSdk is this module's own, see the catalog.
 
     defaultConfig {
         applicationId = "com.gmail.volkovskiyda.jellyshelf"
-        minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = buildNumber ?: 1
         versionName = buildNumber?.let { "$baseVersion.$it" } ?: baseVersion
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Live-endpoint test config from the git-ignored .test.env, passed as runtime instrumentation
-        // extras (never baked into BuildConfig, so changing .test.env needs no rebuild). Absent when
-        // the file or the key is, so the live tests skip — they read every extra with `orEmpty()`.
-        //
-        // Absent rather than blank, and this is load-bearing: since AGP 9.4.0 the connected-test
-        // engine hands `am instrument` one unquoted shell string, so a blank value turns into
-        // `-e jellyfinIndexUrl -e jellyfinSyncFolder …` — the next flag becomes the value, every
-        // pair after it shifts, and `am` answers "Invalid userId -2" having run *no* tests, while
-        // the Gradle task still reports success. Measured on the API 37 tablet AVD on 2026-09-10,
-        // with the two optional keys unset. Values with whitespace break the same way, which is
-        // what the guard below refuses rather than leaves to be diagnosed as "Invalid userId -2"
-        // — it is the metadata API token that makes this reachable: unlike every other value here
-        // it is an opaque secret, so nothing about it says it may not contain a space.
-        testInstrumentationRunnerArguments += mapOf(
-            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"],
-            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"],
-            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"],
-            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"],
-            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"],
-            "jellyfinSyncFolderId" to testEnv["JELLYFIN_SYNC_FOLDER_ID"],
-            "jellyfinTestItemId" to testEnv["JELLYFIN_TEST_ITEM_ID"],
-            // The metadata API pair is the one config LiveMetadataApiTest owns: filled, that suite
-            // runs; blank, it skips and the live run covers the no-metadata-API path every other
-            // live test already exercises. See .example.test.env.
-            "jellyfinMetadataApiUrl" to testEnv["JELLYFIN_METADATA_API_URL"],
-            "jellyfinMetadataApiToken" to testEnv["JELLYFIN_METADATA_API_TOKEN"],
-        ).filterValues { !it.isNullOrBlank() }.mapValues { (_, value) -> value!! }
-            .onEach { (key, value) ->
-                require(value.none { it.isWhitespace() }) {
-                    "$key contains whitespace. It reaches the device on one unquoted `am instrument` " +
-                        "command line, where a space shifts every argument after it and the run " +
-                        "executes no tests at all — fix the value in .test.env."
-                }
-            }
+        // The instrumentation runner and the live-test runner arguments (.test.env, with the
+        // whitespace guard the unquoted `am instrument` line demands) are set by jellyshelf.android.
 
         // Measurements out of the default run. BrowseCostBenchmark seeds 10,000 rows and times six
         // paths (~50 s) and asserts nothing worth a suite run, so it is filtered out here rather than
@@ -101,7 +53,7 @@ android {
         // nothing failing. A filtered class is never handed to the runner, so it leaves no trace.
         // Naming a class on the command line (`-Pandroid.testInstrumentationRunnerArguments.class=…`)
         // drops the filter, so `class=…BrowseCostBenchmark` runs it with no edit — a blank override
-        // would not do, see the unquoted `am instrument` line above.
+        // would not do, see the unquoted `am instrument` line in jellyshelf.android (build-logic/).
         if (!providers.gradleProperty("android.testInstrumentationRunnerArguments.class").isPresent) {
             testInstrumentationRunnerArguments["notClass"] =
                 "com.gmail.volkovskiyda.jellyshelf.data.local.BrowseCostBenchmark"
@@ -183,10 +135,6 @@ android {
                 mappingFileUploadEnabled = true
             }
         }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
     }
     // Enables the screenshotTest source set (paired with the same flag in gradle.properties).
     experimentalProperties["android.experimental.enableScreenshotTest"] = true

@@ -1,60 +1,24 @@
 plugins {
     alias(libs.plugins.android.test)
+    // SDK levels, Java level, runner and the live-test runner arguments, shared with :app.
+    id("jellyshelf.android")
     alias(libs.plugins.androidx.baselineprofile)
     id("jellyshelf.ktlint")
 }
 
-// Same loadEnv as :app (see app/build.gradle.kts): the generator's real-server journey reads the
-// live-test credentials from the git-ignored .test.env and skips itself when they are absent.
-fun loadEnv(name: String): Map<String, String> =
-    providers.fileContents(layout.settingsDirectory.file(name)).asText
-        .map { text ->
-            text.lineSequence().mapNotNull { line ->
-                line.trim().takeUnless { it.isEmpty() || it.startsWith("#") }
-                    ?.split("=", limit = 2)?.takeIf { it.size == 2 }
-                    ?.let { (k, v) -> k.trim() to v.trim() }
-            }.toMap()
-        }
-        .getOrElse(emptyMap())
-
-val testEnv = loadEnv(".test.env")
-
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf.baselineprofile"
-    compileSdk = libs.versions.compileSdk.get().toInt()
-
-    defaultConfig {
-        minSdk = libs.versions.minSdk.get().toInt()
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Runtime `am instrument -e` extras, exactly like :app's live-endpoint tests — never baked
-        // into any BuildConfig, so changing .test.env needs no rebuild. Missing when the file or
-        // the key is, which is what makes the real-server journey skip: the tests read each extra
-        // with `orEmpty()` themselves.
-        //
-        // Omitted rather than passed blank, for the same load-bearing reason :app documents at
-        // length: since AGP 9.4.0 the connected-test engine hands `am instrument` one unquoted
-        // shell string, so a blank value collapses into `-e jellyfinIndexUrl -e jellyfinSyncFolder
-        // …`, every pair after it shifts, and `am` answers "Invalid userId -2" having run no tests
-        // at all. This module kept `.orEmpty()` when :app was fixed, and with JELLYFIN_INDEX_URL
-        // unset that is precisely what every JourneyBenchmark run hit.
-        testInstrumentationRunnerArguments += mapOf(
-            "jellyfinServerUrl" to testEnv["JELLYFIN_SERVER_URL"],
-            "jellyfinUsername" to testEnv["JELLYFIN_USERNAME"],
-            "jellyfinPassword" to testEnv["JELLYFIN_PASSWORD"],
-            "jellyfinIndexUrl" to testEnv["JELLYFIN_INDEX_URL"],
-            "jellyfinSyncFolder" to testEnv["JELLYFIN_SYNC_FOLDER"],
-        ).filterValues { !it.isNullOrBlank() }.mapValues { (_, value) -> value!! }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
+    // compileSdk, minSdk, the runner, Java 11 and the .test.env runner arguments come from
+    // jellyshelf.android. The generator's real-server journey reads five of those arguments and
+    // skips itself when they are absent; the other four (:app's test item and metadata API config)
+    // arrive too and cost nothing — every test reads each extra with `orEmpty()`. The whitespace
+    // guard now applies here as well, which this module never had on its own.
     targetProjectPath = ":app"
 }
 
 // Which app to profile. Since :app's finalizeDsl gives the profiling variants a `.benchmark`
 // suffix, that is no longer the shipped application id, and BaselineProfileGenerator reads it from
-// this argument instead of holding a copy — the same channel the .test.env values above use.
+// this argument instead of holding a copy — the same channel jellyshelf.android's .test.env values use.
 //
 // The id comes off the built APK's own metadata rather than from `TestVariant.testedApplicationId`,
 // which reports *this* module's id (`…jellyshelf.baselineprofile`) and would send the generator
