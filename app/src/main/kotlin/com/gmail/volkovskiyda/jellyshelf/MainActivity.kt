@@ -719,6 +719,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                 innerPadding.calculateBottomPadding() - tabsHeight + navigationInset
             else -> innerPadding.calculateBottomPadding()
         }.coerceAtLeast(navigationInset)
+        // Both read through a State for the same reason as [liveSides]: NavDisplay keeps an entry's
+        // lambda from the composition that built it, and the activity handles a rotation itself,
+        // so a tab composed in landscape kept the rail's width at its start after turning back to
+        // portrait, where there is no rail — and a Detail kept the bottom of the old orientation.
+        val liveUseRail by rememberUpdatedState(useRail)
+        val liveBottomWithoutTabs by rememberUpdatedState(bottomWithoutTabs)
 
         /**
          * What [key] reserves at the bottom, for the whole of its life.
@@ -732,7 +738,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         fun bottomFor(key: AppNavKey): Dp = when {
             key is AppNavKey.Player -> innerPadding.calculateBottomPadding()
             topLevel.any { it.key == key } -> innerPadding.calculateBottomPadding()
-            else -> bottomWithoutTabs
+            else -> liveBottomWithoutTabs
         }
 
         /**
@@ -746,7 +752,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
          * the arriving screen would visibly shift sideways after its fade had finished.
          */
         fun startFor(key: AppNavKey): Dp = when {
-            useRail && topLevel.any { it.key == key } -> railWidth
+            liveUseRail && topLevel.any { it.key == key } -> railWidth
             else -> 0.dp
         }
 
