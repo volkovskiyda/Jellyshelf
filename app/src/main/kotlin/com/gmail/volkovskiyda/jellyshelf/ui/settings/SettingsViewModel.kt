@@ -114,6 +114,13 @@ data class SettingsUiState(
     val breadcrumb: List<FolderRef> = emptyList(),
     val childFolders: List<FolderRef> = emptyList(),
     val loadingFolders: Boolean = false,
+    /**
+     * Whether the Advanced section is open. Remembered across the tab switches that clear the
+     * ViewModel (see [SettingsCache]), so the edits restored into its fields are not hidden behind
+     * a collapsed expander. Previews and tests that need the section open pass `advancedExpanded`
+     * to `SettingsContent` instead of setting this.
+     */
+    val advancedExpanded: Boolean = false,
     val busy: Boolean = false,
     /**
      * The sign-in form's line: signing in, signed in as, a rejected password, entering or leaving
@@ -277,8 +284,14 @@ class SettingsViewModel(
     /** Likewise off the checker rather than `BuildConfig` — see [isDebugBuild]. */
     private val versionName = updateChecker.versionName
 
-    /** Local operations (connect, reset) only — sync lives in [_sync], see [state]. */
-    private val _state = MutableStateFlow(SettingsUiState(isDebugBuild = isDebugBuild, versionName = versionName))
+    /**
+     * Local operations (connect, reset) only — sync lives in [_sync], see [state].
+     *
+     * Starts from the cached draft rather than from blank fields: a tab switch has just cleared
+     * the ViewModel that held the user's unsaved edits, and the first frame of this one must
+     * already show them. The persisted snapshot loads later, in `init`, and defers to them.
+     */
+    private val _state = MutableStateFlow(initialState())
     private val _sync = MutableStateFlow<SyncUi?>(null)
 
     /**
@@ -365,14 +378,42 @@ class SettingsViewModel(
         }.stateIn(
             viewModelScope,
             WhileUiSubscribed,
-            SettingsUiState(isDebugBuild = isDebugBuild, versionName = versionName),
+            // The local state as built, not a blank default: the first frame after a tab switch
+            // must already show the restored draft and the expander it was typed behind.
+            _state.value,
         )
 
     val videoCount: StateFlow<Int> = libraryRepo.videoCount()
         .stateIn(viewModelScope, WhileUiSubscribed, 0)
 
-    /** Set as soon as the user edits any connection field, see [init]. */
-    private var fieldsEdited = false
+    /**
+     * Set as soon as the user edits any connection field, see [init]. True from the start when a
+     * draft was restored: those fields are edits too, and the snapshot must not overwrite them.
+     */
+    private var fieldsEdited = settingsCache.formDraft != null
+
+    /**
+     * The state this ViewModel is born with: the build facts, the Advanced expander as it was
+     * left, and — when a tab switch cleared a predecessor holding unsaved edits — those edits in
+     * place of blank fields. Only reads constructor collaborators and the two properties declared
+     * above [_state], because it runs during property initialisation.
+     */
+    private fun initialState(): SettingsUiState {
+        val base = SettingsUiState(
+            isDebugBuild = isDebugBuild,
+            versionName = versionName,
+            advancedExpanded = settingsCache.advancedExpanded,
+        )
+        val draft = settingsCache.formDraft ?: return base
+        return base.copy(
+            serverUrl = draft.serverUrl,
+            apiKey = draft.apiKey,
+            indexUrl = draft.indexUrl,
+            metadataApiUrl = draft.metadataApiUrl,
+            metadataApiToken = draft.metadataApiToken,
+            username = draft.username,
+        )
+    }
 
     init {
         viewModelScope.launch {
@@ -398,12 +439,13 @@ class SettingsViewModel(
                 // The *persisted* key, never the field — see [SettingsUiState.apiKeyConnected].
                 apiKeyConnected = s.apiKey.isNotBlank(),
                 tokenInQuery = s.tokenInQuery,
-                // `edited` guards this for the same reason as the fields above, and for one more:
-                // a Connect that finished while this read was still in flight has already put the
-                // right users on screen, and the cache lookup — which misses on an edited URL —
-                // would wipe them. onServerUrlChange clears the chips itself, so keeping what is
-                // there cannot resurrect another server's users either.
-                users = if (edited) cur.users else cachedUsers.orEmpty(),
+                // Whatever is on screen wins: a Connect that finished while this read was still in
+                // flight has already put the right users there, and onServerUrlChange clears the
+                // chips itself, so keeping them cannot resurrect another server's users. Only an
+                // empty slot falls back to the cache — keyed by the URL the field shows, so a
+                // restored draft that edited only a feed field gets its chips back, while one that
+                // retyped the server misses and stays clear, as the edit asked.
+                users = cur.users.ifEmpty { cachedUsers.orEmpty() },
                 // Still the persisted user and scope: they are what sync uses until the next
                 // Connect, so the screen would lie by blanking them over an unsaved edit.
                 selectedUserId = s.userId,
@@ -595,33 +637,44 @@ class SettingsViewModel(
         _state.value = _state.value.copy(signedIn = false, selectedUserId = "", selectedUserName = "")
     }
 
-    fun onServerUrlChange(value: String) {
+    /**
+     * One edit to the connection form. Marks the fields as edited (see [init]) and mirrors them
+     * into [SettingsCache] as the draft the next ViewModel starts from — so a tab switch mid-form,
+     * to check something on the Library tab, say, does not throw the typing away. The fields are
+     * still only *persisted* by a sign-in, a Connect or a Sync now: a draft is what the user is
+     * typing, not yet what the app is configured with.
+     */
+    private fun editForm(transform: SettingsUiState.() -> SettingsUiState) {
         fieldsEdited = true
-        // A different server has different users — drop the chips until the next connect so
-        // a stale selection can't be persisted against the new URL.
-        _state.value = _state.value.copy(serverUrl = value, users = emptyList())
+        val edited = _state.value.transform()
+        _state.value = edited
+        settingsCache.saveDraft(edited.draft())
+    }
+
+    fun onServerUrlChange(value: String) {
+        editForm {
+            // A different server has different users — drop the chips until the next connect so
+            // a stale selection can't be persisted against the new URL.
+            copy(serverUrl = value, users = emptyList())
+        }
     }
     fun onApiKeyChange(value: String) {
-        fieldsEdited = true
-        _state.value = _state.value.copy(apiKey = value)
+        editForm { copy(apiKey = value) }
     }
     fun onIndexUrlChange(value: String) {
-        fieldsEdited = true
-        // Editing is the fix the red state asks for; a stale error over a corrected value would
-        // read as "still wrong" until the next sync. Same for both API handlers below.
-        _state.value = _state.value.copy(indexUrl = value, indexUnavailable = false)
+        editForm {
+            // Editing is the fix the red state asks for; a stale error over a corrected value would
+            // read as "still wrong" until the next sync. Same for both API handlers below.
+            copy(indexUrl = value, indexUnavailable = false)
+        }
     }
     fun onMetadataApiUrlChange(value: String) {
-        fieldsEdited = true
-        _state.value = _state.value.copy(
-            metadataApiUrl = value,
-            metadataApiAuthFailed = false,
-            metadataApiUnavailable = false,
-        )
+        editForm {
+            copy(metadataApiUrl = value, metadataApiAuthFailed = false, metadataApiUnavailable = false)
+        }
     }
     fun onMetadataApiTokenChange(value: String) {
-        fieldsEdited = true
-        _state.value = _state.value.copy(metadataApiToken = value, metadataApiAuthFailed = false)
+        editForm { copy(metadataApiToken = value, metadataApiAuthFailed = false) }
     }
 
     /**
@@ -631,6 +684,16 @@ class SettingsViewModel(
     fun onTokenInQueryChange(enabled: Boolean) {
         _state.value = _state.value.copy(tokenInQuery = enabled)
         viewModelScope.launch { settingsRepo.setTokenInQuery(enabled) }
+    }
+
+    /**
+     * The Advanced expander, reported so the next ViewModel can reopen it: the section is where
+     * a restored draft's feed fields live, and a tab switch would otherwise collapse it over them.
+     * Cached rather than persisted — it is where the user was, not a preference.
+     */
+    fun onAdvancedExpandedChange(expanded: Boolean) {
+        settingsCache.advancedExpanded = expanded
+        _state.value = _state.value.copy(advancedExpanded = expanded)
     }
 
     /**
@@ -645,10 +708,13 @@ class SettingsViewModel(
     }
 
     fun onUsernameChange(value: String) {
-        fieldsEdited = true
-        _state.value = _state.value.copy(username = value)
+        editForm { copy(username = value) }
     }
 
+    /**
+     * Not routed through [editForm]: the draft never carries the password — see
+     * [SettingsCache.FormDraft] — so there is nothing of this edit for it to mirror.
+     */
     fun onPasswordChange(value: String) {
         fieldsEdited = true
         _state.value = _state.value.copy(password = value)
@@ -725,6 +791,9 @@ class SettingsViewModel(
         settingsRepo.setIndexUrl(form.indexUrl)
         settingsRepo.setMetadataApi(form.metadataApiUrl, form.metadataApiToken)
         settingsRepo.setSession(session.accessToken, session.user.id, session.user.name)
+        // Everything the draft carried is now the persisted configuration. Kept, it would shadow
+        // these values — and anything that later changes them — on every visit to the tab.
+        settingsCache.clearDraft()
         // A different user means a different item tree, so the old folder scope points at a parent
         // id that may not exist for them — same reset as switching users by hand.
         val userChanged = session.user.id != form.selectedUserId
@@ -896,14 +965,15 @@ class SettingsViewModel(
     fun fillIndexUrlFromServer() {
         val base = normalizeServerUrl(_state.value.serverUrl).trimEnd('/')
         if (base.isBlank()) return
-        _state.value = _state.value.copy(indexUrl = "$base/jellyshelf-index.json")
+        // An edit like any typed one: it has to survive a tab switch and the snapshot load alike.
+        editForm { copy(indexUrl = "$base/jellyshelf-index.json") }
     }
 
     /** Prefill the metadata API URL from the entered server URL. */
     fun fillMetadataApiUrlFromServer() {
         val base = normalizeServerUrl(_state.value.serverUrl).trimEnd('/')
         if (base.isBlank()) return
-        _state.value = _state.value.copy(metadataApiUrl = "$base/api")
+        editForm { copy(metadataApiUrl = "$base/api") }
     }
 
     /**
@@ -947,6 +1017,8 @@ class SettingsViewModel(
                 settingsRepo.setMetadataApi(s.metadataApiUrl, s.metadataApiToken)
                 // Keyed by what setConnection persists, so the next init's lookup hits.
                 settingsCache.store(serverUrl, users)
+                // The form is persisted now — same reasoning as in persistSession.
+                settingsCache.clearDraft()
                 val current = _state.value
                 val selected = users.firstOrNull { it.id == current.selectedUserId } ?: users.firstOrNull()
                 // Auto-selecting a *different* user (server changed, or the saved user is gone)
@@ -1235,3 +1307,13 @@ internal fun isDemoSignIn(serverUrl: String, username: String): Boolean =
 /** Whether a demo password asks for the authentication-failure demonstration instead of the demo. */
 internal fun isDemoAuthFailure(password: String): Boolean =
     password.trim().equals(DEMO_BAD_PASSWORD, ignoreCase = true)
+
+/** The form fields [SettingsCache.FormDraft] carries, read off the state they were typed into. */
+private fun SettingsUiState.draft() = SettingsCache.FormDraft(
+    serverUrl = serverUrl,
+    apiKey = apiKey,
+    indexUrl = indexUrl,
+    metadataApiUrl = metadataApiUrl,
+    metadataApiToken = metadataApiToken,
+    username = username,
+)

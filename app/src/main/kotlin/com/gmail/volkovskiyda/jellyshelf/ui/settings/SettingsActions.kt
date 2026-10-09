@@ -18,6 +18,7 @@ internal data class SettingsActions(
     val onUsernameChange: (String) -> Unit = {},
     val onPasswordChange: (String) -> Unit = {},
     val onTokenInQueryChange: (Boolean) -> Unit = {},
+    val onAdvancedExpandedChange: (Boolean) -> Unit = {},
     val fillIndexUrlFromServer: () -> Unit = {},
     val fillMetadataApiUrlFromServer: () -> Unit = {},
     val signIn: () -> Unit = {},

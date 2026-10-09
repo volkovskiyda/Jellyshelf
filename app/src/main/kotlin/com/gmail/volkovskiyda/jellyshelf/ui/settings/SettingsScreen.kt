@@ -143,6 +143,7 @@ fun SettingsScreen(
             onUsernameChange = viewModel::onUsernameChange,
             onPasswordChange = viewModel::onPasswordChange,
             onTokenInQueryChange = viewModel::onTokenInQueryChange,
+            onAdvancedExpandedChange = viewModel::onAdvancedExpandedChange,
             fillIndexUrlFromServer = viewModel::fillIndexUrlFromServer,
             fillMetadataApiUrlFromServer = viewModel::fillMetadataApiUrlFromServer,
             signIn = viewModel::signIn,
@@ -659,9 +660,21 @@ private fun AdvancedSection(
     actions: SettingsActions,
     initiallyExpanded: Boolean = false,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
+    // Seeded from the state as well as the parameter: the ViewModel remembers the expander across
+    // the tab switches that clear it (see SettingsCache) and reopens it over the restored edits.
+    // Keyed on that memory so a value arriving a frame late still takes — and local in between, so
+    // a preview or a test with no-op actions can still toggle it.
+    var expanded by rememberSaveable(state.advancedExpanded) {
+        mutableStateOf(initiallyExpanded || state.advancedExpanded)
+    }
 
-    TextButton(onClick = { expanded = !expanded }, enabled = state.canEditIndex) {
+    TextButton(
+        onClick = {
+            expanded = !expanded
+            actions.onAdvancedExpandedChange(expanded)
+        },
+        enabled = state.canEditIndex,
+    ) {
         Text(
             stringResource(
                 if (expanded) R.string.hide_advanced else R.string.show_advanced,
