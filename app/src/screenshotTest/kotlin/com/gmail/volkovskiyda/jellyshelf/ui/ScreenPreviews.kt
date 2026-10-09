@@ -110,7 +110,7 @@ private fun LibraryLoading() {
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }
@@ -128,7 +128,7 @@ private fun LibraryEmpty() {
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }
@@ -146,7 +146,7 @@ private fun LibraryPopulated() {
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }
@@ -165,7 +165,7 @@ private fun LibraryNoMatch() {
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }
@@ -191,7 +191,7 @@ private fun LibrarySelecting() {
             selectedIds = librarySample.take(2).map { it.youtubeId }.toSet(),
             selectionRun = SelectionRun(SelectionAction.MARK_WATCHED, BulkProgress.Running(1, 2, 0)),
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }
@@ -211,7 +211,7 @@ private fun LibrarySelectingDark() {
             selectionActive = true,
             selectedIds = librarySample.take(2).map { it.youtubeId }.toSet(),
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }
@@ -229,7 +229,7 @@ private fun LibraryPopulatedDark() {
             onPlayVideo = {},
             onOpenDetails = {},
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }
@@ -256,7 +256,7 @@ private fun LibraryWithRail() {
                 onPlayVideo = {},
                 onOpenDetails = {},
                 scrollStore = FakeScrollPositionRepository(),
-                thumbnailModel = { null },
+                thumbnailModel = previewThumbnail,
             )
         }
     }
@@ -324,7 +324,7 @@ private fun DetailLoaded() {
             videoState = VideoDetailState.Loaded(sampleVideo),
             settings = previewSettings,
             fetching = false,
-            thumbnailModel = null,
+            thumbnailModel = previewThumbnail(sampleVideo),
             categories = sampleVideoCategories,
             onOpenCategory = {},
             onBack = {},
@@ -344,7 +344,7 @@ private fun DetailLoadedContent(video: Video = sampleVideo, categories: List<Cat
         videoState = VideoDetailState.Loaded(video),
         settings = previewSettings,
         fetching = false,
-        thumbnailModel = null,
+        thumbnailModel = previewThumbnail(video),
         categories = categories,
         onOpenCategory = {},
         onBack = {},
@@ -411,7 +411,7 @@ private fun DetailMissingFromServer() {
             videoState = VideoDetailState.Loaded(missingVideo),
             settings = previewSettings,
             fetching = false,
-            thumbnailModel = null,
+            thumbnailModel = previewThumbnail(missingVideo),
             // Empty on purpose: these two goldens guard the missing-from-server state, and the
             // populated section is already covered by DetailLoaded.
             categories = emptyList(),
@@ -435,7 +435,7 @@ private fun DetailMissingFromServerDark() {
             videoState = VideoDetailState.Loaded(missingVideo),
             settings = previewSettings,
             fetching = false,
-            thumbnailModel = null,
+            thumbnailModel = previewThumbnail(missingVideo),
             // Empty on purpose: these two goldens guard the missing-from-server state, and the
             // populated section is already covered by DetailLoaded.
             categories = emptyList(),
@@ -647,8 +647,9 @@ private fun PlayerControlsPreview(visible: Boolean, buffering: Boolean) {
 
 /**
  * The player's queue panel over a video, mid-queue: the playing row highlighted and scrolled so
- * the row before it stays in view, only the rows still to come ending in a remove button. Artwork is null so
- * the golden never depends on the network; one row has no channel, one an overlong title and
+ * the row before it stays in view, only the rows still to come ending in a remove button. Artwork is a
+ * [previewCover], drawn locally so the golden never depends on the network; one row has no
+ * channel, one an overlong title and
  * channel (the duration must survive the ellipsis), one no known duration. The played row carries
  * the watched tick, and the playing and one upcoming row a resume bar.
  */
@@ -659,17 +660,34 @@ private fun QueuePanelPreview() {
     PreviewTheme(darkTheme = true) {
         QueuePanel(
             entries = listOf(
-                QueueEntry("aaaaaaaaaaa", "Building a workbench from pallets", "Workshop Diaries", null, 754_000L),
-                QueueEntry("bbbbbbbbbbb", "The video playing right now", "Some Channel", null, 3_723_000L),
+                QueueEntry(
+                    "aaaaaaaaaaa",
+                    "Building a workbench from pallets",
+                    "Workshop Diaries",
+                    previewCover("aaaaaaaaaaa"),
+                    754_000L,
+                ),
+                QueueEntry(
+                    "bbbbbbbbbbb",
+                    "The video playing right now",
+                    "Some Channel",
+                    previewCover("bbbbbbbbbbb"),
+                    3_723_000L,
+                ),
                 QueueEntry(
                     "ccccccccccc",
                     "A reasonably long video title that will not fit on a single row of the panel",
                     "A channel whose name is far too long to leave room for anything after it",
-                    null,
+                    previewCover("ccccccccccc"),
                     95_000L,
                 ),
-                QueueEntry("ddddddddddd", "A video with no channel", null, null, 61_000L),
-                QueueEntry("eeeeeeeeeee", "A video whose length was never fetched", "Some Channel", null),
+                QueueEntry("ddddddddddd", "A video with no channel", null, previewCover("ddddddddddd"), 61_000L),
+                QueueEntry(
+                    "eeeeeeeeeee",
+                    "A video whose length was never fetched",
+                    "Some Channel",
+                    previewCover("eeeeeeeeeee"),
+                ),
             ),
             watchStates = mapOf(
                 "aaaaaaaaaaa" to WatchState(played = true, playbackPositionTicks = 0L, durationSeconds = 754L),
@@ -976,7 +994,7 @@ private fun MissingFromServerPreview(
         onCancelRemove = {},
         onAcknowledgeBulkRemove = {},
         scrollStore = FakeScrollPositionRepository(),
-        thumbnailModel = { null },
+        thumbnailModel = previewThumbnail,
     )
 }
 
@@ -1012,7 +1030,7 @@ private fun CategoryVideosLastPlayed() {
             onCancelRemove = {},
             onAcknowledgeBulkRemove = {},
             scrollStore = FakeScrollPositionRepository(),
-            thumbnailModel = { null },
+            thumbnailModel = previewThumbnail,
         )
     }
 }

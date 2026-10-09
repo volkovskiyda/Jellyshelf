@@ -14,8 +14,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
  * Fixtures shared by every preview, so a golden only ever changes because the UI changed.
  *
  * Everything here is deliberately fixed — no clocks, no random ids, no network-backed thumbnails
- * (`thumbnailUrl = null`, and previews pass `thumbnailModel = null`): a reference image that
- * depends on the machine or the moment it was generated is worse than no reference image.
+ * (`thumbnailUrl = null`; previews pass a [previewCover] model, drawn locally): a reference image
+ * that depends on the machine or the moment it was generated is worse than no reference image.
  */
 internal val sampleVideo = Video(
     youtubeId = "1ubm7Q6DL-I",

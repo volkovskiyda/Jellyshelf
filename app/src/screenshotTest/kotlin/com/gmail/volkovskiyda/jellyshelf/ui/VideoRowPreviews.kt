@@ -3,6 +3,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 
 // One row per state that changes what the row draws: the watched check, the resume progress bar,
 // and the missing-from-server marker. Dark is covered for the two states whose colours are
@@ -12,28 +13,28 @@ import com.android.tools.screenshot.PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowDefault() {
-    PreviewTheme { VideoRow(video = sampleVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
+    PreviewTheme { PreviewVideoRow(sampleVideo) }
 }
 
 @PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowWatched() {
-    PreviewTheme { VideoRow(video = watchedVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
+    PreviewTheme { PreviewVideoRow(watchedVideo) }
 }
 
 @PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowPartWatched() {
-    PreviewTheme { VideoRow(video = partWatchedVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
+    PreviewTheme { PreviewVideoRow(partWatchedVideo) }
 }
 
 @PreviewTest
 @Preview(widthDp = 400, showBackground = true)
 @Composable
 private fun VideoRowMissingFromServer() {
-    PreviewTheme { VideoRow(video = missingVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null) }
+    PreviewTheme { PreviewVideoRow(missingVideo) }
 }
 
 @PreviewTest
@@ -41,7 +42,7 @@ private fun VideoRowMissingFromServer() {
 @Composable
 private fun VideoRowDefaultDark() {
     PreviewTheme(darkTheme = true) {
-        VideoRow(video = sampleVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null)
+        PreviewVideoRow(sampleVideo)
     }
 }
 
@@ -50,6 +51,12 @@ private fun VideoRowDefaultDark() {
 @Composable
 private fun VideoRowMissingFromServerDark() {
     PreviewTheme(darkTheme = true) {
-        VideoRow(video = missingVideo, onPlay = {}, onOpenDetails = {}, thumbnailModel = null)
+        PreviewVideoRow(missingVideo)
     }
+}
+
+/** A row with its stand-in cover, the one argument that changes from golden to golden. */
+@Composable
+private fun PreviewVideoRow(video: Video) {
+    VideoRow(video = video, onPlay = {}, onOpenDetails = {}, thumbnailModel = previewThumbnail(video))
 }
