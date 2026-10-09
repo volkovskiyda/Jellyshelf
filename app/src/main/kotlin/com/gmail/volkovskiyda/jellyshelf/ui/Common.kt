@@ -384,7 +384,7 @@ fun VideoRow(
         }
         Box(
             modifier = Modifier
-                .width(120.dp)
+                .width(if (isExpandedWindow()) THUMBNAIL_WIDTH_EXPANDED else THUMBNAIL_WIDTH)
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp))
                 .rowTarget(
@@ -492,6 +492,14 @@ fun VideoRow(
         }
     }
 }
+
+/**
+ * The cover's width in a [VideoRow]. A landscape tablet doubles it: at 120 dp a 1,200 dp-wide list
+ * is mostly empty text column beside a cover too small to tell one video from the next. Phones keep
+ * 120 dp in either orientation, see [isExpandedWindow] for why landscape does not count.
+ */
+private val THUMBNAIL_WIDTH = 120.dp
+private val THUMBNAIL_WIDTH_EXPANDED = 240.dp
 
 /**
  * Drops clicks that land within [windowMs] of the previously accepted one, so a fast double-tap
