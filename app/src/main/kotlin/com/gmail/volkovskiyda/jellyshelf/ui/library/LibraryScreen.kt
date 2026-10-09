@@ -293,12 +293,13 @@ internal fun LibraryContent(
                 state = listState,
                 videos = videos,
                 modifier = Modifier.testTag(LIBRARY_LIST_TAG),
-            ) { video ->
+            ) { video, thumbnailWidth ->
                 VideoRow(
                     video = video,
                     onPlay = { onPlayVideo(video) },
                     onOpenDetails = { onOpenDetails(video) },
                     thumbnailModel = thumbnailModel(video),
+                    thumbnailWidth = thumbnailWidth,
                     modifier = Modifier.testTag(LIBRARY_ROW_TAG),
                     selected = if (selectionActive) video.youtubeId in selectedIds else null,
                     onToggleSelection = { onToggleSelection(video.youtubeId) },

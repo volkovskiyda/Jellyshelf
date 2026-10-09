@@ -324,6 +324,8 @@ fun VideoRow(
     // settings subscription in every visible row. Callers hoist that to one per screen with
     // [rememberVideoThumbnailResolver]; host-side rendering passes null.
     thumbnailModel: String?,
+    /** The cover's width: [VideoList] sizes it to the cell, see [videoThumbnailWidth]. */
+    thumbnailWidth: Dp,
     modifier: Modifier = Modifier,
     /** Null when the list is not selecting; true or false is this row's place in the selection. */
     selected: Boolean? = null,
@@ -362,9 +364,9 @@ fun VideoRow(
                         )
                 },
             )
-            .padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ROW_COVER_GAP),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (selected != null) {
             // Display-only (onCheckedChange = null): the row above is the single accessible
@@ -390,7 +392,7 @@ fun VideoRow(
         }
         Box(
             modifier = Modifier
-                .width(videoThumbnailWidth())
+                .width(thumbnailWidth)
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp))
                 .rowTarget(
@@ -498,36 +500,6 @@ fun VideoRow(
         }
     }
 }
-
-/**
- * The cover's width in a [VideoRow]. A landscape tablet doubles it: at 120 dp a 1,200 dp-wide list
- * is mostly empty text column beside a cover too small to tell one video from the next. Phones keep
- * 120 dp in either orientation, see [isExpandedWindow] for why landscape does not count.
- */
-@Composable
-private fun videoThumbnailWidth(): Dp = if (isExpandedWindow()) THUMBNAIL_WIDTH_EXPANDED else THUMBNAIL_WIDTH
-
-private val THUMBNAIL_WIDTH = 120.dp
-private val THUMBNAIL_WIDTH_EXPANDED = 240.dp
-
-/**
- * The narrowest a [VideoRow] can be and still read: the cover, the row's own padding and the gap
- * beside the cover, and [ROW_MIN_TEXT_WIDTH] of text. The video grid fits as many columns of at
- * least this as the window has room for.
- */
-@Composable
-internal fun videoRowMinWidth(): Dp =
-    videoThumbnailWidth() + ROW_HORIZONTAL_PADDING * 2 + ROW_COVER_GAP + ROW_MIN_TEXT_WIDTH
-
-private val ROW_HORIZONTAL_PADDING = 16.dp
-private val ROW_COVER_GAP = 12.dp
-
-/**
- * Room for a title to wrap onto two short lines rather than one word a line. Sized so a phone held
- * upright (360 to 430 dp) stays one column, and a tablet held upright (720 dp beside the rail)
- * splits into two without depending on the last few dp of the rail's width.
- */
-private val ROW_MIN_TEXT_WIDTH = 180.dp
 
 /**
  * Drops clicks that land within [windowMs] of the previously accepted one, so a fast double-tap

@@ -425,13 +425,14 @@ private fun CategoryVideoList(
         VideoList(
             state = rememberVideoListState(videos, persistKey = scrollKey, store = scrollStore),
             videos = videos,
-        ) { video ->
+        ) { video, thumbnailWidth ->
             VideoRow(
                 video = video,
                 modifier = Modifier.testTag(CATEGORY_VIDEO_ROW_TAG),
                 onPlay = { onPlayVideo(video) },
                 onOpenDetails = { onOpenDetails(video) },
                 thumbnailModel = thumbnailModel(video),
+                thumbnailWidth = thumbnailWidth,
                 selected = if (selectionActive) video.youtubeId in selectedIds else null,
                 onToggleSelection = { onToggleSelection(video.youtubeId) },
                 onStartSelection = { onStartSelection(video.youtubeId) },
