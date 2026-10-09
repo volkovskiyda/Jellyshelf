@@ -6,8 +6,6 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Checklist
@@ -43,8 +41,9 @@ import com.gmail.volkovskiyda.jellyshelf.ui.BulkActionHeader
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
+import com.gmail.volkovskiyda.jellyshelf.ui.VideoList
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.CreatePlaylistDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionActionDialog
@@ -423,22 +422,20 @@ private fun CategoryVideoList(
             ),
         )
     } else {
-        LazyColumn(
-            state = rememberAnchoredLazyListState(scrollKey, videos, scrollStore) { it.fileName },
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(videos, key = { it.youtubeId }) { video ->
-                VideoRow(
-                    video = video,
-                    modifier = Modifier.testTag(CATEGORY_VIDEO_ROW_TAG),
-                    onPlay = { onPlayVideo(video) },
-                    onOpenDetails = { onOpenDetails(video) },
-                    thumbnailModel = thumbnailModel(video),
-                    selected = if (selectionActive) video.youtubeId in selectedIds else null,
-                    onToggleSelection = { onToggleSelection(video.youtubeId) },
-                    onStartSelection = { onStartSelection(video.youtubeId) },
-                )
-            }
+        VideoList(
+            state = rememberVideoListState(videos, persistKey = scrollKey, store = scrollStore),
+            videos = videos,
+        ) { video ->
+            VideoRow(
+                video = video,
+                modifier = Modifier.testTag(CATEGORY_VIDEO_ROW_TAG),
+                onPlay = { onPlayVideo(video) },
+                onOpenDetails = { onOpenDetails(video) },
+                thumbnailModel = thumbnailModel(video),
+                selected = if (selectionActive) video.youtubeId in selectedIds else null,
+                onToggleSelection = { onToggleSelection(video.youtubeId) },
+                onStartSelection = { onStartSelection(video.youtubeId) },
+            )
         }
     }
 }

@@ -4,9 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,8 +36,9 @@ import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.SearchField
 import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
+import com.gmail.volkovskiyda.jellyshelf.ui.VideoList
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoRow
-import com.gmail.volkovskiyda.jellyshelf.ui.rememberAnchoredLazyListState
+import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoListState
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.CreatePlaylistDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionActionDialog
@@ -268,16 +266,16 @@ internal fun LibraryContent(
             // only once the unfiltered list is actually back, so it restores against the right
             // contents. Search results are transient, reordered sets that start from the top and
             // jump back on every keystroke to surface the best matches.
-            val listState = if (pristine) {
-                rememberAnchoredLazyListState("library", videos, scrollStore) { it.fileName }
-            } else {
-                rememberLazyListState()
-            }
+            val listState = rememberVideoListState(
+                videos = videos,
+                persistKey = if (pristine) "library" else null,
+                store = scrollStore,
+            )
             if (!pristine) {
                 // Jump to the top when the query changes so the best matches lead — but not when
                 // the screen merely re-enters composition after visiting a video and pressing
                 // back. Fire on the new list, not
-                // on the query: the list is keyed by youtubeId, so LazyColumn keeps the anchored
+                // on the query: the list is keyed by youtubeId, so the lazy list keeps the anchored
                 // item in view across a content change. Scrolling on the query (a frame before the
                 // list updates) resets the old list, then key preservation drags us to wherever
                 // that item ranks in the new one — visible when removing a character broadens the
@@ -287,28 +285,25 @@ internal fun LibraryContent(
                 LaunchedEffect(videos) {
                     if (query != lastQuery) {
                         lastQuery = query
-                        listState.scrollToItem(0)
+                        listState.scrollToTop()
                     }
                 }
             }
-            LazyColumn(
+            VideoList(
                 state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag(LIBRARY_LIST_TAG),
-            ) {
-                items(videos, key = { it.youtubeId }) { video ->
-                    VideoRow(
-                        video = video,
-                        onPlay = { onPlayVideo(video) },
-                        onOpenDetails = { onOpenDetails(video) },
-                        thumbnailModel = thumbnailModel(video),
-                        modifier = Modifier.testTag(LIBRARY_ROW_TAG),
-                        selected = if (selectionActive) video.youtubeId in selectedIds else null,
-                        onToggleSelection = { onToggleSelection(video.youtubeId) },
-                        onStartSelection = { onStartSelection(video.youtubeId) },
-                    )
-                }
+                videos = videos,
+                modifier = Modifier.testTag(LIBRARY_LIST_TAG),
+            ) { video ->
+                VideoRow(
+                    video = video,
+                    onPlay = { onPlayVideo(video) },
+                    onOpenDetails = { onOpenDetails(video) },
+                    thumbnailModel = thumbnailModel(video),
+                    modifier = Modifier.testTag(LIBRARY_ROW_TAG),
+                    selected = if (selectionActive) video.youtubeId in selectedIds else null,
+                    onToggleSelection = { onToggleSelection(video.youtubeId) },
+                    onStartSelection = { onStartSelection(video.youtubeId) },
+                )
             }
         }
     }

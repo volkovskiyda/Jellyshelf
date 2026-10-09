@@ -244,7 +244,7 @@ private fun LibraryPopulatedDark() {
  * over the preview's white, which is not a layout the app can show.
  */
 @Composable
-private fun LibraryWithRail() {
+private fun LibraryWithRail(selecting: Boolean = false) {
     Surface(color = MaterialTheme.colorScheme.background) {
         Row {
             TopLevelNavigationRail(selected = AppNavKey.Library, enabled = true, onSelect = {})
@@ -255,6 +255,14 @@ private fun LibraryWithRail() {
                 onQueryChange = {},
                 onPlayVideo = {},
                 onOpenDetails = {},
+                selectionActive = selecting,
+                // Diagonal on purpose: two selected neighbours tint one unbroken band, which would
+                // hide that each cell carries its own.
+                selectedIds = if (selecting) {
+                    setOf(librarySample[0].youtubeId, librarySample[3].youtubeId)
+                } else {
+                    emptySet()
+                },
                 scrollStore = FakeScrollPositionRepository(),
                 thumbnailModel = previewThumbnail,
             )
@@ -282,6 +290,17 @@ private fun LibraryRailTablet() {
 @Composable
 private fun LibraryRailTabletDark() {
     PreviewTheme(darkTheme = true) { LibraryWithRail() }
+}
+
+/**
+ * Selection mode in the landscape tablet's two columns: each selected video tints its own cell
+ * and nothing past it, so a line can hold one selected video and one that is not.
+ */
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun LibrarySelectingTablet() {
+    PreviewTheme { LibraryWithRail(selecting = true) }
 }
 
 /** The tablet upright: 800 dp is still a medium window, so the tabs stay in the rail. */

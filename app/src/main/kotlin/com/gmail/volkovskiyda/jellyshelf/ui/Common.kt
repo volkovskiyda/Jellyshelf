@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -188,7 +189,6 @@ fun rememberPersistedLazyListState(
  * nearest item that sorts at or just above it. [items] must be sorted ascending by [anchorOf]
  * — the same order the list is displayed in.
  */
-@OptIn(FlowPreview::class)
 @Composable
 fun <T> rememberAnchoredLazyListState(
     key: String,
@@ -198,6 +198,60 @@ fun <T> rememberAnchoredLazyListState(
     anchorOf: (T) -> String,
 ): LazyListState {
     val state = rememberSaveable(key, saver = LazyListState.Saver) { LazyListState(0, 0) }
+    PersistAnchoredScroll(
+        key = key,
+        state = state,
+        items = items,
+        store = store,
+        anchorOf = anchorOf,
+        firstVisible = { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset },
+        scrollTo = { index, offset -> state.scrollToItem(index, offset) },
+    )
+    return state
+}
+
+/**
+ * [rememberAnchoredLazyListState] for a grid. The anchor is the same first-visible item under the
+ * same [key], so a window that switches between the list and the grid (a tablet turned on its
+ * side) lands on the video it was showing: the list saves its anchor as it leaves composition,
+ * and the grid, mounting fresh, restores from it.
+ */
+@Composable
+fun <T> rememberAnchoredLazyGridState(
+    key: String,
+    items: List<T>,
+    store: ScrollPositionRepository = koinInject(),
+    anchorOf: (T) -> String,
+): LazyGridState {
+    val state = rememberSaveable(key, saver = LazyGridState.Saver) { LazyGridState(0, 0) }
+    PersistAnchoredScroll(
+        key = key,
+        state = state,
+        items = items,
+        store = store,
+        anchorOf = anchorOf,
+        firstVisible = { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset },
+        scrollTo = { index, offset -> state.scrollToItem(index, offset) },
+    )
+    return state
+}
+
+/**
+ * The restore-once and save-as-you-go halves of the anchored states, for whichever lazy layout
+ * [state] is. [firstVisible] reads its first visible item's index and offset; [scrollTo] moves it.
+ */
+@OptIn(FlowPreview::class)
+@Composable
+@Suppress("LongParameterList") // the state, its two accessors, and what the anchor is made of
+private fun <T> PersistAnchoredScroll(
+    key: String,
+    state: Any,
+    items: List<T>,
+    store: ScrollPositionRepository,
+    anchorOf: (T) -> String,
+    firstVisible: () -> Pair<Int, Int>,
+    scrollTo: suspend (index: Int, offset: Int) -> Unit,
+) {
     val currentItems by rememberUpdatedState(items)
     val currentAnchorOf by rememberUpdatedState(anchorOf)
     // Guards against re-restoring (which would fight the user's own scrolling) once we've
@@ -212,7 +266,7 @@ fun <T> rememberAnchoredLazyListState(
             val index = items.floorIndexOfAnchor(saved.anchor, anchorOf)
             if (index >= 0) {
                 val exact = anchorOf(items[index]) == saved.anchor
-                state.scrollToItem(index, if (exact) saved.offset else 0)
+                scrollTo(index, if (exact) saved.offset else 0)
             }
         }
         restored = true
@@ -220,7 +274,7 @@ fun <T> rememberAnchoredLazyListState(
 
     // Persist the first visible item's anchor as the user scrolls.
     LaunchedEffect(key, state) {
-        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
+        snapshotFlow(firstVisible)
             .debounce(250)
             .distinctUntilChanged()
             .collect { (index, offset) ->
@@ -233,14 +287,11 @@ fun <T> rememberAnchoredLazyListState(
     DisposableEffect(key, state) {
         onDispose {
             if (!restored) return@onDispose
-            val item = currentItems.getOrNull(state.firstVisibleItemIndex) ?: return@onDispose
-            store.saveAnchor(
-                key,
-                AnchorPosition(currentAnchorOf(item), state.firstVisibleItemScrollOffset),
-            )
+            val (index, offset) = firstVisible()
+            val item = currentItems.getOrNull(index) ?: return@onDispose
+            store.saveAnchor(key, AnchorPosition(currentAnchorOf(item), offset))
         }
     }
-    return state
 }
 
 /**
