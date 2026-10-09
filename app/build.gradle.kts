@@ -321,6 +321,27 @@ tasks.named { it.startsWith("connected") && it.endsWith("AndroidTest") }
         }
     }
 
+// Pixel tolerance for the screenshot goldens: the fraction of pixels that may differ (any channel,
+// by any amount) before a preview fails. The plugin's default is 0 — bit-exact — and in this version
+// (0.0.1-alpha16) nothing but the task's own input sets it: the documented `screenshotTests {}`
+// DSL is not in the plugin yet, and the value reaches the differ as the `ImageDiffer.threshold`
+// system property of the test engine.
+//
+// Bit-exact failed on 2026-10-09 (run 37941334336): 28 goldens, 1–30 pixels each, every one off by
+// a single level in one channel, all inside the drawn stand-in covers (PreviewCovers.kt). The
+// covers are rendered at 960×540 and downscaled into their cell, and that downscale rounds
+// differently on the arm64 Mac that bakes the goldens and the x64 runner that checks them — the
+// same covers passed bit-exact at the pre-grid cell sizes, up to 150fcaf. The worst case was 15 of
+// 2.2M pixels (6.8e-6). This allows 6 pixels on a row golden (1050×278), 44 on a phone screen
+// (1050×2100) and 141 on a tablet (3360×2100), while one changed glyph at this density is a few
+// hundred pixels — a real change still fails, a rounding tie no longer does.
+//
+// `withType`, not a name filter: the task class is the plugin's public type and there is exactly
+// one task of it per variant, so nothing else gets realised.
+tasks.withType<com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask>().configureEach {
+    testEngineInput.threshold.set(2e-5f)
+}
+
 // Single HTML page summarising every test layer and all three static-analysis tools, written to
 // `app/build/test-summary/index.html`. Only reads XML that is already on disk — it never runs a
 // test or a check itself, so it is safe to attach to any pipeline; `scripts/run-tests.sh` calls it
