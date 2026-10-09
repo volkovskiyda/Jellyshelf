@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.library
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -13,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.R
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeScrollPositionRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.LocalZoneId
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -20,6 +22,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.time.ZoneOffset
 
 /**
  * The library list and its two empty states.
@@ -57,6 +60,8 @@ class LibraryContentTest {
         channelId = null,
         durationSeconds = 754,
         uploadDate = "20260721",
+        // 2026-07-21 10:15:07 UTC; the zone is pinned by setContent, so this is what renders.
+        uploadTimestamp = 1_784_628_907L,
         description = null,
         tags = emptyList(),
         youtubeCategories = emptyList(),
@@ -79,20 +84,43 @@ class LibraryContentTest {
         onQueryChange: (String) -> Unit = {},
     ) {
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false) {
-                LibraryContent(
-                    videosOrNull = videos,
-                    query = query,
-                    totalCount = totalCount,
-                    onQueryChange = onQueryChange,
-                    onPlayVideo = onPlayVideo,
-                    onOpenDetails = onOpenDetails,
-                    // The two seams the screen exposes for exactly this: no Koin container here.
-                    scrollStore = FakeScrollPositionRepository(),
-                    thumbnailModel = { null },
-                )
+            // The device's zone would decide what a row's upload stamp reads; pinned to UTC.
+            CompositionLocalProvider(LocalZoneId provides ZoneOffset.UTC) {
+                JellyshelfTheme(dynamicColor = false) {
+                    LibraryContent(
+                        videosOrNull = videos,
+                        query = query,
+                        totalCount = totalCount,
+                        onQueryChange = onQueryChange,
+                        onPlayVideo = onPlayVideo,
+                        onOpenDetails = onOpenDetails,
+                        // The two seams the screen exposes for exactly this: no Koin container
+                        // here.
+                        scrollStore = FakeScrollPositionRepository(),
+                        thumbnailModel = { null },
+                    )
+                }
             }
         }
+    }
+
+    @Test
+    fun aRow_showsTheUploadTimeOfDayWhenItHasOne() {
+        setContent(
+            LibraryVideos(
+                listOf(
+                    video("a", "Timed video"),
+                    video("b", "Dated video").copy(uploadTimestamp = null),
+                ),
+                "",
+            ),
+            totalCount = 2,
+        )
+
+        composeRule.onNodeWithText("2026-07-21 10:15", substring = true).assertIsDisplayed()
+        // The date-only row renders the bare date, with no time glued on (exact match: the timed
+        // row's line starts the same way).
+        composeRule.onNodeWithText("12:34  •  2026-07-21").assertIsDisplayed()
     }
 
     private fun string(id: Int, vararg args: Any) = composeRule.activity.getString(id, *args)

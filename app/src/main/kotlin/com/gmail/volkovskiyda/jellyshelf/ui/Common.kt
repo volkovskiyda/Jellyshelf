@@ -81,7 +81,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
-import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
+import com.gmail.volkovskiyda.jellyshelf.util.formatUploadTime
 import com.gmail.volkovskiyda.jellyshelf.util.isJellyfinImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
 import kotlinx.coroutines.FlowPreview
@@ -457,9 +457,10 @@ fun VideoRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            val zone = LocalZoneId.current
             val meta = buildList {
                 if (video.durationSeconds > 0) add(formatDuration(video.durationSeconds))
-                formatUploadDate(video.uploadDate)?.let { add(it) }
+                formatUploadTime(video.uploadDate, video.uploadTimestamp, zone)?.let { add(it) }
             }.joinToString("  •  ")
             if (meta.isNotBlank()) {
                 Text(

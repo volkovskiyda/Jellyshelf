@@ -49,6 +49,12 @@ data class VideoEntity(
     val channelId: String?,
     val durationSeconds: Long,
     val uploadDate: String?,
+    /**
+     * The upload instant in epoch seconds (yt-dlp `timestamp`), null when the feed had none. Rides
+     * the metadata merge beside [uploadDate]; the two are rendered together by
+     * [com.gmail.volkovskiyda.jellyshelf.util.formatUploadTime]. Added in schema 4.
+     */
+    val uploadTimestamp: Long? = null,
     val description: String?,
     /** Structured yt-dlp chapters, riding the metadata merge like [description]. */
     val chapters: List<Chapter> = emptyList(),

@@ -358,7 +358,9 @@ private fun imageHttpClient(buildInfo: BuildInfo): HttpClient = HttpClient(OkHtt
  * `fallbackToDestructiveMigrationFrom(...)` rather than a blanket fallback so each decision
  * expires with the version it was made about: the next bump still has to either ship a real
  * migration or add its predecessor here on purpose, and an install that reaches this builder with
- * no route forward fails loudly instead of quietly wiping itself.
+ * no route forward fails loudly instead of quietly wiping itself. The 3 → 4 bump is the first to
+ * take the migration route — an auto migration declared on [JellyshelfDatabase], so 3 is
+ * deliberately absent from the list below.
  */
 private fun provideDatabase(context: Context): JellyshelfDatabase = Room.databaseBuilder(
     context,

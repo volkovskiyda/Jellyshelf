@@ -32,6 +32,8 @@ data class Video(
     val channelId: String?,
     val durationSeconds: Long,
     val uploadDate: String?,
+    /** The upload instant in epoch seconds, when the metadata source carried one. */
+    val uploadTimestamp: Long? = null,
     val description: String?,
     /**
      * Structured yt-dlp chapters — the *fallback* source: description-parsed timecodes win when

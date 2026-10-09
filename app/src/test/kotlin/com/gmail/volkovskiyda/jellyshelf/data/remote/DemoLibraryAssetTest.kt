@@ -9,6 +9,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
+private val UTC_DAY = DateTimeFormatter.ofPattern("yyyyMMdd")
 
 /**
  * Guards the bundled demo dataset, host-side: it is hand-authored content, and the promises the
@@ -62,6 +67,34 @@ class DemoLibraryAssetTest {
         assertTrue("expected a handful of channels, got $channels", channels.size >= 5)
         val categories = entries.flatMap { it.categories.orEmpty() }.toSet()
         assertTrue("expected several YouTube categories, got $categories", categories.size >= 5)
+    }
+
+    /**
+     * Most dated entries carry an upload instant, a few deliberately keep the bare date, and every
+     * instant falls on its entry's `uploadDate` in UTC — the calendar yt-dlp derives that date in,
+     * so the demo's time-of-day labels and its year/month groupings never contradict each other.
+     */
+    @Test
+    fun demoDatasetUploadInstantsAgreeWithTheirDates() {
+        val all = entries + fetched
+        val dated = all.filter { it.uploadDate != null }
+        val stamped = dated.filter { it.uploadTimestamp != null }
+        assertTrue(
+            "most dated entries carry an instant, got ${stamped.size}/${dated.size}",
+            stamped.size * 4 >= dated.size * 3,
+        )
+        assertTrue("a few dated entries stay bare so the date-only label shows", stamped.size < dated.size)
+        assertTrue(
+            "an instant without a date has no label to agree with",
+            all.none {
+                it.uploadTimestamp != null &&
+                    it.uploadDate == null
+            },
+        )
+        for (entry in stamped) {
+            val day = Instant.ofEpochSecond(entry.uploadTimestamp!!).atOffset(ZoneOffset.UTC).format(UTC_DAY)
+            assertEquals("${entry.id} instant falls on another day than its uploadDate", entry.uploadDate, day)
+        }
     }
 
     /** Rows with nothing but a title are what gives the "Uncategorized" virtual filter members. */

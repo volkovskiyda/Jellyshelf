@@ -17,6 +17,11 @@ data class IndexEntry(
     @SerialName("channelId") val channelId: String? = null,
     @SerialName("duration") val duration: Long? = null,
     @SerialName("uploadDate") val uploadDate: String? = null,
+    /**
+     * yt-dlp's `timestamp` — the upload instant in epoch seconds, where YouTube publishes one
+     * (most videos; a few dozen per thousand carry only `upload_date`). Older indexes lack it.
+     */
+    @SerialName("uploadTimestamp") val uploadTimestamp: Long? = null,
     @SerialName("tags") val tags: List<String>? = null,
     @SerialName("categories") val categories: List<String>? = null,
     @SerialName("description") val description: String? = null,

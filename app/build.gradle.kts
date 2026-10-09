@@ -136,7 +136,12 @@ android {
         getByName("test") { kotlin.directories += "src/testShared/kotlin" }
         // Instrumented tests share them too — the sync suite needs the same in-memory
         // SettingsRepository the host-side tests use.
-        getByName("androidTest") { kotlin.directories += "src/testShared/kotlin" }
+        getByName("androidTest") {
+            kotlin.directories += "src/testShared/kotlin"
+            // The exported Room schemas, so MigrationTestHelper can open an old-version database
+            // and validate the migrated one against the current schema.
+            assets.directories += "schemas"
+        }
         // The app's half of the Kotzilla seam — exactly one of the two directories, never both.
         // The plugin below is switched off when app/kotzilla.json is missing, and a disabled
         // plugin generates no code and adds no SDK runtime, so both JellyshelfApplication's
@@ -916,6 +921,9 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.koin.test)
     androidTestImplementation(libs.androidx.work.testing)
+    // MigrationTestHelper: walks a database file through the declared migrations against the
+    // checked-in schemas (app/schemas, on the androidTest assets path above).
+    androidTestImplementation(libs.androidx.room.testing)
     debugImplementation(libs.androidx.compose.ui.tooling)
     // Renders @PreviewTest previews host-side (LayoutLib) into reference images.
     screenshotTestImplementation(libs.androidx.compose.ui.tooling)

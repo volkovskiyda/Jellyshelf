@@ -77,6 +77,8 @@ class VideoMergeTest {
         title = "Index Title",
         channel = "Index Channel",
         duration = 620L,
+        uploadDate = "20260721",
+        uploadTimestamp = 1_784_628_907L,
         fetchedAt = fetchedAtSeconds,
     )
 
@@ -168,6 +170,8 @@ class VideoMergeTest {
         assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
         assertEquals("Index Title", merged.title)
         assertEquals(620L, merged.durationSeconds)
+        assertEquals("20260721", merged.uploadDate)
+        assertEquals(1_784_628_907L, merged.uploadTimestamp)
     }
 
     @Test
@@ -338,6 +342,8 @@ class VideoMergeTest {
         assertEquals("Api Title", combined.entry.title)
         assertEquals("Index Channel", combined.entry.channel)
         assertEquals(620L, combined.entry.duration)
+        // The API carries no upload instant (yet); the older index entry supplies it.
+        assertEquals(1_784_628_907L, combined.entry.uploadTimestamp)
         assertEquals(3_000L, combined.entry.fetchedAt)
     }
 

@@ -25,46 +25,6 @@ fun formatDuration(totalSeconds: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
-/**
- * yt-dlp upload_date is "YYYYMMDD"; render as "YYYY-MM-DD". A bare "YYYY" (the Jellyfin
- * ProductionYear fallback) renders as the year. Anything else is malformed metadata and
- * renders as nothing, matching the validation contract of [yearOf]/[yearMonthOf] below.
- */
-@Suppress("MagicNumber") // 4/6/8 are the "YYYYMMDD" substring offsets, not named values
-fun formatUploadDate(yyyymmdd: String?): String? {
-    val d = yyyymmdd ?: return null
-    if (!d.all { it.isDigit() }) return null
-    return when (d.length) {
-        4 -> d
-        8 -> "${d.substring(0, 4)}-${d.substring(4, 6)}-${d.substring(6, 8)}"
-        else -> null
-    }
-}
-
-/**
- * The four-digit year from an upload-date string, or null if it has no leading year. Accepts
- * yt-dlp "YYYYMMDD" as well as the bare "YYYY" fallback stored from Jellyfin's ProductionYear.
- */
-@Suppress("MagicNumber") // 4 is the "YYYY" length, not a named value
-fun yearOf(uploadDate: String?): String? {
-    val d = uploadDate ?: return null
-    if (d.length < 4) return null
-    val year = d.substring(0, 4)
-    return if (year.all { it.isDigit() }) year else null
-}
-
-/** The "YYYY-MM" month from a "YYYYMMDD" upload date, or null if it lacks a month (bare year). */
-@Suppress("MagicNumber") // 4/6/12 are the "YYYYMM" substring offsets and month range, not named values
-fun yearMonthOf(uploadDate: String?): String? {
-    val d = uploadDate ?: return null
-    if (d.length < 6) return null
-    val yearMonth = d.substring(0, 6)
-    if (!yearMonth.all { it.isDigit() }) return null
-    val month = yearMonth.substring(4, 6).toInt()
-    if (month !in 1..12) return null
-    return "${yearMonth.substring(0, 4)}-${yearMonth.substring(4, 6)}"
-}
-
 private val TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
 /**

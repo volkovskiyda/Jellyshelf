@@ -61,6 +61,7 @@ private fun IndexEntry.filledFrom(older: IndexEntry): IndexEntry = IndexEntry(
     channelId = channelId ?: older.channelId,
     duration = duration ?: older.duration,
     uploadDate = uploadDate ?: older.uploadDate,
+    uploadTimestamp = uploadTimestamp ?: older.uploadTimestamp,
     tags = tags ?: older.tags,
     categories = categories ?: older.categories,
     description = description ?: older.description,
@@ -261,6 +262,8 @@ private fun rebuiltEntity(
         channelId = meta?.channelId,
         durationSeconds = meta?.duration ?: item.runTimeTicks?.let { ticksToSeconds(it) } ?: 0L,
         uploadDate = meta?.uploadDate ?: item.productionYear?.toString(),
+        // Jellyfin knows no upload instant for these files, so there is no item fallback.
+        uploadTimestamp = meta?.uploadTimestamp,
         description = meta?.description ?: item.overview,
         // Jellyfin has no chapter concept for these files, so unlike description there is no
         // item fallback — no index entry simply means no structured chapters.

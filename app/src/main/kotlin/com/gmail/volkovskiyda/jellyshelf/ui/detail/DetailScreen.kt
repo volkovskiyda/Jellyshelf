@@ -79,6 +79,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.ClickThrottle
 import com.gmail.volkovskiyda.jellyshelf.ui.DestructiveButton
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
+import com.gmail.volkovskiyda.jellyshelf.ui.LocalZoneId
 import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.formatSyncTime
 import com.gmail.volkovskiyda.jellyshelf.ui.isMediumWidthOrWider
@@ -88,7 +89,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.rememberNow
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberVideoThumbnailResolver
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
-import com.gmail.volkovskiyda.jellyshelf.util.formatUploadDate
+import com.gmail.volkovskiyda.jellyshelf.util.formatUploadTime
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -342,10 +343,11 @@ private fun Heading(current: Video, now: Long) {
         ) { copyFileName(current.fileName) },
     )
 
+    val zone = LocalZoneId.current
     val meta = buildList {
         current.channel?.let { add(it) }
         if (current.durationSeconds > 0) add(formatDuration(current.durationSeconds))
-        formatUploadDate(current.uploadDate)?.let { add(it) }
+        formatUploadTime(current.uploadDate, current.uploadTimestamp, zone)?.let { add(it) }
     }.joinToString("  •  ")
     if (meta.isNotBlank()) {
         Text(

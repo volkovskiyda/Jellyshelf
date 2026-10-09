@@ -57,6 +57,7 @@ class BrowseProjectionTest {
         channelId = "UC1",
         durationSeconds = 321L,
         uploadDate = "20240101",
+        uploadTimestamp = 1_704_100_000L,
         description = "A long description nobody renders in a list",
         chapters = listOf(Chapter(startMs = 0L, title = "Intro")),
         tags = listOf("a", "b"),
@@ -98,6 +99,7 @@ class BrowseProjectionTest {
         assertEquals(seeded.channel, video.channel)
         assertEquals(seeded.durationSeconds, video.durationSeconds)
         assertEquals(seeded.uploadDate, video.uploadDate)
+        assertEquals(seeded.uploadTimestamp, video.uploadTimestamp)
         assertEquals(seeded.thumbnailUrl, video.thumbnailUrl)
         assertEquals(seeded.played, video.played)
         assertEquals(seeded.playbackPositionTicks, video.playbackPositionTicks)

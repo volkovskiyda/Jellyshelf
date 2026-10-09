@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 class FormatTest {
 
@@ -44,6 +45,31 @@ class FormatTest {
         assertNull(formatUploadDate("2023-07-21"))
         assertNull(formatUploadDate("202307"))
         assertNull(formatUploadDate(""))
+    }
+
+    @Test
+    fun `formatUploadTime renders the instant in the given zone when there is one`() {
+        // 2026-07-21 10:15:07 UTC
+        val uploadTimestamp = 1_784_628_907L
+        assertEquals("2026-07-21 10:15", formatUploadTime("20260721", uploadTimestamp, ZoneOffset.UTC))
+        assertEquals("2026-07-21 13:15", formatUploadTime("20260721", uploadTimestamp, ZoneId.of("Europe/Kyiv")))
+        // The date comes from the instant too, never glued onto upload_date's UTC calendar.
+        assertEquals(
+            "2026-07-21 03:15",
+            formatUploadTime("20260721", uploadTimestamp, ZoneId.of("America/Los_Angeles")),
+        )
+        // 2026-07-21 23:15:07 UTC: upload_date still says the 21st, Tokyo is already on the 22nd.
+        assertEquals("2026-07-22 08:15", formatUploadTime("20260721", 1_784_675_707L, ZoneId.of("Asia/Tokyo")))
+    }
+
+    @Test
+    fun `formatUploadTime falls back to the bare date without an instant`() {
+        assertEquals("2026-07-21", formatUploadTime("20260721", null, ZoneOffset.UTC))
+        assertEquals("2026", formatUploadTime("2026", null, ZoneOffset.UTC))
+        // The schema's 0/negative sentinels are "no instant", not 1970.
+        assertEquals("2026-07-21", formatUploadTime("20260721", 0L, ZoneOffset.UTC))
+        assertNull(formatUploadTime(null, null, ZoneOffset.UTC))
+        assertNull(formatUploadTime("garbage", null, ZoneOffset.UTC))
     }
 
     @Test

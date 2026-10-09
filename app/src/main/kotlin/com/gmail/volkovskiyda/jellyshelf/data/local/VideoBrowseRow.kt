@@ -15,13 +15,14 @@ package com.gmail.volkovskiyda.jellyshelf.data.local
  * [com.gmail.volkovskiyda.jellyshelf.data.repository.SearchRanking], which scores that field, and
  * silently narrow what search matches. This way that is a compile error.
  *
- * Why these twelve, and no more:
+ * Why these thirteen, and no more:
  * - [youtubeId] — the `items(...)` key in both lists, and what a click hands back.
  * - [jellyfinItemId] — whether the row has anything playable behind it. `VideoRow` sends the
  *   thumbnail to the player when it does and to the detail screen when it does not, and announces
  *   a different label either way, so a null here silently costs every row its play affordance.
  * - [fileName] — the sort order of every browse query, and the scroll anchor both lists restore to.
- * - [title], [channel], [durationSeconds], [uploadDate], [played] — rendered by `VideoRow`.
+ * - [title], [channel], [durationSeconds], [uploadDate], [uploadTimestamp], [played] — rendered
+ *   by `VideoRow`.
  * - [thumbnailUrl] — resolved once per screen by `rememberVideoThumbnailResolver`, one level above
  *   `VideoRow`, which takes an already-resolved model.
  * - [playbackPositionTicks] — the row's progress bar.
@@ -42,6 +43,7 @@ data class VideoBrowseRow(
     val channel: String?,
     val durationSeconds: Long,
     val uploadDate: String?,
+    val uploadTimestamp: Long?,
     val thumbnailUrl: String?,
     val played: Boolean,
     val playbackPositionTicks: Long,

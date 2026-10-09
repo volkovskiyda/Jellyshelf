@@ -26,6 +26,8 @@ internal val sampleVideo = Video(
     channelId = "UC0000000000000000000000",
     durationSeconds = 754,
     uploadDate = "20260721",
+    // 2026-07-21 10:15:07 UTC — the instant the file name's prefix is stamped from.
+    uploadTimestamp = 1_784_628_907L,
     description = "A sample description, long enough to show how the detail screen lays out a " +
         "paragraph of body text under the actions.",
     tags = listOf("sample", "preview"),

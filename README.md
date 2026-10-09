@@ -85,15 +85,15 @@ Jellyfin  ──REST (MediaBrowser auth)──►  items + watch state  ──jo
    Filenames that yield no id and failed fetches are logged to `<DIR>/metadata-failures.log`.
 2. **`scripts/build-library-index.sh`** (requires [`jq`](https://jqlang.github.io/jq/)) —
    aggregates every `*.info.json` under a dir into one flat `jellyshelf-index.json` array
-   (id, title, channel, channelId, duration, uploadDate, tags, categories, description,
-   thumbnail, chapters, fetchedAt). Re-run it whenever you add videos.
+   (id, title, channel, channelId, duration, uploadDate, uploadTimestamp, tags, categories,
+   description, thumbnail, chapters, fetchedAt). Re-run it whenever you add videos.
    ```bash
    scripts/build-library-index.sh /media/youtube jellyshelf-index.json   # args: DIR [OUT]
    ```
    Then serve the output over HTTP so the phone can reach it — see
    [Serving the index](#serving-the-index).
 3. **The app** pulls Jellyfin items (→ Jellyfin ItemId, watch state, duration) and the
-   index (→ channel, tags, upload date, description, chapters, thumbnail), joins them by
+   index (→ channel, tags, upload date and time, description, chapters, thumbnail), joins them by
    YouTube id into Room, and auto-groups along five dimensions: channel, year, month,
    duration band and YouTube category. The index URL is optional, like the API in the next
    step — with neither feed configured the app falls back to Jellyfin's own metadata (no
@@ -211,6 +211,7 @@ serves both feeds (`app/src/main/assets/demo/library.json` is a worked example o
     "channelId": "UC…",
     "duration": 212,
     "uploadDate": "20260315",
+    "uploadTimestamp": 1773568800,
     "tags": ["tag"],
     "categories": ["Music"],
     "description": "…",
@@ -224,7 +225,9 @@ serves both feeds (`app/src/main/assets/demo/library.json` is a worked example o
 Only `id` — the 11-character YouTube id, which is what both feeds and the library join on — is
 required; every other field may be absent. **Do emit `fetchedAt`** (yt-dlp's `epoch`, in *seconds*)
 even so: it is what decides which feed wins a field, and an entry without one counts as the oldest
-there is, so the index quietly outranks the API on every field it carries.
+there is, so the index quietly outranks the API on every field it carries. `uploadTimestamp` is
+yt-dlp's `timestamp` (the upload instant, epoch seconds): with it the app shows the upload time of
+day beside the date, in the device's zone; without it only `uploadDate` is shown.
 
 Any non-2xx is treated as a failed fetch, with one exception the app cares about: **401** means the
 token, and is reported differently from an unreachable server (below).

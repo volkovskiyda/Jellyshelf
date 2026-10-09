@@ -27,7 +27,7 @@ import org.koin.compose.koinInject
  */
 @Composable
 fun formatSyncTime(epochMillis: Long, now: Long): String? =
-    when (val time = syncTimeOf(epochMillis, now)) {
+    when (val time = syncTimeOf(epochMillis, now, LocalZoneId.current)) {
         null -> null
         SyncTime.JustNow -> stringResource(R.string.synced_just_now)
         is SyncTime.Minutes ->

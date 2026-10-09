@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.detail
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasClickAction
@@ -26,6 +27,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
+import com.gmail.volkovskiyda.jellyshelf.ui.LocalZoneId
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import com.gmail.volkovskiyda.jellyshelf.util.formatTimestamp
 import org.junit.Assert.assertEquals
@@ -33,6 +35,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.time.ZoneOffset
 
 /**
  * Behavior tests for the detail screen's stateless content. Instrumented, because
@@ -77,6 +80,8 @@ class DetailContentTest {
         channelId = null,
         durationSeconds = 754,
         uploadDate = "20260721",
+        // 2026-07-21 10:15:07 UTC; the zone is pinned by setContent, so this is what renders.
+        uploadTimestamp = 1_784_628_907L,
         description = null,
         tags = emptyList(),
         youtubeCategories = emptyList(),
@@ -114,29 +119,47 @@ class DetailContentTest {
         onOpenCategory: (Category) -> Unit = {},
     ) {
         composeRule.setContent {
-            JellyshelfTheme(dynamicColor = false) {
-                DetailContent(
-                    videoState = VideoDetailState.Loaded(video),
-                    settings = settings,
-                    fetching = false,
-                    thumbnailModel = null,
-                    categories = categories,
-                    onOpenCategory = onOpenCategory,
-                    onBack = {},
-                    onPlay = onPlay,
-                    onSelectMode = onSelectMode,
-                    onToggleWatched = {},
-                    onFetchMetadata = {},
-                    onRemove = onRemove,
-                    // Pinned: sync times are relative now, so the wall clock would decide what
-                    // this renders.
-                    now = now,
-                )
+            // The device's zone would decide what the upload stamp reads; pinned like `now`.
+            CompositionLocalProvider(LocalZoneId provides ZoneOffset.UTC) {
+                JellyshelfTheme(dynamicColor = false) {
+                    DetailContent(
+                        videoState = VideoDetailState.Loaded(video),
+                        settings = settings,
+                        fetching = false,
+                        thumbnailModel = null,
+                        categories = categories,
+                        onOpenCategory = onOpenCategory,
+                        onBack = {},
+                        onPlay = onPlay,
+                        onSelectMode = onSelectMode,
+                        onToggleWatched = {},
+                        onFetchMetadata = {},
+                        onRemove = onRemove,
+                        // Pinned: sync times are relative now, so the wall clock would decide
+                        // what this renders.
+                        now = now,
+                    )
+                }
             }
         }
     }
 
     private fun string(id: Int) = composeRule.activity.getString(id)
+
+    @Test
+    fun `the heading shows the upload time of day when the metadata carries one`() {
+        setContent(video)
+
+        composeRule.onNodeWithText("2026-07-21 10:15", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the heading shows the bare date when the metadata carries no instant`() {
+        setContent(video.copy(uploadTimestamp = null))
+
+        composeRule.onNodeWithText("2026-07-21", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("2026-07-21 ", substring = true).assertDoesNotExist()
+    }
 
     @Test
     fun `a video the server still lists offers no remove action`() {
@@ -186,9 +209,9 @@ class DetailContentTest {
         val syncedAt = NOW - 4 * HOUR_MS
         setContent(video.copy(lastSyncedAt = syncedAt))
 
-        // Formatted in the device's zone, so the expectation is derived rather than hardcoded —
-        // what's under test is that the line renders at all and carries the stamp.
-        val expected = string(R.string.last_synced).format(formatTimestamp(syncedAt))
+        // Formatted in the zone setContent pins, so the expectation is derived rather than
+        // hardcoded — what's under test is that the line renders at all and carries the stamp.
+        val expected = string(R.string.last_synced).format(formatTimestamp(syncedAt, ZoneOffset.UTC))
         composeRule.onNodeWithText(expected).performScrollTo().assertIsDisplayed()
     }
 

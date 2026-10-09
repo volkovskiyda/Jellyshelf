@@ -27,6 +27,7 @@ class YtDlpInfoTest {
               "uploader_id": "@sample",
               "duration": 753.96,
               "upload_date": "20260721",
+              "timestamp": 1784628907,
               "tags": ["one", "two"],
               "categories": ["Music"],
               "description": "0:00 Intro\n2:00 Main",
@@ -50,6 +51,7 @@ class YtDlpInfoTest {
         assertEquals("UC123", entry.channelId)
         assertEquals(753L, entry.duration)
         assertEquals("20260721", entry.uploadDate)
+        assertEquals(1_784_628_907L, entry.uploadTimestamp)
         assertEquals(listOf("one", "two"), entry.tags)
         assertEquals(listOf("Music"), entry.categories)
         assertEquals("0:00 Intro\n2:00 Main", entry.description)
@@ -80,6 +82,7 @@ class YtDlpInfoTest {
         assertEquals("Only Uploader", entry.channel)
         assertEquals("UCold", entry.channelId)
         assertEquals(60L, entry.duration)
+        assertNull(entry.uploadTimestamp)
         assertNull(entry.chapters)
     }
 }

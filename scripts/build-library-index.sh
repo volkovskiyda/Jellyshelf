@@ -50,6 +50,7 @@ printf '%s\0' "${files[@]}" \
       channelId:   (.channel_id // .uploader_id),
       duration:    ((.duration // 0) | floor),
       uploadDate:  .upload_date,
+      uploadTimestamp: .timestamp,
       tags:        (.tags // []),
       categories:  (.categories // []),
       description: .description,

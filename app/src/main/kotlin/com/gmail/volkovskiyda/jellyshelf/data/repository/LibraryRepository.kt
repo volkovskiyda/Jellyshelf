@@ -214,6 +214,7 @@ internal fun demoVideo(entry: IndexEntry, index: Int, now: Long): VideoEntity {
         channelId = entry.channelId,
         durationSeconds = durationSeconds,
         uploadDate = entry.uploadDate,
+        uploadTimestamp = entry.uploadTimestamp,
         description = entry.description,
         chapters = entry.chapters.toChapters(),
         tags = entry.tags.orEmpty(),
@@ -263,7 +264,7 @@ private fun demoWatchState(index: Int, durationSeconds: Long, now: Long): DemoWa
  * seeded as Jellyfin-sourced — see [DefaultLibraryRepository.demoVideo].
  */
 internal val IndexEntry.hasIndexMetadata: Boolean
-    get() = channel != null || duration != null || uploadDate != null ||
+    get() = channel != null || duration != null || uploadDate != null || uploadTimestamp != null ||
         description != null || !categories.isNullOrEmpty() || !tags.isNullOrEmpty()
 
 /** What a sync does with the stored videos its server listing didn't contain. */
@@ -1080,6 +1081,7 @@ class DefaultLibraryRepository private constructor(
                 channelId = entry.channelId ?: existing.channelId,
                 durationSeconds = entry.duration ?: existing.durationSeconds,
                 uploadDate = entry.uploadDate ?: existing.uploadDate,
+                uploadTimestamp = entry.uploadTimestamp ?: existing.uploadTimestamp,
                 description = entry.description ?: existing.description,
                 tags = entry.tags ?: existing.tags,
                 youtubeCategories = entry.categories ?: existing.youtubeCategories,
