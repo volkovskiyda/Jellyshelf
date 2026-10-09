@@ -11,7 +11,8 @@ import androidx.window.core.layout.WindowSizeClass
  * The breakpoint the layouts here key off, so the tabs move to a rail and the detail screen splits
  * into two panes at the same moment rather than at two subtly different widths. Everything from a
  * phone in landscape up — and a tablet either way up — is on the wide side of it. The only other
- * check, [isExpandedWindow], changes how big things are drawn, never where they go.
+ * check, [isExpandedWindow], changes how big things are drawn, never where they go — the video
+ * grid's column count follows from that size, not from a breakpoint of its own.
  *
  * Decided from the window, not from `Configuration.orientation`: a tablet in portrait is still
  * 800 dp wide, and a phone in a half-screen split is still a phone. `currentWindowAdaptiveInfoV2`

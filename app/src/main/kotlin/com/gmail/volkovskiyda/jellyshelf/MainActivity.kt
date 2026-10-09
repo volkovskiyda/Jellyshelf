@@ -436,11 +436,11 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // gap reflowing into the space the tabs left.
     //
     // On a list that is not cosmetic, and the fade does not cover it. Scrolled to the end there is
-    // no row left to reveal, so [LazyColumn] answers the taller viewport by back-scrolling to keep
-    // the last item against the bottom — a real change to `firstVisibleItemIndex/Offset`. Coming
-    // back only shrinks the viewport again; nothing scrolls it forward, and the debounced save in
-    // `rememberAnchoredLazyListState` has meanwhile written the moved anchor down. The list is
-    // simply somewhere else now, and stays there across a relaunch.
+    // no row left to reveal, so a lazy list or grid answers the taller viewport by back-scrolling
+    // to keep the last item against the bottom — a real change to `firstVisibleItemIndex/Offset`.
+    // Coming back only shrinks the viewport again; nothing scrolls it forward, and the debounced
+    // save in `rememberAnchoredLazyGridState` has meanwhile written the moved anchor down. The list
+    // is simply somewhere else now, and stays there across a relaunch.
     //
     // So [onScreen] is every entry currently composed, in composition order, and the chrome stays
     // for as long as any of them still wants it — going only once the last one has been disposed

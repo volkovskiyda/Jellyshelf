@@ -68,6 +68,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -89,6 +90,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Resolves a stored thumbnail [url] to a loadable model against a [settings] snapshot. Stored URLs
@@ -183,75 +185,25 @@ fun rememberPersistedLazyListState(
 }
 
 /**
- * A [LazyListState] whose scroll position is persisted under [key], anchored to the first
+ * A [LazyGridState] whose scroll position is persisted under [key], anchored to the first
  * visible item's [anchorOf] value (its file name) rather than a raw index. On restore it
  * scrolls back to that exact item; if it is gone (removed or renamed), it scrolls to the
  * nearest item that sorts at or just above it. [items] must be sorted ascending by [anchorOf]
- * — the same order the list is displayed in.
+ * — the same order the grid is displayed in.
+ *
+ * The anchor is an item, not a line, so it survives the grid changing its column count: the
+ * position saved with one video per line restores to the line holding that video with two.
  */
-@Composable
-fun <T> rememberAnchoredLazyListState(
-    key: String,
-    items: List<T>,
-    // Declared before [anchorOf] so existing trailing-lambda call sites keep working.
-    store: ScrollPositionRepository = koinInject(),
-    anchorOf: (T) -> String,
-): LazyListState {
-    val state = rememberSaveable(key, saver = LazyListState.Saver) { LazyListState(0, 0) }
-    PersistAnchoredScroll(
-        key = key,
-        state = state,
-        items = items,
-        store = store,
-        anchorOf = anchorOf,
-        firstVisible = { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset },
-        scrollTo = { index, offset -> state.scrollToItem(index, offset) },
-    )
-    return state
-}
-
-/**
- * [rememberAnchoredLazyListState] for a grid. The anchor is the same first-visible item under the
- * same [key], so a window that switches between the list and the grid (a tablet turned on its
- * side) lands on the video it was showing: the list saves its anchor as it leaves composition,
- * and the grid, mounting fresh, restores from it.
- */
+@OptIn(FlowPreview::class)
 @Composable
 fun <T> rememberAnchoredLazyGridState(
     key: String,
     items: List<T>,
+    // Declared before [anchorOf] so trailing-lambda call sites keep working.
     store: ScrollPositionRepository = koinInject(),
     anchorOf: (T) -> String,
 ): LazyGridState {
     val state = rememberSaveable(key, saver = LazyGridState.Saver) { LazyGridState(0, 0) }
-    PersistAnchoredScroll(
-        key = key,
-        state = state,
-        items = items,
-        store = store,
-        anchorOf = anchorOf,
-        firstVisible = { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset },
-        scrollTo = { index, offset -> state.scrollToItem(index, offset) },
-    )
-    return state
-}
-
-/**
- * The restore-once and save-as-you-go halves of the anchored states, for whichever lazy layout
- * [state] is. [firstVisible] reads its first visible item's index and offset; [scrollTo] moves it.
- */
-@OptIn(FlowPreview::class)
-@Composable
-@Suppress("LongParameterList") // the state, its two accessors, and what the anchor is made of
-private fun <T> PersistAnchoredScroll(
-    key: String,
-    state: Any,
-    items: List<T>,
-    store: ScrollPositionRepository,
-    anchorOf: (T) -> String,
-    firstVisible: () -> Pair<Int, Int>,
-    scrollTo: suspend (index: Int, offset: Int) -> Unit,
-) {
     val currentItems by rememberUpdatedState(items)
     val currentAnchorOf by rememberUpdatedState(anchorOf)
     // Guards against re-restoring (which would fight the user's own scrolling) once we've
@@ -266,7 +218,7 @@ private fun <T> PersistAnchoredScroll(
             val index = items.floorIndexOfAnchor(saved.anchor, anchorOf)
             if (index >= 0) {
                 val exact = anchorOf(items[index]) == saved.anchor
-                scrollTo(index, if (exact) saved.offset else 0)
+                state.scrollToItem(index, if (exact) saved.offset else 0)
             }
         }
         restored = true
@@ -274,8 +226,8 @@ private fun <T> PersistAnchoredScroll(
 
     // Persist the first visible item's anchor as the user scrolls.
     LaunchedEffect(key, state) {
-        snapshotFlow(firstVisible)
-            .debounce(250)
+        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
+            .debounce(250.milliseconds)
             .distinctUntilChanged()
             .collect { (index, offset) ->
                 if (!restored) return@collect
@@ -287,11 +239,14 @@ private fun <T> PersistAnchoredScroll(
     DisposableEffect(key, state) {
         onDispose {
             if (!restored) return@onDispose
-            val (index, offset) = firstVisible()
-            val item = currentItems.getOrNull(index) ?: return@onDispose
-            store.saveAnchor(key, AnchorPosition(currentAnchorOf(item), offset))
+            val item = currentItems.getOrNull(state.firstVisibleItemIndex) ?: return@onDispose
+            store.saveAnchor(
+                key,
+                AnchorPosition(currentAnchorOf(item), state.firstVisibleItemScrollOffset),
+            )
         }
     }
+    return state
 }
 
 /**
@@ -407,9 +362,9 @@ fun VideoRow(
                         )
                 },
             )
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(ROW_COVER_GAP),
     ) {
         if (selected != null) {
             // Display-only (onCheckedChange = null): the row above is the single accessible
@@ -435,7 +390,7 @@ fun VideoRow(
         }
         Box(
             modifier = Modifier
-                .width(if (isExpandedWindow()) THUMBNAIL_WIDTH_EXPANDED else THUMBNAIL_WIDTH)
+                .width(videoThumbnailWidth())
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp))
                 .rowTarget(
@@ -549,8 +504,30 @@ fun VideoRow(
  * is mostly empty text column beside a cover too small to tell one video from the next. Phones keep
  * 120 dp in either orientation, see [isExpandedWindow] for why landscape does not count.
  */
+@Composable
+private fun videoThumbnailWidth(): Dp = if (isExpandedWindow()) THUMBNAIL_WIDTH_EXPANDED else THUMBNAIL_WIDTH
+
 private val THUMBNAIL_WIDTH = 120.dp
 private val THUMBNAIL_WIDTH_EXPANDED = 240.dp
+
+/**
+ * The narrowest a [VideoRow] can be and still read: the cover, the row's own padding and the gap
+ * beside the cover, and [ROW_MIN_TEXT_WIDTH] of text. The video grid fits as many columns of at
+ * least this as the window has room for.
+ */
+@Composable
+internal fun videoRowMinWidth(): Dp =
+    videoThumbnailWidth() + ROW_HORIZONTAL_PADDING * 2 + ROW_COVER_GAP + ROW_MIN_TEXT_WIDTH
+
+private val ROW_HORIZONTAL_PADDING = 16.dp
+private val ROW_COVER_GAP = 12.dp
+
+/**
+ * Room for a title to wrap onto two short lines rather than one word a line. Sized so a phone held
+ * upright (360 to 430 dp) stays one column, and a tablet held upright (720 dp beside the rail)
+ * splits into two without depending on the last few dp of the rail's width.
+ */
+private val ROW_MIN_TEXT_WIDTH = 180.dp
 
 /**
  * Drops clicks that land within [windowMs] of the previously accepted one, so a fast double-tap

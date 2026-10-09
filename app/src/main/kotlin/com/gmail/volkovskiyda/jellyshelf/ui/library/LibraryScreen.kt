@@ -285,7 +285,7 @@ internal fun LibraryContent(
                 LaunchedEffect(videos) {
                     if (query != lastQuery) {
                         lastQuery = query
-                        listState.scrollToTop()
+                        listState.scrollToItem(0)
                     }
                 }
             }
