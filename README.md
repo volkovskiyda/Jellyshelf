@@ -584,13 +584,15 @@ monitoring tool measuring another is the price of running both, and it is left k
 One command runs every layer available and prints a single verdict:
 
 ```bash
-scripts/run-tests.sh              # everything: static analysis, unit, screenshots, release build, on-device
+scripts/run-tests.sh              # everything: static analysis, unit, screenshots, release build + launch, on-device
 scripts/run-tests.sh --host-only  # skip the device layer even if one is attached
 scripts/testlab.sh all            # the six Test Lab devices both workflows use, before pushing
 ```
 
 The release layer is the minified, R8-shrunk APK the delivery jobs ship, built with the same
 version properties and with its mapping uploads excluded; a keyless checkout builds it unsigned.
+With a device in play it then installs that APK and cold-launches it, and fails if the process is
+gone or the crash buffer names it ten seconds later.
 When every layer is green the script prints the `testlab.sh` line and, on a terminal, asks whether
 to run it — it is a question rather than a layer because the matrix spends the same Test Lab quota
 the push to `main` needs (the script's header has the arithmetic). `--testlab` answers yes up front.
@@ -635,8 +637,13 @@ in turn, so two journeys never hit the server at once. The layers can also be ru
   runs R8, resource shrinking, `lintVital` or the baseline-profile expansion — each of which has
   failed a build that was green everywhere else. The two mapping uploads are excluded because a
   check is not a delivery (drop the Kotzilla one, `-x :app:uploadMappingFileRelease`, in a checkout
-  without `app/kotzilla.json`: the plugin is off there and the task does not exist). It only builds;
-  a keep rule that fails at runtime still needs the APK launched on a device.
+  without `app/kotzilla.json`: the plugin is off there and the task does not exist). A build that
+  assembles is not one that starts — a 2026-10 release crashed on every launch inside a start-up
+  trace and no gate saw it — so with a device chosen the layer installs the signed APK over
+  whatever release build the device holds (keeping its data; never downgrading) and cold-launches
+  it, failing if the process is gone or the crash buffer names it ten seconds later. That is a
+  smoke test of start-up only, and it is a real release launch: it reports a session to production
+  Kotzilla and Firebase like a tester's would.
 - **Instrumentation tests** (`src/androidTest`) run in a real APK: Compose behavior tests, Room
   DAO round-trips, the on-device kotlinx.serialization path, and a browse-cost benchmark over a
   10k-row library. Compose tests run the accessibility checks, so an unlabelled control, an

@@ -8,7 +8,8 @@ set -uo pipefail
 #   1. Static analysis   (detekt, ktlintCheck, :app:lintDebug)  host-side, always runs
 #   2. Unit tests        (:app:testDebugUnitTest)           host-side, always runs
 #   3. Screenshot goldens(:app:validateDebugScreenshotTest) host-side, always runs
-#   4. Release build     (:app:assembleRelease)             host-side, always runs
+#   4. Release build     (:app:assembleRelease)             host-side, always runs; then installed
+#                                                           and cold-launched on the device, if any
 #   5. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
 #
 # :app:testSummary then aggregates the JUnit XML of every test layer and the detekt/ktlint/lint XML
@@ -28,8 +29,22 @@ set -uo pipefail
 # jobs upload the mapping of the build they actually ship. It never skips. Without
 # keystore.properties the APK comes out unsigned and without app/kotzilla.json the plugin turns
 # itself off, which is what a pull-request checkout gets — and both still run R8, which is the
-# point. What it does not do is run anything: a keep rule that only fails at runtime is still only
-# caught by launching the build on a device.
+# point.
+#
+# A build that assembles is not a build that starts, and the two have come apart: on 2026-10-08 a
+# release crashed inside Firebase Performance's start-up trace on every launch, which reached
+# neither Crashlytics nor Kotzilla and was caught by a tester. So when a device is in play the
+# layer goes on to install the APK it just built and cold-launch it — force-stop, start the
+# launcher activity, wait, then check that the process is still there and that the crash log buffer
+# names nobody. That is a smoke test, not a journey: it proves the minified build survives start-up
+# on real silicon, and nothing after. It needs a signed APK, so a checkout without
+# keystore.properties builds and stops there, with a note; --host-only and an empty device list
+# stop there too. The install is `-r`, over whatever release build the device holds, keeping its
+# data — this package is the one testers run, so on a shared device it may hold real credentials.
+# A device holding a *newer* versionCode is left alone, since a release package cannot be
+# downgraded without an uninstall and the uninstall would take that data with it. The launch is a
+# real release launch: it reports a session to production Kotzilla and Firebase like any tester's
+# would, under this checkout's versionCode.
 #
 # When every layer is green the script ends by naming the Test Lab run both workflows will put the
 # commit through, all six devices in one matrix, and asks whether to run it now — scripts/testlab.sh
@@ -855,13 +870,108 @@ run_layer "screenshot goldens" :app:validateDebugScreenshotTest \
 # to the build file's default rather than passing an empty base. Crashlytics' upload task exists in
 # every checkout; Kotzilla's exists only when the plugin is on, and naming a task Gradle cannot
 # find is an error, so that exclusion follows the same condition the build file uses.
-RELEASE_ARGS=("-PbuildNumber=$(git rev-list --count HEAD)")
+RELEASE_BUILD_NUMBER="$(git rev-list --count HEAD)"
+RELEASE_ARGS=("-PbuildNumber=$RELEASE_BUILD_NUMBER")
 RELEASE_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
 [[ -n "$RELEASE_TAG" ]] && RELEASE_ARGS+=("-PbaseVersion=${RELEASE_TAG#v}")
 RELEASE_ARGS+=(-x :app:uploadCrashlyticsMappingFileRelease)
 [[ -f app/kotzilla.json ]] && RELEASE_ARGS+=(-x :app:uploadMappingFileRelease)
 run_layer "release build" :app:assembleRelease "${RELEASE_ARGS[@]}" \
   && RELEASE_RESULT="passed" || RELEASE_RESULT="FAILED"
+
+RELEASE_PACKAGE="com.gmail.volkovskiyda.jellyshelf"
+RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
+# How long a start-up crash gets to happen. The 2026-10-08 crash fired inside the first second;
+# ten leaves room for a slow physical device and a cold Compose first frame.
+RELEASE_LAUNCH_WAIT=10
+
+# Rationale in the header. Returns 0 when the build launched and stayed up, 1 when it did not, 2
+# when the device could not take the install — a newer versionCode installed — which says nothing
+# about the build and so is reported rather than failed. Every adb call is pinned to the serial
+# rather than to ANDROID_SERIAL, which at this point is set for one device and unset for several.
+release_smoke() {
+  local serial="$1" installed launcher out pid crash
+  installed="$("$ADB" -s "$serial" shell dumpsys package "$RELEASE_PACKAGE" 2>/dev/null \
+    | sed -n 's/.*versionCode=\([0-9][0-9]*\).*/\1/p' | head -1)"
+  if [[ -n "$installed" && "$installed" -gt "$RELEASE_BUILD_NUMBER" ]]; then
+    echo "  $serial holds versionCode $installed, newer than this build's $RELEASE_BUILD_NUMBER;"
+    echo "  a release package cannot be downgraded without uninstalling it, and that would wipe its data."
+    return 2
+  fi
+  echo "  installing on $serial (versionCode $RELEASE_BUILD_NUMBER${installed:+ over $installed})"
+  if ! out="$("$ADB" -s "$serial" install -r "$RELEASE_APK" 2>&1)"; then
+    echo "  install failed: $out"
+    return 1
+  fi
+  "$ADB" -s "$serial" shell am force-stop "$RELEASE_PACKAGE"
+  # The crash buffer is its own log buffer and `-c` without `-b` leaves it alone.
+  "$ADB" -s "$serial" logcat -c -b main -b crash 2>/dev/null
+  # `cmd package resolve-activity` prints the component the launcher would start, so a renamed or
+  # aliased MainActivity does not silently turn this into a test of a stale name.
+  launcher="$("$ADB" -s "$serial" shell cmd package resolve-activity --brief \
+    -c android.intent.category.LAUNCHER "$RELEASE_PACKAGE" 2>/dev/null | tail -1 | tr -d '\r')"
+  [[ "$launcher" == */* ]] || { echo "  no launcher activity resolved for $RELEASE_PACKAGE: $launcher"; return 1; }
+  out="$("$ADB" -s "$serial" shell am start -W -n "$launcher" 2>&1 | tr -d '\r')"
+  if ! grep -q '^Status: ok' <<<"$out"; then
+    echo "  launch refused:"; sed 's/^/    /' <<<"$out"
+    return 1
+  fi
+  echo "  launched $launcher, watching for $RELEASE_LAUNCH_WAIT s"
+  sleep "$RELEASE_LAUNCH_WAIT"
+  pid="$("$ADB" -s "$serial" shell pidof "$RELEASE_PACKAGE" 2>/dev/null | tr -d '\r')"
+  crash="$("$ADB" -s "$serial" logcat -d -b crash 2>/dev/null | grep -F "Process: $RELEASE_PACKAGE," || true)"
+  # Put back the way it was found: stopped, so the behavior layer and the next person start from a
+  # clean slate. The install itself stays — it is the newest build, same as the tester channel's.
+  "$ADB" -s "$serial" shell am force-stop "$RELEASE_PACKAGE"
+  # Both signals, because neither alone is enough: the system restarts an app that crashed in the
+  # foreground, so a crashed process can be back under a new pid by the time pidof runs (measured:
+  # `am crash` at 5 s, a fresh pid at 10 s). The crash buffer is what catches that case.
+  if [[ -n "$crash" || -z "$pid" ]]; then
+    if [[ -n "$pid" ]]; then
+      echo "  a process is running after $RELEASE_LAUNCH_WAIT s, but the crash buffer names the package"
+    else
+      echo "  the process is gone after $RELEASE_LAUNCH_WAIT s"
+    fi
+    echo "  crash buffer: adb -s $serial logcat -d -b crash"
+    "$ADB" -s "$serial" logcat -d -b crash 2>/dev/null | grep -A 12 -F "Process: $RELEASE_PACKAGE," | sed 's/^/    /' | head -40
+    return 1
+  fi
+  echo "  up after $RELEASE_LAUNCH_WAIT s, no crash logged"
+  return 0
+}
+
+if [[ "$RELEASE_RESULT" == "passed" ]]; then
+  echo "-- release build: install and cold launch --"
+  if [[ "$HOST_ONLY" -eq 1 ]]; then
+    RELEASE_RESULT="passed; not launched (--host-only)"
+    echo "skipped (--host-only)"
+  elif [[ ${#DEVICES[@]} -eq 0 ]]; then
+    RELEASE_RESULT="passed; not launched (no device)"
+    echo "skipped, no device or emulator attached"
+  elif [[ ! -f keystore.properties ]]; then
+    RELEASE_RESULT="passed; not launched (unsigned — no keystore.properties)"
+    echo "skipped: the APK is unsigned without keystore.properties, and an unsigned APK does not install"
+  else
+    SMOKE_OK=(); SMOKE_HELD=(); SMOKE_FAILED=()
+    for d in "${DEVICES[@]}"; do
+      release_smoke "$d"
+      case $? in
+        0) SMOKE_OK+=("$d") ;;
+        2) SMOKE_HELD+=("$d") ;;
+        *) SMOKE_FAILED+=("$d") ;;
+      esac
+    done
+    if [[ ${#SMOKE_FAILED[@]} -gt 0 ]]; then
+      RELEASE_RESULT="FAILED (built, but did not survive a cold launch on ${SMOKE_FAILED[*]})"
+      FAILED=1
+      echo "FAIL: release build — cold launch on ${SMOKE_FAILED[*]}"
+    else
+      RELEASE_RESULT="passed${SMOKE_OK[*]:+ (launched on ${SMOKE_OK[*]})}${SMOKE_HELD[*]:+; not launched on ${SMOKE_HELD[*]} (newer build installed)}"
+      echo "PASS: release build — cold launch"
+    fi
+  fi
+  echo
+fi
 
 if [[ "$HOST_ONLY" -eq 1 ]]; then
   INSTRUMENTED_RESULT="skipped (--host-only)"

@@ -217,8 +217,10 @@ pre-push run empties the physical bucket. Worth it on the day a red `main` would
 as a habit.
 
 1. Install a release build: an App Distribution build, a Releases-page APK, or the one
-   `scripts/run-tests.sh` just built — `adb install -r app/build/outputs/apk/release/app-release.apk`
-   (signed when `keystore.properties` is present, and carrying the real versionCode; a bare
+   `scripts/run-tests.sh` just built — which it has already installed and cold-launched on the
+   device it ran on, so on that device this step is done. Elsewhere,
+   `adb install -r app/build/outputs/apk/release/app-release.apk` (signed when
+   `keystore.properties` is present, and carrying the real versionCode; a bare
    `./gradlew :app:installRelease` reports versionCode `1` and refuses to install over a tester
    build). It installs alongside debug — the bare `com.gmail.volkovskiyda.jellyshelf` id, unbadged
    icon.
