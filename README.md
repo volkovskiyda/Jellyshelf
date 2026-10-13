@@ -608,6 +608,8 @@ in turn, so two journeys never hit the server at once. The layers can also be ru
 ./gradlew ktlintFormat                    # fix the formatting half of it in place
 ./gradlew :app:testDebugUnitTest          # JVM unit tests incl. MockEngine networking tests
 ./gradlew :app:validateDebugScreenshotTest  # Compose screenshot goldens (host-side, LayoutLib)
+./gradlew :app:assembleRelease -PbuildNumber=$(git rev-list --count HEAD) \
+  -x :app:uploadCrashlyticsMappingFileRelease -x :app:uploadMappingFileRelease  # release build
 ./gradlew :app:connectedDebugAndroidTest  # instrumentation tests (needs a device/emulator)
 ```
 
@@ -629,6 +631,12 @@ in turn, so two journeys never hit the server at once. The layers can also be ru
 - **Screenshot goldens** (`src/screenshotTest`) render previews host-side. Reference PNGs live in
   Git LFS, so a clone needs `git lfs install`. When a diff is an intentional UI change, re-bake
   with `./gradlew :app:updateDebugScreenshotTest`.
+- **Release build** is `assembleRelease` with the versionCode the workflows pass, and nothing else
+  runs R8, resource shrinking, `lintVital` or the baseline-profile expansion — each of which has
+  failed a build that was green everywhere else. The two mapping uploads are excluded because a
+  check is not a delivery (drop the Kotzilla one, `-x :app:uploadMappingFileRelease`, in a checkout
+  without `app/kotzilla.json`: the plugin is off there and the task does not exist). It only builds;
+  a keep rule that fails at runtime still needs the APK launched on a device.
 - **Instrumentation tests** (`src/androidTest`) run in a real APK: Compose behavior tests, Room
   DAO round-trips, the on-device kotlinx.serialization path, and a browse-cost benchmark over a
   10k-row library. Compose tests run the accessibility checks, so an unlabelled control, an

@@ -10,7 +10,7 @@ from one can never install backwards over a build from the other — and `versio
 
 Every green push to `main` builds a signed release APK and uploads it to **Firebase App
 Distribution** for the `testers` group. Nothing to run: it is the `distribute` job in
-[`ci.yml`](../.github/workflows/ci.yml), and it waits for the checks job.
+[`ci.yml`](../.github/workflows/ci.yml), and it waits for the `checks` and `testlab` jobs.
 
 A pushed tag uploads to the same channel and group as well (a step in the Release workflow's
 `release` job). The tagged commit already reached testers when it landed on `main`, under the
@@ -216,9 +216,12 @@ Spark plan's 10 + 5 a Pacific day, so one pre-push `all` and one push fit in a d
 pre-push run empties the physical bucket. Worth it on the day a red `main` would be expensive, not
 as a habit.
 
-1. Install a release build: an App Distribution build, a Releases-page APK, or a local
-   `./gradlew :app:installRelease` (needs `keystore.properties`). It installs alongside debug —
-   the bare `com.gmail.volkovskiyda.jellyshelf` id, unbadged icon.
+1. Install a release build: an App Distribution build, a Releases-page APK, or the one
+   `scripts/run-tests.sh` just built — `adb install -r app/build/outputs/apk/release/app-release.apk`
+   (signed when `keystore.properties` is present, and carrying the real versionCode; a bare
+   `./gradlew :app:installRelease` reports versionCode `1` and refuses to install over a tester
+   build). It installs alongside debug — the bare `com.gmail.volkovskiyda.jellyshelf` id, unbadged
+   icon.
 2. Open `.test.env` and sign in with `JELLYFIN_SERVER_URL` + `JELLYFIN_USERNAME` +
    `JELLYFIN_PASSWORD`. Release builds accept **`https://` only** — for server and index URL both;
    a plain-HTTP LAN server can only be exercised from a debug build, by design.
