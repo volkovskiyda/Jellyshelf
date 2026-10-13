@@ -12,10 +12,16 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.MediaFolder
 import com.gmail.volkovskiyda.jellyshelf.domain.model.User
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
+import com.gmail.volkovskiyda.jellyshelf.util.uploadInstantFromFileName
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount as RoomCategoryWithCount
 
 // Boundary mappers: the data layer maps its Room rows and network DTOs to domain models so nothing
 // above it depends on Room or Moshi. Applied at each repository's public Flow boundary.
+
+// The upload instant the UI shows: the feed's `uploadTimestamp` when one reached the row, else the
+// one the file name carries (see [uploadInstantFromFileName]) — the index and the metadata API
+// both predate the field, and a row built from them stays bare until its extraction is redone,
+// while the server's own file name has carried the instant all along.
 
 fun VideoWatchRow.toDomain(): WatchState = WatchState(
     played = played,
@@ -32,7 +38,7 @@ fun VideoEntity.toDomain(): Video = Video(
     channelId = channelId,
     durationSeconds = durationSeconds,
     uploadDate = uploadDate,
-    uploadTimestamp = uploadTimestamp,
+    uploadTimestamp = uploadTimestamp ?: uploadInstantFromFileName(fileName),
     description = description,
     chapters = chapters,
     tags = tags,
@@ -69,7 +75,7 @@ fun VideoBrowseRow.toDomain(): Video = Video(
     channelId = null,
     durationSeconds = durationSeconds,
     uploadDate = uploadDate,
-    uploadTimestamp = uploadTimestamp,
+    uploadTimestamp = uploadTimestamp ?: uploadInstantFromFileName(fileName),
     description = null,
     chapters = emptyList(),
     tags = emptyList(),

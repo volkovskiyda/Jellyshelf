@@ -73,6 +73,37 @@ class FormatTest {
     }
 
     @Test
+    fun `uploadInstantFromFileName reads the bot's UTC prefix to the second`() {
+        // Real library names; the sidecars of these files carry exactly these `timestamp`s.
+        assertEquals(
+            1_791_576_036L, // 2026-10-09T20:00:36Z
+            uploadInstantFromFileName(
+                "20261009_200036 - Qualcomm made a Pi 5 killer. Good luck getting one. [KUUuxkICOLw].mp4",
+            ),
+        )
+        assertEquals(1_787_490_012L, uploadInstantFromFileName("20260823_130012 - Kotlin ｜ Web [yzIoilQB02Y].mkv"))
+        // The instant renders through formatUploadTime exactly like a feed-carried one would.
+        val fromName = uploadInstantFromFileName("20261009_200036 - x [id].mp4")
+        assertEquals("2026-10-09 23:00", formatUploadTime("20261009", fromName, ZoneId.of("Europe/Kyiv")))
+    }
+
+    @Test
+    fun `uploadInstantFromFileName refuses the date-only prefixes and anything else`() {
+        // yt-dlp's template falls back to `_u` (upload_date only) and `_e` (extraction day).
+        assertNull(uploadInstantFromFileName("20260705_u - No instant on YouTube [abc].mp4"))
+        assertNull(uploadInstantFromFileName("20260705_e - Not even a date [abc].mp4"))
+        assertNull(uploadInstantFromFileName("Demo title.mp4"))
+        assertNull(uploadInstantFromFileName("Title [dQw4w9WgXcQ].mp4"))
+        assertNull(uploadInstantFromFileName(null))
+        assertNull(uploadInstantFromFileName(""))
+        // Only at the very start, only with the " - " separator, only a possible calendar date.
+        assertNull(uploadInstantFromFileName(" 20261009_200036 - x.mp4"))
+        assertNull(uploadInstantFromFileName("20261009_200036.mp4"))
+        assertNull(uploadInstantFromFileName("20261009_200036 x.mp4"))
+        assertNull(uploadInstantFromFileName("20261345_990000 - impossible.mp4"))
+    }
+
+    @Test
     fun `yearOf accepts yyyymmdd and bare years, rejects garbage`() {
         assertEquals("2023", yearOf("20230721"))
         assertEquals("2023", yearOf("2023"))

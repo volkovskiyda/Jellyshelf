@@ -115,6 +115,52 @@ class VideoMergeTest {
         assertEquals("Jellyfin Name", merged.title)
     }
 
+    // --- a feed that learned a field: same extraction, one more value ---
+
+    @Test
+    fun `feed row takes a field from a same-aged entry that newly carries it`() {
+        // The index builder was upgraded to emit uploadTimestamp; the sidecar (fetchedAt) is the
+        // same one the row was built from, so nothing is newer — but the row has no instant.
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_INDEX, metadataUpdatedAt = 2_000_000L),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = indexMeta(meta(fetchedAtSeconds = 2_000L)), // 2_000_000 ms == 2_000_000 ms
+            context = context(indexAvailable = true),
+        )
+        assertEquals(1_784_628_907L, merged.uploadTimestamp)
+        assertEquals(METADATA_SOURCE_INDEX, merged.metadataSource)
+        assertEquals(2_000_000L, merged.metadataUpdatedAt)
+        assertEquals("Index Title", merged.title)
+    }
+
+    @Test
+    fun `feed row keeps its metadata over a same-aged entry that adds nothing`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_INDEX, metadataUpdatedAt = 2_000_000L),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = indexMeta(meta(fetchedAtSeconds = 2_000L).copy(uploadTimestamp = null)),
+            context = context(indexAvailable = true),
+        )
+        assertEquals("Rich Title", merged.title)
+        assertNull(merged.uploadTimestamp)
+    }
+
+    @Test
+    fun `ytdlp row is kept over a same-aged feed entry whatever it carries`() {
+        val merged = mergeVideo(
+            existing = existing(METADATA_SOURCE_YTDLP, metadataUpdatedAt = 2_000_000L),
+            youtubeId = youtubeId,
+            item = item(),
+            meta = indexMeta(meta(fetchedAtSeconds = 2_000L)),
+            context = context(indexAvailable = true),
+        )
+        assertEquals(METADATA_SOURCE_YTDLP, merged.metadataSource)
+        assertEquals("Rich Title", merged.title)
+        assertNull(merged.uploadTimestamp)
+    }
+
     // --- yt-dlp newest-wins ---
 
     @Test

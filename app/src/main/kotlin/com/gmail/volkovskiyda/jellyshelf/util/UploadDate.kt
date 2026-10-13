@@ -1,6 +1,8 @@
 package com.gmail.volkovskiyda.jellyshelf.util
 
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 // The upload date as the feeds carry it and as the UI says it. yt-dlp emits `upload_date` as a
 // "YYYYMMDD" string and, for most videos, the upload instant as `timestamp`; the auto year/month
@@ -38,6 +40,31 @@ private const val MILLIS_PER_SECOND = 1_000L
  */
 fun formatUploadTime(uploadDate: String?, uploadTimestamp: Long?, zone: ZoneId = ZoneId.systemDefault()): String? =
     uploadTimestamp?.let { formatTimestamp(it * MILLIS_PER_SECOND, zone) } ?: formatUploadDate(uploadDate)
+
+/** `YYYYMMDD_HHMMSS - ` at the very start of the name; the `_u`/`_e` date-only variants don't match. */
+private val FILE_NAME_INSTANT = Regex("""^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2}) - """)
+
+/**
+ * The upload instant a library file name carries, in epoch seconds, or null when it carries none.
+ *
+ * The bot that downloads the library names every file through yt-dlp's output template
+ * `%(timestamp>%Y%m%d_%H%M%S,upload_date>%Y%m%d_u,epoch>%Y%m%d_e)s - title [id].ext`, and yt-dlp
+ * renders that `timestamp` in UTC — so the prefix is the very instant the feeds carry as
+ * `uploadTimestamp`, to the second, available for every video the server holds whether or not
+ * any feed has learned the field yet. The two date-only prefixes (`_u` when YouTube published
+ * no instant, `_e` when the extraction day stood in for an unknown upload date) are not an
+ * instant and must not become one, and a name without the prefix (demo rows, hand-renamed
+ * files) is simply not stamped. An impossible calendar date in a matching prefix is treated the
+ * same way rather than thrown on.
+ */
+@Suppress("MagicNumber") // the six capture groups of the prefix, not named values
+fun uploadInstantFromFileName(fileName: String?): Long? {
+    val match = FILE_NAME_INSTANT.find(fileName ?: return null) ?: return null
+    val field = match.groupValues.drop(1).map(String::toInt)
+    return runCatching {
+        LocalDateTime.of(field[0], field[1], field[2], field[3], field[4], field[5]).toEpochSecond(ZoneOffset.UTC)
+    }.getOrNull()
+}
 
 /**
  * The four-digit year from an upload-date string, or null if it has no leading year. Accepts

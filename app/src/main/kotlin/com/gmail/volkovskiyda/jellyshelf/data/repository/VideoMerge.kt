@@ -16,60 +16,6 @@ import java.time.Instant
 
 private const val MILLIS_PER_SECOND = 1000L
 
-/**
- * The constants every row of one sync pass shares: where the server lives, when the pass started,
- * and whether the metadata index and the metadata API were reachable at all this time.
- */
-internal data class SyncMergeContext(
-    val serverBase: String,
-    val now: Long,
-    val indexAvailable: Boolean,
-    val apiAvailable: Boolean = false,
-)
-
-/**
- * One video's metadata candidate for this sync: the entry the feeds produced between them, and
- * the METADATA_SOURCE_* label that combination earns.
- */
-internal class SyncMeta(val entry: IndexEntry, val source: String)
-
-/**
- * Combines the metadata API's entry with the index's for one video, per field, newest extraction
- * first: the fresher of the two wins every field it actually carries, and the older one fills what
- * the fresher lacks — so recency and completeness both win, and neither feed can null out a value
- * the other has. A missing [IndexEntry.fetchedAt] counts as oldest.
- */
-internal fun combinedMeta(api: IndexEntry?, index: IndexEntry?): SyncMeta? = when {
-    api == null && index == null -> null
-    api == null -> SyncMeta(index!!, METADATA_SOURCE_INDEX)
-    index == null -> SyncMeta(api, METADATA_SOURCE_API)
-    else -> {
-        val (newer, older) = if ((api.fetchedAt ?: 0L) >= (index.fetchedAt ?: 0L)) {
-            api to index
-        } else {
-            index to api
-        }
-        SyncMeta(newer.filledFrom(older), METADATA_SOURCE_API_INDEX)
-    }
-}
-
-/** Every field this entry lacks, taken from [older] — the fill half of [combinedMeta]. */
-private fun IndexEntry.filledFrom(older: IndexEntry): IndexEntry = IndexEntry(
-    id = id,
-    title = title ?: older.title,
-    channel = channel ?: older.channel,
-    channelId = channelId ?: older.channelId,
-    duration = duration ?: older.duration,
-    uploadDate = uploadDate ?: older.uploadDate,
-    uploadTimestamp = uploadTimestamp ?: older.uploadTimestamp,
-    tags = tags ?: older.tags,
-    categories = categories ?: older.categories,
-    description = description ?: older.description,
-    thumbnail = thumbnail ?: older.thumbnail,
-    chapters = chapters ?: older.chapters,
-    fetchedAt = fetchedAt ?: older.fetchedAt,
-)
-
 /** Watch state for one row: whichever of the local row and the server snapshot is newer. */
 private class WatchState(
     val played: Boolean,
@@ -101,7 +47,8 @@ internal val IndexEntry?.updatedAtMillis: Long? get() = this?.fetchedAt?.let { i
  * entries already combined by [combinedMeta]) and the [existing] local row, deciding whose
  * metadata wins — newest extraction wins, per source:
  *  - a prior in-app yt-dlp fetch is kept unless the feeds carry a genuinely newer extraction;
- *  - a feed-sourced row keeps its metadata over an equal-or-older candidate, and keeps it outright
+ *  - a feed-sourced row keeps its metadata over an older candidate, and over a same-aged one
+ *    unless that candidate carries a field the row lacks (a feed that learned a field), and keeps it outright
  *    when its own feed(s) could not be fetched this sync ([SyncMergeContext.indexAvailable] /
  *    [SyncMergeContext.apiAvailable]), so a transient failure never downgrades it to bare
  *    Jellyfin fields — only a successfully fetched feed that lacks the entry does;
@@ -175,11 +122,28 @@ private fun keepsExistingMetadata(
                 !sourceFeedsAvailable(existing.metadataSource, context)
         } else {
             val metaUpdatedAt = meta.entry.updatedAtMillis
-            metaUpdatedAt == null || metaUpdatedAt <= existing.metadataUpdatedAt
+            when {
+                metaUpdatedAt == null || metaUpdatedAt < existing.metadataUpdatedAt -> true
+                metaUpdatedAt > existing.metadataUpdatedAt -> false
+                // The very extraction the row was built from, so nothing is newer — unless the
+                // feed has since learned to emit a field that extraction always had (the index
+                // builder gained chapters, then the upload instant, without re-fetching a single
+                // sidecar). Then the row rebuilds from the same data plus that field; without
+                // this, a feed upgrade reaches no existing row until a sign-out. A yt-dlp row is
+                // never same-aged with a feed entry in practice and keeps its protection anyway.
+                else -> existing.metadataSource == METADATA_SOURCE_YTDLP || !meta.entry.learnsFieldOf(existing)
+            }
         }
     }
     else -> false
 }
+
+/** Whether this entry carries a value for a field [existing] has none of — a feed that learned a field. */
+private fun IndexEntry.learnsFieldOf(existing: VideoEntity): Boolean =
+    (uploadTimestamp != null && existing.uploadTimestamp == null) ||
+        (!chapters.isNullOrEmpty() && existing.chapters.isEmpty()) ||
+        (channelId != null && existing.channelId == null) ||
+        (description != null && existing.description == null)
 
 /** Whether every feed that produced metadata of [source] was reachable this sync. */
 private fun sourceFeedsAvailable(source: String, context: SyncMergeContext): Boolean =
