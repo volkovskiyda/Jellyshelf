@@ -196,9 +196,11 @@ ksp {
 //
 // Everything else is left at the plugin's defaults on purpose — mapping upload, the build report,
 // Compose instrumentation and early start. Don't restate them here "for clarity"; a line in this
-// block is a decision to own, and the plan behind this (internal/finished/, 20260911-kotzilla-mcp-plan)
-// records why each default stands. One that must never be set in a committed file is
-// displayLogs: it turns on runtime logging that prints bearer tokens.
+// block is a decision to own. The defaults stand because each was weighed: early start was
+// measured and kept, Compose instrumentation is what feeds screen tracking (and so the MCP's
+// screen performance queries), and the mapping upload is what makes a release stack trace
+// readable in the console. One that must never be set in a committed file is displayLogs: it
+// turns on runtime logging that prints bearer tokens.
 //
 // Compose instrumentation is a Kotlin compiler plugin, so each Kotzilla release supports a range of
 // Kotlin versions (its changelog names them). Up to 2.3.6 that range stopped at 2.4.10, which held

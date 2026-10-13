@@ -34,10 +34,11 @@ import org.koin.core.context.GlobalContext
  * fakes; nothing else joins them up, and the joins are where a feature like this breaks — a seed
  * that works but never navigates, a sign-out that clears rows but leaves the flag.
  *
- * It is also, deliberately, the click path a Firebase Test Lab baseline-profile generator will
- * replay (`internal/release-ci-plan/` item 08): launch → **Try demo** → browse → open a video.
- * Keep the selectors here stable — they are visible user-facing text, which is what UiAutomator can
- * see (Compose `testTag`s are invisible to it unless `testTagsAsResourceId` is set on the root).
+ * It is also, deliberately, the click path the baseline profile generator replays when no live
+ * server is configured (`BaselineProfileGenerator`, its no-`.test.env` fallback): launch →
+ * **Try demo** → browse → open a video. Keep the selectors here stable — they are visible
+ * user-facing text, which is what UiAutomator can see (Compose `testTag`s are invisible to it
+ * unless `testTagsAsResourceId` is set on the root).
  *
  * Instrumented, per this project's no-Robolectric convention;
  * `connectedDebugAndroidTest` skips itself when no device is attached.

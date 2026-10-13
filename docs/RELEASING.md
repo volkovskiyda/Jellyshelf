@@ -171,10 +171,13 @@ The two App Distribution artifacts are **not BoM-managed**: `firebase-bom` does 
 they pin their own version in `libs.versions.toml` and need their own bump. Upstream they are still
 **beta**.
 
-The precedent for editing the restricted key — including before/after snapshots — is
-`internal/finished/20260805-firebase-performance-plan/01-api-key-and-console.md`, and the two
-channels this reads from were set up by `internal/finished/release-ci-plan/`. Both are git-ignored
-working notes, not part of the repo.
+When editing the restricted key, take a snapshot first (`gcloud services api-keys describe <key>
+--project=jellyshelf-3dfc8`) and diff it against one taken afterwards. Both `--api-target` and
+`--allowed-application` **replace** their whole list rather than appending, so every edit passes
+the full set above or silently drops the rest. The key started life unrestricted with ~28 API
+targets (Vertex AI, ML Kit, Firestore, SQL admin…) and was locked down to this list on 2026-08-01;
+the Remote Config pair was added for Performance Monitoring and the App Testers API for the update
+check, each one found by a call failing closed with `API_DISABLED`.
 
 ## Testing a release build
 

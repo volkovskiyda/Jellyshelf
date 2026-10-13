@@ -79,8 +79,11 @@ set -uo pipefail
 # dark screen. The flag holds the screen on for the run and puts the three settings back when it
 # ends — on Ctrl-C and on failure too, via a trap, since a device left on stay-awake holds its screen
 # lit until someone notices. It applies to the devices the layer will actually run on, emulators
-# excepted: those do not lock, and the settings would outlive the run in the AVD's state. The
-# settings, the values restored, and why one is deleted rather than set: internal/adb-stay-awake.md.
+# excepted: those do not lock, and the settings would outlive the run in the AVD's state. Three
+# settings: stay_on_while_plugged_in (7 = AC, USB and wireless), screen_off_timeout and
+# lock_screen_lock_after_timeout, the last two raised to 30 minutes. Restore puts the first two
+# back to stock (0 and two minutes) and deletes the third rather than setting it, because a stock
+# device has no value for it at all — a number there would be a change the run never undid.
 #
 # Usage:
 #   scripts/run-tests.sh                     run everything available
@@ -192,7 +195,7 @@ is_emulator() {
 # Serials whose settings this run changed and must put back. Populated by awake_hold only.
 AWAKE_HELD=()
 
-# Values and rationale: internal/adb-stay-awake.md. Held for the whole run rather than per layer,
+# Values and rationale in the --awake note at the top. Held for the whole run rather than per layer,
 # because the gap between two Gradle invocations is long enough for a screen to lock.
 awake_hold() {
   local serial
@@ -563,7 +566,7 @@ awake_restore() {
        settings delete secure lock_screen_lock_after_timeout' >/dev/null 2>&1; then
       printf 'awake:   %-24s settings restored\n' "$serial"
     else
-      printf 'awake:   %-24s NOT restored — undo by hand, see internal/adb-stay-awake.md\n' \
+      printf 'awake:   %-24s NOT restored — undo by hand (stay_on_while_plugged_in 0, screen_off_timeout 120000, delete lock_screen_lock_after_timeout)\n' \
         "$serial" >&2
     fi
   done
