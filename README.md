@@ -584,9 +584,16 @@ monitoring tool measuring another is the price of running both, and it is left k
 One command runs every layer available and prints a single verdict:
 
 ```bash
-scripts/run-tests.sh              # everything: static analysis, unit, screenshots, on-device
+scripts/run-tests.sh              # everything: static analysis, unit, screenshots, release build, on-device
 scripts/run-tests.sh --host-only  # skip the device layer even if one is attached
+scripts/testlab.sh all            # the six Test Lab devices both workflows use, before pushing
 ```
+
+The release layer is the minified, R8-shrunk APK the delivery jobs ship, built with the same
+version properties and with its mapping uploads excluded; a keyless checkout builds it unsigned.
+When every layer is green the script prints the `testlab.sh` line and, on a terminal, asks whether
+to run it — it is a question rather than a layer because the matrix spends the same Test Lab quota
+the push to `main` needs (the script's header has the arithmetic). `--testlab` answers yes up front.
 
 It aggregates all of it into one page at `app/build/test-summary/index.html`, on failures too.
 With more than one device attached it asks which to use; `--device`, `--all` or a `.device` file
@@ -642,7 +649,10 @@ controls' contracts (`LibraryContentTest`), and one user typing into the real ap
 over 10k rows.
 
 CI (`.github/workflows/ci.yml`) runs `scripts/run-tests.sh --host-only` plus `assembleDebug` on
-every push to `main` and every PR, and uploads the summary and reports as artifacts.
+every push to `main` and every PR, and uploads the summary and reports as artifacts. A push to
+`main` then runs the instrumented suite on Firebase Test Lab through `scripts/testlab.sh ci`, and a
+release tag runs `scripts/testlab.sh release` on three further devices; the script's header explains
+every device in both matrices.
 
 ### Demo and live tests
 

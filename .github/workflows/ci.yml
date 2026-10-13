@@ -23,11 +23,13 @@ jobs:
           java-version: 21   # LTS, and what gradle/gradle-daemon-jvm.properties pins; AGP 9 needs 17+
       - uses: gradle/actions/setup-gradle@v6   # caching + wrapper validation
 
-      # detekt, ktlintCheck, :app:lintDebug, unit tests and the screenshot goldens. Exits non-zero
-      # if any layer fails, and skips the instrumented layer since no device is attached — so no
-      # workflow-side logic is needed. Note that none of the three analysers carries a baseline, by
-      # design (detekt's was deleted in 6ab505d, ktlint never had one): any finding fails the build.
-      # Fix the finding, don't regenerate a baseline. ktlint's half is `./gradlew ktlintFormat`.
+      # detekt, ktlintCheck, :app:lintDebug, unit tests, the screenshot goldens and the release
+      # build (R8, lintVital — unsigned here, since no keystore is restored, and with the Kotzilla
+      # plugin off; both still exercise R8, which is the point). Exits non-zero if any layer fails,
+      # and skips the instrumented layer since no device is attached — so no workflow-side logic is
+      # needed. Note that none of the three analysers carries a baseline, by design (detekt's was
+      # deleted in 6ab505d, ktlint never had one): any finding fails the build. Fix the finding,
+      # don't regenerate a baseline. ktlint's half is `./gradlew ktlintFormat`.
       - run: scripts/run-tests.sh --host-only
 
       - run: ./gradlew :app:assembleDebug
@@ -41,22 +43,16 @@ jobs:
             app/build/reports/
           if-no-files-found: ignore
 
-  # The instrumented suite — the only layer that needs a real device. It cannot run on a GitHub
-  # runner: the APK is arm64-only by design, so an x86_64 emulator refuses it with
-  # INSTALL_FAILED_NO_MATCHING_ABIS and the arm64 macOS runners have no nested virtualisation. Test
-  # Lab has arm64 virtual devices.
-  #
-  # What it installs is the debug APK, and so does the second matrix in release.yml, which means R8's
-  # output is never instrumented anywhere: a keep-rule regression survives every gate and first shows
-  # up in a tester's crash report. Closing that needs testBuildType = "release" plus keep rules for
-  # the test APK itself — a change of its own, not a workflow edit. Worth knowing when reading a
-  # green run: it says nothing about the minified build.
+  # The instrumented suite — the only layer that needs a real device, and it cannot run on a GitHub
+  # runner: the APK is arm64-only by design, so an x86_64 emulator refuses it and the arm64 macOS
+  # runners have no nested virtualisation. Test Lab has arm64 virtual devices. scripts/testlab.sh
+  # builds the APKs and runs the matrix; it carries the device choice, the quota arithmetic and the
+  # history behind both, and is the same command a developer runs before pushing.
   #
   # Main pushes only. PRs keep the host-side suite. Quota is what makes that gate worth keeping: the
   # Spark plan allows 10 virtual and 5 physical device executions per day, counted per device in the
-  # matrix, so the three below spend 2 virtual + 1 physical a run — five main pushes in a day, with
-  # neither bucket running out ahead of the other. The day is Pacific, not local. `gcloud alpha
-  # services quota list --service=testing.googleapis.com` prints the live numbers.
+  # matrix, so the `ci` matrix spends 2 virtual + 1 physical a run — five main pushes in a day, with
+  # neither bucket running out ahead of the other. The day is Pacific, not local.
   testlab:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [checks]
@@ -74,86 +70,11 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v6
 
-      - run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
-
-      # gcloud is preinstalled on ubuntu runners. LiveEndpointTest skips itself here: its .test.env
-      # instrumentation extras are absent, and its server is not reachable from Google's network
-      # anyway. BrowseCostBenchmark is @Ignore'd and costs no quota.
+      # gcloud is preinstalled on ubuntu runners.
       - name: Run instrumented tests on Test Lab
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          set -euo pipefail
-          : "${FIREBASE_SERVICE_ACCOUNT:?set the FIREBASE_SERVICE_ACCOUNT repository secret (see docs/RELEASING.md)}"
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
-          gcloud auth activate-service-account --key-file "$RUNNER_TEMP/firebase-sa.json"
-          gcloud config set project jellyshelf-3dfc8
-          # Three devices, each carrying something none of the others do, and no two overlapping on
-          # any axis — API level, form factor, orientation, emulated vs real silicon. They run in
-          # parallel, so the matrix costs the slowest one rather than the sum, around five minutes.
-          #   MediumTablet.arm 31 landscape — minSdk, the tablet form factor and the only landscape
-          #     window, in one execution. Carrying minSdk on the tablet rather than a phone saves an
-          #     execution. What it gives up is a bug living specifically in phone layout at API 31;
-          #     phone layout is covered at 35 and 36, so that is a narrow gap and a deliberate one.
-          #     Landscape since 2026-08-08, and rather than portrait rather than as well as it,
-          #     because orientation is a device key of its own: Test Lab bills per model, version
-          #     and orientation, so a fourth entry would cost a third virtual execution and take the
-          #     ceiling below from five pushes a day to three. Landscape is the harsher of the two
-          #     at 800x500 dp, where a full-width 16:9 thumbnail is 450 dp tall and pushes a whole
-          #     screen below the fold — nine DetailContentTest cases failed that way on a build this
-          #     matrix had already passed in portrait. What it gives up is a 500x800 window, the
-          #     mild middle ground between landscape and a phone.
-          #   MediumPhone.arm 36 — phone layout at the level most installs actually run.
-          #     MediumPhone_ps16k.arm 37 was tried here on 2026-08-09 and put back: it is the only
-          #     image with API 37 and 16 KB memory pages, which would be worth having since the APK
-          #     ships five native libraries, but it fails InstallFlowTest where every other device
-          #     passes the same APK — one case in one run (matrix-1nax7tw90ci2m), two in the next
-          #     (matrix at 22:14). Both are the offer dialog never arriving; giving it an explicit
-          #     5 s wait made it worse rather than better, so the cause is not simply that the image
-          #     is slow. Worth another look on its own, not while moving the matrix.
-          #   frankel 36 — a physical Pixel 10: real silicon, and so real hardware codecs behind the
-          #     playback tests, which no emulator exercises. It offers API 36 and nothing else, the
-          #     newest level any physical device in the catalogue runs — there is no physical 37,
-          #     against 67 physical models at 36. Replaces shiba (Pixel 8) at 35, which was pinned
-          #     there only by the bug below; frankel was the model that bug hit hardest, so it is
-          #     also the strongest evidence the fix holds on real hardware.
-          #
-          # The minSdk entry is also the only one below SQLite 3.36, which spells a query plan
-          # `SCAN TABLE videos` where later levels spell it `SCAN videos` (measured 2026-08-20: API
-          # 31 ships 3.32.2, API 34 ships 3.39.2). VideoDaoInstrumentedTest normalises the two, and
-          # that normalising is load-bearing exactly while this entry stays below 34 — its
-          # scan assertion matches plan text, and unnormalised it would pass on a real table scan.
-          #
-          # Quota, since it decides how many devices fit: the Spark plan allows ten virtual and five
-          # physical executions a day, counted per device. Two virtual and one physical a run puts
-          # the ceiling at five pushes to main in a day, and both buckets land on five, so neither
-          # runs out ahead of the other. A fourth device costs two pushes a day whichever kind it
-          # is, which is what pairing minSdk with the tablet buys back.
-          #
-          # Why API 36 was off limits until 2026-08-09, and what changed. Every UI test could fail
-          # with `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — the test
-          # framework's input injection, not this app: it took down exactly the tests that inject
-          # touches and left every DAO, sync and serialization test passing. Measured 2026-08-06:
-          # frankel (Pixel 10) failed; tokay (Pixel 9) passed 205/205 and then failed the same way
-          # eight minutes later on the same APK. That looked like Test Lab serving whichever unit is
-          # free, some Android 16 units having dropped the method — so the matrix pinned physical to
-          # 35 and kept API 37 out entirely.
-          #
-          # The real cause was in this repo's dependency graph. Nothing declared espresso-core, so
-          # Compose ui-test's request for 3.4.0 resolved to 3.5.0 (December 2022), which reflects on
-          # that method. Declaring 3.7.0 fixed it: the local Pixel_9 AVD at API 36 went from 135 of
-          # 285 failing to 285 of 285 passing, with no mention of the method anywhere in the run.
-          # Since the pin existed only to dodge that bug, it goes. If this ever comes back, check
-          # the resolved espresso-core version before blaming the device pool:
-          #   ./gradlew :app:dependencies --configuration debugAndroidTestRuntimeClasspath
-          gcloud firebase test android run --type instrumentation \
-            --app app/build/outputs/apk/debug/app-debug.apk \
-            --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            --device model=MediumTablet.arm,version=31,orientation=landscape \
-            --device model=MediumPhone.arm,version=36 \
-            --device model=frankel,version=36 \
-            --timeout 25m \
-            --num-flaky-test-attempts 1
+        run: scripts/testlab.sh ci
 
   # Every green main push reaches testers, with no manual step. PRs never get here.
   distribute:

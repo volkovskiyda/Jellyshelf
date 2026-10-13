@@ -207,6 +207,15 @@ point, and every undo held up against the real server. `0 skipped` in the output
 check: a blank or unreachable `.test.env` makes both tests skip rather than fail, which is easy to
 mistake for a pass.
 
+**Test Lab before the push, if the quota allows.** Both workflows' device matrices run through one
+script, `scripts/testlab.sh`, which also runs locally on your own gcloud login (`gcloud auth login`;
+the project is named on the command, so your gcloud config is left alone). `scripts/run-tests.sh`
+offers `scripts/testlab.sh all` — all six devices — after a green run. It is redundant with the run
+the push itself will start, and it spends quota that push needs: 4 virtual + 2 physical of the
+Spark plan's 10 + 5 a Pacific day, so one pre-push `all` and one push fit in a day and a second
+pre-push run empties the physical bucket. Worth it on the day a red `main` would be expensive, not
+as a habit.
+
 1. Install a release build: an App Distribution build, a Releases-page APK, or a local
    `./gradlew :app:installRelease` (needs `keystore.properties`). It installs alongside debug —
    the bare `com.gmail.volkovskiyda.jellyshelf` id, unbadged icon.

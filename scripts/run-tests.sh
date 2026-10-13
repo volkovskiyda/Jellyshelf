@@ -8,7 +8,8 @@ set -uo pipefail
 #   1. Static analysis   (detekt, ktlintCheck, :app:lintDebug)  host-side, always runs
 #   2. Unit tests        (:app:testDebugUnitTest)           host-side, always runs
 #   3. Screenshot goldens(:app:validateDebugScreenshotTest) host-side, always runs
-#   4. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
+#   4. Release build     (:app:assembleRelease)             host-side, always runs
+#   5. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
 #
 # :app:testSummary then aggregates the JUnit XML of every test layer and the detekt/ktlint/lint XML
 # reports into one HTML page at app/build/test-summary/index.html — on failures too, since that is
@@ -18,6 +19,26 @@ set -uo pipefail
 # run on a machine with no device and in CI without an emulator job. Gradle carries the same
 # guard (an onlyIf on connected*AndroidTest), but that one still builds both APKs before it
 # skips; deciding here saves that work and makes the reason visible.
+#
+# The release layer is the one build the delivery jobs ship and the only one that runs R8, resource
+# shrinking, lintVital and the baseline-profile expansion — none of which any other layer touches,
+# and every one of which has failed a build that was green everywhere else. It takes the same
+# version properties the workflows pass, so the APK reports what a tester's would, and it excludes
+# the two mapping uploads (Crashlytics, Kotzilla): this is a check, not a delivery, and the delivery
+# jobs upload the mapping of the build they actually ship. It never skips. Without
+# keystore.properties the APK comes out unsigned and without app/kotzilla.json the plugin turns
+# itself off, which is what a pull-request checkout gets — and both still run R8, which is the
+# point. What it does not do is run anything: a keep rule that only fails at runtime is still only
+# caught by launching the build on a device.
+#
+# When every layer is green the script ends by naming the Test Lab run both workflows will put the
+# commit through, all six devices in one matrix, and asks whether to run it now — scripts/testlab.sh
+# does the run, and the question is put only when there is a terminal to put it on. It is a
+# question rather than a layer because of what it spends: quota that the push itself needs (the
+# note at the top of that script has the arithmetic), five minutes, and a network. --testlab
+# answers yes up front. A pre-push run of the same matrix is, by construction, redundant with the
+# push's own; what it buys is a main that never goes red, and the answer to whether that is worth
+# the quota changes from one day to the next.
 #
 # That layer also carries the live tests, which hit a real Jellyfin when the repo root has a filled
 # .test.env and skip themselves when it does not — LiveEndpointTest and LiveStreamReconnectTest
@@ -94,6 +115,7 @@ set -uo pipefail
 #   scripts/run-tests.sh --concurrent        don't wait for another worktree's device run
 #   scripts/run-tests.sh --host-only         skip the instrumented layer even if a device is attached
 #   scripts/run-tests.sh --no-checks         skip static analysis, run only the test layers
+#   scripts/run-tests.sh --testlab           when green, run the Test Lab matrix without asking
 #   scripts/run-tests.sh --help
 #
 # Note: `set -e` is deliberately off. Every layer runs even when an earlier one fails, so one
@@ -106,6 +128,7 @@ RUN_CHECKS=1
 WANT_ALL=0
 WANT_AWAKE=0
 WANT_CONCURRENT=0
+WANT_TESTLAB=0
 WANT_DEVICE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -114,6 +137,7 @@ while [[ $# -gt 0 ]]; do
     --all) WANT_ALL=1 ;;
     --awake) WANT_AWAKE=1 ;;
     --concurrent) WANT_CONCURRENT=1 ;;
+    --testlab) WANT_TESTLAB=1 ;;
     --device)
       # A missing value would otherwise swallow the next flag as a serial.
       [[ $# -ge 2 ]] || { echo "ERROR: --device needs a serial (see \`adb devices\`)" >&2; exit 2; }
@@ -826,6 +850,19 @@ run_layer "unit tests" :app:testDebugUnitTest \
 run_layer "screenshot goldens" :app:validateDebugScreenshotTest \
   && SCREENSHOT_RESULT="passed" || SCREENSHOT_RESULT="FAILED"
 
+# Rationale in the header. The version properties mirror the workflows: versionCode is the commit
+# count and versionName is the latest tag plus that count, so a checkout with no tag yet falls back
+# to the build file's default rather than passing an empty base. Crashlytics' upload task exists in
+# every checkout; Kotzilla's exists only when the plugin is on, and naming a task Gradle cannot
+# find is an error, so that exclusion follows the same condition the build file uses.
+RELEASE_ARGS=("-PbuildNumber=$(git rev-list --count HEAD)")
+RELEASE_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+[[ -n "$RELEASE_TAG" ]] && RELEASE_ARGS+=("-PbaseVersion=${RELEASE_TAG#v}")
+RELEASE_ARGS+=(-x :app:uploadCrashlyticsMappingFileRelease)
+[[ -f app/kotzilla.json ]] && RELEASE_ARGS+=(-x :app:uploadMappingFileRelease)
+run_layer "release build" :app:assembleRelease "${RELEASE_ARGS[@]}" \
+  && RELEASE_RESULT="passed" || RELEASE_RESULT="FAILED"
+
 if [[ "$HOST_ONLY" -eq 1 ]]; then
   INSTRUMENTED_RESULT="skipped (--host-only)"
   echo "-- behavior tests: skipped (--host-only) --"
@@ -920,6 +957,7 @@ echo "== Summary =="
 printf '  %-20s %s\n' "static analysis"    "$CHECKS_RESULT"
 printf '  %-20s %s\n' "unit tests"         "$UNIT_RESULT"
 printf '  %-20s %s\n' "screenshot goldens" "$SCREENSHOT_RESULT"
+printf '  %-20s %s\n' "release build"      "$RELEASE_RESULT"
 printf '  %-20s %s\n' "behavior tests"     "$INSTRUMENTED_RESULT"
 
 # Printed on the passing path as well as the failing one, because this *is* the passing path: a
@@ -958,3 +996,27 @@ fi
 echo
 echo "All available layers passed."
 print_report_link
+
+# The offer, rationale in the header. The command is printed whatever happens next, so a run with
+# no terminal (CI, a pipe) still leaves the reader knowing what the push will do; only the question
+# needs somewhere to be asked, and it reads /dev/tty rather than stdin because adb has already
+# drained stdin by this point in any run that had a device.
+echo
+echo "Next: the Test Lab matrix both workflows run, all six devices in one go (4 virtual + 2 physical"
+echo "of the 10 + 5 a Pacific day — the push to main then spends 2 + 1 more):"
+echo "  scripts/testlab.sh all"
+if [[ "$WANT_TESTLAB" -eq 1 ]]; then
+  echo "Running it now (--testlab)."
+elif [[ -t 0 ]] && { : >/dev/tty; } 2>/dev/null; then
+  printf 'Run it now? [y/N] ' >/dev/tty
+  IFS= read -r answer </dev/tty || answer=""
+  case "$answer" in
+    y|Y|yes|YES) ;;
+    *) echo "Not run. The command above is the whole step whenever you want it."; exit 0 ;;
+  esac
+else
+  exit 0
+fi
+echo
+# A call, not an exec: the EXIT trap still has --awake's settings to put back once the matrix ends.
+scripts/testlab.sh all

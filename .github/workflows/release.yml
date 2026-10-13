@@ -47,20 +47,8 @@ jobs:
 
   # A second instrumented pass, on three devices ci.yml never runs. The tag always points at a commit
   # that already went green on main, so repeating that matrix would tell us nothing — every device
-  # here is chosen for what the CI three do not carry:
-  #   MediumTablet.arm 35 — tablet layout at a modern API. With CI's tablet@31 and phone@36 this
-  #     completes the form-factor × API-level square, the last corner being MediumPhone.arm below.
-  #   MediumPhone.arm 31 — phone layout at minSdk, which ci.yml deliberately gives up when it pairs
-  #     API 31 with the tablet to save an execution. A release is where that gap is worth closing.
-  #   tangorpro 33 — a physical Pixel Tablet: real silicon behind a tablet layout, so hardware codecs
-  #     and a large screen at once, which no other device in either workflow has together.
-  #
-  # There is no tablet at API 36 to be had. MediumTablet.arm's images stop at 35 (`gcloud firebase
-  # test android models list` prints the supported versions), and the only API 36 tablets in the
-  # catalogue are physical, where API 36 is a coin flip — see the long note in ci.yml for the
-  # androidx.test input-injection failure that takes down every touch-injecting test on some units.
-  # That same note is why the physical tablet here is pinned to 33 rather than tangorpro's other
-  # option of 36; 33 is also its HIGH-capacity version, so it barely queues.
+  # in the `release` matrix is chosen for what the CI three do not carry; scripts/testlab.sh holds
+  # the list and the reasoning, and is the same command a developer runs before pushing.
   #
   # Quota: 2 virtual + 1 physical, on top of the 2 + 1 the same commit already spent when it landed
   # on main. The Spark plan allows 10 and 5 a Pacific day, so a tag only runs dry if it goes out on a
@@ -81,25 +69,10 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v6
 
-      - run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
-
       - name: Run instrumented tests on Test Lab
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          set -euo pipefail
-          : "${FIREBASE_SERVICE_ACCOUNT:?set the FIREBASE_SERVICE_ACCOUNT repository secret (see docs/RELEASING.md)}"
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
-          gcloud auth activate-service-account --key-file "$RUNNER_TEMP/firebase-sa.json"
-          gcloud config set project jellyshelf-3dfc8
-          gcloud firebase test android run --type instrumentation \
-            --app app/build/outputs/apk/debug/app-debug.apk \
-            --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            --device model=MediumPhone.arm,version=31 \
-            --device model=MediumTablet.arm,version=35 \
-            --device model=tangorpro,version=33 \
-            --timeout 25m \
-            --num-flaky-test-attempts 1
+        run: scripts/testlab.sh release
 
   release:
     needs: [testlab]   # nothing reaches the Releases page until the matrix above is green
