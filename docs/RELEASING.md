@@ -219,8 +219,7 @@ mistake for a pass.
 5. **Sync now**, then check the library populates and a video plays.
 
 After editing `.test.env`, refresh the local secrets snapshot so its `verify` stays green:
-`./internal/backup-secrets.sh backup` (maintainer-local — the script lives in the git-ignored
-`internal/`).
+`./scripts/backup-secrets.sh backup` (maintainer-local; the snapshot it writes is git-ignored).
 
 **Keep the mapping file.** Release builds are R8-obfuscated, so a stack trace from a released APK is
 unreadable without the `mapping-<version>.<versionCode>.txt` from that exact build. Firebase

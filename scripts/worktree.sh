@@ -21,7 +21,7 @@ set -uo pipefail
 #   local.properties        the SDK location — without it the build fails outright
 #   keystore.properties     release signing config  ) both needed by scripts/release.sh, and both
 #   jellyshelf-release.jks  the release keystore    ) fail loudly when absent
-#   .env                    base64 backup of the three above (internal/backup-secrets.sh)
+#   .env                    base64 backup of the three above (scripts/backup-secrets.sh)
 #   .test.env              *fails silently* — see below
 #   internal/               plan folders, notes, screenshots
 #

@@ -176,6 +176,9 @@ above, is what a *different library* looks like: the figures shown are the run t
 from demo data to a real server, which dropped the demo seed and bundled-clip paths and added the
 real ones.
 
+`scripts/baseline-profile-metrics.sh` prints every count in the table below for the committed pair
+(or for any directory holding the two files) in one go; the rows explain what each figure means.
+
 ```sh
 cd app/src/release/generated/baselineProfiles
 ```
