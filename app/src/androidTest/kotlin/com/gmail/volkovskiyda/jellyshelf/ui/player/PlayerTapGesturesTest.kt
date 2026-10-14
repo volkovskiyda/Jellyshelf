@@ -3,7 +3,6 @@ package com.gmail.volkovskiyda.jellyshelf.ui.player
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
@@ -58,27 +57,13 @@ class PlayerTapGesturesTest {
     private var doubleTaps = 0
     private var releases = 0
     private var holdEnds = 0
-    private val seekPreviews = mutableListOf<Long>()
     private var stepPx = 0f
     private var longPressMs = 0L
     private var doubleTapMs = 0L
 
     private lateinit var tracker: HoldSpeedTracker
 
-    /** Mirrors the screen's own host: the scrub refuses to lock while a hold owns the finger. */
-    private fun dragHandler(suppressWhileHolding: Boolean) =
-        PlayerGestureHandler(object : PlayerGestureHandler.Host {
-            override fun canSeek() = !(suppressWhileHolding && tracker.isHolding)
-            override fun seekStartMs() = SEEK_START_MS
-            override fun seekDurationMs() = SEEK_DURATION_MS
-            override fun onSeekPreview(targetMs: Long, deltaMs: Long) {
-                seekPreviews += targetMs
-            }
-            override fun onSeekCommit(targetMs: Long) = Unit
-            override fun onGestureEnd() = Unit
-        })
-
-    private fun setSurface(withDragNode: Boolean = false, suppressWhileHolding: Boolean = true) {
+    private fun setSurface() {
         composeRule.setContent {
             stepPx = with(LocalDensity.current) { HOLD_SPEED_STEP.toPx() }
             longPressMs = LocalViewConfiguration.current.longPressTimeoutMillis
@@ -102,17 +87,6 @@ class PlayerTapGesturesTest {
                         onTap = { taps++ },
                         onDoubleTap = { _, _ -> doubleTaps++ },
                         onHoldRelease = { releases++ },
-                    )
-                    // The screen stacks the scrub node under the tap node in this order; the
-                    // suppression under test only means anything with both of them present.
-                    .then(
-                        if (withDragNode) {
-                            Modifier.playerDragGestures(
-                                remember { dragHandler(suppressWhileHolding) },
-                            )
-                        } else {
-                            Modifier
-                        },
                     ),
             )
         }
@@ -223,7 +197,7 @@ class PlayerTapGesturesTest {
         assertEquals(0, holdEnds)
     }
 
-    /** A swipe with no hold behind it belongs to the scrub gesture, which is a different node. */
+    /** A swipe with no hold behind it is nobody's gesture: the surface has no drag of its own. */
     @Test
     fun swipingWithoutHolding_changesNoSpeed() {
         setSurface()
@@ -241,45 +215,8 @@ class PlayerTapGesturesTest {
         assertFalse(tracker.isHolding)
     }
 
-    /**
-     * Holding and then sliding must not also scrub. The scrub lives in its own pointer node under
-     * this one, and the screen keeps it out of the way by refusing
-     * [PlayerGestureHandler.Host.canSeek] for as long as a hold owns the finger — this is the test
-     * that the refusal is wired up and is enough.
-     */
-    @Test
-    fun slidingWhileHeld_neverScrubs() {
-        setSurface(withDragNode = true)
-        val start = centre()
-
-        holdAndSlide(start, stepPx, 2 * stepPx)
-
-        assertEquals(listOf(2f, 2.5f, 3f), speeds)
-        assertTrue("a hold's swipe also scrubbed: $seekPreviews", seekPreviews.isEmpty())
-    }
-
-    /**
-     * The other side of it: with the refusal taken out, the same gesture *does* reach the scrub.
-     * Without this the test above would pass on a surface where the scrub could never have locked
-     * anyway, and the guard it claims to check would be decoration.
-     */
-    @Test
-    fun withoutTheRefusal_theSameGestureWouldScrub() {
-        setSurface(withDragNode = true, suppressWhileHolding = false)
-        val start = centre()
-
-        holdAndSlide(start, stepPx, 2 * stepPx)
-
-        assertEquals(listOf(2f, 2.5f, 3f), speeds)
-        assertTrue("the scrub never locked, so the refusal guards nothing", seekPreviews.isNotEmpty())
-    }
-
     private companion object {
         const val SURFACE = "player-surface"
-
-        /** A seekable-looking video, so a scrub that does lock has somewhere to land. */
-        const val SEEK_START_MS = 60_000L
-        const val SEEK_DURATION_MS = 600_000L
 
         /** Comfortably past the platform's long-press timeout, so the press is never borderline. */
         const val LONG_PRESS_MARGIN_MS = 200L

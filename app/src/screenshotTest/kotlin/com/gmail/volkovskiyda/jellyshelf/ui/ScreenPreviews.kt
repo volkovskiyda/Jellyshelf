@@ -760,16 +760,6 @@ private fun ScaleModePill() {
     }
 }
 
-/** The swipe-to-seek pill: where the finger would land, and the signed distance jumped. */
-@PreviewTest
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun SeekGesturePill() {
-    PreviewTheme(darkTheme = true) {
-        GestureIndicatorPill(GestureIndicator.Seek(targetMs = 754_000L, deltaMs = 45_000L))
-    }
-}
-
 /**
  * The press-and-hold pill at a speed only a swipe can reach — the half of the ladder the speed
  * menu does not offer, so a golden here is the only thing watching how it renders.

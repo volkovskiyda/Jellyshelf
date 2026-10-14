@@ -126,7 +126,7 @@ class HoldSpeedTrackerTest {
     }
 
     @Test
-    fun `lifting ends the hold exactly once and frees the seek path`() {
+    fun `lifting ends the hold exactly once`() {
         val host = RecordingHost()
         val tracker = HoldSpeedTracker(host)
 

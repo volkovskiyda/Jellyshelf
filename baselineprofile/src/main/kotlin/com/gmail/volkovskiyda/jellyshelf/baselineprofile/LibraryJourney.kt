@@ -677,18 +677,6 @@ internal const val SCROLLS = 3
  */
 internal const val CATEGORY_QUERY = "a"
 
-/**
- * The scrub [scrubBackward] drags: right-to-left across half the surface, which the player maps to
- * 45 seconds back. Kept clear of both edges — a drag starting in the outer twentieth is ignored, so
- * that a swipe from off-screen cannot be mistaken for one.
- */
-internal const val SCRUB_FROM_NUM = 3
-internal const val SCRUB_TO_NUM = 1
-internal const val SCRUB_DEN = 4
-
-/** Enough intermediate points for Compose to see a drag rather than a jump. */
-internal const val SCRUB_STEPS = 20
-
 /** What each colon-separated part of a position label is worth, going up: seconds, minutes, hours. */
 private const val SECONDS_PER_UNIT = 60
 
@@ -799,54 +787,55 @@ internal fun MacrobenchmarkScope.awaitPlaybackUnderway() {
 }
 
 /**
- * Scrubs the playing video backwards, and proves it landed by watching the position go down.
+ * Seeks the playing video 10 s back with the transport button, and proves it landed by watching
+ * the position go down.
  *
  * **Backwards, not forwards, and that is not a style choice.** The bundled demo clip is ten seconds
- * long (`scripts/make-demo-clip.sh`), and a full-width drag travels 90 seconds — so any forward
- * scrub in demo mode runs off the end, the item finishes, the queue auto-advances, and
- * `PLAYER_TRANSITION` silently gains a second advance nobody asked for. A backward scrub is
- * coerced to zero and can do none of that. [awaitPlaybackUnderway] has already established the
- * position is off zero, so there is always somewhere to come back from.
+ * long (`scripts/make-demo-clip.sh`), and the forward button jumps 30 — so a forward seek in demo
+ * mode runs off the end, the item finishes, the queue auto-advances, and `PLAYER_TRANSITION`
+ * silently gains a second advance nobody asked for. A backward seek is coerced to zero and can do
+ * none of that. [awaitPlaybackUnderway] has already established the position is off zero, so
+ * there is always somewhere to come back from.
  *
- * **It waits for the controls to hide first.** The scrub gesture lives on the player's root box,
- * underneath the controls, and a drag whose finger goes down on an overlaid button is that
- * button's, not the surface's. Rather than reasoning about where the controls are — which changes
- * with orientation and with the layout — this waits for them to auto-hide three seconds into
- * playing, leaving the whole surface to drag across. The wait costs wall-clock and nothing else:
- * every metric this journey reports is a named trace section.
+ * The button rather than a gesture because the surface has none for it any more: the drag-to-scrub
+ * this used to perform was removed from the player (see `HoldSpeedTracker`), and a double-tap is
+ * two taps the device cannot be trusted to land inside the double-tap window. The controls hide
+ * three seconds into playing, so the button may already be gone when this arrives: one reveal tap
+ * brings it back — one, never a loop, since a tap while they are up lands on play/pause (the same
+ * rule [advanceToNextItem] follows).
  *
- * The check is the point. A gesture the device quietly refused leaves the position climbing, the
+ * The check is the point. A tap the device quietly dropped leaves the position climbing, the
  * section never opens, and `PLAYER_SEEK` reports zero — which reads as "seeking is free" rather
  * than "no seek happened". Per this journey's rule, a zero is chased, not recorded.
  */
-internal fun MacrobenchmarkScope.scrubBackward() {
-    val before = checkNotNull(positionSeconds(TIMEOUT_MS)) {
-        "The player's position label is not on screen, so there is nothing to scrub from — the " +
-            "controls should still be up here, [awaitPlaybackUnderway] having just read them."
+internal fun MacrobenchmarkScope.seekBackward() {
+    if (!device.hasObject(By.desc(SEEK_BACK))) {
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
     }
-    device.wait(Until.gone(By.res(PLAYER_POSITION)), TIMEOUT_MS)
-    device.swipe(
-        device.displayWidth * SCRUB_FROM_NUM / SCRUB_DEN,
-        device.displayHeight / 2,
-        device.displayWidth * SCRUB_TO_NUM / SCRUB_DEN,
-        device.displayHeight / 2,
-        SCRUB_STEPS,
-    )
+    val seekBack = checkNotNull(device.wait(Until.findObject(By.desc(SEEK_BACK)), TIMEOUT_MS)) {
+        "The player never offered its seek-back button, with or without a reveal tap."
+    }
+    // Read as late as possible: the demo clip is ten seconds long and the label counts whole
+    // seconds, so a reading taken a second too early is one the seek can fail to get under.
+    val before = checkNotNull(positionSeconds(TIMEOUT_MS)) {
+        "The player's position label is not on screen although its seek-back button is — the " +
+            "two are shown together."
+    }
+    seekBack.click()
     device.waitForIdle()
-    // Hidden controls and a reveal tap, the same way [advanceToNextItem] does it: one tap, and
-    // only when they are actually down, because a tap while they are up lands on play/pause.
+    // The tap does not re-arm the auto-hide, so the controls can drop between the click and the
+    // read; reveal them again on the same terms.
     if (!device.hasObject(By.res(PLAYER_POSITION))) {
         device.click(device.displayWidth / 2, device.displayHeight / 2)
     }
     val after = checkNotNull(positionSeconds(TIMEOUT_MS)) {
-        "The position label never came back after the scrub, so whether it landed is unknown. " +
+        "The position label never came back after the seek, so whether it landed is unknown. " +
             "Still on the player: ${device.hasObject(By.desc(MINIMIZE_PLAYER))}. Back in the " +
             "library: ${device.hasObject(By.res(LIBRARY_ROW))}."
     }
     check(after < before) {
-        "The scrub did not move playback: ${before}s before, ${after}s after. Either the drag " +
-            "never reached the player surface, or it was not decisively horizontal enough to " +
-            "lock onto seeking (see PlayerGestureHandler.decideControl)."
+        "The seek did not move playback: ${before}s before, ${after}s after. The button was " +
+            "found and clicked, so either the click never reached it or the seek never landed."
     }
 }
 
@@ -902,6 +891,9 @@ internal const val PLAY = "Play"
 
 /** The player's next-video button, by its content description. */
 internal const val NEXT_VIDEO = "Next video"
+
+/** The player's 10 s seek-back button, by its content description (`seek_back_10`). */
+internal const val SEEK_BACK = "Back 10 seconds"
 
 /**
  * The player top bar's minimize button, by content description — the one affordance that leaves

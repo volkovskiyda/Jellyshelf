@@ -515,12 +515,11 @@ private fun PlayerWithControls(
         onDispose { playbackSpeed.restoreOverriddenSpeed() }
     }
 
-    // The surface's one drag gesture: horizontal scrubbing (see PlayerGestureHandler). The pill
-    // lingers briefly after the finger lifts, then hides.
+    // The feedback pill lingers briefly after the finger lifts, then hides.
     var gestureIndicator by remember { mutableStateOf<GestureIndicator?>(null) }
     var gestureActive by remember { mutableStateOf(false) }
     // Press-and-hold's speed, and the swipe that retunes it without lifting. Remembered on the
-    // controller like the drag handler, so neither restarts mid-gesture.
+    // controller, like the pointer node below is keyed on it, so neither restarts mid-gesture.
     val haptics = LocalHapticFeedback.current
     val holdSpeed = remember(controller) {
         HoldSpeedTracker(object : HoldSpeedTracker.Host {
@@ -536,35 +535,6 @@ private fun PlayerWithControls(
             }
 
             override fun onHoldEnd() = Unit
-        })
-    }
-    val gestureHandler = remember(controller) {
-        PlayerGestureHandler(object : PlayerGestureHandler.Host {
-            // A hold that has begun owns the finger: without this the drag node — the inner of the
-            // two pointer nodes, so it reads the Main pass before the tap detector consumes it —
-            // would lock a scrub under the swipe and fight it for the pill. canSeek() is read once
-            // per gesture, when the drag locks, so refusing here keeps the whole of that gesture
-            // off the seek path.
-            override fun canSeek() =
-                !holdSpeed.isHolding && controller.isCurrentMediaItemSeekable &&
-                    controller.duration > 0
-
-            override fun seekStartMs() = controller.currentPosition.coerceAtLeast(0)
-
-            override fun seekDurationMs() = controller.duration.coerceAtLeast(0)
-
-            override fun onSeekPreview(targetMs: Long, deltaMs: Long) {
-                gestureActive = true
-                gestureIndicator = GestureIndicator.Seek(targetMs, deltaMs)
-            }
-
-            override fun onSeekCommit(targetMs: Long) {
-                controller.seekTo(targetMs)
-            }
-
-            override fun onGestureEnd() {
-                gestureActive = false
-            }
         })
     }
     LaunchedEffect(gestureActive, gestureIndicator) {
@@ -596,9 +566,9 @@ private fun PlayerWithControls(
     Box(
         Modifier
             .fillMaxSize()
-            // Both gesture nodes are keyed on the controller the button states are themselves
-            // remembered from, so neither can restart mid-gesture — and on isInPip, so entering
-            // PiP tears them down: a double-tap seek or a press-and-hold from a 200 dp window
+            // The gesture node is keyed on the controller the button states are themselves
+            // remembered from, so it cannot restart mid-gesture — and on isInPip, so entering
+            // PiP tears it down: a double-tap seek or a press-and-hold from a 200 dp window
             // would be an accident every time, and the platform reads taps there as "expand me".
             .then(
                 if (isInPip) {
@@ -623,8 +593,7 @@ private fun PlayerWithControls(
                         },
                     )
                 },
-            )
-            .then(if (isInPip) Modifier else Modifier.playerDragGestures(gestureHandler)),
+            ),
     ) {
         // The PiP source rect is the *fitted* video rect whatever the screen is showing, so it is
         // reported from its own node rather than from the surface: in Zoom the surface is measured

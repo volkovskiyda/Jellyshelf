@@ -243,9 +243,10 @@ class JourneyBenchmark {
      * [PLAYER_STARTUP] is the whole tap-to-first-frame window `player_startup` reports in the
      * field. [PLAYER_TRANSITION] is the queue advance, and is the only one an ExoPlayer flag about
      * per-stream media progression can move; measuring startup alone would return a clean null
-     * result and be believed. [PLAYER_SEEK] is a scrub inside the item already playing, which is
-     * the one wait here that no call site in the app can see — the seek bar fires its own `seekTo`
-     * from inside media3, so only the player's position discontinuity reports it.
+     * result and be believed. [PLAYER_SEEK] is a seek inside the item already playing, which is
+     * the one wait here that no call site in the app can see — the seek bar and the transport
+     * buttons fire their own seeks from inside media3, so only the player's position
+     * discontinuity reports it.
      *
      * **Live and demo numbers are not comparable to each other.** With a filled `.test.env` this
      * streams from a real Jellyfin over the network; without one it reads a bundled `asset:` clip
@@ -279,10 +280,10 @@ class JourneyBenchmark {
         awaitLibrary(LIBRARY_TIMEOUT_MS)
         startFirstVideo()
 
-        // Before the advance, and backwards: see [scrubBackward] for why the direction is not a
+        // Before the advance, and backwards: see [seekBackward] for why the direction is not a
         // preference. It is the only seek any journey here performs, so [PLAYER_SEEK] is measured
         // nowhere else.
-        scrubBackward()
+        seekBackward()
 
         advanceToNextItem()
 

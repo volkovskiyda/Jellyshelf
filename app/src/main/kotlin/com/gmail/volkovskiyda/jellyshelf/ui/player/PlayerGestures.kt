@@ -3,7 +3,6 @@ package com.gmail.volkovskiyda.jellyshelf.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -11,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,137 +31,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.roundToInt
-
-/**
- * The player surface's one drag gesture: a decisively horizontal drag scrubs. A full surface
- * width travels [SEEK_FULL_WIDTH_MS] through the video, the target is previewed while the finger
- * moves, and the seek itself fires on release — the Jellyfin app's behavior. Drags starting in
- * the edge strips are left to the system's own edge gestures.
- *
- * The [AXIS_LOCK_RATIO] dominance check is what remains of a wider arbitration: this surface once
- * also carried vertical volume and brightness drags, which were removed deliberately (volume has
- * hardware keys and the notification; brightness had no in-app affordance). What the check buys
- * now is that a vertical fling over the video does not scrub by accident — so it stays, with
- * nothing to arbitrate against.
- *
- * A plain class so the state machine is unit-testable on the JVM; [playerDragGestures] is the
- * only Compose-facing piece.
- */
-internal class PlayerGestureHandler(private val host: Host) {
-
-    /** The player screen's side: current values read once when a drag locks, changes pushed out. */
-    interface Host {
-        /** Whether a seek gesture may lock right now: a seekable item with a known duration. */
-        fun canSeek(): Boolean
-
-        /** The playback position a locking seek gesture scrubs from. */
-        fun seekStartMs(): Long
-
-        /** The end of the seekable range — the duration. */
-        fun seekDurationMs(): Long
-
-        /** The finger is mid-scrub: where it would land, and how far that is from the start. */
-        fun onSeekPreview(targetMs: Long, deltaMs: Long)
-
-        /** The finger lifted off a scrub: seek. */
-        fun onSeekCommit(targetMs: Long)
-
-        /** A locked drag's pointer went up or was cancelled. */
-        fun onGestureEnd()
-    }
-
-    private enum class Control { SEEK, IGNORED }
-
-    private var size = IntSize.Zero
-    private var start = Offset.Zero
-    private var dragged = Offset.Zero
-    private var control: Control? = null
-    private var seekStartMs = 0L
-    private var seekDurationMs = 0L
-
-    fun onDragStart(position: Offset, surfaceSize: IntSize) {
-        size = surfaceSize
-        start = position
-        dragged = Offset.Zero
-        control = null
-    }
-
-    fun onDrag(delta: Offset) {
-        if (size.height <= 0 || size.width <= 0) return
-        dragged += delta
-        if (control == null) {
-            control = decideControl()?.also(::lock)
-        }
-        when (control) {
-            Control.SEEK -> {
-                val target = seekTarget()
-                host.onSeekPreview(target, target - seekStartMs)
-            }
-            Control.IGNORED, null -> Unit
-        }
-    }
-
-    fun onDragEnd() {
-        when (control) {
-            Control.SEEK -> {
-                host.onSeekCommit(seekTarget())
-                host.onGestureEnd()
-            }
-            Control.IGNORED, null -> Unit
-        }
-        control = null
-    }
-
-    /** Reads the locked control's starting point, so the first movement adjusts from reality. */
-    private fun lock(control: Control) {
-        when (control) {
-            Control.SEEK -> {
-                seekStartMs = host.seekStartMs()
-                seekDurationMs = host.seekDurationMs()
-            }
-            Control.IGNORED -> Unit
-        }
-    }
-
-    /** Cumulative horizontal travel mapped linearly: a full surface width is [SEEK_FULL_WIDTH_MS]. */
-    private fun seekTarget(): Long {
-        val deltaMs = (dragged.x / size.width * SEEK_FULL_WIDTH_MS).toLong()
-        return (seekStartMs + deltaMs).coerceIn(0L, seekDurationMs)
-    }
-
-    /**
-     * Null while the drag hasn't clearly picked an axis yet — it keeps accumulating. Once locked
-     * the control never changes for the rest of the gesture, which is what stops a drag that
-     * began vertically from turning into a scrub when the finger arcs.
-     */
-    private fun decideControl(): Control? {
-        val dx = abs(dragged.x)
-        val dy = abs(dragged.y)
-        return when {
-            dy > dx * AXIS_LOCK_RATIO -> Control.IGNORED
-            dx > dy * AXIS_LOCK_RATIO -> when {
-                start.x < size.width * EDGE_EXCLUSION_RATIO -> Control.IGNORED
-                start.x > size.width * (1f - EDGE_EXCLUSION_RATIO) -> Control.IGNORED
-                !host.canSeek() -> Control.IGNORED
-                else -> Control.SEEK
-            }
-            else -> null
-        }
-    }
-}
-
-/** Wires [handler] to a surface; meant for the player screen's root box. */
-internal fun Modifier.playerDragGestures(handler: PlayerGestureHandler): Modifier =
-    pointerInput(handler) {
-        detectDragGestures(
-            onDragStart = { offset -> handler.onDragStart(offset, size) },
-            onDrag = { _, dragAmount -> handler.onDrag(dragAmount) },
-            onDragEnd = handler::onDragEnd,
-            onDragCancel = handler::onDragEnd,
-        )
-    }
 
 /**
  * Press-and-hold's temporary speed, and the horizontal swipe that retunes it without lifting.
@@ -175,8 +42,14 @@ internal fun Modifier.playerDragGestures(handler: PlayerGestureHandler): Modifie
  * returns through exactly the same speeds — an incremental sum would drift by a rung and never
  * come home.
  *
- * A plain class so the ladder arithmetic is unit-testable on the JVM, matching
- * [PlayerGestureHandler]; the screen owns what a new speed *does* (override, pill, haptics).
+ * This is the surface's only slide. It once shared the surface with a horizontal scrub — drag to
+ * seek, previewed, committed on release — and the two fought for every finger that held and then
+ * moved. The scrub was removed deliberately (2026-10-14): the 10 s / 30 s buttons and the seek bar
+ * do that job without a second gesture to tell apart, and a surface with one slide on it needs no
+ * arbitration at all. Vertical volume and brightness drags went the same way, earlier.
+ *
+ * A plain class so the ladder arithmetic is unit-testable on the JVM; the screen owns what a new
+ * speed *does* (override, pill, haptics).
  */
 internal class HoldSpeedTracker(private val host: Host) {
 
@@ -189,7 +62,7 @@ internal class HoldSpeedTracker(private val host: Host) {
         fun onHoldEnd()
     }
 
-    /** Whether a press-and-hold is in flight, which is what keeps a swipe off the seek path. */
+    /** Whether a press-and-hold is in flight: between the long press firing and the finger lifting. */
     var isHolding = false
         private set
 
@@ -227,15 +100,15 @@ internal class HoldSpeedTracker(private val host: Host) {
 }
 
 /**
- * The player surface's finger gestures that are not drags: tap, double-tap, and press-and-hold
- * with the swipe that retunes its speed.
+ * The player surface's finger gestures: tap, double-tap, and press-and-hold with the swipe that
+ * retunes its speed.
  *
  * All of it belongs in one pointer node because the halves are not separable. `detectTapGestures`
- * consumes the rest of a long press's event stream, so a gesture detector downstream of it — the
- * scrub's `detectDragGestures`, say — rejects the swipe as already handled; only a reader sitting
- * beside it in the same node sees the movement at all (see [awaitHoldPointer]). Splitting them
- * across two `pointerInput` nodes would also let one restart mid-gesture and strand a hold at
- * speed with nothing left to undo it.
+ * consumes the rest of a long press's event stream, so a gesture detector downstream of it — a
+ * `detectDragGestures`, say — rejects the swipe as already handled; only a reader sitting beside
+ * it in the same node sees the movement at all (see [awaitHoldPointer]). Splitting them across
+ * two `pointerInput` nodes would also let one restart mid-gesture and strand a hold at speed with
+ * nothing left to undo it.
  *
  * [key] is what the node restarts on; pass everything the callbacks close over. Kept here rather
  * than inline on the screen so an instrumented test can drive the real wiring.
@@ -300,9 +173,6 @@ internal suspend fun PointerInputScope.awaitHoldPointer(
 
 /** What the feedback pill shows while a gesture is adjusting something. */
 internal sealed interface GestureIndicator {
-    /** A scrub in progress: where the finger would land, and how far that is from the start. */
-    data class Seek(val targetMs: Long, val deltaMs: Long) : GestureIndicator
-
     /** Press-and-hold's temporary speed override, for as long as the finger stays down. */
     data class Speed(val speed: Float) : GestureIndicator
 
@@ -313,7 +183,7 @@ internal sealed interface GestureIndicator {
     data class ScaleMode(val mode: VideoScaleMode) : GestureIndicator
 }
 
-/** The transient feedback pill for a drag in progress. */
+/** The transient feedback pill for a hold in progress. */
 @Composable
 internal fun GestureIndicatorPill(indicator: GestureIndicator, modifier: Modifier = Modifier) {
     Row(
@@ -325,7 +195,6 @@ internal fun GestureIndicatorPill(indicator: GestureIndicator, modifier: Modifie
         verticalAlignment = Alignment.CenterVertically,
     ) {
         when (indicator) {
-            is GestureIndicator.Seek -> SeekIndicator(indicator)
             is GestureIndicator.Speed -> SpeedIndicator(indicator)
             is GestureIndicator.ScaleMode -> ScaleModeIndicator(indicator)
         }
@@ -354,27 +223,6 @@ private fun ScaleModeIndicator(indicator: GestureIndicator.ScaleMode) {
     )
 }
 
-/** Scrub: direction icon, the landing position, and the signed distance being jumped. */
-@Composable
-private fun SeekIndicator(indicator: GestureIndicator.Seek) {
-    Icon(
-        if (indicator.deltaMs >= 0) Icons.Filled.FastForward else Icons.Filled.FastRewind,
-        contentDescription = null,
-        tint = Color.White,
-    )
-    Text(
-        formatPosition(indicator.targetMs),
-        color = Color.White,
-        style = MaterialTheme.typography.labelLarge,
-    )
-    val sign = if (indicator.deltaMs < 0) "−" else "+"
-    Text(
-        sign + formatPosition(abs(indicator.deltaMs)),
-        color = Color.White.copy(alpha = 0.7f),
-        style = MaterialTheme.typography.labelLarge,
-    )
-}
-
 /**
  * How far a held finger travels to move one rung along [PlaybackSpeed.holdOptions].
  *
@@ -384,12 +232,3 @@ private fun SeekIndicator(indicator: GestureIndicator.Seek) {
  * Internal rather than private so the gesture test measures its travel in real rungs.
  */
 internal val HOLD_SPEED_STEP = 32.dp
-
-/** A drag must travel twice as far along one axis as the other before it locks. */
-private const val AXIS_LOCK_RATIO = 2f
-
-/** Drags starting within this fraction of an edge belong to the system's edge gestures. */
-private const val EDGE_EXCLUSION_RATIO = 0.05f
-
-/** A horizontal drag across the whole surface width travels this far through the video. */
-private const val SEEK_FULL_WIDTH_MS = 90_000L
