@@ -28,6 +28,17 @@ import io.kotzilla.sdk.compose.KotzillaScreenHost
  *
  * Wrapping rather than merely observing: the host measures time to first draw and visibility from
  * its own layout node, which is the number this exists to collect.
+ *
+ * **Reading a "slow to become interactive" report.** The host counts a screen interactive at its
+ * Navigation 3 `RESUMED`, which arrives only once the transition into it has settled and the
+ * outgoing entry is gone. The ordinary cross-fade settles in about 300–330 ms (`SCREEN_FADE_MS`
+ * plus a frame). A predictive-back gesture is a seekable transition held open for as long as the
+ * finger is down, so a slow swipe is reported as the back target taking seconds to become
+ * interactive: reproduced on 2026-10-14, a 4 s swipe from Detail logged Library `RESUMED` at
+ * 4 026 ms. A swipe that is dragged back and released instead shows the target `CREATED`,
+ * `VISIBLE`, then `DESTROYED`, with the origin `RESUMED` again. The tell is a timeline with no
+ * main-thread step inside the gap; a real slow transition has composition, Koin resolutions or
+ * jank in it.
  */
 @Composable
 internal fun KotzillaScreen(key: AppNavKey, content: @Composable () -> Unit) {
