@@ -17,7 +17,7 @@ agp = "9.4.1"
 # supertype, so every compileKotlin died with NoClassDefFoundError. Kotzilla 3.0.0 moved that to a
 # separate legacy class the K2 compiler never loads. Kotzilla's changelog lists the Kotlin versions it
 # supports — check it before going past what it names.
-kotlin = "2.4.20"
+kotlin = "2.4.21"
 coreKtx = "1.19.1"
 junit = "4.13.2"
 lifecycle = "2.11.0"
@@ -110,7 +110,7 @@ uiautomator = "2.4.0"
 # 2.0.0, but its classes.jar holds nothing but a version marker (checked, not assumed), so
 # `trace("label") { }` and `traceAsync` now come from `tracing` itself. Declaring both would add a
 # dependency that contributes no code.
-androidxTracing = "2.0.3"
+androidxTracing = "2.0.4"
 # Frame timings for the per-screen visit trace Firebase Performance carries. Perf's own screen
 # rendering is measured per Activity, and this app has one — so the only way a Compose destination
 # gets a frame count in that console is for the app to count frames itself, which is what JankStats
