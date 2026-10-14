@@ -9,12 +9,14 @@ import com.gmail.volkovskiyda.jellyshelf.data.install.ApkInstaller
 import com.gmail.volkovskiyda.jellyshelf.data.remote.UpdateFlags
 import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
+import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
 import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
 import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.perf.FirebasePerformance
 import io.kotzilla.generated.monitoring
+import kotlinx.coroutines.launch
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.koin.workManagerFactory
@@ -83,12 +85,24 @@ class JellyshelfApplication : Application(), SingletonImageLoader.Factory {
         // returns immediately unless a release build has opted into a channel, and never blocks —
         // it only launches work on the application scope. UpdateChecker documents every gate.
         get<UpdateFlags>().refresh()
-        get<UpdateChecker>().checkOnStart()
-        // And the daily one, which the launch check cannot stand in for: the whole point is the
-        // user who does not launch. Unlike periodic sync below, re-stating this every start is
-        // correct — it is cancelled by turning the channel off, which is persisted state this
-        // reads back and honours, not by an act it would undo.
-        get<UpdateChecker>().scheduleBackgroundCheck()
+        // Resolved off the main thread on purpose. Creating UpdateChecker builds the shared Ktor
+        // HttpClient over OkHttp and touches WorkManager.getInstance. Kotzilla measured ~170 ms of
+        // main thread for it on a Pixel 7 Pro release build (1.10.413) and 200–800 ms in debug,
+        // and nothing below needs any of it before the first frame: both calls only launch work
+        // on the application scope. Koin creates a single under a lock, so if MainActivity
+        // injects the checker before this finishes it waits for this creation rather than making
+        // a second one.
+        val dispatchers = get<DispatcherProvider>()
+        dispatchers.applicationScope.launch(dispatchers.io) {
+            with(get<UpdateChecker>()) {
+                checkOnStart()
+                // And the daily one, which the launch check cannot stand in for: the whole point
+                // is the user who does not launch. Unlike periodic sync below, re-stating this
+                // every start is correct — it is cancelled by turning the channel off, which is
+                // persisted state this reads back and honours, not by an act it would undo.
+                scheduleBackgroundCheck()
+            }
+        }
         // A download interrupted by the process dying leaves a part-file nothing else will clean
         // up. Cheap, and the cache is the one place where leaving rubbish is purely our fault.
         ApkInstaller.sweep(this)
