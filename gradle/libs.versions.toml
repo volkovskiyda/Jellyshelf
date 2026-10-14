@@ -12,6 +12,11 @@ targetSdk = "37"
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.
 agp = "9.4.1"
+# The device-test runner AGP resolves for connected*AndroidTest, pinned past what agp 9.4.1 brings
+# (32.4.1 with engine 1.0.1). See app/build.gradle.kts for why. Both values are what AGP
+# 9.5.0-alpha09 ships. Delete these two refs and the override once agp is 9.5 or later.
+utpWorkAction = "32.5.0-alpha09"
+androidTestEngine = "1.0.7"
 # Was held at 2.4.10 from 2026-09-11 to 2026-10-07 for Kotzilla: 2.4.20 deleted the K1
 # `ComponentRegistrar` interface, and Kotzilla's compiler plugin up to 2.3.6 declared it as a
 # supertype, so every compileKotlin died with NoClassDefFoundError. Kotzilla 3.0.0 moved that to a

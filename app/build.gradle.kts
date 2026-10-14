@@ -323,6 +323,30 @@ tasks.named { it.startsWith("connected") && it.endsWith("AndroidTest") }
         }
     }
 
+// AGP 9.4.1's device-test runner fails the connected task for any device attached over adb Wi-Fi,
+// with every test passing. The engine names each device in a JUnit unique id, which escapes the
+// colon in a serial like 192.168.11.111:5555 to %3A. The runner then looks each device up by its
+// raw serial, misses, and counts the miss as a failed device: "There were failing tests", while
+// the XML and HTML reports show nothing failed. USB and emulator serials have no colon, so only
+// Wi-Fi devices hit it. Found on 2026-10-14 with the Pixel 5 at 192.168.11.111:5555.
+//
+// The 9.5 runner decodes the id first. It runs under AGP 9.4.1 unchanged: verified on 2026-10-14
+// that the Pixel 5 run goes green and a deliberately failing test still fails the task. The
+// configuration name is AGP's own; the versions live in the catalog.
+val utpWorkActionVersion = libs.versions.utpWorkAction.get()
+val androidTestEngineVersion = libs.versions.androidTestEngine.get()
+configurations.matching { it.name == "unified-test-platform-gradle-work-action" }.configureEach {
+    resolutionStrategy.eachDependency {
+        when {
+            requested.group == "com.android.tools.utp" && requested.name.startsWith("gradle-work-action") ->
+                useVersion(utpWorkActionVersion)
+            requested.group == "com.android.tools.androidtest" -> useVersion(androidTestEngineVersion)
+            else -> return@eachDependency
+        }
+        because("AGP 9.4.1's runner fails the task for a device whose serial has a colon")
+    }
+}
+
 // Pixel tolerance for the screenshot goldens: the fraction of pixels that may differ (any channel,
 // by any amount) before a preview fails. The plugin's default is 0 — bit-exact — and in this version
 // (0.0.1-alpha16) nothing but the task's own input sets it: the documented `screenshotTests {}`
