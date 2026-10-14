@@ -1309,7 +1309,7 @@ internal fun isDemoAuthFailure(password: String): Boolean =
     password.trim().equals(DEMO_BAD_PASSWORD, ignoreCase = true)
 
 /** The form fields [SettingsCache.FormDraft] carries, read off the state they were typed into. */
-private fun SettingsUiState.draft() = SettingsCache.FormDraft(
+internal fun SettingsUiState.draft() = SettingsCache.FormDraft(
     serverUrl = serverUrl,
     apiKey = apiKey,
     indexUrl = indexUrl,

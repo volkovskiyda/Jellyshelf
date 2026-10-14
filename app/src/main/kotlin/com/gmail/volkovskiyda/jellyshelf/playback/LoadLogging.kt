@@ -199,10 +199,8 @@ private class BufferingLogger(private val player: ExoPlayer) : AnalyticsListener
     private val snapshot = object : Runnable {
         override fun run() {
             if (player.playbackState != Player.STATE_BUFFERING) return
-            Timber.tag(Playback.TAG).d(
-                "buffering ${(SystemClock.elapsedRealtime() - sinceMs) / MILLIS_PER_SECOND}s: " +
-                    player.describe(),
-            )
+            val seconds = (SystemClock.elapsedRealtime() - sinceMs) / MILLIS_PER_SECOND
+            Timber.tag(Playback.TAG).d("buffering ${seconds}s: ${player.describe()}")
             handler.postDelayed(this, SNAPSHOT_INTERVAL_MS)
         }
     }
@@ -230,8 +228,11 @@ private class BufferingLogger(private val player: ExoPlayer) : AnalyticsListener
      * zero until the period is prepared; `placeholder` is the timeline window still carrying the
      * unset duration a progressive source reports before its index has been read — the two agree
      * when things are normal, and a prepared item on a placeholder window is worth seeing.
+     *
+     * Not `private`: the [snapshot] runnable is a separate class, and reaching a private member
+     * from it costs a synthetic accessor — the enclosing class is private already.
      */
-    private fun ExoPlayer.describe(): String {
+    fun ExoPlayer.describe(): String {
         val window = currentTimeline.takeIf { !it.isEmpty }
             ?.getWindow(currentMediaItemIndex, Timeline.Window())
         return "item=${currentMediaItem?.mediaId} index=$currentMediaItemIndex " +
