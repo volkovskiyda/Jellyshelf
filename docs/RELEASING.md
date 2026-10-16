@@ -246,9 +246,12 @@ own per-build id; the release asset is for anyone reading a trace pasted into an
 **Reading Kotzilla reports.** A "screen is slow to become interactive" report whose timeline has
 no main-thread step between the screen's first draw and its `RESUMED` is a slow or cancelled
 predictive-back swipe, not app work: Navigation 3 resumes the back target only when the gesture
-lets go (reproduced on 2026-10-14; the reasoning is in `KotzillaScreen.kt`). And a version that
-shows obfuscated component names such as `fl7` is a local `scripts/run-tests.sh` release install:
-its release layer skips both mapping uploads on purpose, so only delivered builds are mapped.
+lets go (reproduced on 2026-10-14; the reasoning is in `KotzillaScreen.kt`). The same report on a
+session that begins with `MainActivity` `RESUMED` then `PAUSED` within 30 ms, and `RESUMED` again
+seconds later, is the app restarted behind the lock screen on device wake, interactive at unlock
+(reproduced on 2026-10-17, same file). And a version that shows obfuscated component names such
+as `fl7` is a local `scripts/run-tests.sh` release install: its release layer skips both mapping
+uploads on purpose, so only delivered builds are mapped.
 
 ## One-time setup
 

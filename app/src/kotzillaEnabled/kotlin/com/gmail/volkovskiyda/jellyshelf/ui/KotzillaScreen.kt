@@ -39,6 +39,14 @@ import io.kotzilla.sdk.compose.KotzillaScreenHost
  * `VISIBLE`, then `DESTROYED`, with the origin `RESUMED` again. The tell is a timeline with no
  * main-thread step inside the gap; a real slow transition has composition, Koin resolutions or
  * jank in it.
+ *
+ * The other shape is a cold start whose `MainActivity` is `RESUMED` and then `PAUSED` within
+ * about 30 ms, the restored top screen composed while paused, and the activity `RESUMED` again
+ * seconds later: the device woke with the app's process dead, so the system restarted the app
+ * behind the lock screen, and "interactive" arrived when the user unlocked. Reproduced on
+ * 2026-10-17 on an API 37 emulator with a PIN (`wm_restart_activity` → create, start, resume with
+ * `isKeyguardShowing=true`); the unlock time is the whole gap. Settings is reported because it is
+ * the tab the app was left on, not because of anything it does.
  */
 @Composable
 internal fun KotzillaScreen(key: AppNavKey, content: @Composable () -> Unit) {
