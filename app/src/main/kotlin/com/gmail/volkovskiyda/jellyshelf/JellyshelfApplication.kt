@@ -98,6 +98,12 @@ class JellyshelfApplication : Application(), SingletonImageLoader.Factory {
         // a second one.
         val dispatchers = get<DispatcherProvider>()
         dispatchers.applicationScope.launch(dispatchers.io) {
+            // A download interrupted by the process dying leaves a part-file nothing else will
+            // clean up — the cache is the one place where leaving rubbish is purely our fault.
+            // Here rather than inline: usually it finds nothing, but after an interrupted download
+            // it unlinks a multi-megabyte file, and onCreate's main thread is the launch path.
+            // First in this block so it is done before the checker can offer a new download.
+            ApkInstaller.sweep(this@JellyshelfApplication)
             with(get<UpdateChecker>()) {
                 checkOnStart()
                 // And the daily one, which the launch check cannot stand in for: the whole point
@@ -107,9 +113,6 @@ class JellyshelfApplication : Application(), SingletonImageLoader.Factory {
                 scheduleBackgroundCheck()
             }
         }
-        // A download interrupted by the process dying leaves a part-file nothing else will clean
-        // up. Cheap, and the cache is the one place where leaving rubbish is purely our fault.
-        ApkInstaller.sweep(this)
         // Keeps the media-button gate's answer true between playbacks — see
         // ResumableCache.clearWhenGone. Unconditional, not gated on the flag being up now: a video
         // played for the first time in this process raises it, and a sign-out minutes later in the
