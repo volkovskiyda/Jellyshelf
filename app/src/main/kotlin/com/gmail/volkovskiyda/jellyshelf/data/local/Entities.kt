@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.data.local
 
 import androidx.room.Embedded
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
@@ -131,4 +132,38 @@ data class RankedCategory(
     @Embedded val category: CategoryEntity,
     val videoCount: Int,
     val descriptionMatch: Boolean,
+)
+
+/**
+ * A video the user skipped in the Now playing panel: a queue it is part of still lists it, but
+ * playback passes over it until it is unskipped. One row per skipped video, present or absent —
+ * there is no "unskipped" row.
+ *
+ * A table of its own rather than a column on [VideoEntity], for two reasons that both come down to
+ * who writes `videos`:
+ * - **Sync cannot reset it.** A sync rebuilds every row it sees through `mergeVideo` and upserts it
+ *   whole, so a column there is only as safe as that merge remembering to carry it (the way it has
+ *   to carry `missedSyncs`). Nothing in a sync ever touches this table.
+ * - **The player observes it.** The playback service watches the skip list for as long as a queue
+ *   is loaded, and Room re-runs an observed query on every write to the tables it reads — a column
+ *   on `videos` would re-query it with each position save, every ten seconds of playback.
+ *
+ * The foreign key is what keeps it honest the other way: a video that leaves the library — a
+ * sync's prune, a removal, signing out — takes its mark with it through the cascade, without every
+ * delete path having to remember this table. `videos` is only ever upserted (an update in place,
+ * never a delete and re-insert), so a sync that keeps a row keeps its mark.
+ */
+@Entity(
+    tableName = "skipped_videos",
+    foreignKeys = [
+        ForeignKey(
+            entity = VideoEntity::class,
+            parentColumns = ["youtubeId"],
+            childColumns = ["youtubeId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class SkippedVideoEntity(
+    @PrimaryKey val youtubeId: String,
 )

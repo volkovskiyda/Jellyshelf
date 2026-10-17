@@ -22,9 +22,10 @@ import kotlinx.coroutines.flow.map
 
 /**
  * A [LibraryRepository] covering the **browse reads** only: the video list, the search query and
- * the count. Everything else — syncing, metadata fetches, playlists, watch-state writes
- * — throws, deliberately: a test that reaches one of them has wandered outside what this fake
- * models, and a silent no-op would let it pass while proving nothing.
+ * the count, plus the skip list, which is a plain set. Everything else — syncing, metadata
+ * fetches, playlists, watch-state writes — throws, deliberately: a test that reaches one of them
+ * has wandered outside what this fake models, and a silent no-op would let it pass while proving
+ * nothing.
  *
  * The exceptions are [seedDemoLibrary], [clearLocalData] and [sync], which are *counted* rather
  * than either performed or refused: whether they were called, and how often, is the assertion
@@ -79,6 +80,15 @@ class FakeLibraryRepository(
                 it.youtubeId to WatchState(it.played, it.playbackPositionTicks, it.durationSeconds)
             }
         }
+    }
+
+    /** The skip list, modelled: a plain set the skip writes edit and the read observes. */
+    val skippedIds = MutableStateFlow<Set<String>>(emptySet())
+
+    override fun observeSkippedIds(): Flow<Set<String>> = skippedIds
+
+    override suspend fun setSkipped(youtubeIds: List<String>, skipped: Boolean) {
+        skippedIds.value = if (skipped) skippedIds.value + youtubeIds else skippedIds.value - youtubeIds.toSet()
     }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> = notModelled()

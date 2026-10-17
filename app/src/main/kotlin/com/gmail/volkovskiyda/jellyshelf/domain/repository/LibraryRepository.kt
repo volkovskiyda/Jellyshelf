@@ -47,6 +47,18 @@ interface LibraryRepository : PlaystateRepository {
      * Keyed like [videosByIds]: an id with no row is absent from the map.
      */
     fun observeWatchStates(youtubeIds: List<String>): Flow<Map<String, WatchState>>
+
+    /**
+     * Every skipped video's id, kept current — the Now playing skip list. Local only: it is never
+     * sent to Jellyfin, a sync leaves it alone, and a video leaving the library drops its mark.
+     */
+    fun observeSkippedIds(): Flow<Set<String>>
+
+    /**
+     * Marks [youtubeIds] skipped or not. Skipping touches nothing else about a video — not its
+     * watch state, position or play count. Ids with no stored video are ignored.
+     */
+    suspend fun setSkipped(youtubeIds: List<String>, skipped: Boolean)
     fun observeCategories(): Flow<List<CategoryWithCount>>
 
     /** The categories one video belongs to — every stored type; callers pick the dimensions they show. */

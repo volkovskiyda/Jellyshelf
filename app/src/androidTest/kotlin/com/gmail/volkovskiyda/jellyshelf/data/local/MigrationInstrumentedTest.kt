@@ -58,6 +58,32 @@ class MigrationInstrumentedTest {
             }
         }
     }
+
+    @Test
+    fun migrate4To5_keepsEveryRowAndAddsAnEmptySkipList() {
+        helper.createDatabase(DB_NAME, 4).use { db ->
+            db.execSQL(
+                "INSERT INTO videos (youtubeId, jellyfinItemId, fileName, title, channel, channelId, " +
+                    "durationSeconds, uploadDate, uploadTimestamp, description, chapters, tags, " +
+                    "youtubeCategories, thumbnailUrl, played, playbackPositionTicks, playCount, lastPlayedAt, " +
+                    "lastSyncedAt, metadataSource, metadataUpdatedAt, missedSyncs, lastFetchError, " +
+                    "lastFetchErrorAt) " +
+                    "VALUES ('v1', 'jf-1', 'v1.mp4', 'Title', 'Channel', 'UC1', 100, '20240101', NULL, " +
+                    "'desc', '[]', '[]', '[]', NULL, 0, 0, 0, 0, 1, 'YTDLP', 0, 0, NULL, 0)",
+            )
+        }
+
+        helper.runMigrationsAndValidate(DB_NAME, 5, true).use { db ->
+            db.query("SELECT COUNT(*) FROM skipped_videos").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+            }
+            db.query("SELECT COUNT(*) FROM videos").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(1, cursor.getInt(0))
+            }
+        }
+    }
 }
 
 private const val DB_NAME = "migration-test.db"

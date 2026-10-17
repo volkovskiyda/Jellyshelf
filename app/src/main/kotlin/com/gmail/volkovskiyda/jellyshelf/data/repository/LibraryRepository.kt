@@ -508,6 +508,7 @@ class DefaultLibraryRepository private constructor(
 
     private val videoDao = db.videoDao()
     private val categoryDao = db.categoryDao()
+    private val skipDao = db.skipDao()
 
     // Unpacked once. The five are grouped for the constructor's sake (see [LibrarySources]); every
     // call below still names the source it actually reaches for.
@@ -666,6 +667,25 @@ class DefaultLibraryRepository private constructor(
             // Every write to `videos` re-runs the queries, most of them touching no queued video.
             .distinctUntilChanged()
             .flowOn(dispatchers.default)
+    }
+
+    override fun observeSkippedIds(): Flow<Set<String>> =
+        skipDao.observeIds()
+            .map { it.toSet() }
+            .distinctUntilChanged()
+            .flowOn(dispatchers.default)
+
+    override suspend fun setSkipped(youtubeIds: List<String>, skipped: Boolean) {
+        // NonCancellable: a skip is one tap the user expects to stick, and the caller is often a
+        // screen on its way out. Chunked for the bind-variable ceiling — a select-all on the
+        // Skipped filter can be the whole list — in one transaction, so readers see all or none.
+        withContext(NonCancellable) {
+            db.withTransaction {
+                youtubeIds.distinct().chunked(ID_CHUNK).forEach { chunk ->
+                    if (skipped) skipDao.skip(chunk) else skipDao.unskip(chunk)
+                }
+            }
+        }
     }
 
     override fun observeCategories(): Flow<List<CategoryWithCount>> =
