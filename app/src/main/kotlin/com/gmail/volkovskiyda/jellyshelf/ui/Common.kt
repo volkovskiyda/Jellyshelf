@@ -26,6 +26,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
@@ -341,8 +342,8 @@ fun VideoRow(
      * filter, where playing would queue a list of nothing but skipped videos.
      */
     playsFromThumbnail: Boolean = true,
-    /** A control at the row's end, such as the Skipped filter's unskip button. */
-    trailing: (@Composable () -> Unit)? = null,
+    /** The Skipped filter's unskip, as a button at the row's end. Null draws no button. */
+    onUnskip: (() -> Unit)? = null,
     /** The Now playing filter's marker for the video playing now. */
     playing: Boolean = false,
     /**
@@ -522,7 +523,14 @@ fun VideoRow(
                 modifier = Modifier.size(20.dp),
             )
         }
-        trailing?.invoke()
+        if (onUnskip != null) {
+            IconButton(onClick = onUnskip) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = stringResource(R.string.unskip_named, video.title),
+                )
+            }
+        }
     }
 }
 

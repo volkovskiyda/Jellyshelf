@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -473,8 +472,8 @@ private fun CategoryVideoList(
                 skipped = queueMarks?.skippedIds?.contains(video.youtubeId) == true,
                 // Not while selecting: the row is one checkbox then, and a button inside it would be
                 // a second target the selection does not account for.
-                trailing = if (isSkippedFilter && !selectionActive) {
-                    { UnskipButton(video, onUnskip) }
+                onUnskip = if (isSkippedFilter && !selectionActive) {
+                    { onUnskip(video.youtubeId) }
                 } else {
                     null
                 },
@@ -526,17 +525,6 @@ private fun RemoveVideosDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
-}
-
-/** The Skipped filter's per-row unskip: the row leaves the list, and every queue plays it again. */
-@Composable
-private fun UnskipButton(video: Video, onUnskip: (String) -> Unit) {
-    IconButton(onClick = { onUnskip(video.youtubeId) }) {
-        Icon(
-            Icons.AutoMirrored.Filled.Undo,
-            contentDescription = stringResource(R.string.unskip_named, video.title),
-        )
-    }
 }
 
 /** What the Now playing filter marks on its rows: the one playing, and the ones the queue passes over. */
