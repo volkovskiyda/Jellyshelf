@@ -20,16 +20,17 @@ class OthersWithNowPlayingTest {
         assertEquals(12, others.first().videoCount)
     }
 
-    /** Unlike the library's filters, it is where the queue lives, so it stays listed while empty. */
+    /** Hidden while empty, as every other filter is. */
     @Test
-    fun `an empty queue is still listed beside the library's filters`() {
-        val others = othersWithNowPlaying(listOf(watched), queued = 0)
-
-        assertEquals(0, others.single { it.category.id == VIRTUAL_CATEGORY_NOW_PLAYING }.videoCount)
+    fun `nothing queued leaves Now playing out`() {
+        assertEquals(listOf(watched), othersWithNowPlaying(listOf(watched), queued = 0))
+        assertEquals(emptyList<CategoryWithCount>(), othersWithNowPlaying(emptyList(), queued = 0))
     }
 
     @Test
-    fun `an empty library with nothing queued keeps its empty screen`() {
-        assertEquals(emptyList<CategoryWithCount>(), othersWithNowPlaying(emptyList(), queued = 0))
+    fun `a queue lists Now playing even on an otherwise empty Others tab`() {
+        val others = othersWithNowPlaying(emptyList(), queued = 3)
+
+        assertEquals(listOf(VIRTUAL_CATEGORY_NOW_PLAYING), others.map { it.category.id })
     }
 }

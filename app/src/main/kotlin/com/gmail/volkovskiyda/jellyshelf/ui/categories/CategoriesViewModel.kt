@@ -72,9 +72,8 @@ class CategoriesViewModel(
      * [LibraryRepository.observeOthers]).
      *
      * Now playing is joined here rather than in the repository because it is not library data: its
-     * count is the playback session's queue, which the service publishes in [NowPlayingQueue]. It is
-     * listed while empty, unlike the library's filters — it is where the queue is, playing or not —
-     * except on a library with no Others at all, whose empty Categories screen it would only clutter.
+     * count is the playback session's queue, which the service publishes in [NowPlayingQueue]. Like
+     * the library's filters, it is left out while it has nothing in it.
      */
     val others: StateFlow<List<CategoryWithCount>> = combine(
         repo.observeOthers(),
@@ -100,10 +99,10 @@ class CategoriesViewModel(
 
 /**
  * The Others tab's rows: Now playing, counting [queued] videos, ahead of the [library]'s own
- * filters — or nothing at all when both are empty, so an empty library keeps its empty screen.
+ * filters — left out while nothing is queued, as the library's filters are while they are empty.
  */
 internal fun othersWithNowPlaying(library: List<CategoryWithCount>, queued: Int): List<CategoryWithCount> {
-    if (library.isEmpty() && queued == 0) return library
+    if (queued == 0) return library
     val nowPlaying = CategoryWithCount(
         category = Category(
             id = VIRTUAL_CATEGORY_NOW_PLAYING,
