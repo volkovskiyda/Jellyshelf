@@ -226,6 +226,36 @@ class WatchStateTrackerTest {
     }
 
     @Test
+    fun `a seek while paused saves the new position`() {
+        // Nothing else would: the pause saved where it began, and Back only pauses — so without
+        // this a scrub then Back leaves the resume bar on the pre-seek spot.
+        playing("a", positionMs = 100_000L)
+        tracker.onPaused(100_000L, ready = true)
+
+        assertEquals(
+            WatchAction.Save("a", 250_000L),
+            tracker.onPositionDiscontinuity("a", 100_000L, "a", 250_000L, paused = true),
+        )
+    }
+
+    @Test
+    fun `a seek while playing leaves saving to the periodic tick`() {
+        playing("a", positionMs = 100_000L)
+
+        assertNull(tracker.onPositionDiscontinuity("a", 100_000L, "a", 250_000L, paused = false))
+    }
+
+    @Test
+    fun `a paused move onto another item saves nothing`() {
+        // Next/previous while paused is a transition, whose report onItemChanged files — a save
+        // here would put one item's position on the other.
+        playing("a", positionMs = 100_000L)
+
+        assertNull(tracker.onPositionDiscontinuity("a", 100_000L, "b", 0L, paused = true))
+        assertNull(tracker.onPositionDiscontinuity("b", 0L, "b", 0L, paused = true))
+    }
+
+    @Test
     fun `another item's position never clobbers the active one`() {
         // The bug this holds shut: the discontinuity for a *replacing* item can arrive before the
         // transition, and taking its position 0 would report the playing video at 0 — wiping the

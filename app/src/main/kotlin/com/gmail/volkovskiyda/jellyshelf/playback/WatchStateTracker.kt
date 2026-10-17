@@ -116,19 +116,28 @@ internal class WatchStateTracker(
      * it and wipe its saved resume spot. Leaving the active item captures its exact final position
      * (better than the up-to-10-seconds-stale periodic value); movement within it tracks the new
      * side.
+     *
+     * A move within it while [paused] is also saved locally, since nothing else would save it:
+     * [onPaused] saved where the pause began, the keep-alive only reports to the server, and the
+     * player's Back only pauses. Without it, a scrub followed by Back leaves the resume bar on the
+     * pre-seek spot until playback resumes or stops.
      */
     fun onPositionDiscontinuity(
         oldMediaId: String?,
         oldPositionMs: Long,
         newMediaId: String?,
         newPositionMs: Long,
-    ) {
-        val leavingActive = oldMediaId == activeMediaId && newMediaId != activeMediaId
+        paused: Boolean = false,
+    ): WatchAction.Save? {
+        val id = activeMediaId
+        val leavingActive = oldMediaId == id && newMediaId != id
         if (leavingActive) {
             lastPositionMs = oldPositionMs
-        } else if (newMediaId == activeMediaId) {
+        } else if (newMediaId == id) {
             lastPositionMs = newPositionMs
+            if (paused && id != null && oldMediaId == id) return WatchAction.Save(id, newPositionMs)
         }
+        return null
     }
 
     /**

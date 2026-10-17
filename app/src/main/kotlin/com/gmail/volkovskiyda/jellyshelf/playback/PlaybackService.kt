@@ -591,12 +591,15 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
+            // playWhenReady rather than isPlaying: a seek drops a paused player into buffering,
+            // and it is the user's pause that decides whether the position needs saving here.
             watch.onPositionDiscontinuity(
                 oldMediaId = oldPosition.mediaItem?.mediaId,
                 oldPositionMs = oldPosition.positionMs,
                 newMediaId = newPosition.mediaItem?.mediaId,
                 newPositionMs = newPosition.positionMs,
-            )
+                paused = player?.playWhenReady == false,
+            ).perform()
             // A seek *inside* the playing item. The same reason code also reports next/previous,
             // which changes the item index and is already measured as a transition. The service's
             // own resume seek is skipped: nobody waited for it.
