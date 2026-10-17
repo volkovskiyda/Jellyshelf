@@ -144,6 +144,11 @@ class LiveEndpointTest : KoinTest {
     fun fetchIndex_atConfiguredOrDefaultUrl_deserializes() = runTest {
         // config.indexUrl falls back to <server>/jellyshelf-index.json when JELLYFIN_INDEX_URL
         // is unset — the same convention the app's "fill from server" affordance applies.
+        assumeTrue(
+            "the index at ${config.indexUrl} is unreachable from this device — skipping. A " +
+                "reachable Jellyfin says nothing about it when it lives on another, LAN-only host.",
+            indexReachable(config.indexUrl),
+        )
         val entries = indexSource.fetchIndex(config.indexUrl)
         assertTrue(entries.size >= 0)
     }

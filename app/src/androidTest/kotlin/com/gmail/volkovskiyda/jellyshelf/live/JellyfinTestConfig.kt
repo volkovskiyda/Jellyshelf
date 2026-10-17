@@ -151,6 +151,15 @@ internal fun metadataApiReachable(apiUrl: String): Boolean =
     reachable(apiUrl, "/videos") { true }
 
 /**
+ * The same probe for the metadata index, which [LiveEndpointTest] fetches from wherever
+ * `JELLYFIN_INDEX_URL` points — often the metadata API's LAN-only host rather than Jellyfin's, so
+ * it fails on an emulator for the same reason. Any HTTP answer counts, as above: an index that
+ * 404s or fails to decode is the test's to report, not a reason to skip it.
+ */
+internal fun indexReachable(indexUrl: String): Boolean =
+    reachable(indexUrl, "") { true }
+
+/**
  * It grants the journey permissions first, because the probe is subject to the same
  * `ACCESS_LOCAL_NETWORK` rule as the app: the instrumented process runs under the app's uid, so
  * on API 37 a server on the device's own subnet is dropped for this probe exactly as it would be
