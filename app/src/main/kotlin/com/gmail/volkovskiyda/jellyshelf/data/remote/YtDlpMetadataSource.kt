@@ -75,21 +75,28 @@ open class YtDlpMetadataSource(
             addOption("--skip-download")
             addOption("--no-warnings")
         }
-        val response = try {
+        val info = try {
             withTimeout(FETCH_TIMEOUT) {
                 // execute blocks the thread on a child Python process (exactly like getInfo did),
                 // so neither the timeout nor the caller's cancellation can end it on their own:
                 // runInterruptible interrupts the waiting thread, and youtubedl-android's
                 // InterruptedException path destroys that process before rethrowing. Without it a
                 // hung extraction keeps burning CPU and battery long after the user pressed Cancel.
-                runInterruptible(dispatchers.io) { YoutubeDL.getInstance().execute(request) }
+                runInterruptible(dispatchers.io) {
+                    // Decoded here, on the same IO thread, not after the block returns: the
+                    // single-video action calls this from the main dispatcher, and the payload
+                    // carries every format, thumbnail and caption track — hundreds of KB to a few
+                    // MB of JSON that ignoreUnknownKeys still has to scan.
+                    val out = YoutubeDL.getInstance().execute(request).out
+                    json.decodeFromString(YtDlpInfo.serializer(), out)
+                }
             }
         } catch (e: TimeoutCancellationException) {
             // The timeout is this fetch's own failure, not the caller's cancellation — rethrown as
             // a plain exception so a bulk run counts the video as failed and continues with the next.
             throw YoutubeDLException("yt-dlp timed out after $FETCH_TIMEOUT for $youtubeId", e)
         }
-        return json.decodeFromString(YtDlpInfo.serializer(), response.out).toIndexEntry(youtubeId)
+        return info.toIndexEntry(youtubeId)
     }
 }
 
