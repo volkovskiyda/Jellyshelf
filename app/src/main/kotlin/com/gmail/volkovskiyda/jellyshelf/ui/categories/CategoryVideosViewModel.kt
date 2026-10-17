@@ -7,31 +7,65 @@ import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_NOW_PLAYING
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_SKIPPED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingQueue
+import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.VideoSelectionController
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CategoryVideosViewModel(
     private val repo: LibraryRepository,
     settingsState: AppSettingsState,
+    nowPlayingQueue: NowPlayingQueue,
+    nowPlayingState: NowPlayingState,
     private val categoryId: String,
 ) : ViewModel() {
 
+    /**
+     * The Now playing filter: the session's queue rather than a library query, every row marked
+     * playing or skipped, and a row tap that jumps playback instead of queuing the list. Fixed for
+     * the ViewModel's lifetime, like [removeKind].
+     */
+    val isNowPlayingFilter: Boolean = categoryId == VIRTUAL_CATEGORY_NOW_PLAYING
+
     /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
-    val videos: StateFlow<List<Video>?> = repo.observeVideosByCategory(categoryId)
+    val videos: StateFlow<List<Video>?> = if (isNowPlayingFilter) {
+        // The rows come from Room, for the watch markers the other filters show, but the members
+        // and their order are the session's.
+        nowPlayingQueue.items
+            .map { items -> items.map { it.mediaId } }
+            .distinctUntilChanged()
+            .flatMapLatest(repo::observeVideosInOrder)
+    } else {
+        repo.observeVideosByCategory(categoryId)
+    }
         .stateIn(viewModelScope, WhileUiSubscribed, null)
+
+    /** The video playing now, for the Now playing filter's marker; null when nothing is. */
+    val playingId: StateFlow<String?> = nowPlayingState.nowPlaying
+        .map { it?.youtubeId }
+        .stateIn(viewModelScope, WhileUiSubscribed, null)
+
+    /** The skip list, for the Now playing filter's skipped rows. */
+    val skippedIds: StateFlow<Set<String>> = repo.observeSkippedIds()
+        .stateIn(viewModelScope, WhileUiSubscribed, emptySet())
 
     /**
      * Multi-select over this category's videos. Scoped to this ViewModel, which is scoped to the

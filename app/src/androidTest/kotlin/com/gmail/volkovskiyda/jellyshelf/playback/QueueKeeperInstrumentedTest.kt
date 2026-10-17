@@ -95,6 +95,18 @@ class QueueKeeperInstrumentedTest {
         assertEquals("c", player.currentMediaItem?.mediaId)
     }
 
+    /** A tap on the playing row — in the panel or the Others filter — must not restart it. */
+    @Test
+    fun jumpingToThePlayingVideo_leavesItWhereItIs() = onMain {
+        start(startIndex = 1, skipped = emptySet())
+        player.seekTo(5_000L)
+
+        assertTrue(keeper.jumpTo("b", play = false))
+
+        assertEquals("b", player.currentMediaItem?.mediaId)
+        assertEquals(5_000L, player.currentPosition)
+    }
+
     @Test
     fun jumpingToAVideoNotInTheQueue_doesNothing() = onMain {
         start(startIndex = 0, skipped = emptySet())

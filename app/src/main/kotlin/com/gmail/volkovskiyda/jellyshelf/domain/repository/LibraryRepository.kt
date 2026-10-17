@@ -49,6 +49,13 @@ interface LibraryRepository : PlaystateRepository {
     fun observeWatchStates(youtubeIds: List<String>): Flow<Map<String, WatchState>>
 
     /**
+     * The stored videos among [youtubeIds], in that list's order and kept current — the Now playing
+     * filter, which lists the session's queue. Rows carry what a list renders, as for
+     * [observeVideosByCategory]; an id with no row is left out.
+     */
+    fun observeVideosInOrder(youtubeIds: List<String>): Flow<List<Video>>
+
+    /**
      * Every skipped video's id, kept current — the Now playing skip list. Local only: it is never
      * sent to Jellyfin, a sync leaves it alone, and a video leaving the library drops its mark.
      */

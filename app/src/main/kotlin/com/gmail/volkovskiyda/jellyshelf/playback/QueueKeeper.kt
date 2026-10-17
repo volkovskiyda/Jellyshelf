@@ -109,6 +109,11 @@ internal class QueueKeeper(
      */
     fun jumpTo(mediaId: String, play: Boolean): Boolean {
         val p = player() ?: return false
+        // Already there: a seek would restart it, which nobody tapping the playing row asked for.
+        if (p.currentMediaItem?.mediaId == mediaId) {
+            if (play) p.play()
+            return true
+        }
         var index = p.mediaIds().indexOf(mediaId)
         if (index < 0) {
             val present = p.mediaIds().toSet() + mediaId

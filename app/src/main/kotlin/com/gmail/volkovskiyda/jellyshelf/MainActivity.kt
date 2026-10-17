@@ -84,6 +84,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.navigation.minimizedBackStack
+import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingQueue
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
 import com.gmail.volkovskiyda.jellyshelf.playback.PipAspect
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
@@ -546,6 +547,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // (with back-stopping playback) the only in-app way to end the session. Written by
     // PlaybackService, so it is already right on a launch that walked in on playback under way.
     val nowPlayingState: NowPlayingState = koinInject()
+    val nowPlayingQueue: NowPlayingQueue = koinInject()
     val nowPlaying by nowPlayingState.nowPlaying.collectAsStateWithLifecycle()
     // Held to the same rule as the tabs above it, for the same reason: the bar is the other half of
     // the height the screen between them is measured against, and dropping it out from under a
@@ -610,6 +612,17 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     fun openPlayer(youtubeId: String, origin: PlayerOrigin) {
         if (endsCurrentPlayback(nowPlaying, youtubeId)) nowPlayingState.stop()
         push(AppNavKey.Player(youtubeId, origin))
+    }
+
+    /**
+     * The Others tab's Now playing filter: play a video *inside* the queue already loaded — jump
+     * there, unskipping it if it was skipped — and open the player on it. Unlike [openPlayer] there
+     * is nothing to hand over and no list to queue: the player finds the video playing and attaches
+     * to the running session, as it does from the mini-player bar.
+     */
+    fun playFromQueue(youtubeId: String) {
+        nowPlayingQueue.jumpTo(youtubeId, play = true)
+        push(AppNavKey.Player(youtubeId))
     }
 
     // One throttle for every user-driven navigation on this screen: a double-tap landing on two
@@ -853,6 +866,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                                     navThrottle { openPlayer(it.youtubeId, origin) }
                                 },
                                 onOpenDetails = { navThrottle { push(AppNavKey.Detail(it.youtubeId)) } },
+                                onPlayFromQueue = { navThrottle { playFromQueue(it.youtubeId) } },
                                 onBack = { navThrottle { pop() } },
                             )
                         }

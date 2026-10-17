@@ -87,6 +87,9 @@
     <string name="remove_missing_dialog_text">This removes %1$s from this device only — nothing is deleted on the Jellyfin server. Any that the server does still have come back on the next sync.</string>
     <string name="empty_missing">No videos are missing from the server.</string>
     <string name="empty_skipped">No skipped videos. The ✕ in the player’s Now playing panel skips one.</string>
+    <string name="empty_now_playing">Nothing is queued. Play a video from a list and its queue shows here.</string>
+    <!-- The Now playing filter's marker on the video playing now. -->
+    <string name="playing_now">Playing now</string>
     <!-- The Skipped filter's per-row button; names the video so a screenful of them stays distinguishable. -->
     <string name="unskip_named">Unskip %1$s</string>
 

@@ -29,7 +29,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,9 +57,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -339,7 +343,15 @@ fun VideoRow(
     playsFromThumbnail: Boolean = true,
     /** A control at the row's end, such as the Skipped filter's unskip button. */
     trailing: (@Composable () -> Unit)? = null,
+    /** The Now playing filter's marker for the video playing now. */
+    playing: Boolean = false,
+    /**
+     * The Now playing filter's marker for a video the queue passes over: labelled, and dimmed in
+     * support of the label — as the player's panel marks it.
+     */
+    skipped: Boolean = false,
 ) {
+    val contentAlpha = if (skipped && !playing) SKIPPED_ROW_ALPHA else 1f
     val selectionLabel = stringResource(R.string.select_video, video.title)
     val startSelectionLabel = stringResource(R.string.select_videos)
     Row(
@@ -401,6 +413,7 @@ fun VideoRow(
             modifier = Modifier
                 .width(thumbnailWidth)
                 .aspectRatio(16f / 9f)
+                .alpha(contentAlpha)
                 .clip(RoundedCornerShape(8.dp))
                 .rowTarget(
                     selecting = selected != null,
@@ -436,6 +449,7 @@ fun VideoRow(
         Column(
             modifier = Modifier
                 .weight(1f)
+                .alpha(contentAlpha)
                 // A row with nothing but a title has less text than the 48 dp a touch target owes
                 // the user. The thumbnail beside it is taller than that either way, so the minimum
                 // costs no height; centring keeps the short case where it already sat.
@@ -476,6 +490,8 @@ fun VideoRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            if (playing) RowMarker(Icons.Filled.PlayArrow, R.string.playing_now, MaterialTheme.colorScheme.primary)
+            if (skipped) RowMarker(Icons.Filled.SkipNext, R.string.skipped, MaterialTheme.colorScheme.onSurfaceVariant)
             // The server stopped listing this video: it is on its way out of the library (sync
             // deletes it after a few more misses), and playing it will most likely fail.
             if (video.missingFromServer) {
@@ -509,6 +525,21 @@ fun VideoRow(
         trailing?.invoke()
     }
 }
+
+/** A one-line status under a row's details: an icon and a word, in one colour. */
+@Composable
+private fun RowMarker(icon: ImageVector, @StringRes text: Int, color: Color) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+        Text(text = stringResource(text), style = MaterialTheme.typography.labelSmall, color = color)
+    }
+}
+
+/** Dim enough to read as "not in play", while the title stays readable. */
+private const val SKIPPED_ROW_ALPHA = 0.45f
 
 /**
  * Drops clicks that land within [windowMs] of the previously accepted one, so a fast double-tap

@@ -77,8 +77,12 @@ fun CategoryVideosScreen(
     onOpenDetails: (Video) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The Now playing filter's row tap: jump within the loaded queue and open the player. */
+    onPlayFromQueue: (Video) -> Unit = {},
 ) {
     val viewModel: CategoryVideosViewModel = koinViewModel { parametersOf(categoryId) }
+    val playingId by viewModel.playingId.collectAsStateWithLifecycle()
+    val skippedIds by viewModel.skippedIds.collectAsStateWithLifecycle()
     val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
     val bulkRemove by viewModel.bulkRemove.collectAsStateWithLifecycle()
@@ -104,13 +108,18 @@ fun CategoryVideosScreen(
         isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
         isSkippedFilter = viewModel.isSkippedFilter,
         onUnskip = viewModel::unskip,
+        isNowPlayingFilter = viewModel.isNowPlayingFilter,
+        playingId = playingId,
+        skippedIds = skippedIds,
         removeKind = viewModel.removeKind,
         scrollKey = "category.$categoryId",
         showRemoveDialog = showRemoveDialog,
         onShowRemoveDialog = { showRemoveDialog = true },
         onDismissRemoveDialog = { showRemoveDialog = false },
-        onPlayVideo = onPlayVideo,
-        onOpenDetails = onOpenDetails,
+        // Either tap on a Now playing row plays it where it stands in the queue: replacing the queue
+        // with this list would be pointless at best, and the details are a long-press away anywhere.
+        onPlayVideo = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onPlayVideo,
+        onOpenDetails = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onOpenDetails,
         onBack = onBack,
         onStartFetchMissing = viewModel::startFetchMissing,
         onCancelFetchMissing = viewModel::cancelFetchMissing,
@@ -218,6 +227,9 @@ internal fun CategoryVideosContent(
     onConfirmPlaylist: (String) -> Unit = {},
     isSkippedFilter: Boolean = false,
     onUnskip: (String) -> Unit = {},
+    isNowPlayingFilter: Boolean = false,
+    playingId: String? = null,
+    skippedIds: Set<String> = emptySet(),
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
     // Resolved once for the whole screen, not per row — see [rememberVideoThumbnailResolver].
@@ -318,6 +330,7 @@ internal fun CategoryVideosContent(
             isUncategorized = isUncategorized,
             isSkippedFilter = isSkippedFilter,
             onUnskip = onUnskip,
+            queueMarks = if (isNowPlayingFilter) QueueMarks(playingId, skippedIds) else null,
             removeKind = removeKind,
             scrollKey = scrollKey,
             onPlayVideo = onPlayVideo,
@@ -411,6 +424,7 @@ private fun CategoryVideoList(
     isUncategorized: Boolean,
     isSkippedFilter: Boolean,
     onUnskip: (String) -> Unit,
+    queueMarks: QueueMarks?,
     removeKind: RemoveKind?,
     scrollKey: String,
     onPlayVideo: (Video) -> Unit,
@@ -432,6 +446,7 @@ private fun CategoryVideoList(
                 when {
                     isUncategorized -> R.string.empty_uncategorized
                     isSkippedFilter -> R.string.empty_skipped
+                    queueMarks != null -> R.string.empty_now_playing
                     // Reachable by emptying the filter from the screen itself: the Others tab
                     // hides a filter whose count is zero, so it is never entered empty.
                     else -> removeKind?.emptyLabel ?: R.string.empty_category
@@ -454,6 +469,8 @@ private fun CategoryVideoList(
                 onToggleSelection = { onToggleSelection(video.youtubeId) },
                 onStartSelection = { onStartSelection(video.youtubeId) },
                 playsFromThumbnail = !isSkippedFilter,
+                playing = queueMarks?.playingId == video.youtubeId,
+                skipped = queueMarks?.skippedIds?.contains(video.youtubeId) == true,
                 // Not while selecting: the row is one checkbox then, and a button inside it would be
                 // a second target the selection does not account for.
                 trailing = if (isSkippedFilter && !selectionActive) {
@@ -521,3 +538,6 @@ private fun UnskipButton(video: Video, onUnskip: (String) -> Unit) {
         )
     }
 }
+
+/** What the Now playing filter marks on its rows: the one playing, and the ones the queue passes over. */
+private class QueueMarks(val playingId: String?, val skippedIds: Set<String>)

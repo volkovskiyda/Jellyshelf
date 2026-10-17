@@ -380,7 +380,8 @@ the External player mode.
   video and local (never sent to Jellyfin), survives syncs and restarts, and changes nothing about
   watch state. Tapping a skipped video in a list, or its row in the panel, unskips it; playing it
   from its details does not. A list whose every later video is skipped plays the one you tapped
-  and ends, with the panel's heading counting what it passed over.
+  and ends, with the panel's heading counting what it passed over. **Others → Now playing** lists
+  the same queue outside the player; tapping a row plays it there without replacing the queue.
 - **Chapters** — parsed from the yt-dlp `chapters` field, or from YouTube-style `0:00 Intro`
   timecodes in the description (only when they follow YouTube's own rules: three or more, first
   at zero, ascending, within the runtime — otherwise none, since wrong chapters are worse than

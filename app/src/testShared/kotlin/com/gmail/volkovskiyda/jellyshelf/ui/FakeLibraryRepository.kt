@@ -82,6 +82,12 @@ class FakeLibraryRepository(
         }
     }
 
+    override fun observeVideosInOrder(youtubeIds: List<String>): Flow<List<Video>> =
+        videos.map { list ->
+            val byId = list.associateBy { it.youtubeId }
+            youtubeIds.mapNotNull { byId[it] }
+        }
+
     /** The skip list, modelled: a plain set the skip writes edit and the read observes. */
     val skippedIds = MutableStateFlow<Set<String>>(emptySet())
 

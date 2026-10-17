@@ -671,6 +671,17 @@ class DefaultLibraryRepository private constructor(
             .flowOn(dispatchers.default)
     }
 
+    override fun observeVideosInOrder(youtubeIds: List<String>): Flow<List<Video>> {
+        // Chunked and combined like observeWatchStates: the queue can be the whole library.
+        val chunks = youtubeIds.distinct().chunked(ID_CHUNK)
+        if (chunks.isEmpty()) return flowOf(emptyList())
+        return combine(chunks.map(videoDao::observeByIdsBrowse)) { rows ->
+            val byId = rows.asList().flatten().associateBy { it.youtubeId }
+            youtubeIds.mapNotNull { byId[it]?.toDomain() }
+        }
+            .flowOn(dispatchers.default)
+    }
+
     override fun observeSkippedIds(): Flow<Set<String>> =
         skipDao.observeIds()
             .map { it.toSet() }

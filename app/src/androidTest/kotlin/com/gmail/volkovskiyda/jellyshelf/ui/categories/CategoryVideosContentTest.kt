@@ -1,10 +1,12 @@
 package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -96,6 +98,9 @@ class CategoryVideosContentTest {
         onOpenDetails: (Video) -> Unit = {},
         isSkippedFilter: Boolean = false,
         onUnskip: (String) -> Unit = {},
+        isNowPlayingFilter: Boolean = false,
+        playingId: String? = null,
+        skippedIds: Set<String> = emptySet(),
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -126,6 +131,9 @@ class CategoryVideosContentTest {
                     selectedIds = if (selectionActive) setOf(videos.first().youtubeId) else emptySet(),
                     isSkippedFilter = isSkippedFilter,
                     onUnskip = onUnskip,
+                    isNowPlayingFilter = isNowPlayingFilter,
+                    playingId = playingId,
+                    skippedIds = skippedIds,
                     scrollStore = FakeScrollPositionRepository(),
                     thumbnailModel = { null },
                 )
@@ -134,6 +142,32 @@ class CategoryVideosContentTest {
     }
 
     private fun string(id: Int, vararg args: Any) = composeRule.activity.getString(id, *args)
+
+    /** The queue's rows say which one is playing and which ones it passes over — in words. */
+    @Test
+    fun theNowPlayingFilter_marksThePlayingAndTheSkippedRows() {
+        setContent(videos, isNowPlayingFilter = true, playingId = "a", skippedIds = setOf("b"))
+
+        composeRule.onNodeWithText(string(R.string.playing_now)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.skipped)).assertIsDisplayed()
+        composeRule.onAllNodesWithText(string(R.string.skipped)).assertCountEquals(1)
+    }
+
+    /** Elsewhere the skip list marks nothing: only the queue's own list shows it. */
+    @Test
+    fun anOrdinaryCategory_marksNeitherPlayingNorSkipped() {
+        setContent(videos, playingId = "a", skippedIds = setOf("b"))
+
+        composeRule.onNodeWithText(string(R.string.playing_now)).assertDoesNotExist()
+        composeRule.onNodeWithText(string(R.string.skipped)).assertDoesNotExist()
+    }
+
+    @Test
+    fun anEmptyNowPlayingFilter_saysHowToFillIt() {
+        setContent(emptyList(), isNowPlayingFilter = true)
+
+        composeRule.onNodeWithText(string(R.string.empty_now_playing)).assertIsDisplayed()
+    }
 
     @Test
     fun theSkippedFilter_offersAnUnskipOnEveryRow() {

@@ -2,14 +2,20 @@ package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
+import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_NOW_PLAYING
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingQueue
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.ui.debounceSearchQuery
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -30,6 +36,7 @@ class CategoriesViewModel(
     // Singleton-owned so query and toggle survive tab switches (which clear this ViewModel).
     private val filters: CategoriesFilterState,
     private val settingsRepository: SettingsRepository,
+    private val nowPlayingQueue: NowPlayingQueue,
 ) : ViewModel() {
     private val _query = filters.query
     val query: StateFlow<String> = _query.asStateFlow()
@@ -60,8 +67,19 @@ class CategoriesViewModel(
         .onEach { filters.lastCategories.value = it }
         .stateIn(viewModelScope, WhileUiSubscribed, filters.lastCategories.value)
 
-    /** Virtual filters for the "Others" tab (Uncategorized / Continue / Unwatched / Watched). */
-    val others: StateFlow<List<CategoryWithCount>> = repo.observeOthers()
+    /**
+     * Virtual filters for the "Others" tab: Now playing first, then the library's own (see
+     * [LibraryRepository.observeOthers]).
+     *
+     * Now playing is joined here rather than in the repository because it is not library data: its
+     * count is the playback session's queue, which the service publishes in [NowPlayingQueue]. It is
+     * listed while empty, unlike the library's filters — it is where the queue is, playing or not —
+     * except on a library with no Others at all, whose empty Categories screen it would only clutter.
+     */
+    val others: StateFlow<List<CategoryWithCount>> = combine(
+        repo.observeOthers(),
+        nowPlayingQueue.items.map { it.size }.distinctUntilChanged(),
+    ) { library, queued -> othersWithNowPlaying(library, queued) }
         .onEach { filters.lastOthers.value = it }
         .stateIn(viewModelScope, WhileUiSubscribed, filters.lastOthers.value.orEmpty())
 
@@ -78,4 +96,22 @@ class CategoriesViewModel(
         // means the app reopens on the previous saved (or default) dimension.
         viewModelScope.launch { settingsRepository.setSelectedCategoryType(value) }
     }
+}
+
+/**
+ * The Others tab's rows: Now playing, counting [queued] videos, ahead of the [library]'s own
+ * filters — or nothing at all when both are empty, so an empty library keeps its empty screen.
+ */
+internal fun othersWithNowPlaying(library: List<CategoryWithCount>, queued: Int): List<CategoryWithCount> {
+    if (library.isEmpty() && queued == 0) return library
+    val nowPlaying = CategoryWithCount(
+        category = Category(
+            id = VIRTUAL_CATEGORY_NOW_PLAYING,
+            name = "Now playing",
+            type = CATEGORY_TYPE_OTHERS,
+            createdAt = 0L,
+        ),
+        videoCount = queued,
+    )
+    return listOf(nowPlaying) + library
 }

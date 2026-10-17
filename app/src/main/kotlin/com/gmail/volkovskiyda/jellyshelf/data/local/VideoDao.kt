@@ -67,6 +67,11 @@ interface VideoDao {
 
     // --- Virtual "Others" filters: live lists ---
 
+    /** The Now playing filter's rows, by id; callers chunk the list and put it in queue order. */
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE youtubeId IN (:youtubeIds)")
+    fun observeByIdsBrowse(youtubeIds: List<String>): Flow<List<VideoBrowseRow>>
+
     @RewriteQueriesToDropUnusedColumns
     @Query("SELECT * FROM videos WHERE metadataSource = :source ORDER BY fileName")
     fun observeBySourceBrowse(source: String): Flow<List<VideoBrowseRow>>
