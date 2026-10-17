@@ -241,7 +241,7 @@ class LiveUiJourneyTest : KoinTest {
 
             openDetails(target)
             markWatchedThenUnwatched(target)
-            playSeekAndStop(target, scenario)
+            playSeekAndLeave(target, scenario)
             browseCategories(scenario)
         }
     }
@@ -443,8 +443,14 @@ class LiveUiJourneyTest : KoinTest {
     }
 
     /**
-     * Real playback: stream the target, pause, seek partway in, and leave — the stop that turns
-     * into a resume point locally and a session-stop report on the server.
+     * Real playback: stream the target, pause, seek partway in, leave with Back, then end the
+     * session from the mini-player bar — the stop that turns into a session-stop report and a
+     * resume point on the server.
+     *
+     * Back only pauses, so the two exits are checked apart. Leaving must keep the queue (the bar is
+     * still there, paused) and must already have saved the seeked-to spot locally: a seek made while
+     * paused is saved by nothing else, and the Detail screen's resume bar reads that row. The bar's
+     * stop is then the one in-app way to end the session, and what the server's half rides on.
      *
      * The waits here are what make it a playback test rather than a navigation one. The pause
      * *icon* is on screen the moment the player opens, before a single byte has been fetched — an
@@ -457,7 +463,7 @@ class LiveUiJourneyTest : KoinTest {
      * in, and a hidden seek bar is not a node this test can act on; paused, they stay up. It also
      * exercises the paused progress report on the way through.
      */
-    private fun playSeekAndStop(target: Target, scenario: ActivityScenario<MainActivity>) {
+    private fun playSeekAndLeave(target: Target, scenario: ActivityScenario<MainActivity>) {
         composeRule.onNodeWithText(string(R.string.play)).performScrollTo().performClick()
         awaitContentDescription(string(R.string.pause), PLAYBACK_TIMEOUT_MS)
 
@@ -502,12 +508,27 @@ class LiveUiJourneyTest : KoinTest {
         composeRule.waitUntil(AWAIT_TIMEOUT_MS) { seekBarFraction() >= MIN_SEEKED_FRACTION }
 
         scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        // The bar's stop rather than its play button: that one reads "Play", exactly like the
+        // player's own control, so it could be found on the player screen Back failed to leave.
+        runCatching { awaitContentDescription(string(R.string.mini_player_stop)) }.getOrElse {
+            error("leaving the player with Back dropped the paused queue — no mini-player bar")
+        }
 
+        // At least the seeked-to spot, not merely past zero: the play before the seek may already
+        // have saved a position of its own, and that is not the one the user left at.
+        val seekedSeconds = (MIN_SEEKED_FRACTION * runtimeSeconds()).toLong()
         poll(LOCAL_WRITE_TIMEOUT_MS, {
-            "the stop recorded no resume position locally — the seek may not have landed"
+            "leaving recorded no resume position at the seek locally — a seek made while paused " +
+                "was never saved"
         }) {
             library.observeVideo(target.youtubeId).first()
-                ?.takeIf { it.playbackPositionTicks > 0 && !it.played }
+                ?.takeIf { ticksToSeconds(it.playbackPositionTicks) >= seekedSeconds && !it.played }
+        }
+
+        composeRule.onNodeWithContentDescription(string(R.string.mini_player_stop)).performClick()
+        composeRule.waitUntil(AWAIT_TIMEOUT_MS) {
+            composeRule.onAllNodesWithContentDescription(string(R.string.mini_player_stop))
+                .fetchSemanticsNodes().isEmpty()
         }
         assertServerResumePoint(target)
     }
