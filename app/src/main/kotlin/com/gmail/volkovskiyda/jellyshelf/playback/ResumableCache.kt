@@ -2,6 +2,13 @@ package com.gmail.volkovskiyda.jellyshelf.playback
 
 import android.content.Context
 import androidx.core.content.edit
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * Synchronously readable "is there anything to resume".
@@ -34,7 +41,42 @@ class ResumableCache(context: Context) {
         prefs.edit { putBoolean(KEY_RESUMABLE, resumable) }
     }
 
+    /**
+     * Lowers the flag whenever [nothingToResume] says the last-played video is gone. Never
+     * returns; the application scope runs it for the life of the process.
+     *
+     * [PlaybackService] writes the flag on every item transition, which keeps it right while
+     * something plays. It cannot notice what happens *between* playbacks, though: a sign-out
+     * wipes the library, a sync drops a video deleted on the server, and the flag goes on
+     * saying yes. The next headset press then starts the service in the foreground for a
+     * resumption that fails, and the platform kills the app at the start deadline — the exact
+     * outcome [MediaButtonGate] exists to prevent. The resumption's own `store(false)` heals
+     * only the press after that one.
+     *
+     * Only ever lowers it. Raising stays with the transition, because a row that exists is not
+     * proof that it can play: a half-cleared demo row resolves to nothing, and raising the flag
+     * for it on every launch would undo the resumption's self-heal.
+     */
+    suspend fun clearWhenGone(lastPlayedId: Flow<String?>, videoExists: (String) -> Flow<Boolean>) {
+        nothingToResume(lastPlayedId, videoExists).collect { store(false) }
+    }
+
     private companion object {
         const val KEY_RESUMABLE = "resumable"
     }
 }
+
+/**
+ * Emits each time "the last-played video is still in the library" turns false: no id (nothing
+ * played since install, or an explicit stop cleared it), or a row that has gone. Separate from
+ * [ResumableCache] so the rule is testable without SharedPreferences.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun nothingToResume(
+    lastPlayedId: Flow<String?>,
+    videoExists: (String) -> Flow<Boolean>,
+): Flow<Unit> = lastPlayedId
+    .flatMapLatest { id -> if (id == null) flowOf(false) else videoExists(id) }
+    .distinctUntilChanged()
+    .filter { exists -> !exists }
+    .map { }

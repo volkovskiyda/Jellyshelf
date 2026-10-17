@@ -11,11 +11,15 @@ import com.gmail.volkovskiyda.jellyshelf.di.appModule
 import com.gmail.volkovskiyda.jellyshelf.domain.BuildInfo
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.UpdateChecker
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
+import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.playback.ResumableCache
 import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
 import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.perf.FirebasePerformance
 import io.kotzilla.generated.monitoring
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -106,6 +110,16 @@ class JellyshelfApplication : Application(), SingletonImageLoader.Factory {
         // A download interrupted by the process dying leaves a part-file nothing else will clean
         // up. Cheap, and the cache is the one place where leaving rubbish is purely our fault.
         ApkInstaller.sweep(this)
+        // Keeps the media-button gate's answer true between playbacks — see
+        // ResumableCache.clearWhenGone. Unconditional, not gated on the flag being up now: a video
+        // played for the first time in this process raises it, and a sign-out minutes later in the
+        // same process is precisely the case this is for. Resolved on IO like the checker above.
+        dispatchers.applicationScope.launch(dispatchers.io) {
+            val library = get<LibraryRepository>()
+            get<ResumableCache>().clearWhenGone(get<SettingsRepository>().lastPlayedVideoId) { id ->
+                library.observeVideo(id).map { video -> video != null }
+            }
+        }
         // Periodic sync is deliberately NOT scheduled here: WorkManager persists it across
         // launches, and re-scheduling on every start would undo the wipe Sign out performs, which
         // cancels it. "Sync now" owns creating it (see SyncScheduler).
