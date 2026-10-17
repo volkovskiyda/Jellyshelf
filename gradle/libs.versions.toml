@@ -68,7 +68,7 @@ koinBom = "4.2.2"
 # the module it is applied to, both at its own version. Declaring the runtime as well would be a
 # second place to bump and a chance for the two to disagree; the cost is that
 # `./gradlew dependencyUpdates` only ever offers the plugin.
-kotzilla = "3.0.0"
+kotzilla = "3.0.1"
 # Static analysis. 1.23.8 is the current stable line; it embeds its own Kotlin parser, so it lags
 # the project's Kotlin version without blocking it.
 detekt = "1.23.8"
@@ -91,7 +91,7 @@ composeScreenshot = "0.0.1-alpha16"
 # mapping file, perf-plugin weaves network/@AddTrace instrumentation into release bytecode
 # (2.0.1 is the first release compatible with AGP 9).
 googleServices = "4.5.0"
-firebaseBom = "35.0.0"
+firebaseBom = "35.0.2"
 # App Distribution is the exception to the BoM rule above: firebase-bom 34.17.0 lists 28 artifacts
 # and none of them is an App Distribution one (verified 2026-08-06), so these two pin their own
 # version — and need their own bump, which nothing else here does. Still upstream beta after years.
