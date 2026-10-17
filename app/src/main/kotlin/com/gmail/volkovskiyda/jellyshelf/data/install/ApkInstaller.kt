@@ -54,7 +54,10 @@ class ApkInstaller(
     override suspend fun downloadAndInstall(
         info: UpdateInfo,
         onProgress: (InstallState.Running) -> Unit,
-    ) {
+    ): Unit = withContext(dispatchers.io) {
+        // The whole flow on IO, not only the steps that obviously need it: the caller is a
+        // main-thread scope, and the finally below unlinks tens of megabytes — a delete that would
+        // otherwise run on whichever thread called this.
         onProgress(InstallState.Running(InstallStage.PREPARING))
         val apk = downloadVerified(info, info.sha256, onProgress)
         onProgress(InstallState.Running(InstallStage.INSTALLING))
