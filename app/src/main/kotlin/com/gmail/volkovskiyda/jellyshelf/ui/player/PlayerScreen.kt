@@ -777,9 +777,9 @@ private fun PlayerWithControls(
                     onJumpTo(entries[it].mediaId)
                     queueOpen = false
                 },
-                // Re-checked at the call: the queue can move on between the tap and here, and the
-                // playing row is never skipped.
-                onSkip = { if (it != currentIndex) onSetSkipped(entries[it].mediaId, true) },
+                // Re-checked at the call: the queue can move on between the tap and here, and only a
+                // row still to come is skipped — never the playing one, never one already played.
+                onSkip = { if (it > currentIndex) onSetSkipped(entries[it].mediaId, true) },
                 onUnskip = { onSetSkipped(entries[it].mediaId, false) },
                 onDismiss = { queueOpen = false },
             )
@@ -1524,14 +1524,15 @@ internal fun ChaptersPanel(
  * after the playing video is skipped says so where the user looks for the reason.
  *
  * A tap jumps to that row ([onEntryClick] gets its index) — a skipped one too, which the caller
- * unskips on the way: tapping it is choosing it. Every row but the playing one ends in a toggle
- * for its mark, [onSkip] or [onUnskip], played rows included: the mark is about the video and the
- * next queue it turns up in, not about this one's playhead, and having just watched a video is
- * when the user knows they never want it again. The playing row has a same-width spacer instead —
- * dropping the item under playback is what Next already does, and media3 would report it as a
- * playlist change, which skips the resume seed the next video is owed. The panel stays open after
- * a toggle: the user is mid-edit, and dismisses it themselves. Tapping outside (or Back, handled by
- * the caller) dismisses.
+ * unskips on the way: tapping it is choosing it. Only the rows still to come end in a toggle for
+ * their mark, [onSkip] or [onUnskip]. The playing row and the played rows above it have a
+ * same-width spacer instead: a played row is behind the playhead, so there is nothing left to skip
+ * there, and a skipped one already says so by its fading and label — a button would only add
+ * noise above the row that matters. The playing row has none because dropping the item under
+ * playback is what Next already does, and media3 would report it as a playlist change, which skips
+ * the resume seed the next video is owed. The panel stays open after a toggle: the user is
+ * mid-edit, and dismisses it themselves. Tapping outside (or Back, handled by the caller)
+ * dismisses.
  */
 @Composable
 internal fun QueuePanel(
@@ -1563,6 +1564,7 @@ internal fun QueuePanel(
                     entry = entry,
                     watch = watchStates[entry.mediaId],
                     playing = index == currentIndex,
+                    played = index < currentIndex,
                     skipped = entry.mediaId in skippedIds,
                     tint = currentRowTint,
                     onClick = { onEntryClick(index) },
@@ -1579,6 +1581,7 @@ private fun QueueRow(
     entry: QueueEntry,
     watch: WatchState?,
     playing: Boolean,
+    played: Boolean,
     skipped: Boolean,
     tint: Color,
     onClick: () -> Unit,
@@ -1645,8 +1648,8 @@ private fun QueueRow(
             )
         }
         when {
-            // Same width as the buttons, so the playing row's title ends where every other one does.
-            playing -> Spacer(Modifier.size(MIN_TOUCH_TARGET))
+            // Same width as the buttons, so these titles end where the upcoming rows' do.
+            playing || played -> Spacer(Modifier.size(MIN_TOUCH_TARGET))
             skipped -> IconButton(onClick = onUnskip) {
                 Icon(
                     Icons.AutoMirrored.Filled.Undo,

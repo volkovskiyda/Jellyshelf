@@ -674,16 +674,26 @@ class PlayerControlsTest {
 
     /**
      * Dropping the item under playback would reach media3 as a playlist change, which skips the next
-     * video's resume seed — so the playing row offers no way to do it. Every other row does, the
-     * played one included: the mark is for the next queue the video turns up in.
+     * video's resume seed — so the playing row offers no way to do it. A played row is behind the
+     * playhead, with nothing left to skip. Only the row still to come has a button.
      */
     @Test
-    fun everyRowButThePlayingOne_hasASkipButton() {
+    fun onlyTheRowsStillToCome_haveASkipButton() {
         setQueuePanel(currentIndex = 1)
 
-        composeRule.onAllNodesWithContentDescription(label(R.string.skip_video)).assertCountEquals(2)
-        composeRule.onNodeWithText("Second video")
-            .assert(hasAnyDescendant(hasContentDescription(label(R.string.skip_video))).not())
+        composeRule.onAllNodesWithContentDescription(label(R.string.skip_video)).assertCountEquals(1)
+        composeRule.onNodeWithText("Third video")
+            .assert(hasAnyDescendant(hasContentDescription(label(R.string.skip_video))))
+    }
+
+    /** A skipped row above the playing one keeps its label, and no toggle — the fading says enough. */
+    @Test
+    fun aSkippedPlayedRow_isLabelledButOffersNoUnskip() {
+        setQueuePanel(currentIndex = 2, skippedIds = setOf("aaaaaaaaaaa"))
+
+        composeRule.onNodeWithText("First video").assert(hasText(label(R.string.skipped), substring = true))
+        composeRule.onAllNodesWithContentDescription(label(R.string.unskip_video)).assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription(label(R.string.skip_video)).assertCountEquals(0)
     }
 
     /** A skipped row keeps its place, says so in words, and its toggle turns into an unskip. */
