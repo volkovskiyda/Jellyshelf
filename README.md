@@ -371,8 +371,9 @@ stream and, if the device can't decode it, retries once through the server's HLS
 transcodes to H.264/AAC, which anything decodes. If the transcode fails too, the error points at
 the External player mode.
 
-- **Queue** — opening a video from a list queues that whole list, so previous/next step through
-  it. Opened from the media notification there is no list, so the queue is just that one video.
+- **Now playing** — opening a video from a list queues that whole list, so previous/next step
+  through it; the top bar's Now playing panel shows it in order. Opened from a video's details or
+  from the media notification there is no list, so the queue is just that one video.
 - **Chapters** — parsed from the yt-dlp `chapters` field, or from YouTube-style `0:00 Intro`
   timecodes in the description (only when they follow YouTube's own rules: three or more, first
   at zero, ascending, within the runtime — otherwise none, since wrong chapters are worse than
