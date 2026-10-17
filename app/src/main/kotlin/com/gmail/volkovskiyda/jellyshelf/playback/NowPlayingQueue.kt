@@ -56,3 +56,14 @@ class NowPlayingQueue {
         jumper.value?.jumpTo(youtubeId, play)
     }
 }
+
+/**
+ * What is still ahead in [queue]: the video playing now ([playingId]) and everything after it,
+ * skipped videos included — the Others tab's Now playing filter, which leaves out what has already
+ * played. The whole queue when [playingId] is not in it, which is only ever the moment between a
+ * queue loading and its first item being reported.
+ */
+fun upcoming(queue: List<MediaItem>, playingId: String?): List<MediaItem> {
+    val index = queue.indexOfFirst { it.mediaId == playingId }
+    return if (index < 0) queue else queue.drop(index)
+}

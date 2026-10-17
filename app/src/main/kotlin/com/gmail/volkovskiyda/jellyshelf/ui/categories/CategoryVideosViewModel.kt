@@ -14,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingQueue
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
+import com.gmail.volkovskiyda.jellyshelf.playback.upcoming
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.VideoSelectionController
 import com.gmail.volkovskiyda.jellyshelf.util.runCatchingCancellable
@@ -22,6 +23,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -45,12 +47,15 @@ class CategoryVideosViewModel(
      */
     val isNowPlayingFilter: Boolean = categoryId == VIRTUAL_CATEGORY_NOW_PLAYING
 
+    private val playingIdFlow = nowPlayingState.nowPlaying.map { it?.youtubeId }.distinctUntilChanged()
+
     /** Null while the first Room emission is pending, so the UI can tell loading from empty. */
     val videos: StateFlow<List<Video>?> = if (isNowPlayingFilter) {
         // The rows come from Room, for the watch markers the other filters show, but the members
-        // and their order are the session's.
-        nowPlayingQueue.items
-            .map { items -> items.map { it.mediaId } }
+        // and their order are the session's: the playing video and what follows it (see upcoming).
+        combine(nowPlayingQueue.items, playingIdFlow) { items, playingId ->
+            upcoming(items, playingId).map { it.mediaId }
+        }
             .distinctUntilChanged()
             .flatMapLatest(repo::observeVideosInOrder)
     } else {
@@ -59,8 +64,7 @@ class CategoryVideosViewModel(
         .stateIn(viewModelScope, WhileUiSubscribed, null)
 
     /** The video playing now, for the Now playing filter's marker; null when nothing is. */
-    val playingId: StateFlow<String?> = nowPlayingState.nowPlaying
-        .map { it?.youtubeId }
+    val playingId: StateFlow<String?> = playingIdFlow
         .stateIn(viewModelScope, WhileUiSubscribed, null)
 
     /** The skip list, for the Now playing filter's skipped rows. */

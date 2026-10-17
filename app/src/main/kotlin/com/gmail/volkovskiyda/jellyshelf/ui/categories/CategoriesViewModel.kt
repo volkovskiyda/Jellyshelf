@@ -9,6 +9,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_NOW_PLAYI
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingQueue
+import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingState
+import com.gmail.volkovskiyda.jellyshelf.playback.upcoming
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.ui.debounceSearchQuery
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,7 +38,8 @@ class CategoriesViewModel(
     // Singleton-owned so query and toggle survive tab switches (which clear this ViewModel).
     private val filters: CategoriesFilterState,
     private val settingsRepository: SettingsRepository,
-    private val nowPlayingQueue: NowPlayingQueue,
+    nowPlayingQueue: NowPlayingQueue,
+    nowPlayingState: NowPlayingState,
 ) : ViewModel() {
     private val _query = filters.query
     val query: StateFlow<String> = _query.asStateFlow()
@@ -72,13 +75,15 @@ class CategoriesViewModel(
      * [LibraryRepository.observeOthers]).
      *
      * Now playing is joined here rather than in the repository because it is not library data: its
-     * count is the playback session's queue, which the service publishes in [NowPlayingQueue]. Like
-     * the library's filters, it is left out while it has nothing in it.
+     * count is what is still ahead in the playback session's queue (see [upcoming]), which the
+     * service publishes in [NowPlayingQueue]. Like the library's filters, it is left out while it has
+     * nothing in it.
      */
     val others: StateFlow<List<CategoryWithCount>> = combine(
         repo.observeOthers(),
-        nowPlayingQueue.items.map { it.size }.distinctUntilChanged(),
-    ) { library, queued -> othersWithNowPlaying(library, queued) }
+        nowPlayingQueue.items,
+        nowPlayingState.nowPlaying.map { it?.youtubeId }.distinctUntilChanged(),
+    ) { library, queue, playingId -> othersWithNowPlaying(library, upcoming(queue, playingId).size) }
         .onEach { filters.lastOthers.value = it }
         .stateIn(viewModelScope, WhileUiSubscribed, filters.lastOthers.value.orEmpty())
 

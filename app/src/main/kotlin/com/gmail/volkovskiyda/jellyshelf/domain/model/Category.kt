@@ -48,8 +48,9 @@ const val VIRTUAL_CATEGORY_MISSING = "virtual:missing"
 const val VIRTUAL_CATEGORY_SKIPPED = "virtual:skipped"
 
 /**
- * The playback session's queue in play order, skipped videos included — the Others tab's view of
- * what the player's Now playing panel shows. The one filter not backed by a query over the
+ * What is still ahead in the playback session's queue — the playing video and everything after it,
+ * skipped videos included, in play order. The Others tab's view of the rest of what the player's
+ * Now playing panel shows; what has already played is left to the panel. The one filter not backed by a query over the
  * library: its members are whatever the session holds. Hidden while nothing is queued, like the
  * other filters while they are empty. A row tap jumps playback to that video rather than queuing
  * this list again, which is what a row tap on every other filter does.
