@@ -23,6 +23,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -558,17 +559,21 @@ class PlayerControlsTest {
     private fun setQueuePanel(
         currentIndex: Int = 1,
         watchStates: Map<String, WatchState> = emptyMap(),
+        skippedIds: Set<String> = emptySet(),
         onEntryClick: (Int) -> Unit = {},
-        onRemove: (Int) -> Unit = {},
+        onSkip: (Int) -> Unit = {},
+        onUnskip: (Int) -> Unit = {},
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
                 QueuePanel(
                     entries = queue,
                     watchStates = watchStates,
+                    skippedIds = skippedIds,
                     currentIndex = currentIndex,
                     onEntryClick = onEntryClick,
-                    onRemove = onRemove,
+                    onSkip = onSkip,
+                    onUnskip = onUnskip,
                     onDismiss = {},
                 )
             }
@@ -656,56 +661,96 @@ class PlayerControlsTest {
     }
 
     @Test
-    fun theRemoveButton_dropsThatRow() {
-        var removed: Int? = null
+    fun theSkipButton_skipsThatRow() {
+        var skipped: Int? = null
         var jumpedTo: Int? = null
-        setQueuePanel(currentIndex = 1, onEntryClick = { jumpedTo = it }, onRemove = { removed = it })
+        setQueuePanel(currentIndex = 0, onEntryClick = { jumpedTo = it }, onSkip = { skipped = it })
 
-        // Row 2 is the only one still to come, so its button is the only one there is.
-        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))
-            .performClick()
+        composeRule.onAllNodesWithContentDescription(label(R.string.skip_video))[1].performClick()
 
-        assertEquals(2, removed)
+        assertEquals(2, skipped)
         assertNull(jumpedTo)
     }
 
     /**
      * Dropping the item under playback would reach media3 as a playlist change, which skips the next
-     * video's resume seed — so the playing row offers no way to do it. Played last here, so no row
-     * at all is left to carry a button.
+     * video's resume seed — so the playing row offers no way to do it. Every other row does, the
+     * played one included: the mark is for the next queue the video turns up in.
      */
     @Test
-    fun thePlayingRow_hasNoRemoveButton() {
-        setQueuePanel(currentIndex = 2)
-
-        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))
-            .assertCountEquals(0)
-    }
-
-    /**
-     * A played row is behind the playhead: there is nothing left to skip, only to jump back to.
-     * One button for three rows, and [theRemoveButton_dropsThatRow] pins it as the upcoming row's.
-     */
-    @Test
-    fun aPlayedRow_hasNoRemoveButton() {
+    fun everyRowButThePlayingOne_hasASkipButton() {
         setQueuePanel(currentIndex = 1)
 
-        composeRule.onAllNodesWithContentDescription(composeRule.activity.getString(R.string.remove_from_queue))
-            .assertCountEquals(1)
+        composeRule.onAllNodesWithContentDescription(label(R.string.skip_video)).assertCountEquals(2)
+        composeRule.onNodeWithText("Second video")
+            .assert(hasAnyDescendant(hasContentDescription(label(R.string.skip_video))).not())
     }
 
-    /** The button beside it must not swallow the row's own click. */
+    /** A skipped row keeps its place, says so in words, and its toggle turns into an unskip. */
     @Test
-    fun aRowWithARemoveButton_stillJumpsWhenTapped() {
-        var removed: Int? = null
+    fun aSkippedRow_isLabelledAndOffersUnskip() {
+        var unskipped: Int? = null
+        setQueuePanel(currentIndex = 0, skippedIds = setOf("ccccccccccc"), onUnskip = { unskipped = it })
+
+        composeRule.onNodeWithText("Third video").assert(hasText(label(R.string.skipped), substring = true))
+        composeRule.onNodeWithText("Second video").assert(hasText(label(R.string.skipped), substring = true).not())
+        composeRule.onAllNodesWithContentDescription(label(R.string.skip_video)).assertCountEquals(1)
+        composeRule.onNodeWithContentDescription(label(R.string.unskip_video)).performClick()
+
+        assertEquals(2, unskipped)
+    }
+
+    /** Tapping a skipped row is choosing it: it jumps like any other row, and the caller unskips it. */
+    @Test
+    fun aSkippedRow_stillJumpsWhenTapped() {
         var jumpedTo: Int? = null
-        setQueuePanel(currentIndex = 1, onEntryClick = { jumpedTo = it }, onRemove = { removed = it })
+        var unskipped: Int? = null
+        setQueuePanel(
+            currentIndex = 0,
+            skippedIds = setOf("ccccccccccc"),
+            onEntryClick = { jumpedTo = it },
+            onUnskip = { unskipped = it },
+        )
 
         composeRule.onNodeWithText("Third video").performClick()
 
         assertEquals(2, jumpedTo)
-        assertNull(removed)
+        assertNull(unskipped)
     }
+
+    /**
+     * Where a list that ends early explains itself: everything after the playing video skipped
+     * leaves Next dimmed, and the heading says how many rows the queue is passing over.
+     */
+    @Test
+    fun theHeading_countsTheSkippedRows() {
+        setQueuePanel(currentIndex = 0, skippedIds = setOf("bbbbbbbbbbb", "ccccccccccc"))
+
+        val note = composeRule.activity.resources.getQuantityString(R.plurals.queue_skipped_count, 2, 2)
+        composeRule.onNodeWithText(note).assertIsDisplayed()
+    }
+
+    @Test
+    fun theHeading_saysNothingWhenNothingIsSkipped() {
+        setQueuePanel(currentIndex = 0)
+
+        composeRule.onNodeWithText("skipped", substring = true).assertDoesNotExist()
+    }
+
+    /** The button beside it must not swallow the row's own click. */
+    @Test
+    fun aRowWithASkipButton_stillJumpsWhenTapped() {
+        var skipped: Int? = null
+        var jumpedTo: Int? = null
+        setQueuePanel(currentIndex = 1, onEntryClick = { jumpedTo = it }, onSkip = { skipped = it })
+
+        composeRule.onNodeWithText("Third video").performClick()
+
+        assertEquals(2, jumpedTo)
+        assertNull(skipped)
+    }
+
+    private fun label(id: Int) = composeRule.activity.getString(id)
 
     private fun setChaptersPanel(onChapterClick: (Chapter) -> Unit = {}) {
         composeRule.setContent {

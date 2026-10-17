@@ -670,7 +670,8 @@ private fun PlayerControlsPreview(visible: Boolean, buffering: Boolean) {
  * [previewCover], drawn locally so the golden never depends on the network; one row has no
  * channel, one an overlong title and
  * channel (the duration must survive the ellipsis), one no known duration. The played row carries
- * the watched tick, and the playing and one upcoming row a resume bar.
+ * the watched tick, and the playing and one upcoming row a resume bar; that upcoming row is
+ * skipped.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
@@ -719,9 +720,13 @@ private fun QueuePanelPreview() {
                     durationSeconds = 61L,
                 ),
             ),
+            // One row skipped: dimmed and labelled in place, its toggle turned to unskip, and the
+            // heading counting it.
+            skippedIds = setOf("ddddddddddd"),
             currentIndex = 1,
             onEntryClick = {},
-            onRemove = {},
+            onSkip = {},
+            onUnskip = {},
             onDismiss = {},
         )
     }

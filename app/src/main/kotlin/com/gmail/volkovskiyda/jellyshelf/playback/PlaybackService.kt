@@ -102,6 +102,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val repo: LibraryRepository by inject()
     private val settingsState: AppSettingsState by inject()
     private val nowPlaying: NowPlayingState by inject()
+    private val nowPlayingQueue: NowPlayingQueue by inject()
     private val settingsRepository: SettingsRepository by inject()
     private val dispatchers: DispatcherProvider by inject()
     private val resumable: ResumableCache by inject()
@@ -147,6 +148,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
 
     /** What went wrong while an item played, counted onto one trace per item. */
     private val health: PlaybackHealth by lazy { PlaybackHealth(metrics) }
+
+    /** The whole queue beside the timeline, which leaves skipped videos out — see [QueueKeeper]. */
+    private val queue: QueueKeeper by lazy { QueueKeeper(nowPlayingQueue) { player } }
 
     /**
      * The media id [ResumeSeedingListener] is about to seek, so the discontinuity it causes is not
@@ -277,6 +281,11 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 p.clearMediaItems()
             }
         })
+        // The application scope for the unskip, like the last-played write: the jump is already
+        // done, and the mark has to go even if the service is torn down a moment later.
+        queue.attach(scope, repo.observeSkippedIds()) { youtubeId ->
+            dispatchers.applicationScope.launch { repo.setSkipped(listOf(youtubeId), skipped = false) }
+        }
         restorePlaybackSpeed(player)
         session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity(youtubeId = null))
@@ -329,6 +338,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         spans.abandonAll()
         health.onAbandoned()
         nowPlaying.detach()
+        nowPlayingQueue.detach()
         session?.release()
         p?.release()
         session = null
@@ -366,29 +376,40 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 // than the one it began on — which is why its span is asynchronous and why it is
                 // the one shape Kotzilla can time as a block of its own.
                 val resolved = spans.resolving { resolveAll(mediaItems) }
-                if (startPositionMs != C.TIME_UNSET || resolved.items.isEmpty()) {
-                    // A controller that wants a specific position passes one — the transcode
-                    // fallback, which must land exactly where the failed decode left off.
+                if (resolved.items.isEmpty()) {
                     return@future MediaSession.MediaItemsWithStartPosition(
                         resolved.items,
                         startIndex,
                         startPositionMs,
                     )
                 }
-                // The resume path: no position asked for, so the item being started begins where
-                // it was last left. The index matters as much as the position — a queue names the
-                // video it opens on, and reading the resume ticks of item 0 instead would restore
-                // a position from a different video (or, before this branch covered an explicit
-                // index at all, start every queued video at 0).
+                // The index matters as much as the position — a queue names the video it opens on,
+                // and reading the resume ticks of item 0 instead would restore a position from a
+                // different video (or, before this covered an explicit index at all, start every
+                // queued video at 0).
                 val index =
                     if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.items.indices)
-                // Out of the batch resolveAll already read — this used to be a second Room round
-                // trip for a row the resolve was holding, on the tap-to-first-frame path.
+                // The timeline gets the queue minus its skipped videos; the keeper holds the whole of
+                // it for the screens that list it. Read fresh rather than from the keeper's own
+                // copy, which may not have had its first emission yet on a service just created.
+                val playable = queue.load(resolved.items, index, repo.observeSkippedIds().first())
+                if (startPositionMs != C.TIME_UNSET) {
+                    // A controller that wants a specific position passes one.
+                    return@future MediaSession.MediaItemsWithStartPosition(
+                        playable.items,
+                        playable.startIndex,
+                        startPositionMs,
+                    )
+                }
+                // The resume path: no position asked for, so the item being started begins where
+                // it was last left. Out of the batch resolveAll already read — this used to be a
+                // second Room round trip for a row the resolve was holding, on the
+                // tap-to-first-frame path.
                 val startId = resolved.items[index].mediaId
                 val resumeTicks = resolved.videos[startId]?.playbackPositionTicks ?: 0L
                 MediaSession.MediaItemsWithStartPosition(
-                    resolved.items,
-                    index,
+                    playable.items,
+                    playable.startIndex,
                     ticksToMillis(resumeTicks),
                 )
             }
@@ -509,6 +530,8 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                 // Unlike the spans, this one *is* reported: the item played, the user stopped it,
                 // and how it went while they watched is the whole point of the trace.
                 health.onItemEnded(PlaybackHealth.END_STOPPED)
+                // Nothing playing, so nothing queued: the Now playing panel and filter empty too.
+                queue.clear()
             }
             watch.onItemChanged(
                 newMediaId = mediaItem?.mediaId,
@@ -559,6 +582,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
          * bar's button calls seekToNextMediaItem(), whose behaviour tracks the same two settings.
          */
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+            queue.onTimelineChanged()
             nowPlaying.setHasNext(player?.hasNextMediaItem() == true)
         }
 
@@ -799,6 +823,8 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                         ),
                     )
                     .build()
+                // setMediaItem replaces the whole playlist, so the queue is this one item now.
+                queue.replace(listOf(transcoded))
                 p.setMediaItem(transcoded, resumeMs)
                 p.prepare()
                 p.play()

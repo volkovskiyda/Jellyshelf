@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -75,6 +76,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -92,6 +94,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -111,6 +114,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.ExperimentalApi
@@ -140,6 +144,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.navigation.minimizedBackStack
+import com.gmail.volkovskiyda.jellyshelf.playback.NowPlayingQueue
 import com.gmail.volkovskiyda.jellyshelf.playback.isDecodeFailure
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
 import com.gmail.volkovskiyda.jellyshelf.ui.rememberCopyToClipboard
@@ -152,6 +157,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import timber.log.Timber
 import java.text.NumberFormat
@@ -222,6 +228,12 @@ fun PlayerScreen(
     val currentId by viewModel.currentId.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val scaleMode by viewModel.videoScaleMode.collectAsStateWithLifecycle()
+    // The session's whole queue, skipped videos included — the controller's timeline would not do,
+    // since it leaves them out (see QueueKeeper). Straight from the service's single, as the
+    // mini-player bar reads NowPlayingState.
+    val nowPlayingQueue: NowPlayingQueue = koinInject()
+    val queue by nowPlayingQueue.items.collectAsStateWithLifecycle()
+    val skippedIds by viewModel.skippedIds.collectAsStateWithLifecycle()
     val isInPip = LocalIsInPip.current
     val activity = LocalActivity.current
     // The cover to stand in for the video until it has a frame of its own — see [PlayerPoster].
@@ -295,7 +307,13 @@ fun PlayerScreen(
                     title = video?.fileName,
                     poster = poster,
                     chapters = chapters,
+                    queue = queue,
+                    currentId = currentId,
+                    skippedIds = skippedIds,
                     queueWatchStates = viewModel::queueWatchStates,
+                    // A pause carries over, as it always has for a jump in the panel.
+                    onJumpTo = { nowPlayingQueue.jumpTo(it, play = false) },
+                    onSetSkipped = viewModel::setSkipped,
                     onSpeedPicked = viewModel::savePlaybackSpeed,
                     scaleMode = scaleMode,
                     onScaleModePicked = viewModel::setVideoScaleMode,
@@ -321,7 +339,12 @@ private fun PlayerWithControls(
     title: String?,
     poster: String?,
     chapters: List<Chapter>,
+    queue: List<MediaItem>,
+    currentId: String,
+    skippedIds: Set<String>,
     queueWatchStates: (List<String>) -> Flow<Map<String, WatchState>>,
+    onJumpTo: (String) -> Unit,
+    onSetSkipped: (String, Boolean) -> Unit,
     onSpeedPicked: (Float) -> Unit,
     scaleMode: VideoScaleMode,
     onScaleModePicked: (VideoScaleMode) -> Unit,
@@ -654,7 +677,9 @@ private fun PlayerWithControls(
                 speed = playbackSpeed.playbackSpeed,
                 hasPrevious = hasPrevious,
                 hasNext = hasNext,
-                hasQueue = playlist.mediaItemCount > 1,
+                // The whole queue, not the timeline: a list whose every other video is skipped plays
+                // alone, and the panel is where the user sees why — so the button stays.
+                hasQueue = queue.size > 1,
                 onOpenQueue = { queueOpen = true },
                 // The explicit *MediaItem* variants: seekToPrevious() would restart the current
                 // video once past its threshold, which is a different button entirely.
@@ -733,31 +758,29 @@ private fun PlayerWithControls(
             )
         }
         if (queueOpen && !isInPip) {
-            // Keyed on the timeline, which media3 replaces on every queue edit, so a removal
-            // recomposes the rows; a transition alone only moves the highlight.
-            val entries = remember(playlist.timeline) {
-                queueEntries(playlist.mediaItemCount, playlist::getMediaItemAt)
-            }
+            // The service's queue rather than the timeline, which leaves skipped videos out; a skip
+            // or unskip edits both, and a transition only moves the highlight.
+            val entries = remember(queue) { queueEntries(queue.size, queue::get) }
             // Room, not the session: the metadata attached at resolve time never changes, while a
             // video's progress moves as it plays. Collected only while the panel is open.
             val watchStates by remember(entries) { queueWatchStates(entries.map(QueueEntry::mediaId)) }
                 .collectAsStateWithLifecycle(emptyMap())
+            val currentIndex = entries.indexOfFirst { it.mediaId == currentId }
             QueuePanel(
                 entries = entries,
                 watchStates = watchStates,
-                currentIndex = playlist.currentMediaItemIndex,
+                skippedIds = skippedIds,
+                currentIndex = currentIndex,
+                // Through the service, which puts a skipped row back into the timeline before
+                // jumping to it, and takes its mark off.
                 onEntryClick = {
-                    playlist.seekToMediaItem(it)
+                    onJumpTo(entries[it].mediaId)
                     queueOpen = false
                 },
-                // Re-checked at the call: the timeline can change between the tap and here (a
-                // remove from another controller, an auto-advance), and only a row still to come
-                // may be dropped — never the playing item, never one already played.
-                onRemove = {
-                    if (it > playlist.currentMediaItemIndex && it < playlist.mediaItemCount) {
-                        controller.removeMediaItem(it)
-                    }
-                },
+                // Re-checked at the call: the queue can move on between the tap and here, and the
+                // playing row is never skipped.
+                onSkip = { if (it != currentIndex) onSetSkipped(entries[it].mediaId, true) },
+                onUnskip = { onSetSkipped(entries[it].mediaId, false) },
                 onDismiss = { queueOpen = false },
             )
         }
@@ -1372,6 +1395,8 @@ private fun PlayerPanel(
     title: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A short note at the heading's far end, such as how many rows are skipped. */
+    note: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(
@@ -1394,12 +1419,20 @@ private fun PlayerPanel(
             // edge and jumped sideways as it scrolled past the hole; padding the whole panel cut
             // the current row's highlight short. A row passing the camera is a moment in a scroll.
         ) {
-            Text(
-                title,
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            )
+            Row(
+                Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                note?.let {
+                    Text(it, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
+                }
+            }
             content()
         }
     }
@@ -1479,32 +1512,46 @@ internal fun ChaptersPanel(
 /**
  * The session's queue over a full-screen scrim, in play order: thumbnail, title, channel and
  * duration per row, the playing row tinted with a bold title (see [currentRowTint]) and marked
- * selected. A row also
- * carries the library row's watch markers from [watchStates] (by media id) — the resume bar over
- * a part-watched thumbnail, the watched tick on a played video — and neither when it is missing
- * from the map. The whole queue is listed, already-played rows included, so going back two
- * videos is one tap; it opens scrolled so the playing row sits second from the top, with the one
- * before it still in view.
+ * selected. A row also carries the library row's watch markers from [watchStates] (by media id) —
+ * the resume bar over a part-watched thumbnail, the watched tick on a played video — and neither
+ * when it is missing from the map. The whole queue is listed, already-played and skipped rows
+ * included, so going back two videos is one tap; it opens scrolled so the playing row sits second
+ * from the top, with the one before it still in view.
  *
- * A tap jumps to that row ([onEntryClick] gets its index). Only the rows still to come end in a
- * remove button ([onRemove]): a played row is already behind the playhead, so there is nothing
- * left to skip — it stays listed to be jumped back to, not edited. The playing row has none on
- * purpose either — dropping the item under playback is what Next already does, and media3 would
- * report it as a playlist change, which skips the resume seed the next video is owed. The panel
- * stays open after a removal, even one that leaves a single row: the user is mid-edit, and
- * dismisses it themselves. Tapping outside (or Back, handled by the caller) dismisses.
+ * A row in [skippedIds] is one playback passes over: it stays in its place, dimmed and labelled
+ * "Skipped" — the label is the marker, the dimming only supports it, since a faded row alone reads
+ * as a rendering glitch. The heading counts them, so a list that ends early because everything
+ * after the playing video is skipped says so where the user looks for the reason.
+ *
+ * A tap jumps to that row ([onEntryClick] gets its index) — a skipped one too, which the caller
+ * unskips on the way: tapping it is choosing it. Every row but the playing one ends in a toggle
+ * for its mark, [onSkip] or [onUnskip], played rows included: the mark is about the video and the
+ * next queue it turns up in, not about this one's playhead, and having just watched a video is
+ * when the user knows they never want it again. The playing row has a same-width spacer instead —
+ * dropping the item under playback is what Next already does, and media3 would report it as a
+ * playlist change, which skips the resume seed the next video is owed. The panel stays open after
+ * a toggle: the user is mid-edit, and dismisses it themselves. Tapping outside (or Back, handled by
+ * the caller) dismisses.
  */
 @Composable
 internal fun QueuePanel(
     entries: List<QueueEntry>,
     watchStates: Map<String, WatchState>,
+    skippedIds: Set<String>,
     currentIndex: Int,
     onEntryClick: (Int) -> Unit,
-    onRemove: (Int) -> Unit,
+    onSkip: (Int) -> Unit,
+    onUnskip: (Int) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    PlayerPanel(stringResource(R.string.queue), onDismiss, modifier) {
+    val skippedCount = entries.count { it.mediaId in skippedIds }
+    val note = if (skippedCount > 0) {
+        pluralStringResource(R.plurals.queue_skipped_count, skippedCount, skippedCount)
+    } else {
+        null
+    }
+    PlayerPanel(stringResource(R.string.queue), onDismiss, modifier, note) {
         // The initial index rather than a scroll in an effect: the first frame is already in place.
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = (currentIndex - 1).coerceAtLeast(0),
@@ -1512,80 +1559,122 @@ internal fun QueuePanel(
         val currentRowTint = currentRowTint()
         LazyColumn(state = listState) {
             itemsIndexed(entries, key = { _, entry -> entry.mediaId }) { index, entry ->
-                val highlight = index == currentIndex
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = MIN_TOUCH_TARGET)
-                        .background(if (highlight) currentRowTint else Color.Transparent)
-                        .clickable { onEntryClick(index) }
-                        .semantics { selected = highlight }
-                        .padding(start = 20.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val watch = watchStates[entry.mediaId]
-                    Box(
-                        Modifier
-                            .size(width = 64.dp, height = 36.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                    ) {
-                        AsyncImage(
-                            model = entry.artworkUri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                        // The library row's rule: a played video shows the tick instead of a bar.
-                        val fraction =
-                            watch?.let { watchedFraction(it.playbackPositionTicks, it.durationSeconds) } ?: 0f
-                        if (fraction > 0f && watch?.played == false) {
-                            LinearProgressIndicator(
-                                progress = { fraction },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.BottomCenter),
-                            )
-                        }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            entry.title.orEmpty(),
-                            color = if (highlight) MaterialTheme.colorScheme.primary else Color.White,
-                            fontWeight = if (highlight) FontWeight.Bold else null,
-                            style = MaterialTheme.typography.bodyMedium,
-                            // Two lines, as on the library rows: a title that only matched its
-                            // Jellyfin item carries a `YYYYMMDD_HHMMSS - ` prefix, which left one
-                            // line barely a dozen characters of the actual name.
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        QueueEntryDetails(entry.channel, entry.durationMs)
-                    }
-                    if (watch?.played == true) {
-                        Icon(
-                            Icons.Filled.CheckCircle,
-                            contentDescription = stringResource(R.string.watched),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    if (index > currentIndex) {
-                        IconButton(onClick = { onRemove(index) }) {
-                            Icon(
-                                Icons.Filled.Close,
-                                contentDescription = stringResource(R.string.remove_from_queue),
-                                tint = Color.White.copy(alpha = 0.7f),
-                            )
-                        }
-                    } else {
-                        // Same width as the button, so the titles of the playing and played rows
-                        // end where the upcoming ones do.
-                        Spacer(Modifier.size(MIN_TOUCH_TARGET))
-                    }
-                }
+                QueueRow(
+                    entry = entry,
+                    watch = watchStates[entry.mediaId],
+                    playing = index == currentIndex,
+                    skipped = entry.mediaId in skippedIds,
+                    tint = currentRowTint,
+                    onClick = { onEntryClick(index) },
+                    onSkip = { onSkip(index) },
+                    onUnskip = { onUnskip(index) },
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun QueueRow(
+    entry: QueueEntry,
+    watch: WatchState?,
+    playing: Boolean,
+    skipped: Boolean,
+    tint: Color,
+    onClick: () -> Unit,
+    onSkip: () -> Unit,
+    onUnskip: () -> Unit,
+) {
+    // The playing row is never dimmed: it is playing, whatever its mark says about later queues.
+    val contentAlpha = if (skipped && !playing) SKIPPED_ROW_ALPHA else 1f
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = MIN_TOUCH_TARGET)
+            .background(if (playing) tint else Color.Transparent)
+            .clickable(onClick = onClick)
+            .semantics { selected = playing }
+            .padding(start = 20.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(width = 64.dp, height = 36.dp)
+                .alpha(contentAlpha)
+                .clip(RoundedCornerShape(4.dp)),
+        ) {
+            AsyncImage(
+                model = entry.artworkUri,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            // The library row's rule: a played video shows the tick instead of a bar.
+            val fraction = watch?.let { watchedFraction(it.playbackPositionTicks, it.durationSeconds) } ?: 0f
+            if (fraction > 0f && watch?.played == false) {
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter),
+                )
+            }
+        }
+        Column(Modifier.weight(1f).alpha(contentAlpha)) {
+            Text(
+                entry.title.orEmpty(),
+                color = if (playing) MaterialTheme.colorScheme.primary else Color.White,
+                fontWeight = if (playing) FontWeight.Bold else null,
+                style = MaterialTheme.typography.bodyMedium,
+                // Two lines, as on the library rows: a title that only matched its Jellyfin item
+                // carries a `YYYYMMDD_HHMMSS - ` prefix, which left one line barely a dozen
+                // characters of the actual name.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (skipped) SkippedLabel()
+            QueueEntryDetails(entry.channel, entry.durationMs)
+        }
+        if (watch?.played == true) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                contentDescription = stringResource(R.string.watched),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp).alpha(contentAlpha),
+            )
+        }
+        when {
+            // Same width as the buttons, so the playing row's title ends where every other one does.
+            playing -> Spacer(Modifier.size(MIN_TOUCH_TARGET))
+            skipped -> IconButton(onClick = onUnskip) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = stringResource(R.string.unskip_video),
+                    tint = Color.White.copy(alpha = 0.7f),
+                )
+            }
+            else -> IconButton(onClick = onSkip) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.skip_video),
+                    tint = Color.White.copy(alpha = 0.7f),
+                )
+            }
+        }
+    }
+}
+
+/** The words that mark a skipped row — the marker itself, which the row's dimming only supports. */
+@Composable
+private fun SkippedLabel() {
+    val color = Color.White.copy(alpha = 0.7f)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.SkipNext, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+        Text(stringResource(R.string.skipped), color = color, style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -1690,6 +1779,9 @@ private const val DISABLED_ALPHA = 0.35f
 private const val PANEL_SCRIM_ALPHA = 0.6f
 private const val PANEL_BACKGROUND_ALPHA = 0.92f
 private const val CURRENT_ROW_TINT_ALPHA = 0.16f
+
+/** Dim enough to read as "not in play", not so dim that the title cannot be read to unskip it. */
+private const val SKIPPED_ROW_ALPHA = 0.45f
 private val PANEL_MAX_HEIGHT = 360.dp
 private val MIN_TOUCH_TARGET = 48.dp
 private val CHAPTER_TICK_HEIGHT = 8.dp

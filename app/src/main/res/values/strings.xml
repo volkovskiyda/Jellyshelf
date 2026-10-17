@@ -199,7 +199,16 @@
     <string name="playback_transcoding_fallback">Direct play failed, switching to transcoding…</string>
     <string name="chapters">Chapters</string>
     <string name="queue">Now playing</string>
-    <string name="remove_from_queue">Remove from Now playing</string>
+    <!-- The Now playing panel's per-row toggle. Skipping is persistent: the video stays listed but
+         every queue passes over it until it is unskipped. -->
+    <string name="skip_video">Skip</string>
+    <string name="unskip_video">Unskip</string>
+    <!-- The label on a skipped row, in the Now playing panel and in the Others tab's lists. -->
+    <string name="skipped">Skipped</string>
+    <plurals name="queue_skipped_count">
+        <item quantity="one">%d skipped</item>
+        <item quantity="other">%d skipped</item>
+    </plurals>
     <string name="copy_chapter">Copy chapter</string>
     <string name="chapter_copied">Chapter copied</string>
     <string name="player_minimize">Minimize and show details</string>

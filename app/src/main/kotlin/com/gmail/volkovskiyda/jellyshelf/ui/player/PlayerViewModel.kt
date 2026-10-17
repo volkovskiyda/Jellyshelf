@@ -90,6 +90,19 @@ class PlayerViewModel(
     fun queueWatchStates(youtubeIds: List<String>): Flow<Map<String, WatchState>> =
         repo.observeWatchStates(youtubeIds)
 
+    /** The skip list, for marking the panel's rows. */
+    val skippedIds: StateFlow<Set<String>> = repo.observeSkippedIds()
+        .stateIn(viewModelScope, WhileUiSubscribed, emptySet())
+
+    /**
+     * Skips or unskips one video. The service hears of it through the skip list and edits the
+     * timeline itself, so this is only the write — on [DispatcherProvider.applicationScope] for the
+     * reason [savePlaybackSpeed] gives.
+     */
+    fun setSkipped(youtubeId: String, skipped: Boolean) {
+        dispatchers.applicationScope.launch { repo.setSkipped(listOf(youtubeId), skipped) }
+    }
+
     /**
      * Chapters the media file carries itself, read by media3's extractors — empty for everything
      * this app streams from a server. Last in [chapters]' order, and see [embeddedChapters].
@@ -165,6 +178,11 @@ class PlayerViewModel(
                     controller.pause()
                     controller.clearMediaItems()
                 }
+                // A video tapped in a list is chosen deliberately, so a skip mark on it goes — before
+                // the queue is sent, which is when the service reads the skip list. Opened from
+                // Detail it keeps its mark: playing one video alone says nothing about the queues it
+                // should be passed over in.
+                if (origin != PlayerOrigin.None) repo.setSkipped(listOf(youtubeId), skipped = false)
                 val queue = playbackQueue(originIds(), youtubeId)
                 controller.setMediaItems(
                     queue.ids.map { MediaItem.Builder().setMediaId(it).build() },

@@ -374,6 +374,13 @@ the External player mode.
 - **Now playing** — opening a video from a list queues that whole list, so previous/next step
   through it; the top bar's Now playing panel shows it in order. Opened from a video's details or
   from the media notification there is no list, so the queue is just that one video.
+- **Skipping** — the ✕ on a Now playing row skips that video: it stays listed, dimmed and
+  labelled, but every queue passes over it — auto-advance, Next, the mini-player bar and the
+  notification alike — until it is unskipped, there or from **Others → Skipped**. The mark is per
+  video and local (never sent to Jellyfin), survives syncs and restarts, and changes nothing about
+  watch state. Tapping a skipped video in a list, or its row in the panel, unskips it; playing it
+  from its details does not. A list whose every later video is skipped plays the one you tapped
+  and ends, with the panel's heading counting what it passed over.
 - **Chapters** — parsed from the yt-dlp `chapters` field, or from YouTube-style `0:00 Intro`
   timecodes in the description (only when they follow YouTube's own rules: three or more, first
   at zero, ascending, within the runtime — otherwise none, since wrong chapters are worse than
