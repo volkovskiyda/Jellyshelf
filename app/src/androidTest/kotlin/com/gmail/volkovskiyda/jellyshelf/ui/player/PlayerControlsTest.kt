@@ -175,8 +175,8 @@ class PlayerControlsTest {
         )
 
     /**
-     * The two exits are separate controls doing separate things: back stops playback (its callback
-     * is the one that calls stopPlayback), minimize leaves it running. A single button wired to
+     * The two exits are separate controls doing separate things: back pauses playback (its callback
+     * is the one that calls pausePlayback), minimize leaves it running. A single button wired to
      * both, or either wired to the other's callback, is the failure this catches — and it would be
      * silent, because both look like "the player closed".
      */
@@ -213,7 +213,7 @@ class PlayerControlsTest {
 
     /**
      * Minimize sits in the right-hand cluster, after the speed chip and just before PiP, well away
-     * from Back. The two exits do opposite things to the session (back stops it, minimize keeps it
+     * from Back. The two exits do opposite things to the session (back pauses it, minimize keeps it
      * running), so side by side they were two adjacent 48 dp targets one slip apart. Goldens show
      * the order but nothing asserts it, hence these. The chapters icon that once sat between the
      * chip and minimize moved to the chapter row, so the order no longer depends on chapters — the

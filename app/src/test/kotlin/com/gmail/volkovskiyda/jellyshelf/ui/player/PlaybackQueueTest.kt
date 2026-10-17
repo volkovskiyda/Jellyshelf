@@ -84,7 +84,7 @@ class PlaybackQueueTest {
 
     @Test
     fun `the end a stopping exit causes by clearing the queue does not leave a second time`() {
-        // Back's stopPlayback clears the queue, which also reports STATE_ENDED — with nothing left.
+        // A played-out queue's stopPlayback clears it, which also reports STATE_ENDED — with nothing left.
         assertFalse(endsThePlayer(Player.STATE_ENDED, mediaItemCount = 0))
     }
 

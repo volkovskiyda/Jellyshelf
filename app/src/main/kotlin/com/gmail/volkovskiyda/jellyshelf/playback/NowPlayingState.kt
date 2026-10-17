@@ -77,7 +77,7 @@ class NowPlayingState {
     /**
      * What the bar's buttons reach. Registered by the service so every action lands on the real
      * player rather than on a copy of its rules — [stop] in particular has to be the exact
-     * sequence the player screen's back uses, or the server gets the wrong stop report.
+     * sequence the player screen's stopPlayback uses, or the server gets the wrong stop report.
      *
      * Implementations run on the player's application looper, and every caller must already be on
      * it: these are called straight from a Compose `onClick`, so nothing here posts. The service's

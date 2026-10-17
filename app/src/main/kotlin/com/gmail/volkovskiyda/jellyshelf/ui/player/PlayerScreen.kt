@@ -181,8 +181,9 @@ internal const val PLAYER_POSITION_TAG = "player_position"
  *
  * Two deliberate exits, and the difference between them is the whole point:
  *
- *  - **Back** — the back arrow or the system gesture — stops playback, reports the position to the
- *    server and drops the media notification. Back means *done watching*, and that is unchanged.
+ *  - **Back** — the back arrow or the system gesture — pauses playback and pops this screen, but
+ *    keeps the queue: the mini-player bar and Others → Now playing still hold it, and the bar's stop
+ *    is what ends the session. Clearing it here emptied Now playing on every way out.
  *  - **Minimize** — the info button in the top bar — pops this screen and leaves playback running,
  *    landing on the Detail screen of whatever is playing *now* (see [minimizedBackStack]); the
  *    mini-player bar is then the way back here.
@@ -201,16 +202,15 @@ internal const val PLAYER_POSITION_TAG = "player_position"
  *
  * Orientation is free (sensor); the surface just re-fits.
  *
- * Minimize exists because the bar needs playback to survive leaving the player. It is a *second*
- * exit rather than a change to the first: back stopping playback was decided deliberately, and
- * this does not reopen it.
+ * Minimize differs from Back in keeping playback *running*, and in where it lands: the playing
+ * video's Detail rather than the screen underneath.
  *
  * [leaving] is the navigation layer saying this has stopped being the screen. It is not the same
  * moment as the screen going away: a pop lands, the destination composes — which for the library
  * is a couple of hundred milliseconds — and only then does `NavDisplay` swap the two over. For
  * that whole gap the player is still the thing on the display, now over a destination the user
- * has already asked for, and by then it is showing the cover, because the exit stopped playback
- * and emptied the surface underneath it. So it shows nothing instead.
+ * has already asked for, and by then it is showing either the cover, because a stopping exit
+ * emptied the surface underneath it, or the frame Back paused on. So it shows nothing instead.
  */
 @Composable
 fun PlayerScreen(
@@ -253,13 +253,13 @@ fun PlayerScreen(
         onDispose { landscape?.release() }
     }
 
-    // Every *stopping* exit routes through here — and only those, which is why it is not an
-    // onCleared()/lifecycle hook: those also fire on rotation and on minimizing.
+    // Back's exit: pause and pop, the queue kept (see pausePlayback). Not an onCleared()/lifecycle
+    // hook, since those also fire on rotation and on minimizing, and neither may pause.
     val leave = {
-        viewModel.stopPlayback()
+        viewModel.pausePlayback()
         onBack()
     }
-    // The stopping exit that lands on Details, for a queue that has played out. The id is read
+    // The one stopping exit, which lands on Details, for a queue that has played out. The id is read
     // before the stop, since clearing the queue moves currentId; the completed report was already
     // filed when the video ended, so the clear files nothing more (see stopPlayback). Its own
     // callback rather than onMinimize: that one is a tap and goes through the nav layer's click
@@ -285,7 +285,7 @@ fun PlayerScreen(
             if (leaving) return@Box
             if (c == null) {
                 // Still connecting to the service. The back arrow stays reachable regardless — with
-                // no controller yet there is nothing to stop, so this is a plain leave.
+                // no controller yet there is nothing to pause, so this is a plain leave.
                 PlayerPoster(poster, Modifier.matchParentSize())
                 CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
                 // Full width, like the top bar it stands in for, so the cutout moves it exactly as
@@ -319,7 +319,7 @@ fun PlayerScreen(
                     onScaleModePicked = viewModel::setVideoScaleMode,
                     isInPip = isInPip,
                     onBack = leave,
-                    // No stopPlayback here, so the session survives and the mini-player bar picks
+                    // No pause here, so playback runs on and the mini-player bar picks
                     // it up on the Detail screen the nav layer lands on — the playing video's.
                     onMinimize = { onMinimize(currentId) },
                     onFinished = finished,
@@ -487,7 +487,7 @@ private fun PlayerWithControls(
     }
     // One handler for both meanings of Back, so their priority is in the code rather than in the
     // dispatcher's registration order: an open panel consumes the press (closing it must not pop
-    // the screen), and otherwise Back is the explicit leave that stops playback.
+    // the screen), and otherwise Back is the leave that pauses playback.
     BackHandler {
         when {
             queueOpen -> queueOpen = false

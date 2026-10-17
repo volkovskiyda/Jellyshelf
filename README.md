@@ -373,7 +373,9 @@ the External player mode.
 
 - **Now playing** — opening a video from a list queues that whole list, so previous/next step
   through it; the top bar's Now playing panel shows it in order. Opened from a video's details or
-  from the media notification there is no list, so the queue is just that one video.
+  from the media notification there is no list, so the queue is just that one video. Back from
+  the player pauses and keeps the queue, for the mini-player bar and **Others → Now playing** to
+  pick back up; the bar's ✕ ends it.
 - **Skipping** — the ✕ on a Now playing row skips that video: it stays listed, dimmed and
   labelled, but every queue passes over it — auto-advance, Next, the mini-player bar and the
   notification alike — until it is unskipped, there or from **Others → Skipped**. The mark is per

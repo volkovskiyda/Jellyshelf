@@ -45,10 +45,11 @@ import timber.log.Timber
  * Connects the player screen to [PlaybackService]'s session. Owns a [MediaController] for the
  * screen's lifetime — built asynchronously here, released in [onCleared].
  *
- * Stopping is an explicit act, never a lifecycle one: [stopPlayback] is called from the screen's
- * back paths (done watching), while merely leaving the app keeps playback and the notification
- * alive (still watching). That is why [onCleared] only releases the controller — a stop from here
- * would also fire on a configuration change, and this screen rotates freely.
+ * Stopping and pausing are explicit acts, never lifecycle ones: [stopPlayback] is called when the
+ * queue has played out, [pausePlayback] from the screen's back paths, while merely leaving the app
+ * keeps playback and the notification alive (still watching). That is why [onCleared] only
+ * releases the controller — a stop from here would also fire on a configuration change, and this
+ * screen rotates freely.
  *
  * The two runtime arguments arrive as the one [AppNavKey.Player] they already are, rather than as
  * a loose id and origin: it is a single value the navigation layer hands around whole, and Koin
@@ -192,6 +193,11 @@ class PlayerViewModel(
                 )
                 controller.prepare()
                 controller.play()
+            } else if (origin != PlayerOrigin.None) {
+                // Tapped in a list while it sits paused — Back leaves it so, queue and all. The tap
+                // asked for it to play; the bar and the notification, which reopen with no origin,
+                // asked only to see it.
+                controller.play()
             }
             // A null item is the queue being cleared on the way out (see stopPlayback); keeping
             // the last id there leaves the title in place while the screen finishes leaving.
@@ -237,7 +243,18 @@ class PlayerViewModel(
     }.map { it.youtubeId }
 
     /**
-     * Explicit leave: stop, let the service file the one stop report, drop the notification.
+     * Back's leave: pause, and keep the queue. The session goes on holding it, so the mini-player bar
+     * and Others → Now playing still list it and either picks it back up; the bar's stop is what ends
+     * it. The pause is also what files the position — the service saves it and sends the open server
+     * session a paused progress report, which is all the server needs until a stop report comes.
+     */
+    fun pausePlayback() {
+        _controller.value?.pause()
+    }
+
+    /**
+     * The leave once the queue has played out: stop, let the service file the one stop report, drop
+     * the notification.
      *
      * The pause is what makes that report carry the real position rather than one up to the
      * service's save interval stale — [PlaybackService] only records the position on a pause that

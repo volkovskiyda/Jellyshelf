@@ -544,7 +544,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     )
 
     // Something is playing and this is not the player screen: the bar is the way back to it, and
-    // (with back-stopping playback) the only in-app way to end the session. Written by
+    // its stop the only in-app way to end the session — the player's Back only pauses. Written by
     // PlaybackService, so it is already right on a launch that walked in on playback under way.
     val nowPlayingState: NowPlayingState = koinInject()
     val nowPlayingQueue: NowPlayingQueue = koinInject()
