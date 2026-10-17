@@ -332,6 +332,13 @@ fun VideoRow(
     onToggleSelection: () -> Unit = {},
     /** Long-press entry into selection mode. Null on lists that don't offer one. */
     onStartSelection: (() -> Unit)? = null,
+    /**
+     * False on a list whose thumbnail opens the details like the rest of the row — the Skipped
+     * filter, where playing would queue a list of nothing but skipped videos.
+     */
+    playsFromThumbnail: Boolean = true,
+    /** A control at the row's end, such as the Skipped filter's unskip button. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val selectionLabel = stringResource(R.string.select_video, video.title)
     val startSelectionLabel = stringResource(R.string.select_videos)
@@ -374,7 +381,7 @@ fun VideoRow(
             Checkbox(checked = selected, onCheckedChange = null)
         }
 
-        val playable = video.jellyfinItemId != null
+        val playable = playsFromThumbnail && video.jellyfinItemId != null
         // Names the video rather than saying a bare "Play": TalkBack reads a screenful of these in
         // a row, and clickables that all speak the same words are indistinguishable from one
         // another (which is also what the duplicate-speakable-text check flags).
@@ -499,6 +506,7 @@ fun VideoRow(
                 modifier = Modifier.size(20.dp),
             )
         }
+        trailing?.invoke()
     }
 }
 

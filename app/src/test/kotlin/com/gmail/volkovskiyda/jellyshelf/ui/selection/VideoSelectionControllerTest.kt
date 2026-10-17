@@ -73,9 +73,21 @@ class VideoSelectionControllerTest {
         assertEquals(setOf("a"), controller.selected.value)
     }
 
+    /** The Skipped filter's unskip takes its rows out of the list, just as a removal does. */
     @Test
-    fun theOtherThreeActions_keepTheSelectionWhenTheyFinish() = runTest {
-        for (action in SelectionAction.entries - SelectionAction.REMOVE) {
+    fun aFinishedUnskip_leavesSelectionMode() = runTest {
+        val repo = FakeLibraryRepository()
+        val controller = controllerFor(repo)
+        controller.start("a")
+
+        repo.selectionRuns.value = run(SelectionAction.UNSKIP, BulkProgress.Done(1, 0))
+
+        assertFalse(controller.active.value)
+    }
+
+    @Test
+    fun theActionsThatKeepTheirRows_keepTheSelectionWhenTheyFinish() = runTest {
+        for (action in SelectionAction.entries - SelectionAction.REMOVE - SelectionAction.UNSKIP) {
             val repo = FakeLibraryRepository()
             val controller = controllerFor(repo)
             controller.start("a")

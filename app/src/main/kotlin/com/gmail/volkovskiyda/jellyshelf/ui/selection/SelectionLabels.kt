@@ -2,6 +2,7 @@ package com.gmail.volkovskiyda.jellyshelf.ui.selection
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DeleteForever
@@ -12,7 +13,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 
 /**
  * Every string one selection action needs, hung off the action itself the way `RemoveKind`
- * hangs the two category removals' labels off theirs. Four actions × five labels is exactly the kind of table
+ * hangs the two category removals' labels off theirs. Five actions × five labels is exactly the kind of table
  * that goes wrong when it is spelled out at each of the three call sites — the menu, the
  * confirmation dialog and the progress header — instead of once here.
  */
@@ -25,6 +26,7 @@ internal val SelectionAction.menuLabel: Int
         // destroys something no re-sync brings back, and the menu is where that has to be legible
         // — the confirmation it opens is already past the point of deciding.
         SelectionAction.REMOVE -> R.string.selection_delete_from_server
+        SelectionAction.UNSKIP -> R.string.unskip_video
     }
 
 /**
@@ -42,6 +44,8 @@ internal val SelectionAction.menuIcon: ImageVector
         SelectionAction.MARK_UNWATCHED -> Icons.Outlined.CheckCircle
         SelectionAction.UPDATE_METADATA -> Icons.Filled.CloudDownload
         SelectionAction.REMOVE -> Icons.Filled.DeleteForever
+        // The glyph the Now playing panel's unskip button and the Skipped filter's rows wear.
+        SelectionAction.UNSKIP -> Icons.AutoMirrored.Filled.Undo
     }
 
 internal val SelectionAction.dialogTitle: Int
@@ -50,6 +54,7 @@ internal val SelectionAction.dialogTitle: Int
         SelectionAction.MARK_UNWATCHED -> R.string.selection_mark_unwatched_title
         SelectionAction.UPDATE_METADATA -> R.string.selection_update_metadata_title
         SelectionAction.REMOVE -> R.string.selection_remove_title
+        SelectionAction.UNSKIP -> R.string.selection_unskip_title
     }
 
 /** Takes the video count, already pluralized by the caller. */
@@ -59,6 +64,7 @@ internal val SelectionAction.dialogText: Int
         SelectionAction.MARK_UNWATCHED -> R.string.selection_mark_unwatched_text
         SelectionAction.UPDATE_METADATA -> R.string.selection_update_metadata_text
         SelectionAction.REMOVE -> R.string.selection_remove_text
+        SelectionAction.UNSKIP -> R.string.selection_unskip_text
     }
 
 /** The confirm button, which for the destructive action says what it does rather than "OK". */
@@ -67,6 +73,7 @@ internal val SelectionAction.confirmLabel: Int
         SelectionAction.MARK_WATCHED, SelectionAction.MARK_UNWATCHED -> R.string.selection_mark
         SelectionAction.UPDATE_METADATA -> R.string.update
         SelectionAction.REMOVE -> R.string.remove
+        SelectionAction.UNSKIP -> R.string.unskip_video
     }
 
 /** Progress text while the run works, as done and total. */
@@ -76,6 +83,7 @@ internal val SelectionAction.runningLabel: Int
         SelectionAction.MARK_UNWATCHED -> R.string.selection_marking_unwatched_progress
         SelectionAction.UPDATE_METADATA -> R.string.fetching_progress
         SelectionAction.REMOVE -> R.string.removing_progress
+        SelectionAction.UNSKIP -> R.string.selection_unskipping_progress
     }
 
 /** Summary text once the run is over, as succeeded and total. */
@@ -85,6 +93,7 @@ internal val SelectionAction.doneLabel: Int
         SelectionAction.MARK_UNWATCHED -> R.string.selection_marked_unwatched_summary
         SelectionAction.UPDATE_METADATA -> R.string.fetched_summary
         SelectionAction.REMOVE -> R.string.removed_summary
+        SelectionAction.UNSKIP -> R.string.selection_unskipped_summary
     }
 
 /**
@@ -93,3 +102,10 @@ internal val SelectionAction.doneLabel: Int
  */
 internal val SelectionAction.destructive: Boolean
     get() = this == SelectionAction.REMOVE
+
+/**
+ * The actions every list's selection menu offers. [SelectionAction.UNSKIP] is the exception: it
+ * means something only where every row is skipped, so the Skipped filter adds it on its own.
+ */
+internal val defaultSelectionActions: List<SelectionAction> =
+    SelectionAction.entries.filterNot { it == SelectionAction.UNSKIP }

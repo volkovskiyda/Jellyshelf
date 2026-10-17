@@ -18,6 +18,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_SKIPPED
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeSettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.fakeMetrics
 import io.ktor.client.HttpClient
@@ -363,6 +364,39 @@ class SelectionActionsInstrumentedTest {
         assertEquals(0, awaitDone(repo).failed)
 
         assertEquals(false, db.videoDao().get(a)?.played)
+    }
+
+    /**
+     * The Skipped filter's bulk unskip, end to end: the run takes the marks off, the filter and its
+     * Others row follow, and a sync in between changes none of it — the list is local, and the sync
+     * that rewrites every row must leave it alone.
+     */
+    @Test
+    fun unskip_takesTheMarksOffAndSyncLeavesTheRestAlone() = runBlocking {
+        val repo = repository(
+            serverIds = listOf(a, b, c),
+            index = listOf(indexEntry(a, "Channel A"), indexEntry(b, "Channel B"), indexEntry(c, "Channel C")),
+            settings = FakeSettingsRepository(connected),
+        )
+        repo.sync()
+        repo.setSkipped(listOf(a, b, c), skipped = true)
+        repo.sync()
+        assertEquals(setOf(a, b, c), repo.observeSkippedIds().first())
+        assertEquals(3, repo.observeOthers().first().single { it.category.id == VIRTUAL_CATEGORY_SKIPPED }.videoCount)
+
+        repo.startSelectionAction(SelectionAction.UNSKIP, listOf(a, c))
+        assertEquals(0, awaitDone(repo).failed)
+
+        assertEquals(setOf(b), repo.observeSkippedIds().first())
+        assertEquals(listOf(b), repo.observeVideosByCategory(VIRTUAL_CATEGORY_SKIPPED).first().map { it.youtubeId })
+        // Skipping is not watching: nothing reached the server.
+        assertEquals(emptyList<Pair<String, Boolean>>(), playedWrites)
+
+        repo.setSkipped(listOf(b), skipped = false)
+        assertTrue(
+            "an empty Skipped filter leaves the Others list",
+            repo.observeOthers().first().none { it.category.id == VIRTUAL_CATEGORY_SKIPPED },
+        )
     }
 
     /**

@@ -67,6 +67,8 @@ internal fun SelectionTopBar(
     onAction: (SelectionAction) -> Unit,
     /** Null on a list a playlist cannot be built from — see the menu below. */
     onCreatePlaylist: (() -> Unit)? = null,
+    /** What the menu offers; a list with an action of its own puts it first. */
+    actions: List<SelectionAction> = defaultSelectionActions,
 ) {
     val focusManager = LocalFocusManager.current
     TopAppBar(
@@ -91,7 +93,12 @@ internal fun SelectionTopBar(
             IconButton(onClick = { focusManager.dismissing(onDeselectAll) }, enabled = selectedCount > 0) {
                 Icon(Icons.Filled.RemoveDone, contentDescription = stringResource(R.string.deselect_all))
             }
-            SelectionActionsMenu(enabled = canAct, onAction = onAction, onCreatePlaylist = onCreatePlaylist)
+            SelectionActionsMenu(
+                actions = actions,
+                enabled = canAct,
+                onAction = onAction,
+                onCreatePlaylist = onCreatePlaylist,
+            )
         },
     )
 }
@@ -117,6 +124,7 @@ private fun FocusManager.dismissing(action: () -> Unit) {
  */
 @Composable
 private fun SelectionActionsMenu(
+    actions: List<SelectionAction>,
     enabled: Boolean,
     onAction: (SelectionAction) -> Unit,
     onCreatePlaylist: (() -> Unit)?,
@@ -126,7 +134,7 @@ private fun SelectionActionsMenu(
         Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.selection_actions))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        for (action in SelectionAction.entries.filterNot { it.destructive }) {
+        for (action in actions.filterNot { it.destructive }) {
             SelectionMenuItem(action) {
                 expanded = false
                 onAction(action)
@@ -144,7 +152,7 @@ private fun SelectionActionsMenu(
                 },
             )
         }
-        for (action in SelectionAction.entries.filter { it.destructive }) {
+        for (action in actions.filter { it.destructive }) {
             SelectionMenuItem(action) {
                 expanded = false
                 onAction(action)

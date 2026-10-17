@@ -94,6 +94,8 @@ class CategoryVideosContentTest {
         onConfirmRemove: () -> Unit = {},
         onPlayVideo: (Video) -> Unit = {},
         onOpenDetails: (Video) -> Unit = {},
+        isSkippedFilter: Boolean = false,
+        onUnskip: (String) -> Unit = {},
     ) {
         composeRule.setContent {
             JellyshelfTheme(dynamicColor = false) {
@@ -122,6 +124,8 @@ class CategoryVideosContentTest {
                     playlistDialogOpen = playlistDialogOpen,
                     selectionActive = selectionActive,
                     selectedIds = if (selectionActive) setOf(videos.first().youtubeId) else emptySet(),
+                    isSkippedFilter = isSkippedFilter,
+                    onUnskip = onUnskip,
                     scrollStore = FakeScrollPositionRepository(),
                     thumbnailModel = { null },
                 )
@@ -130,6 +134,52 @@ class CategoryVideosContentTest {
     }
 
     private fun string(id: Int, vararg args: Any) = composeRule.activity.getString(id, *args)
+
+    @Test
+    fun theSkippedFilter_offersAnUnskipOnEveryRow() {
+        val unskipped = mutableListOf<String>()
+        setContent(videos, isSkippedFilter = true, onUnskip = { unskipped += it })
+
+        composeRule.onNodeWithContentDescription(string(R.string.unskip_named, "Second video")).performClick()
+
+        assertEquals(listOf("b"), unskipped)
+        composeRule.onNodeWithContentDescription(string(R.string.unskip_named, "First video")).assertIsDisplayed()
+    }
+
+    /** Playing from here would queue nothing but skipped videos, so the thumbnail opens Details too. */
+    @Test
+    fun theSkippedFiltersThumbnail_opensTheDetails() {
+        val played = mutableListOf<Video>()
+        val opened = mutableListOf<Video>()
+        setContent(videos, isSkippedFilter = true, onPlayVideo = { played += it }, onOpenDetails = { opened += it })
+
+        composeRule.onNodeWithContentDescription(string(R.string.open_video_details, "First video")).performClick()
+
+        assertEquals(listOf("a"), opened.map { it.youtubeId })
+        assertEquals(emptyList<Video>(), played)
+    }
+
+    @Test
+    fun onlyTheSkippedFiltersSelection_offersUnskip() {
+        setContent(videos, isSkippedFilter = true, selectionActive = true)
+        composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
+        composeRule.onNodeWithText(string(R.string.unskip_video)).assertIsDisplayed()
+    }
+
+    @Test
+    fun anOrdinaryCategorysSelection_doesNotOfferUnskip() {
+        setContent(videos, selectionActive = true)
+        composeRule.onNodeWithContentDescription(string(R.string.selection_actions)).performClick()
+        composeRule.onNodeWithText(string(R.string.mark_watched)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.unskip_video)).assertDoesNotExist()
+    }
+
+    @Test
+    fun anEmptySkippedFilter_saysHowToSkip() {
+        setContent(emptyList(), isSkippedFilter = true)
+
+        composeRule.onNodeWithText(string(R.string.empty_skipped)).assertIsDisplayed()
+    }
 
     @Test
     fun theCategorysVideos_areListedUnderItsName() {

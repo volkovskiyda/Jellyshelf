@@ -86,6 +86,9 @@
     <!-- The opposite of the watched removal above: this one never touches the server. -->
     <string name="remove_missing_dialog_text">This removes %1$s from this device only — nothing is deleted on the Jellyfin server. Any that the server does still have come back on the next sync.</string>
     <string name="empty_missing">No videos are missing from the server.</string>
+    <string name="empty_skipped">No skipped videos. The ✕ in the player’s Now playing panel skips one.</string>
+    <!-- The Skipped filter's per-row button; names the video so a screenful of them stays distinguishable. -->
+    <string name="unskip_named">Unskip %1$s</string>
 
     <!--
       Multi-select on the two video lists (Library and one category). The menu row names the server
@@ -117,6 +120,10 @@
     <string name="selection_delete_from_server">Delete from server</string>
     <string name="selection_remove_title">Remove videos?</string>
     <string name="selection_remove_text">This deletes %1$s from the Jellyfin server, media files included. Any the server no longer has are removed from this device only. It cannot be undone.</string>
+    <string name="selection_unskip_title">Unskip videos?</string>
+    <string name="selection_unskip_text">%1$s will play in queues again.</string>
+    <string name="selection_unskipping_progress">Unskipping… %1$d/%2$d</string>
+    <string name="selection_unskipped_summary">Unskipped %1$d/%2$d</string>
     <string name="selection_marking_watched_progress">Marking as watched… %1$d/%2$d</string>
     <string name="selection_marked_watched_summary">Marked as watched %1$d/%2$d</string>
     <string name="selection_marking_unwatched_progress">Marking as unwatched… %1$d/%2$d</string>

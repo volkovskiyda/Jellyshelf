@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,6 +51,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionActionDialog
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionRunHeader
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionTopBar
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.SelectionUndoSnackbar
+import com.gmail.volkovskiyda.jellyshelf.ui.selection.defaultSelectionActions
 import com.gmail.volkovskiyda.jellyshelf.ui.selection.playlistMessage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -100,6 +102,8 @@ fun CategoryVideosScreen(
         bulkRemove = bulkRemove,
         demoMode = demoMode,
         isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
+        isSkippedFilter = viewModel.isSkippedFilter,
+        onUnskip = viewModel::unskip,
         removeKind = viewModel.removeKind,
         scrollKey = "category.$categoryId",
         showRemoveDialog = showRemoveDialog,
@@ -212,6 +216,8 @@ internal fun CategoryVideosContent(
     playlistDefaultName: String = "",
     onDismissPlaylistDialog: () -> Unit = {},
     onConfirmPlaylist: (String) -> Unit = {},
+    isSkippedFilter: Boolean = false,
+    onUnskip: (String) -> Unit = {},
     // Injected by default; host-side rendering passes an in-memory stand-in.
     scrollStore: ScrollPositionRepository = koinInject(),
     // Resolved once for the whole screen, not per row — see [rememberVideoThumbnailResolver].
@@ -254,6 +260,12 @@ internal fun CategoryVideosContent(
                 // offering it. Decided here rather than by the caller so the rule sits with the
                 // `removeKind` it reads, where the behaviour tests can reach it.
                 onCreatePlaylist = onCreatePlaylist?.takeIf { removeKind != RemoveKind.MISSING },
+                // Unskip first on the one list where every row is skipped.
+                actions = if (isSkippedFilter) {
+                    listOf(SelectionAction.UNSKIP) + defaultSelectionActions
+                } else {
+                    defaultSelectionActions
+                },
             )
         } else {
             CategoryTopBar(
@@ -304,6 +316,8 @@ internal fun CategoryVideosContent(
         CategoryVideoList(
             videosOrNull = videosOrNull,
             isUncategorized = isUncategorized,
+            isSkippedFilter = isSkippedFilter,
+            onUnskip = onUnskip,
             removeKind = removeKind,
             scrollKey = scrollKey,
             onPlayVideo = onPlayVideo,
@@ -395,6 +409,8 @@ private fun CategoryTopBar(
 private fun CategoryVideoList(
     videosOrNull: List<Video>?,
     isUncategorized: Boolean,
+    isSkippedFilter: Boolean,
+    onUnskip: (String) -> Unit,
     removeKind: RemoveKind?,
     scrollKey: String,
     onPlayVideo: (Video) -> Unit,
@@ -415,6 +431,7 @@ private fun CategoryVideoList(
             stringResource(
                 when {
                     isUncategorized -> R.string.empty_uncategorized
+                    isSkippedFilter -> R.string.empty_skipped
                     // Reachable by emptying the filter from the screen itself: the Others tab
                     // hides a filter whose count is zero, so it is never entered empty.
                     else -> removeKind?.emptyLabel ?: R.string.empty_category
@@ -436,6 +453,14 @@ private fun CategoryVideoList(
                 selected = if (selectionActive) video.youtubeId in selectedIds else null,
                 onToggleSelection = { onToggleSelection(video.youtubeId) },
                 onStartSelection = { onStartSelection(video.youtubeId) },
+                playsFromThumbnail = !isSkippedFilter,
+                // Not while selecting: the row is one checkbox then, and a button inside it would be
+                // a second target the selection does not account for.
+                trailing = if (isSkippedFilter && !selectionActive) {
+                    { UnskipButton(video, onUnskip) }
+                } else {
+                    null
+                },
             )
         }
     }
@@ -484,4 +509,15 @@ private fun RemoveVideosDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
+}
+
+/** The Skipped filter's per-row unskip: the row leaves the list, and every queue plays it again. */
+@Composable
+private fun UnskipButton(video: Video, onUnskip: (String) -> Unit) {
+    IconButton(onClick = { onUnskip(video.youtubeId) }) {
+        Icon(
+            Icons.AutoMirrored.Filled.Undo,
+            contentDescription = stringResource(R.string.unskip_named, video.title),
+        )
+    }
 }

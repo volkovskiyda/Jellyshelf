@@ -40,6 +40,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SyncResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_CONTINUE
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_LAST_PLAYED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_SKIPPED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNCATEGORIZED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_UNWATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
@@ -626,6 +627,7 @@ class DefaultLibraryRepository private constructor(
         VIRTUAL_CATEGORY_UNWATCHED -> videoDao.observeUnwatchedBrowse()
         VIRTUAL_CATEGORY_WATCHED -> videoDao.observeWatchedBrowse()
         VIRTUAL_CATEGORY_MISSING -> videoDao.observeMissingBrowse()
+        VIRTUAL_CATEGORY_SKIPPED -> skipDao.observeSkippedBrowse()
         else -> videoDao.observeByCategoryBrowse(categoryId)
     }.mapToDomainTraced(Spans.CATEGORY_VIDEOS)
         .firstContent(metrics, Spans.CATEGORY_VIDEOS, TRACK_LIBRARY) { it.size }
@@ -710,10 +712,11 @@ class DefaultLibraryRepository private constructor(
 
     /**
      * The "Others" tab's virtual filters with live counts: Uncategorized (no yt-dlp/index metadata),
-     * Continue watching, Last played, Unwatched, Watched, Missing from server. Empty filters are
-     * dropped, so the last one only appears once the server has actually stopped listing something.
+     * Continue watching, Last played, Unwatched, Watched, Missing from server, Skipped. Empty filters
+     * are dropped, so Missing only appears once the server has actually stopped listing something,
+     * and Skipped once something has been skipped.
      *
-     * Six flows is past `combine`'s typed overloads, so the counts arrive as an array — the row
+     * Seven flows is past `combine`'s typed overloads, so the counts arrive as an array — the row
      * list below is zipped against it and must stay in the same order as the flows.
      */
     override fun observeOthers(): Flow<List<CategoryWithCount>> = combine(
@@ -723,6 +726,7 @@ class DefaultLibraryRepository private constructor(
         videoDao.countUnwatched(),
         videoDao.countWatched(),
         videoDao.countMissing(),
+        skipDao.count(),
     ) { counts ->
         trace(Traces.CATEGORIES_OTHERS) {
             listOf(
@@ -732,6 +736,7 @@ class DefaultLibraryRepository private constructor(
                 VIRTUAL_CATEGORY_UNWATCHED to "Unwatched",
                 VIRTUAL_CATEGORY_WATCHED to "Watched",
                 VIRTUAL_CATEGORY_MISSING to "Missing from server",
+                VIRTUAL_CATEGORY_SKIPPED to "Skipped",
             ).zip(counts.toList()) { (id, name), count -> virtualRow(id, name, count) }
                 .filter { it.videoCount > 0 }
         }
@@ -1310,6 +1315,10 @@ class DefaultLibraryRepository private constructor(
             SelectionAction.UPDATE_METADATA ->
                 fetchAndApply(video.youtubeId, demoMode = settings.snapshot().demoMode) is FetchResult.Success
             SelectionAction.REMOVE -> removeSelected(settings.snapshot(), video)
+            SelectionAction.UNSKIP -> {
+                setSkipped(listOf(video.youtubeId), skipped = false)
+                true
+            }
         }
 
     /**

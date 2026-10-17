@@ -39,6 +39,14 @@ const val LAST_PLAYED_LIMIT = 20
  */
 const val VIRTUAL_CATEGORY_MISSING = "virtual:missing"
 
+/**
+ * Every skipped video — the ones the Now playing panel's ✕ marked, which every queue passes over
+ * until they are unskipped. This filter is where they can be seen together and unskipped, one at a
+ * time or as a selection. A row tap opens the video's details rather than playing it: playing from
+ * here would queue a list of nothing but skipped videos.
+ */
+const val VIRTUAL_CATEGORY_SKIPPED = "virtual:skipped"
+
 /** A category as the UI sees it. The data layer maps its Room row (`CategoryEntity`) onto this. */
 data class Category(
     val id: String,

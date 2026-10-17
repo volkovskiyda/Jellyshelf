@@ -39,17 +39,18 @@ class VideoSelectionController(
     val run: StateFlow<SelectionRun?> = repo.selectionRun
 
     init {
-        // A finished removal leaves selection mode; the other three actions deliberately do not.
-        // The difference is what is left to select: a removal's targets are gone from the list, so
-        // staying would leave the user in a mode over a selection that no longer exists — while
-        // marking fifty videos watched leaves all fifty right where they were, and the next thing
-        // the user wants is often another action on the same fifty.
+        // A finished removal leaves selection mode, and so does an unskip, which is only offered on
+        // the Skipped filter; the other actions deliberately do not. The difference is what is left
+        // to select: either way the targets are gone from the list, so staying would leave the user
+        // in a mode over a selection that no longer exists — while marking fifty videos watched
+        // leaves all fifty right where they were, and the next thing the user wants is often
+        // another action on the same fifty.
         //
         // Only on Done, not on a cancel: a cancelled removal has deleted some of them and left the
         // rest, and the selection is still the honest description of what was asked for.
         scope.launch {
             repo.selectionRun.collect { run ->
-                if (run?.action == SelectionAction.REMOVE && run.progress is BulkProgress.Done) {
+                if (run?.action in LIST_LEAVING_ACTIONS && run?.progress is BulkProgress.Done) {
                     selection.exit()
                 }
             }
@@ -145,3 +146,6 @@ class VideoSelectionController(
         }
     }
 }
+
+/** The actions whose targets leave the list they were picked from once the run is done. */
+private val LIST_LEAVING_ACTIONS = setOf(SelectionAction.REMOVE, SelectionAction.UNSKIP)

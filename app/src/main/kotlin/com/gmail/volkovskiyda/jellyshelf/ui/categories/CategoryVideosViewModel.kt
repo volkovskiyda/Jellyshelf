@@ -7,6 +7,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.AppSettingsState
 import com.gmail.volkovskiyda.jellyshelf.domain.model.BulkProgress
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaylistResult
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_MISSING
+import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_SKIPPED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VIRTUAL_CATEGORY_WATCHED
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
@@ -47,6 +48,16 @@ class CategoryVideosViewModel(
     val demoMode: StateFlow<Boolean> = settingsState.settings
         .map { it?.demoMode == true }
         .stateIn(viewModelScope, WhileUiSubscribed, false)
+
+    /**
+     * The Skipped filter: every row carries an unskip button, and its selection can be unskipped
+     * as a whole. Fixed for the ViewModel's lifetime, like [removeKind].
+     */
+    val isSkippedFilter: Boolean = categoryId == VIRTUAL_CATEGORY_SKIPPED
+
+    fun unskip(youtubeId: String) {
+        viewModelScope.launch { repo.setSkipped(listOf(youtubeId), skipped = false) }
+    }
 
     /**
      * Which bulk removal this category offers, if any. Fixed for the lifetime of the ViewModel —

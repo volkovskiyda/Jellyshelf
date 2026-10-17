@@ -96,6 +96,9 @@ enum class SelectionAction {
     MARK_UNWATCHED,
     UPDATE_METADATA,
     REMOVE,
+
+    /** Takes the skip mark off; offered only on the Skipped filter, where every row carries one. */
+    UNSKIP,
 }
 
 /**
