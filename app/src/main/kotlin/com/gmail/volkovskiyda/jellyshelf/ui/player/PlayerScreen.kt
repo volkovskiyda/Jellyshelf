@@ -585,10 +585,18 @@ private fun PlayerWithControls(
     // changes for the SurfaceView, the second landing it on its final size. Invisible at that
     // scale. Frames rather than a delay because the surface geometry is applied per frame, and
     // two of them so the inset is laid out and drawn, not merely composed and undone.
+    //
+    // The way out is the same shape — the window grows to the screen in steps, with the system
+    // bars showing for the first of them — so the nudge follows every change of PiP mode and of
+    // window size, not only those inside PiP. Prompted by, not proven against, a user screenshot
+    // of 2026-10-25 (Pixel 7 Pro, Android 17): the full-screen player with the video held in a
+    // rounded, pillarboxed rect and the window background around it, which is what a surface
+    // left at a transitional geometry on the way out would look like, and which the nudge on the
+    // way in never reached. The extra runs — one at first composition, one per rotation — are
+    // the same invisible one-pixel inset.
     val windowSize = LocalWindowInfo.current.containerSize
     var surfaceNudge by remember { mutableStateOf(0.dp) }
     LaunchedEffect(isInPip, windowSize) {
-        if (!isInPip) return@LaunchedEffect
         repeat(SURFACE_NUDGE_FRAMES) { withFrameNanos {} }
         surfaceNudge = SURFACE_NUDGE
         repeat(SURFACE_NUDGE_FRAMES) { withFrameNanos {} }
