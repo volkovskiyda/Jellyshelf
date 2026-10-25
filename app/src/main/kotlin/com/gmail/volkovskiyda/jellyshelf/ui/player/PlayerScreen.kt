@@ -22,11 +22,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -90,7 +95,9 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
@@ -288,12 +295,14 @@ fun PlayerScreen(
                 // no controller yet there is nothing to pause, so this is a plain leave.
                 PlayerPoster(poster, Modifier.matchParentSize())
                 CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-                // Full width, like the top bar it stands in for, so the cutout moves it exactly as
-                // it will move the bar's own back button — no jump when the controls arrive.
+                // Full width, like the top bar it stands in for, so the bars and the cutout move
+                // it exactly as they will move the bar's own back button — no jump when the
+                // controls arrive.
                 Box(
                     Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
+                        .topBarInsets()
                         .cutoutPadding()
                         .padding(4.dp),
                 ) {
@@ -789,6 +798,7 @@ private fun PlayerWithControls(
                 indicator,
                 Modifier
                     .align(Alignment.TopCenter)
+                    .topBarInsets()
                     .cutoutPadding()
                     .padding(top = 48.dp),
             )
@@ -883,11 +893,15 @@ internal fun PlayerControls(
     // No full-screen scrim: BottomControls paints its own gradient behind the seek bar, so more of
     // the video stays visible while the controls are up. The centre buttons and the top bar then
     // sit on raw video and carry their own backings instead. The controls stay clear of the display
-    // cutout, whose insets — unlike the hidden system bars' — never drop to zero on notched devices,
-    // but each row steps around it *inside* its gradient, so the gradients run edge to edge, and
-    // only where the cutout really overlaps it (see cutoutPadding): a mid-height camera costs the
-    // top and bottom rows nothing. The centre row takes no cutout padding at all, so it stays
-    // centred on the video, not off by half an inset.
+    // cutout, whose insets never drop to zero on notched devices, but each row steps around it
+    // *inside* its gradient, so the gradients run edge to edge, and only where the cutout really
+    // overlaps it (see cutoutPadding): a mid-height camera costs the top and bottom rows nothing.
+    // The system bars are hidden here (see ImmersiveWhileHere), so their insets are normally zero
+    // — but not always: for the frames before the hide lands, and whenever the system has brought
+    // them back and the re-hide has not yet caught up, they are real, and the rows pad for them
+    // too (topBarInsets / bottomBarInsets) rather than sit under the status icons or the navigation
+    // bar. The video itself stays under the bars either way. The centre row takes no padding at
+    // all, so it stays centred on the video, not off by half an inset.
     Box(modifier.fillMaxSize()) {
         // Each PlayerDefaults layout goes inside its own aligned Box rather than being handed a
         // Modifier.align: they apply the modifier they are given to the content *inside* their
@@ -902,6 +916,7 @@ internal fun PlayerControls(
                     Modifier
                         .fillMaxWidth()
                         .background(topControlsGradient())
+                        .topBarInsets()
                         .cutoutPadding()
                         .padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1027,9 +1042,10 @@ internal fun PlayerControls(
                 player = player,
                 visible = visible,
                 // media3 paints the gradient on the AnimatedVisibility *around* this modifier, so
-                // the cutout padding here moves the row in while the gradient stays edge to edge.
+                // the inset padding here moves the row in while the gradient stays edge to edge.
                 modifier = Modifier
                     .fillMaxWidth()
+                    .bottomBarInsets()
                     .cutoutPadding()
                     .padding(bottom = 12.dp),
                 above = {
@@ -1717,8 +1733,19 @@ private fun QueueEntryDetails(channel: String?, durationMs: Long?) {
 
 /**
  * Immersive fullscreen for the lifetime of this screen: bars hidden, revealable with a swipe,
- * restored on leave. Window-level state, so the dispose branch is what keeps the rest of the
- * app's screens laid out normally.
+ * hidden again whenever the system brings them back for good, restored on leave. Window-level
+ * state, so the dispose branch is what keeps the rest of the app's screens laid out normally.
+ *
+ * The first hide is not the last word. The system can bring the bars back on its own — a lock
+ * screen, a Custom Tab, another app over this one, a system dialog, and Picture-in-Picture, which
+ * disposes this effect on the way in and re-runs it on the way out, where the one `hide()` lands in
+ * the middle of the expand transition. A player left like that stays laid out under a status bar
+ * and a navigation bar it believes are gone: user screenshots 2026-10-25, Pixel 7 Pro on Android
+ * 17, the title under the status icons and the seek bar row past a pillarboxed video. Which trip
+ * got it there is not known — none of the above does it on the API 36 and 37 emulators — so rather
+ * than guard one route the hide is restated whenever the bars are *reporting insets* (which
+ * transient, swiped-in bars never do, so a swipe reveal still runs its course) and the window has
+ * focus, which is when a hide can take effect.
  *
  * Off while the app is a Picture-in-Picture window: there are no system bars in that window to
  * hide, and the swipe behaviour it sets belongs to the full-screen activity it will be again.
@@ -1738,7 +1765,37 @@ private fun ImmersiveWhileHere(enabled: Boolean) {
             insets.systemBarsBehavior = previousBehavior
         }
     }
+    // The root window insets, not a padded-down copy: the chrome above consumes nothing for the
+    // player, and WindowInsets.systemBars reads the window's own state regardless.
+    val bars = WindowInsets.systemBars
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val barsShown = bars.getTop(density) > 0 ||
+        bars.getBottom(density) > 0 ||
+        bars.getLeft(density, direction) > 0 ||
+        bars.getRight(density, direction) > 0
+    val focused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(activity, enabled, focused, barsShown) {
+        if (!enabled || !focused || !barsShown) return@LaunchedEffect
+        val window = activity?.window ?: return@LaunchedEffect
+        WindowCompat.getInsetsController(window, window.decorView)
+            .hide(WindowInsetsCompat.Type.systemBars())
+    }
 }
+
+/**
+ * The system-bar insets a row along the top edge keeps clear of: the status bar, and a navigation
+ * bar standing at a side in landscape. Zero while the bars are hidden — see [ImmersiveWhileHere]
+ * for when they are not.
+ */
+@Composable
+private fun Modifier.topBarInsets(): Modifier =
+    windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+
+/** The bottom-edge counterpart of [topBarInsets]: the navigation bar, below or at a side. */
+@Composable
+private fun Modifier.bottomBarInsets(): Modifier =
+    windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
 
 /** Position label: 0 is a real time here, unlike [formatDuration]'s "unknown" placeholder. */
 internal fun formatPosition(ms: Long): String =

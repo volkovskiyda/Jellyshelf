@@ -742,14 +742,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
         /**
          * What [key] reserves at the bottom, for the whole of its life.
          *
-         * A tab screen sits under the tabs and takes the lot. The player owns the window and takes
-         * what the `Scaffold` offers, which with no chrome composed is the live inset it is about
-         * to hide. Everything in between — Detail, a category — is on top of a tab rather than
-         * beside it: it never wants the tabs' height, not even while the tab it covers is still
-         * fading out underneath it.
+         * A tab screen sits under the tabs and takes the lot. Everything else — Detail, a category
+         * — is on top of a tab rather than beside it: it never wants the tabs' height, not even
+         * while the tab it covers is still fading out underneath it. The player is not asked: it
+         * takes the whole window (see [entry]).
          */
         fun bottomFor(key: AppNavKey): Dp = when {
-            key is AppNavKey.Player -> innerPadding.calculateBottomPadding()
             topLevel.any { it.key == key } -> innerPadding.calculateBottomPadding()
             else -> liveBottomWithoutTabs
         }
@@ -798,8 +796,15 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
                     // gone. See [pipInsetFree].
                     val chrome = when {
                         LocalIsInPip.current -> PaddingValues()
-                        // Video to every edge; the controls keep themselves clear of the cutout.
-                        key is AppNavKey.Player -> PaddingValues(bottom = bottomFor(key))
+                        // Video to every edge, bars or no bars. The player hides the system bars
+                        // itself, and for as long as they are showing anyway — the frames before
+                        // that hide lands, or after the system has brought them back — the live
+                        // navigation-bar inset it used to take here shortened its box and
+                        // pillarboxed the video, with the controls still laid out against the box.
+                        // The controls keep themselves clear of the bars and the cutout instead
+                        // (see PlayerControls), which the live insets can do only because nothing
+                        // is consumed here.
+                        key is AppNavKey.Player -> PaddingValues()
                         else -> PaddingValues(
                             start = liveSides.calculateStartPadding(layoutDirection) + startFor(key),
                             top = liveSides.calculateTopPadding(),
@@ -954,9 +959,10 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
  * last non-zero value it stays right when the answer genuinely changes — switching between gesture
  * and three-button navigation is a different inset, not a hidden one.
  *
- * Only the chrome. The `Scaffold`'s own `contentWindowInsets` must keep reading the live insets,
- * because the player is inside them: told to reserve bars that are deliberately hidden, the one
- * screen that asked for the whole window would letterbox itself.
+ * Only the chrome. The `Scaffold`'s own `contentWindowInsets` keep reading the live insets: the
+ * player no longer takes any of the `Scaffold`'s padding (see [entry]), but told to reserve bars
+ * that are deliberately hidden, every screen under it would sit above an empty band while the
+ * player holds the window.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
