@@ -67,7 +67,9 @@ import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsViewModel
 import com.gmail.volkovskiyda.jellyshelf.util.ActivityTracker
 import com.gmail.volkovskiyda.jellyshelf.util.CloudTraces
+import com.gmail.volkovskiyda.jellyshelf.util.CrashReporter
 import com.gmail.volkovskiyda.jellyshelf.util.FirebaseCloudTraces
+import com.gmail.volkovskiyda.jellyshelf.util.FirebaseCrashReporter
 import com.gmail.volkovskiyda.jellyshelf.util.KotzillaSink
 import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.MetricsSink
@@ -143,6 +145,9 @@ val appModule = module {
     // exactly one implementation, and KotzillaSink is whichever source-set twin the build compiled.
     single<MetricsSink> { KotzillaSink }
     singleOf(::FirebaseCloudTraces) { bind<CloudTraces>() }
+    // Non-fatal reports with context — a playback stall and the trail that led to it. The same
+    // seam-with-one-implementation shape as the traces above.
+    singleOf(::FirebaseCrashReporter) { bind<CrashReporter>() }
     // The type arguments are spelled out on purpose: the constructor's third parameter is the
     // monotonic clock, defaulted for production and replaced in tests, and without them the
     // constructor reference binds at its full arity and Koin would resolve `() -> Long` from the
