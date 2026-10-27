@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -131,6 +132,7 @@ fun DetailScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val fetching by viewModel.fetching.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val skipped by viewModel.skipped.collectAsStateWithLifecycle()
 
     val message by viewModel.message.collectAsStateWithLifecycle()
     ToastOnMessage(message) { viewModel.consumeMessage() }
@@ -156,6 +158,7 @@ fun DetailScreen(
         fetching = fetching,
         thumbnailModel = thumbnailModel,
         categories = categories,
+        skipped = skipped,
         onOpenCategory = { category -> onOpenCategory(category.id, category.name) },
         onBack = onBack,
         onPlay = { video, s, requestedMode ->
@@ -208,6 +211,8 @@ internal fun DetailContent(
     // Passed in rather than read here, so previews and tests can pin it: a relative label built
     // from the wall clock would make their output depend on when they ran.
     now: Long = 0L,
+    /** Whether the video is on the skip list; drawn as a badge in the heading, nothing otherwise. */
+    skipped: Boolean = false,
 ) {
     val current = (videoState as? VideoDetailState.Loaded)?.video
 
@@ -252,6 +257,7 @@ internal fun DetailContent(
                 settings = settings,
                 thumbnailModel = thumbnailModel,
                 now = now,
+                skipped = skipped,
                 wide = wide,
                 onPlay = onPlay,
                 onSelectMode = onSelectMode,
@@ -289,6 +295,7 @@ private fun Header(
     settings: Settings?,
     thumbnailModel: String?,
     now: Long,
+    skipped: Boolean,
     wide: Boolean,
     onPlay: (Video, Settings, PlaybackMode) -> Unit,
     onSelectMode: (PlaybackMode) -> Unit,
@@ -300,13 +307,13 @@ private fun Header(
                 modifier = Modifier.weight(HEADING_WEIGHT),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Heading(current, now)
+                Heading(current, now, skipped)
                 PlayButton(current, settings, onPlay, onSelectMode)
             }
         }
     } else {
         Cover(thumbnailModel)
-        Heading(current, now)
+        Heading(current, now, skipped)
         PlayButton(current, settings, onPlay, onSelectMode)
     }
 }
@@ -327,11 +334,11 @@ private fun Cover(thumbnailModel: String?, modifier: Modifier = Modifier) {
 
 /**
  * What identifies the video and where its metadata stands: the file name, the channel/duration/date
- * line, the provenance line, and — when there is something to say — why the last fetch failed and
- * that the server has stopped listing it.
+ * line, whether queues skip it, the provenance line, and — when there is something to say — why the
+ * last fetch failed and that the server has stopped listing it.
  */
 @Composable
-private fun Heading(current: Video, now: Long) {
+private fun Heading(current: Video, now: Long, skipped: Boolean) {
     // The file name leads, not the YouTube title: it is the on-disk identity the user
     // manages the library by, and a tap puts it on the clipboard.
     val copyFileName = rememberCopyToClipboard(R.string.file_name_copied)
@@ -356,6 +363,10 @@ private fun Heading(current: Video, now: Long) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+
+    // Above the provenance rather than in it: the skip list says what playback will do with the
+    // video, not where its metadata came from.
+    if (skipped) SkippedBadge()
 
     // Provenance on one line: where the metadata came from, and when this row last saw a
     // sync. Omitted entirely for a never-synced video rather than printing an epoch date.
@@ -762,6 +773,29 @@ private fun MissingFromServerNotice() {
                 stringResource(R.string.missing_from_server_explained),
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+    }
+}
+
+/**
+ * The video is on the skip list: every queue passes over it until it is unskipped. The source
+ * badge's chip in neutral colours, wearing the glyph and the word the list rows mark a skipped
+ * video with, so the two screens say it the same way.
+ */
+@Composable
+private fun SkippedBadge() {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.SkipNext, contentDescription = null, modifier = Modifier.size(14.dp))
+            Text(stringResource(R.string.skipped), style = MaterialTheme.typography.labelSmall)
         }
     }
 }

@@ -358,7 +358,11 @@ private fun DetailLoaded() {
 
 /** [DetailLoaded]'s state, rendered for every wide golden below. */
 @Composable
-private fun DetailLoadedContent(video: Video = sampleVideo, categories: List<Category> = sampleVideoCategories) {
+private fun DetailLoadedContent(
+    video: Video = sampleVideo,
+    categories: List<Category> = sampleVideoCategories,
+    skipped: Boolean = false,
+) {
     DetailContent(
         videoState = VideoDetailState.Loaded(video),
         settings = previewSettings,
@@ -372,6 +376,7 @@ private fun DetailLoadedContent(video: Video = sampleVideo, categories: List<Cat
         onToggleWatched = {},
         onFetchMetadata = {},
         onRemove = {},
+        skipped = skipped,
     )
 }
 
@@ -407,6 +412,67 @@ private fun DetailLoadedTabletDark() {
 @Composable
 private fun DetailLoadedTabletPortrait() {
     PreviewTheme { DetailLoadedContent() }
+}
+
+/**
+ * A video on the skip list: the Skipped chip between the channel line and the provenance line, in
+ * every form factor and both themes. Not skipped draws nothing, which every other Detail golden
+ * already guards.
+ */
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun DetailSkipped() {
+    PreviewTheme { DetailLoadedContent(skipped = true) }
+}
+
+@PreviewTest
+@Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
+@Composable
+private fun DetailSkippedDark() {
+    PreviewTheme(darkTheme = true) { DetailLoadedContent(skipped = true) }
+}
+
+@PreviewTest
+@Preview(widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT, showBackground = true)
+@Composable
+private fun DetailSkippedLandscape() {
+    PreviewTheme { DetailLoadedContent(skipped = true) }
+}
+
+@PreviewTest
+@Preview(widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT, showBackground = true)
+@Composable
+private fun DetailSkippedLandscapeDark() {
+    PreviewTheme(darkTheme = true) { DetailLoadedContent(skipped = true) }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun DetailSkippedTablet() {
+    PreviewTheme { DetailLoadedContent(skipped = true) }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
+@Composable
+private fun DetailSkippedTabletDark() {
+    PreviewTheme(darkTheme = true) { DetailLoadedContent(skipped = true) }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_HEIGHT, heightDp = TABLET_WIDTH, showBackground = true)
+@Composable
+private fun DetailSkippedTabletPortrait() {
+    PreviewTheme { DetailLoadedContent(skipped = true) }
+}
+
+@PreviewTest
+@Preview(widthDp = TABLET_HEIGHT, heightDp = TABLET_WIDTH, showBackground = true)
+@Composable
+private fun DetailSkippedTabletPortraitDark() {
+    PreviewTheme(darkTheme = true) { DetailLoadedContent(skipped = true) }
 }
 
 /**

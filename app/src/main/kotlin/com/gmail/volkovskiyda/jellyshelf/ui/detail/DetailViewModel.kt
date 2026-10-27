@@ -23,6 +23,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -64,6 +65,16 @@ class DetailViewModel(
      */
     val categories: StateFlow<List<Category>> = repo.observeCategoriesForVideo(youtubeId)
         .stateIn(viewModelScope, WhileUiSubscribed, emptyList())
+
+    /**
+     * Whether this video is on the skip list, live — skipping it from the Now playing panel or
+     * unskipping it from the Skipped filter while this screen is in the back stack shows on return.
+     * The skip list's own table, so a position save to the video row does not re-run it.
+     */
+    val skipped: StateFlow<Boolean> = repo.observeSkippedIds()
+        .map { youtubeId in it }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, WhileUiSubscribed, false)
 
     private val _fetching = MutableStateFlow(false)
     val fetching: StateFlow<Boolean> = _fetching.asStateFlow()

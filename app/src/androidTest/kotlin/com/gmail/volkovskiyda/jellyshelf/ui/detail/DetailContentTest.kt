@@ -117,6 +117,7 @@ class DetailContentTest {
         settings: Settings = this.settings,
         categories: List<Category> = emptyList(),
         onOpenCategory: (Category) -> Unit = {},
+        skipped: Boolean = false,
     ) {
         composeRule.setContent {
             // The device's zone would decide what the upload stamp reads; pinned like `now`.
@@ -138,6 +139,7 @@ class DetailContentTest {
                         // Pinned: sync times are relative now, so the wall clock would decide
                         // what this renders.
                         now = now,
+                        skipped = skipped,
                     )
                 }
             }
@@ -159,6 +161,20 @@ class DetailContentTest {
 
         composeRule.onNodeWithText("2026-07-21", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("2026-07-21 ", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a skipped video wears the skipped badge`() {
+        setContent(video, skipped = true)
+
+        composeRule.onNodeWithText(string(R.string.skipped)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a video that is not skipped shows no skipped badge`() {
+        setContent(video)
+
+        composeRule.onNodeWithText(string(R.string.skipped)).assertDoesNotExist()
     }
 
     @Test
