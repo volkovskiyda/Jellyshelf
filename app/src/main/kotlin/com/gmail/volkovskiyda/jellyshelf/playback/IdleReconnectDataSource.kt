@@ -9,9 +9,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
-import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
-import timber.log.Timber
 
 /**
  * Reopens an HTTP stream that has sat idle long enough to have died unnoticed, instead of reading a
@@ -65,13 +63,15 @@ internal class IdleReconnectDataSource(
     private val upstream: DataSource,
     private val idleReopenMs: Long = IDLE_REOPEN_MS,
     /**
-     * Told that a reopen happened, so it can be counted. Called on **this loadable's loader
-     * thread**, not the main one — whatever is passed here has to be safe off the main thread.
+     * Told that a reopen happened, with one line saying which stream, how long it had idled and the
+     * byte it resumed at — so it can be counted and the line can go to the playback trail. Called on
+     * **this loadable's loader thread**, not the main one — whatever is passed here has to be safe
+     * off the main thread.
      *
      * Declared before the clock deliberately: the tests pass the clock as a trailing lambda, and a
      * callback added after it would have silently swallowed that lambda instead.
      */
-    private val onReopen: () -> Unit = {},
+    private val onReopen: (detail: String) -> Unit = {},
     private val elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : DataSource {
 
@@ -134,11 +134,10 @@ internal class IdleReconnectDataSource(
     private fun reopen(spec: DataSpec) {
         val idleMs = elapsedRealtime() - lastActivityMs
         val resumeAt = spec.position + bytesRead
-        Timber.tag(Playback.TAG).i(
+        onReopen(
             "reopening ${stripCredentials(spec.uri.toString())} after ${idleMs / MILLIS_PER_SECOND}s " +
                 "idle at byte $resumeAt",
         )
-        onReopen()
         upstream.close()
         // subrange(0) hands back the same spec, so a stream idled before its first byte simply
         // reconnects where it was.

@@ -10,14 +10,13 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.ExoPlayer
-import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import timber.log.Timber
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Rebuilds the player's loading state when a buffering stream has gone completely silent, so a stall
@@ -66,11 +65,13 @@ internal class StallWatchdog(
      * holding the instance it was built with would re-prepare one that has been released.
      */
     private val player: () -> ExoPlayer?,
+    /** Where its decisions are written — logcat in debug, and the buffer a stall report carries. */
+    private val trail: PlaybackTrail,
     private val rule: StallRule = StallRule(),
     /**
-     * Told that a recovery happened, so it can be counted. Called on the application looper, right
-     * after the log line and before the player is touched — a recovery that throws is still one
-     * that was attempted.
+     * Told that a recovery happened, so it can be counted and reported. Called on the application
+     * looper, right after the log line and before the player is touched — a recovery that throws is
+     * still one that was attempted, and a report made here sees the player as it was found.
      *
      * Declared before the clock for the same reason it is in [IdleReconnectDataSource]: a callback
      * added after a defaulted lambda silently captures any trailing lambda at a call site.
@@ -137,12 +138,12 @@ internal class StallWatchdog(
         // gets a frame when they press play is then entirely up to the load that is (or is not) in
         // flight. See BufferingLogger for what that load looks like from here.
         if (buffering && !player.playWhenReady) {
-            Timber.tag(Playback.TAG).d("stall watch: buffering while paused, not watching")
+            trail.d("stall watch: buffering while paused, not watching")
         }
         if (!stalling) return
         job = scope.launch {
             while (isActive) {
-                delay(TICK_MS)
+                delay(TICK_MS.milliseconds)
                 // Fed in on this thread rather than read inside the rule, so the rule stays pure.
                 rule.onBytes(lastBytesMs.value)
                 if (rule.tick(elapsedRealtime())) {
@@ -155,7 +156,7 @@ internal class StallWatchdog(
 
     private fun recover() {
         val player = player() ?: return
-        Timber.tag(Playback.TAG).w(
+        trail.w(
             "stall: nothing loaded for ${STALL_TIMEOUT_MS / MILLIS_PER_SECOND}s while buffering " +
                 "${player.currentMediaItem?.mediaId} at ${player.currentPosition}ms — re-preparing",
         )

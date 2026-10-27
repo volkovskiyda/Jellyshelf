@@ -39,6 +39,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
+import com.gmail.volkovskiyda.jellyshelf.util.CrashReporter
 import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.Traces
@@ -110,6 +111,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     private val syncScheduler: SyncScheduler by inject()
     private val mediaHttpClient: HttpClient by inject(named(MEDIA_HTTP_CLIENT))
     private val metrics: Metrics by inject()
+    private val crashReporter: CrashReporter by inject()
 
     // The player's application thread is this service's main thread; session callbacks, the
     // listener and the periodic saver all stay on it, which is also what makes the plain-var
@@ -148,6 +150,13 @@ class PlaybackService : MediaSessionService(), KoinComponent {
 
     /** What went wrong while an item played, counted onto one trace per item. */
     private val health: PlaybackHealth by lazy { PlaybackHealth(metrics) }
+
+    /**
+     * The last few minutes of loads, states and transitions, on every build type — what a stall
+     * report carries, and what `adb logcat -s Playback` shows in debug. Owned here because every
+     * writer (the loggers, the watchdog, the reconnecting datasource) is built in [onCreate].
+     */
+    private val trail = PlaybackTrail()
 
     /** The whole queue beside the timeline, which leaves skipped videos out — see [QueueKeeper]. */
     private val queue: QueueKeeper by lazy { QueueKeeper(nowPlayingQueue) { player } }
@@ -191,18 +200,22 @@ class PlaybackService : MediaSessionService(), KoinComponent {
                         ),
                     )
                     .createDataSource(),
-                // Counted from the loader thread this runs on; the counters are built for that.
-                onReopen = health::onIdleReconnect,
+                // Called from the loader thread this runs on; the counter and the trail are both
+                // built for that.
+                onReopen = { detail ->
+                    health.onIdleReconnect()
+                    trail.i(detail)
+                },
             )
         }
+        // A stall becomes a Crashlytics non-fatal carrying the trail — the one way a release install
+        // can say what happened. Reported from the two places that know: the watchdog's recovery
+        // below, and the long-buffering tick in the logging installed further down.
+        val stallReporter = StallReporter(trail, crashReporter)
         // The backstop for a stall the reconnect above cannot explain: it needs to hear about every
         // byte the player loads, which is why it is built here and its listener handed to the
         // factory rather than it being simply another Player.Listener.
-        val stallWatchdog = StallWatchdog(
-            scope,
-            player = { this.player },
-            onRecover = health::onStallRecovery,
-        )
+        val stallWatchdog = stallWatchdog(scope, { this.player }, trail, health, stallReporter)
         // Media3's standard composition: `asset:` and `file:` URIs — which is what a demo video
         // resolves to — route to local sources, while every http(s) URI is handed to the factory
         // above and behaves exactly as it did before, credential-at-creation-time included.
@@ -222,10 +235,12 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             .setSeekBackIncrementMs(SEEK_BACK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
             .build()
-        // What the loader is doing, in debug builds only — the one view of a stall that raises no
-        // player error. See [logLoadsInDebug]; first, so a load that fails during the very first
-        // prepare is logged too.
-        player.logLoadsInDebug(buildInfo.isDebug)
+        // What the loader and the player are doing, into the trail on every build type — the one
+        // view of a stall that raises no player error. See [installPlaybackLogging]; first, so a load
+        // that fails during the very first prepare is logged too.
+        player.installPlaybackLogging(trail, buildInfo.isDebug) {
+            this.player?.let { stallReporter.report(StallReporter.TRIGGER_LONG, it) }
+        }
         // A few seconds of the *next* queued video, buffered while this one plays: pressing Next
         // and reaching the end of a video both then start on a stream that is already open, which
         // is the whole wait for anything the user did not have to choose. Only the next item is
@@ -971,6 +986,30 @@ private fun ExoPlayer.checkOnApplicationLooper(isDebug: Boolean) {
         "Player reached off its application looper from ${Thread.currentThread().name}"
     }
 }
+
+/**
+ * The stall watchdog with its recovery wired to the two things that need to hear about one: the
+ * item's health counters and a Crashlytics report carrying the trail.
+ *
+ * Top-level for the same reason [checkOnApplicationLooper] is, and because `onCreate` sits at
+ * detekt's length threshold. `onRecover` is named on purpose: the watchdog's last parameter is its
+ * clock, and a trailing lambda would silently replace that instead.
+ */
+private fun stallWatchdog(
+    scope: CoroutineScope,
+    player: () -> ExoPlayer?,
+    trail: PlaybackTrail,
+    health: PlaybackHealth,
+    reporter: StallReporter,
+): StallWatchdog = StallWatchdog(
+    scope,
+    player,
+    trail,
+    onRecover = {
+        health.onStallRecovery()
+        player()?.let { reporter.report(StallReporter.TRIGGER_SILENT, it) }
+    },
+)
 
 /**
  * How the queue got to this item, as the attribute the transition span carries.

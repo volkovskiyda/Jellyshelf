@@ -6,21 +6,19 @@ import android.os.Handler
 import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.util.EventLogger
-import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.stripCredentials
-import timber.log.Timber
 import java.io.IOException
 
 /**
- * Debug-only: what the *loader* is doing, for a stall that no error ever reaches.
+ * What the *loader* and the player are doing, for a stall that no error ever reaches.
  *
  * **Why this exists.** A video left paused for a long time can come back to a buffering spinner that
  * never clears, and nothing in the app could say why. `onPlayerError` only fires once ExoPlayer has
@@ -36,36 +34,37 @@ import java.io.IOException
  * stream was trickling or dead. `isLoading` false while buffering says the loader is not even trying,
  * which would point at the player's state machine rather than at the network.
  *
- * Paired with media3's own [EventLogger], which covers states, timelines, tracks and decoder
- * lifecycle but logs nothing about a load except its error — so the two do not overlap except there,
- * where this one adds the byte count, the duration and the cause chain.
+ * **On every build type**, into a [PlaybackTrail] — which is logcat in debug and, in release, the
+ * buffer a [StallReporter] hands to Crashlytics. This was debug-only until 2026-10-27, when the one
+ * stall that mattered happened on a release install and left no trace anywhere (see the trail's
+ * KDoc). media3's own [EventLogger] stays debug-only: it writes straight to `android.util.Log` with
+ * no gating, and one `V` line per decoder event is a lot of logcat to hand a release install; the
+ * few state lines a stall is read by are [StateLogger]'s, which the trail carries on every build.
  *
- * **Debug-only, deliberately.** [EventLogger] writes through `android.util.Log` with no build
- * gating of its own, and one line per 1 MB load chunk is a lot of logcat to hand a release install.
- * `Timber` would drop this app's own lines in release anyway (no tree is planted —
- * `JellyshelfApplication`), but the gate is what keeps `EventLogger` out as well.
+ * [onStuck] is called on the application looper when [LongBufferingRule] says a buffering spell has
+ * gone on long enough to report — see [StallReporter].
  *
  * Top-level rather than a member of [PlaybackService] for the same reason `checkOnApplicationLooper`
  * is: detekt's `TooManyFunctions` threshold for a class is 11 and that service is at it.
  */
-internal fun ExoPlayer.logLoadsInDebug(isDebug: Boolean) {
-    if (!isDebug) return
-    addAnalyticsListener(EventLogger())
-    addAnalyticsListener(LoadLogger())
-    addAnalyticsListener(BufferingLogger(this))
+internal fun ExoPlayer.installPlaybackLogging(trail: PlaybackTrail, isDebug: Boolean, onStuck: () -> Unit) {
+    if (isDebug) addAnalyticsListener(EventLogger())
+    addAnalyticsListener(LoadLogger(trail))
+    addAnalyticsListener(StateLogger(trail))
+    addAnalyticsListener(BufferingLogger(this, trail, onStuck = onStuck))
 }
 
 /**
- * The load half of [logLoadsInDebug] — every line tagged [Playback.TAG], so one
- * `adb logcat -s Playback` follows a stall from the resume that triggered it to the exception that
- * ended it.
+ * The load half of [installPlaybackLogging] — every line into the trail (and so under
+ * `Playback.TAG` in debug), so one `adb logcat -s Playback` follows a stall from the resume that
+ * triggered it to the exception that ended it.
  *
  * Every URI goes through [stripCredentials]. A direct stream URL carries no credential today (the
  * token travels as a header — `Playback.streamUrl(..., credential = null)`), but an HLS fallback URL
- * is built with query parameters and logs are readable by other apps on a dev device, so scrubbing
- * is the habit rather than an assessment of this one call site.
+ * is built with query parameters and these lines now leave the device in a crash report, so
+ * scrubbing is the rule rather than an assessment of this one call site.
  */
-private class LoadLogger : AnalyticsListener {
+private class LoadLogger(private val trail: PlaybackTrail) : AnalyticsListener {
 
     override fun onLoadStarted(
         eventTime: AnalyticsListener.EventTime,
@@ -76,7 +75,7 @@ private class LoadLogger : AnalyticsListener {
         // The four-argument overload: its three-argument sibling is deprecated in 1.11.0, and
         // retryCount is the one field that distinguishes a first attempt from ExoPlayer grinding
         // through its three retries — which is exactly what a stall looks like from here.
-        Timber.tag(Playback.TAG).d(
+        trail.d(
             "load start ${loadEventInfo.scrubbedUri()} ${eventTime.window()} " +
                 "${loadEventInfo.range()} retry=$retryCount",
         )
@@ -87,7 +86,7 @@ private class LoadLogger : AnalyticsListener {
         loadEventInfo: LoadEventInfo,
         mediaLoadData: MediaLoadData,
     ) {
-        Timber.tag(Playback.TAG).d("load done ${loadEventInfo.progress()} ${eventTime.window()}")
+        trail.d("load done ${loadEventInfo.progress()} ${eventTime.window()}")
     }
 
     override fun onLoadCanceled(
@@ -98,7 +97,7 @@ private class LoadLogger : AnalyticsListener {
         // A cancel is ordinary — a seek, a stop, an item swap all cancel loads in flight — but an
         // unexplained one while a spinner sits is the signal that something above cancelled the
         // load rather than the network failing it.
-        Timber.tag(Playback.TAG).d("load canceled ${loadEventInfo.progress()} ${eventTime.window()}")
+        trail.d("load canceled ${loadEventInfo.progress()} ${eventTime.window()}")
     }
 
     override fun onLoadError(
@@ -111,14 +110,14 @@ private class LoadLogger : AnalyticsListener {
         // Warn, not error: media3's own KDoc for this callback is explicit that a load error does
         // not mean playback has failed — the player usually recovers — so this must not read like a
         // terminal failure in the log.
-        Timber.tag(Playback.TAG).w(
+        trail.w(
             "load error ${loadEventInfo.progress()} ${eventTime.window()} wasCanceled=$wasCanceled " +
                 "${error.javaClass.simpleName}: ${error.message}${error.causeChain()}",
         )
     }
 
     override fun onIsLoadingChanged(eventTime: AnalyticsListener.EventTime, isLoading: Boolean) {
-        Timber.tag(Playback.TAG).d("isLoading=$isLoading")
+        trail.d("isLoading=$isLoading")
     }
 
     /** The load's URI with any embedded credential removed — see the class KDoc. */
@@ -176,6 +175,65 @@ private class LoadLogger : AnalyticsListener {
 }
 
 /**
+ * The player's state machine, one line per change: the handful of [EventLogger] lines a stall is
+ * read by, so that a release trail says what the player was doing between the loads. Which item the
+ * queue moved to and why, whether it was asked to play, where it jumped, when it drew, and the one
+ * error that ends it all — everything else EventLogger prints is decoder lifecycle, which a stall
+ * never reaches.
+ */
+private class StateLogger(private val trail: PlaybackTrail) : AnalyticsListener {
+
+    override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
+        trail.d("state ${stateName(state)}")
+    }
+
+    override fun onPlayWhenReadyChanged(eventTime: AnalyticsListener.EventTime, playWhenReady: Boolean, reason: Int) {
+        trail.d("playWhenReady=$playWhenReady reason=$reason")
+    }
+
+    override fun onMediaItemTransition(eventTime: AnalyticsListener.EventTime, mediaItem: MediaItem?, reason: Int) {
+        trail.d("item ${mediaItem?.mediaId} window=${eventTime.currentWindowIndex} reason=${transitionName(reason)}")
+    }
+
+    override fun onPositionDiscontinuity(
+        eventTime: AnalyticsListener.EventTime,
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+    ) {
+        trail.d(
+            "discontinuity reason=$reason ${oldPosition.mediaItemIndex}@${oldPosition.positionMs}ms -> " +
+                "${newPosition.mediaItemIndex}@${newPosition.positionMs}ms",
+        )
+    }
+
+    override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+        trail.d("first frame window=${eventTime.currentWindowIndex}")
+    }
+
+    override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
+        trail.w(error, "player error ${error.errorCodeName}")
+    }
+
+    private fun transitionName(reason: Int): String = when (reason) {
+        Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> "auto"
+        Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> "seek"
+        Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> "repeat"
+        Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> "playlist"
+        else -> reason.toString()
+    }
+}
+
+/** `Player.State` as the word EventLogger would print, for [ExoPlayer.describe] and [StateLogger]. */
+internal fun stateName(state: Int): String = when (state) {
+    Player.STATE_IDLE -> "IDLE"
+    Player.STATE_BUFFERING -> "BUFFERING"
+    Player.STATE_READY -> "READY"
+    Player.STATE_ENDED -> "ENDED"
+    else -> state.toString()
+}
+
+/**
  * The player's own view of a buffering spell that will not end, logged every [SNAPSHOT_INTERVAL_MS]
  * for as long as it lasts — the half of a stall that [LoadLogger] cannot see.
  *
@@ -186,21 +244,33 @@ private class LoadLogger : AnalyticsListener {
  * to play — because a paused player in `STATE_BUFFERING` is a spell [StallWatchdog] deliberately does
  * not watch, and that is the one that sat for sixteen seconds on 2026-10-08.
  *
+ * The same tick feeds [LongBufferingRule]: a spell that has kept the user waiting [LONG_BUFFERING_MS]
+ * is reported through [onStuck], once per item. Waiting is counted from the later of the spell
+ * starting and `playWhenReady` turning true, so a video paused mid-buffer and resumed is measured
+ * from the resume, not from the pause.
+ *
  * Posted on the player's application looper rather than a coroutine scope: this is an analytics
  * listener with no scope of its own, and the looper is what every other player read here already
  * runs on. The job is a single pending message, cancelled whenever the state stops being buffering
  * and rearmed whenever it starts again, so an item that buffers for a second costs one post.
  */
-private class BufferingLogger(private val player: ExoPlayer) : AnalyticsListener {
+private class BufferingLogger(
+    private val player: ExoPlayer,
+    private val trail: PlaybackTrail,
+    private val rule: LongBufferingRule = LongBufferingRule(),
+    private val onStuck: () -> Unit,
+) : AnalyticsListener {
 
     private val handler = Handler(player.applicationLooper)
     private var sinceMs = 0L
+    private var wantedSinceMs = 0L
 
     private val snapshot = object : Runnable {
         override fun run() {
             if (player.playbackState != Player.STATE_BUFFERING) return
-            val seconds = (SystemClock.elapsedRealtime() - sinceMs) / MILLIS_PER_SECOND
-            Timber.tag(Playback.TAG).d("buffering ${seconds}s: ${player.describe()}")
+            val now = SystemClock.elapsedRealtime()
+            trail.d("buffering ${(now - sinceMs) / MILLIS_PER_SECOND}s: ${player.describe()}")
+            if (rule.shouldReport(now - maxOf(sinceMs, wantedSinceMs), player.playWhenReady)) onStuck()
             handler.postDelayed(this, SNAPSHOT_INTERVAL_MS)
         }
     }
@@ -212,6 +282,10 @@ private class BufferingLogger(private val player: ExoPlayer) : AnalyticsListener
         handler.postDelayed(snapshot, SNAPSHOT_INTERVAL_MS)
     }
 
+    override fun onPlayWhenReadyChanged(eventTime: AnalyticsListener.EventTime, playWhenReady: Boolean, reason: Int) {
+        if (playWhenReady) wantedSinceMs = SystemClock.elapsedRealtime()
+    }
+
     /**
      * A snapshot on the move itself, not only after the first interval: the state is usually already
      * `BUFFERING` from the seek that preceded the move (the skip to the end seeks first), so no state
@@ -219,28 +293,9 @@ private class BufferingLogger(private val player: ExoPlayer) : AnalyticsListener
      * the later snapshots are read against.
      */
     override fun onMediaItemTransition(eventTime: AnalyticsListener.EventTime, mediaItem: MediaItem?, reason: Int) {
+        rule.onItemChanged()
         if (player.playbackState != Player.STATE_BUFFERING) return
-        Timber.tag(Playback.TAG).d("buffering into item: ${player.describe()}")
-    }
-
-    /**
-     * Everything a stalled player can be asked on its own thread. `tracks` is group count, which is
-     * zero until the period is prepared; `placeholder` is the timeline window still carrying the
-     * unset duration a progressive source reports before its index has been read — the two agree
-     * when things are normal, and a prepared item on a placeholder window is worth seeing.
-     *
-     * Not `private`: the [snapshot] runnable is a separate class, and reaching a private member
-     * from it costs a synthetic accessor — the enclosing class is private already.
-     */
-    fun ExoPlayer.describe(): String {
-        val window = currentTimeline.takeIf { !it.isEmpty }
-            ?.getWindow(currentMediaItemIndex, Timeline.Window())
-        return "item=${currentMediaItem?.mediaId} index=$currentMediaItemIndex " +
-            "playWhenReady=$playWhenReady isLoading=$isLoading " +
-            "pos=${currentPosition}ms buffered=${bufferedPosition}ms ahead=${totalBufferedDuration}ms " +
-            "duration=${duration.takeIf { it != C.TIME_UNSET } ?: "unset"} " +
-            "tracks=${currentTracks.groups.size} placeholder=${window?.isPlaceholder} " +
-            "hasNext=${hasNextMediaItem()}"
+        trail.d("buffering into item: ${player.describe()}")
     }
 }
 
