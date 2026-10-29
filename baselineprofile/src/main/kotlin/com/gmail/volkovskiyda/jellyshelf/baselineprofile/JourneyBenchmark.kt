@@ -294,12 +294,16 @@ class JourneyBenchmark {
         //
         // Inside the measured block rather than in [setupBlock] because setupBlock runs before the
         // process kill, and because the three metrics here are named trace sections — work after
-        // the last of them closes costs wall-clock, not accuracy. Backing out also stops playback,
-        // which is what keeps a foreground media session from surviving into the next iteration.
+        // the last of them closes costs wall-clock, not accuracy.
         returnToTopLevel()
-        // Backing out starts the stop; this is where the iteration waits for the app to say it
-        // finished. It reduces — but does not eliminate — the next iteration failing its cold-start
-        // check on a process that came back. See [awaitPlaybackStopped] for what was measured.
+        // Backing out only pauses since the player kept its queue on Back (101b205): the bar stays
+        // up, showing the session paused, and every run failed here on its first iteration. Its
+        // stop is what ends the session — the way a user ends it — and ending it is what keeps a
+        // foreground media session from surviving into the next iteration.
+        device.findObject(By.desc(MINI_PLAYER_STOP))?.click()
+        // This is where the iteration waits for the app to say the stop finished. It reduces — but
+        // does not eliminate — the next iteration failing its cold-start check on a process that
+        // came back. See [awaitPlaybackStopped] for what was measured.
         awaitPlaybackStopped()
     }
 
