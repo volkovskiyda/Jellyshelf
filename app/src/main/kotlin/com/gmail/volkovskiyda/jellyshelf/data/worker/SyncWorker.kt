@@ -110,10 +110,21 @@ class SyncScheduler(private val workManager: WorkManager) {
         workManager.enqueueUniqueWork(REPAIR_WORK_NAME, ExistingWorkPolicy.KEEP, request)
     }
 
-    /** UPDATE so a changed period/constraint reaches an already-enqueued worker. */
+    /**
+     * UPDATE so a changed period/constraint reaches an already-enqueued worker.
+     *
+     * The first run is a whole period out. This is only ever created beside a manual sync that
+     * [syncNow] has just enqueued, and a periodic request with no delay runs at once — so every
+     * first "Sync now" after signing in ran two full syncs side by side, auto-fill and all (two
+     * `library_sync` samples per tap, and on the benchmark a first run each cold-start kill cut
+     * short, which WorkManager then restarted the process to retry). UPDATE keeps an enqueued
+     * request's original enqueue time, so re-stating this on every tap never pushes that first
+     * run further out.
+     */
     fun schedulePeriodic() {
         val request = PeriodicWorkRequestBuilder<SyncWorker>(SYNC_PERIOD_HOURS, TimeUnit.HOURS)
             .setConstraints(constraints)
+            .setInitialDelay(SYNC_PERIOD_HOURS, TimeUnit.HOURS)
             .build()
         workManager.enqueueUniquePeriodicWork(
             PERIODIC_WORK_NAME,

@@ -15,6 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.TimeUnit
 
 /**
  * [SyncScheduler]'s enqueue policies (the plan's item 02). These are the rules that decide whether
@@ -31,12 +32,18 @@ class SyncSchedulerInstrumentedTest {
     private lateinit var workManager: WorkManager
     private lateinit var scheduler: SyncScheduler
 
+    /** WorkManager's clock, so a test can let time pass between two enqueues. */
+    private var nowMillis = System.currentTimeMillis()
+
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         WorkManagerTestInitHelper.initializeTestWorkManager(
             context,
-            Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+            Configuration.Builder()
+                .setExecutor(SynchronousExecutor())
+                .setClock { nowMillis }
+                .build(),
         )
         workManager = WorkManager.getInstance(context)
         scheduler = SyncScheduler(workManager)
@@ -104,6 +111,30 @@ class SyncSchedulerInstrumentedTest {
         assertEquals(1, infosFor(PERIODIC_WORK_NAME).size)
     }
 
+    /**
+     * The periodic sync is created beside the manual one [SyncScheduler.syncNow] has just queued,
+     * so its first run waits a whole period: run at once, it synced the library a second time
+     * alongside the manual sync on every first "Sync now".
+     */
+    @Test
+    fun syncNow_leavesThePeriodicSyncsFirstRunAPeriodOut() {
+        scheduler.syncNow()
+
+        assertEquals(SYNC_PERIOD_MILLIS, infosFor(PERIODIC_WORK_NAME).single().initialDelayMillis)
+    }
+
+    /** Every "Sync now" re-states the schedule, and none of them may push that first run back. */
+    @Test
+    fun schedulePeriodic_againLaterKeepsTheFirstRunWhereItWas() {
+        scheduler.schedulePeriodic()
+        val firstRun = infosFor(PERIODIC_WORK_NAME).single().nextScheduleTimeMillis
+
+        nowMillis += TimeUnit.MINUTES.toMillis(30)
+        scheduler.schedulePeriodic()
+
+        assertEquals(firstRun, infosFor(PERIODIC_WORK_NAME).single().nextScheduleTimeMillis)
+    }
+
     @Test
     fun manualSyncInfo_reportsTheEnqueuedManualSync() = runBlocking {
         scheduler.syncNow()
@@ -123,5 +154,8 @@ class SyncSchedulerInstrumentedTest {
         // since the names are what make "unique" work unique across process restarts.
         const val PERIODIC_WORK_NAME = "jellyshelf-periodic-sync"
         const val MANUAL_WORK_NAME = "jellyshelf-manual-sync"
+
+        // Mirrors SyncScheduler's private SYNC_PERIOD_HOURS.
+        val SYNC_PERIOD_MILLIS = TimeUnit.HOURS.toMillis(2)
     }
 }
