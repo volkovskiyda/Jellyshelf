@@ -15,6 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.lang.reflect.Modifier
 
 /**
  * Room DAO round-trips against an in-memory database in a real APK process. Complements the JVM
@@ -282,19 +283,24 @@ class VideoDaoInstrumentedTest {
 
     @Test
     fun theProjectedBrowseQueries_keepTheirTwinsPlans() {
-        // @RewriteQueriesToDropUnusedColumns wraps the query in an outer SELECT of the eleven
-        // columns VideoBrowseRow declares. SQLite flattens that subquery away, so the projected
-        // twin should plan exactly like the full-row query it was copied from — but "should" is
-        // the planner's call, not the annotation's promise, and a projection that lost an index
-        // would cost more than the two columns it saves. These are the strings Room generated
+        // @RewriteQueriesToDropUnusedColumns wraps the query in an outer SELECT of the columns
+        // VideoBrowseRow declares. SQLite flattens that subquery away, so the projected twin should
+        // plan exactly like the full-row query it was copied from — but "should" is the planner's
+        // call, not the annotation's promise, and a projection that lost an index would cost more
+        // than the columns it saves. This is the string Room generates
         // (app/build/generated/ksp/debug/kotlin/.../VideoDao_Impl.kt), pasted for the same reason
         // the plans above are.
-        assertReadsInOrderFromIndex(
-            "SELECT `youtubeId`, `jellyfinItemId`, `fileName`, `title`, `channel`, " +
-                "`durationSeconds`, `uploadDate`, `thumbnailUrl`, `played`, " +
-                "`playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
-                "FROM (SELECT * FROM videos ORDER BY fileName)",
-        )
+        val projected = "SELECT `youtubeId`, `jellyfinItemId`, `fileName`, `title`, `channel`, " +
+            "`durationSeconds`, `uploadDate`, `uploadTimestamp`, `thumbnailUrl`, `played`, " +
+            "`playbackPositionTicks`, `metadataSource`, `missedSyncs` " +
+            "FROM (SELECT * FROM videos ORDER BY fileName)"
+        // A paste does not fail when it goes stale — this one missed uploadTimestamp from the day
+        // that column joined the row — so check it still selects every column VideoBrowseRow
+        // declares before trusting its plan.
+        VideoBrowseRow::class.java.declaredFields
+            .filterNot { Modifier.isStatic(it.modifiers) }
+            .forEach { assertTrue(it.name, "`${it.name}`" in projected) }
+        assertReadsInOrderFromIndex(projected)
     }
 
     @Test
