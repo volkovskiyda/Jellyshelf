@@ -75,11 +75,11 @@ interface TesterSignIn {
  *
  * ## What happens when that stops being true
  *
- * Both facts above are **undocumented internals of a beta SDK** (16.0.0-beta20, the newest
- * published). [start] answers `false` for every failure it can actually detect — no foreground
- * activity, no installation id, no browser that does Custom Tabs, a launch that throws — and the
- * caller then falls back to `signInTester()`, so a build where this cannot work degrades to the
- * old behaviour rather than to no sign-in at all.
+ * Both facts above are **undocumented internals of a beta SDK** (read out of 16.0.0-beta20;
+ * `TesterSignInManager` is unchanged in beta21, re-checked 2026-10-29). [start] answers `false` for
+ * every failure it can actually detect — no foreground activity, no installation id, no browser
+ * that does Custom Tabs, a launch that throws — and the caller then falls back to `signInTester()`,
+ * so a build where this cannot work degrades to the old behaviour rather than to no sign-in at all.
  *
  * What it cannot detect is the URL quietly changing shape: the tab would open on an error page and
  * the user would come back not signed in, which reads as a cancelled sign-in. That is deliberate —

@@ -83,8 +83,9 @@ Recents, Back landing on the sign-in page, and no way for the app to close it, b
 finish an activity in another app's task. `TesterSignInLauncher` opens the same URL itself, without
 that flag, so the tab is in our task and gets closed when the redirect lands.
 
-That rests on two undocumented internals of a beta SDK (`16.0.0-beta20`, the newest published), both
-read out of the AAR with `javap -c`:
+That rests on two undocumented internals of a beta SDK, both read out of the AAR with `javap -c` —
+first on `16.0.0-beta20`, and again on `16.0.0-beta21` on 2026-10-29, where `TesterSignInManager`
+and `SignInStorage` are unchanged and only version strings and the minSdk moved:
 
 1. the sign-in URL in `TesterSignInManager.SIGNIN_REDIRECT_URL`, and
 2. `TesterSignInManager.onActivityCreated`, which calls `SignInStorage.setSignInStatus(true)`
