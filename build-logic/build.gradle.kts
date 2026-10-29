@@ -5,7 +5,7 @@ plugins {
 
 dependencies {
     implementation(libs.android.gradle.plugin)
-    // AGP 9.4.1 asks for kotlin-gradle-plugin 2.2.10; the root resolves the catalog's kotlin ref
+    // AGP 9.5.0 asks for kotlin-gradle-plugin 2.2.10; the root resolves the catalog's kotlin ref
     // through the Kotlin plugins it applies. Named here so this build sits on the same version.
     implementation(libs.kotlin.gradle.plugin)
     implementation(libs.ktlint.gradle.plugin)

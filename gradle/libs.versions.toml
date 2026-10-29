@@ -11,12 +11,7 @@ targetSdk = "37"
 # One ref per artifact family (navigation3, adaptive, coroutines, room, ktor): the members ship as
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.
-agp = "9.4.1"
-# The device-test runner AGP resolves for connected*AndroidTest, pinned past what agp 9.4.1 brings
-# (32.4.1 with engine 1.0.1). See app/build.gradle.kts for why. Both values are what AGP
-# 9.5.0-alpha09 ships. Delete these two refs and the override once agp is 9.5 or later.
-utpWorkAction = "32.5.0-alpha09"
-androidTestEngine = "1.0.7"
+agp = "9.5.0"
 # Was held at 2.4.10 from 2026-09-11 to 2026-10-07 for Kotzilla: 2.4.20 deleted the K1
 # `ComponentRegistrar` interface, and Kotzilla's compiler plugin up to 2.3.6 declared it as a
 # supertype, so every compileKotlin died with NoClassDefFoundError. Kotzilla 3.0.0 moved that to a
@@ -220,7 +215,7 @@ androidx-browser = { group = "androidx.browser", name = "browser", version.ref =
 androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-performance", version.ref = "androidxMetrics" }
 androidx-tracing = { group = "androidx.tracing", name = "tracing", version.ref = "androidxTracing" }
 # build-logic's classpath, nothing else's: the included build compiles the jellyshelf.* convention
-# plugins against AGP and ktlint-gradle. KGP is named too because AGP 9.4.1's POM asks for
+# plugins against AGP and ktlint-gradle. KGP is named too because AGP 9.5.0's POM asks for
 # kotlin-gradle-plugin 2.2.10 while the root resolves the kotlin ref through the plugins it applies;
 # listing it keeps the included build on the same version. All three ride the refs that already exist.
 android-gradle-plugin = { group = "com.android.tools.build", name = "gradle", version.ref = "agp" }
