@@ -52,9 +52,11 @@ import com.gmail.volkovskiyda.jellyshelf.R
  *
  * [progress] draws a line along the bottom edge, and **null draws nothing**: a video whose duration
  * the player has not reported yet has no honest fraction, and a zero-width line is indistinguishable
- * from one at the very start. The line is the one idea worth taking from media3's `MiniController`,
- * which is otherwise rejected — that composable's own progress line takes a `Player`, and this bar
- * deliberately has none.
+ * from one at the very start. A function rather than a value, called as the line draws: the
+ * fraction moves once a second for as long as a video plays and nothing else here does, so a value
+ * would recompose the whole bar on every tick. The line is the one idea worth taking from media3's
+ * `MiniController`, which is otherwise rejected — that composable's own progress line takes a
+ * `Player`, and this bar deliberately has none.
  */
 @Composable
 fun MiniPlayerBar(
@@ -62,7 +64,7 @@ fun MiniPlayerBar(
     artworkUri: String?,
     isPlaying: Boolean,
     hasNext: Boolean,
-    progress: Float?,
+    progress: (() -> Float)?,
     onOpen: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -135,7 +137,7 @@ fun MiniPlayerBar(
             // 56 dp row can carry without looking like a second divider.
             if (progress != null) {
                 LinearProgressIndicator(
-                    progress = { progress },
+                    progress = progress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(PROGRESS_HEIGHT),

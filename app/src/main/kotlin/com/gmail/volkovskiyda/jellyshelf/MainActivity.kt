@@ -45,6 +45,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -548,12 +550,31 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // PlaybackService, so it is already right on a launch that walked in on playback under way.
     val nowPlayingState: NowPlayingState = koinInject()
     val nowPlayingQueue: NowPlayingQueue = koinInject()
-    val nowPlaying by nowPlayingState.nowPlaying.collectAsStateWithLifecycle()
+    // Collected as a State and never read whole in this scope: the service rewrites it once a
+    // second while a video plays, for the bar's progress line, and a read here recomposed this
+    // entire app root on every tick — on the player screen too, where no bar is shown (four scopes
+    // and ~5.5 ms of main thread a second on the Pixel 5, measured 2026-10-29). Up here only the
+    // parts that change with the video are read, each through a derivedStateOf that invalidates
+    // when its own answer does; the bar reads its own two below, inside its slot.
+    val nowPlaying = nowPlayingState.nowPlaying.collectAsStateWithLifecycle()
+    val playingId by remember {
+        derivedStateOf(structuralEqualityPolicy()) { nowPlaying.value?.youtubeId }
+    }
+    // The bar's half of the same split. Everything it shows but where the video has got to, which
+    // the tick changes and nothing else on the bar depends on; and that position as a function its
+    // line calls while drawing. A tick then redraws a 2 dp line and recomposes nothing — the bar
+    // recomposed whole on every one before, and on the charger, where the CPUs run slower, the
+    // frame that carried it came in late about once a second under a scrolling list (Pixel 5,
+    // 2026-10-29).
+    val barPlaying = remember {
+        derivedStateOf(structuralEqualityPolicy()) { nowPlaying.value?.copy(positionMs = 0L) }
+    }
+    val barProgress = remember { { nowPlaying.value?.progress ?: 0f } }
     // Held to the same rule as the tabs above it, for the same reason: the bar is the other half of
     // the height the screen between them is measured against, and dropping it out from under a
     // screen that has not finished leaving costs that screen its scroll position just as surely.
     // The player is the only screen that does not want it; any other screen still composed does.
-    val showMiniPlayer = nowPlaying != null && if (onScreen.isEmpty()) {
+    val showMiniPlayer = playingId != null && if (onScreen.isEmpty()) {
         current !is AppNavKey.Player
     } else {
         onScreen.any { it !is AppNavKey.Player }
@@ -562,7 +583,11 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // The PiP window's shape is stated in advance, not at entry — see MainActivity.updatePipParams.
     // Re-stated whenever the decoder reports a new video size, so an active window re-fits too.
     val activity = LocalActivity.current as? MainActivity
-    val pipAspect = nowPlaying?.let { pipAspect(it.videoWidth, it.videoHeight) }
+    val pipAspect by remember {
+        derivedStateOf(structuralEqualityPolicy()) {
+            nowPlaying.value?.let { pipAspect(it.videoWidth, it.videoHeight) }
+        }
+    }
     LaunchedEffect(activity, pipAspect) {
         activity?.updatePipParams(aspect = pipAspect)
     }
@@ -610,7 +635,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
      * notification pushes directly, having nothing to hand over.
      */
     fun openPlayer(youtubeId: String, origin: PlayerOrigin) {
-        if (endsCurrentPlayback(nowPlaying, youtubeId)) nowPlayingState.stop()
+        if (endsCurrentPlayback(nowPlaying.value, youtubeId)) nowPlayingState.stop()
         push(AppNavKey.Player(youtubeId, origin))
     }
 
@@ -647,13 +672,17 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             // on Detail and CategoryVideos there are no tabs, and then the bar is what has to
             // clear the system navigation — otherwise it draws under the gesture pill.
             Column {
-                nowPlaying?.takeIf { showMiniPlayer }?.let { playing ->
+                // Read only once the bar is showing, so nothing here recomposes while the player is
+                // on screen, and never the position: see [barPlaying].
+                barPlaying.takeIf { showMiniPlayer }?.value?.let { playing ->
                     MiniPlayerBar(
                         title = playing.title,
                         artworkUri = playing.artworkUri,
                         isPlaying = playing.isPlaying,
                         hasNext = playing.hasNext,
-                        progress = playing.progress,
+                        // Non-null exactly when the duration is known: [barPlaying] zeroes only the
+                        // position, so this is NowPlaying.progress's own "no honest fraction" rule.
+                        progress = barProgress.takeIf { playing.progress != null },
                         // Same dedupe the notification path uses: compare on the video, since a
                         // player opened from a list carries an origin the bar knows nothing about
                         // and re-pushing it would stack two player entries for one video.

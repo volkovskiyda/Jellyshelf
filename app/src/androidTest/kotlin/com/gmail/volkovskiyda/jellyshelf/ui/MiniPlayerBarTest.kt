@@ -55,7 +55,7 @@ class MiniPlayerBarTest {
                     artworkUri = null,
                     isPlaying = isPlaying,
                     hasNext = hasNext,
-                    progress = progress,
+                    progress = progress?.let { fraction -> { fraction } },
                     onOpen = onOpen,
                     onPlayPause = onPlayPause,
                     onNext = onNext,
