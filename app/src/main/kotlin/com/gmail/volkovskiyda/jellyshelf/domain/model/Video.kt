@@ -1,5 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.domain.model
 
+import androidx.compose.runtime.Immutable
+
 // Where a video's YouTube metadata came from. Ordered loosely by richness; used to drive the
 // "Get / Update metadata" action, the source badge, and the Uncategorized filter. These string
 // values are persisted in the database, so they must never change.
@@ -22,7 +24,16 @@ const val METADATA_SOURCE_API_INDEX = "API_INDEX"
  * A library video as the app's UI and ViewModels see it — the domain model that repository
  * interfaces expose. The data layer maps its Room row (`VideoEntity`) onto this, so nothing above
  * the data layer depends on Room.
+ *
+ * [Immutable] because it is, and because Compose cannot tell: its `List` fields make it unstable
+ * to the compiler, so every list a Room flow re-emits — freshly mapped instances, every one — used
+ * to recompose every visible row, compared by reference rather than by value. While a video plays
+ * that is every ten seconds (the position save rewrites one row), and on the Library tab it cost a
+ * ~15 ms recomposition of the whole visible list each time on the Pixel 5 (2026-10-29). Compared
+ * by value, only the row that changed recomposes. Every field is a `val`, and the lists are built
+ * once by the mappers and never mutated.
  */
+@Immutable
 data class Video(
     val youtubeId: String,
     val jellyfinItemId: String?,
