@@ -84,6 +84,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import androidx.tracing.Trace as SystemTrace
 
@@ -140,6 +141,20 @@ private const val AUTO_FILL_MAX_MISSING = 25
  * otherwise consume nearly all of it.
  */
 private val AUTO_FILL_BUDGET = 5.minutes
+
+/**
+ * How long the sync auto-fill leaves a video alone after yt-dlp failed on it. The pass rides every
+ * periodic sync, and the commonest failure in an archive is the permanent one — the video is gone
+ * from YouTube — so retrying on each sync spent a whole extraction (~8 s, ~4.5 s of CPU in yt-dlp's
+ * Python on a Pixel 5, measured 2026-10-29) twelve times a day per such video, for an answer that
+ * does not change. A day still catches a transient failure by tomorrow, and the deliberate fetches
+ * (the detail screen's, the Uncategorized bulk run) retry at once regardless.
+ */
+private val AUTO_FILL_RETRY_AFTER = 1.days
+
+/** The gap's videos the auto-fill tries now: all but those it failed on within [AUTO_FILL_RETRY_AFTER]. */
+internal fun List<VideoEntity>.dueForAutoFill(now: Long): List<VideoEntity> =
+    filter { now - it.lastFetchErrorAt >= AUTO_FILL_RETRY_AFTER.inWholeMilliseconds }
 
 /** Fallback text for a yt-dlp failure that arrived without a message. */
 private const val FETCH_FAILED_ERROR = "yt-dlp failed to fetch metadata."
@@ -1011,7 +1026,8 @@ class DefaultLibraryRepository private constructor(
      *
      * Only runs for a *small* gap ([AUTO_FILL_MAX_MISSING]): a fresh library with hundreds of
      * unmatched videos is a bulk job the user should start deliberately and watch, not something a
-     * background worker should spend ten minutes and a battery on.
+     * background worker should spend ten minutes and a battery on. The gap's size alone decides
+     * that; the pass then skips any video yt-dlp failed on within [AUTO_FILL_RETRY_AFTER].
      *
      * Returns (filled, failed). Never throws: a sync that already committed must not be reported
      * as failed because YouTube refused an extraction.
@@ -1022,6 +1038,7 @@ class DefaultLibraryRepository private constructor(
         val targets =
             if (fetchRunner.isActive) emptyList() else videoDao.getBySource(METADATA_SOURCE_JELLYFIN)
         if (targets.isEmpty() || targets.size >= AUTO_FILL_MAX_MISSING) return 0 to 0
+        val due = targets.dueForAutoFill(time.now()).ifEmpty { return 0 to 0 }
 
         var filled = 0
         var failed = 0
@@ -1029,16 +1046,16 @@ class DefaultLibraryRepository private constructor(
         // a WorkManager worker with a ~10 minute execution window, and bounding the pass bounds it
         // directly, whatever any single extraction does. Whatever completed is already persisted —
         // each fetch commits on its own — and the next sync retries the rest.
-        _syncPhase.value = SyncPhase.FetchingMetadata(0, targets.size)
+        _syncPhase.value = SyncPhase.FetchingMetadata(0, due.size)
         withTimeoutOrNull(AUTO_FILL_BUDGET) {
-            for (video in targets) {
+            for (video in due) {
                 when (fetchAndApply(video.youtubeId, demoMode = demoMode)) {
                     is FetchResult.Success -> filled++
                     is FetchResult.Error -> failed++
                 }
-                _syncPhase.value = SyncPhase.FetchingMetadata(filled + failed, targets.size)
+                _syncPhase.value = SyncPhase.FetchingMetadata(filled + failed, due.size)
             }
-        } ?: Timber.w("Sync auto-fill hit its $AUTO_FILL_BUDGET budget after $filled/${targets.size}")
+        } ?: Timber.w("Sync auto-fill hit its $AUTO_FILL_BUDGET budget after $filled/${due.size}")
         return filled to failed
     }
 

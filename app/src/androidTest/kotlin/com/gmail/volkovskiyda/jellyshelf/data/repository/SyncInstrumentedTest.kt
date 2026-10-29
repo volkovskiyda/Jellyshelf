@@ -14,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.remote.YtDlpMetadataSource
 import com.gmail.volkovskiyda.jellyshelf.data.remote.testJellyfinDataSource
 import com.gmail.volkovskiyda.jellyshelf.di.provideJson
 import com.gmail.volkovskiyda.jellyshelf.domain.DispatcherProvider
+import com.gmail.volkovskiyda.jellyshelf.domain.TimeProvider
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_API
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
@@ -46,6 +47,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.TimeUnit
 
 /**
  * End-to-end tests for [DefaultLibraryRepository.sync] against a real in-memory Room database and
@@ -152,6 +154,7 @@ class SyncInstrumentedTest {
             ApplicationProvider.getApplicationContext(),
             dispatchers,
         ),
+        time: TimeProvider = DefaultTimeProvider(),
     ): DefaultLibraryRepository {
         val json = provideJson()
         val engine = MockEngine { request ->
@@ -196,7 +199,7 @@ class SyncInstrumentedTest {
             db = db,
             settings = settings,
             dispatchers = dispatchers,
-            time = DefaultTimeProvider(),
+            time = time,
             metrics = fakeMetrics(),
             // The demo backend is never consulted: none of these syncs is a demo.
             sources = LibrarySources(
@@ -486,11 +489,15 @@ class SyncInstrumentedTest {
         assertTrue(failed.lastFetchErrorAt > 0L)
     }
 
-    /** A later success has to clear the stored reason, or the detail screen reports a stale one. */
+    /**
+     * A later success has to clear the stored reason, or the detail screen reports a stale one.
+     * "Later" is a day on: the auto-fill leaves a video it has just failed on alone until then.
+     */
     @Test
     fun sync_clearsAStoredFetchErrorOnceTheFetchSucceeds() = runBlocking {
         val settings = FakeSettingsRepository(connected)
         val ids = listOf("aaaaaaaaaaa")
+        var now = System.currentTimeMillis()
         repository(
             serverIds = ids,
             settings = settings,
@@ -499,14 +506,43 @@ class SyncInstrumentedTest {
                 dispatchers,
                 failing = ids.toSet(),
             ),
+            time = { now },
         ).sync()
         assertNotNull(db.videoDao().get("aaaaaaaaaaa")!!.lastFetchError)
 
-        repository(serverIds = ids, settings = settings).sync()
+        now += TimeUnit.DAYS.toMillis(1)
+        repository(serverIds = ids, settings = settings, time = { now }).sync()
 
         val row = db.videoDao().get("aaaaaaaaaaa")!!
         assertNull(row.lastFetchError)
         assertEquals(0L, row.lastFetchErrorAt)
+    }
+
+    /**
+     * The pass rides every periodic sync, and the usual failure in an archive is a video gone from
+     * YouTube for good — so a video it has just failed on waits a day instead of spending another
+     * extraction on each sync, and is tried again once the day is up.
+     */
+    @Test
+    fun sync_leavesAVideoItJustFailedOnAloneForADay() = runBlocking {
+        val settings = FakeSettingsRepository(connected)
+        val ids = listOf("aaaaaaaaaaa")
+        var now = System.currentTimeMillis()
+        val ytDlp = FakeYtDlp(ApplicationProvider.getApplicationContext(), dispatchers, failing = ids.toSet())
+        repository(serverIds = ids, settings = settings, ytDlp = ytDlp, time = { now }).sync()
+
+        now += TimeUnit.HOURS.toMillis(2)
+        val nextSync = repository(serverIds = ids, settings = settings, ytDlp = ytDlp, time = { now })
+            .sync() as SyncResult.Success
+
+        assertEquals(listOf("aaaaaaaaaaa"), ytDlp.fetched)
+        assertEquals(0, nextSync.autoFillFailed)
+        assertNotNull("the failure must stay reported", db.videoDao().get("aaaaaaaaaaa")!!.lastFetchError)
+
+        now += TimeUnit.DAYS.toMillis(1)
+        repository(serverIds = ids, settings = settings, ytDlp = ytDlp, time = { now }).sync()
+
+        assertEquals(listOf("aaaaaaaaaaa", "aaaaaaaaaaa"), ytDlp.fetched)
     }
 
     // --- failure classification and removal ---
