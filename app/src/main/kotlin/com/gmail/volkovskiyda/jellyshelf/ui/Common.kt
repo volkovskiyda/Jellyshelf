@@ -67,6 +67,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -353,8 +354,12 @@ fun VideoRow(
     skipped: Boolean = false,
 ) {
     val contentAlpha = if (skipped && !playing) SKIPPED_ROW_ALPHA else 1f
-    val selectionLabel = stringResource(R.string.select_video, video.title)
     val startSelectionLabel = stringResource(R.string.select_videos)
+    // The two labels below that carry the title are formatted when their semantics are read, not
+    // here: a formatted string resource cost ~70 µs on a Pixel 5, two of them per row, and a
+    // composition of a row is mostly read by nothing — a scroll composes rows by the screenful
+    // (composition trace, 2026-10-29). TalkBack and the tests read the same words either way.
+    val resources = LocalResources.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -374,7 +379,9 @@ fun VideoRow(
                             role = Role.Checkbox,
                             onValueChange = { onToggleSelection() },
                         )
-                        .semantics { contentDescription = selectionLabel }
+                        .semantics {
+                            contentDescription = resources.getString(R.string.select_video, video.title)
+                        }
                         .background(
                             if (selected) {
                                 MaterialTheme.colorScheme.secondaryContainer
@@ -402,13 +409,10 @@ fun VideoRow(
         // Null while selecting: the row merges its descendants, so a thumbnail still labelled
         // "Play First video" would have the row announce both that and "Select First video" — one
         // of them describing something a tap here can no longer do.
-        val thumbnailLabel = if (selected != null) {
-            null
-        } else {
-            stringResource(
-                if (playable) R.string.play_video else R.string.open_video_details,
-                video.title,
-            )
+        val thumbnailLabelRes = when {
+            selected != null -> null
+            playable -> R.string.play_video
+            else -> R.string.open_video_details
         }
         Box(
             modifier = Modifier
@@ -424,8 +428,8 @@ fun VideoRow(
                     role = Role.Button,
                 )
                 .then(
-                    thumbnailLabel?.let { label ->
-                        Modifier.semantics { contentDescription = label }
+                    thumbnailLabelRes?.let { label ->
+                        Modifier.semantics { contentDescription = resources.getString(label, video.title) }
                     } ?: Modifier,
                 ),
             contentAlignment = Alignment.BottomCenter,
