@@ -23,10 +23,10 @@ import org.junit.runner.RunWith
 /**
  * The disk-seed half of [DefaultScrollPositionRepository], against the real DataStore.
  *
- * Specifically the blank-anchor guard (the plan's item 06): an interrupted write can leave only
- * the offset half of an anchor pair on disk, which seeds `AnchorPosition("", n)` — an anchor no
- * item can ever match. Reported as a saved position it would scroll the list nowhere and look
- * like the restore silently failing.
+ * Specifically the blank-anchor guard: an interrupted write can leave only the offset half of an
+ * anchor pair on disk, which seeds `AnchorPosition("", n)` — an anchor no item can ever match.
+ * Reported as a saved position it would scroll the list nowhere and look like the restore silently
+ * failing.
  */
 @RunWith(AndroidJUnit4::class)
 class ScrollPositionInstrumentedTest {

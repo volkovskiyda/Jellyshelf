@@ -170,7 +170,7 @@ data class SettingsUiState(
     val upToDate: Boolean = false,
     val lastUpdateCheckAt: Long = 0L,
     /**
-     * Whether this is a debug build, which hides the whole Updates section (decision 16).
+     * Whether this is a debug build, which hides the whole Updates section.
      *
      * **Defaults to `false`, and that default is load-bearing.** Previews and screenshot tests
      * build the *debug* variant, so a `true` default would hide the section from every golden and

@@ -101,8 +101,8 @@ android {
             // which Performance instruments like any other, so `gateway.kotzilla.io/**` shows up in
             // the Network requests tab: 1.5k samples against the Jellyfin server's 5.5k over the
             // week to 2026-09-13, roughly a fifth of the rows. There is no way to exclude one host,
-            // and turning the flag off here to be rid of it would take `jf.nwolf.app/**` — the row
-            // the tab exists for — with it. So the noise stays, knowingly. See the README.
+            // and turning the flag off here to be rid of it would take the Jellyfin server's row —
+            // the one the tab exists for — with it. So the noise stays, knowingly. See the README.
             configure<com.google.firebase.perf.plugin.FirebasePerfExtension> {
                 setInstrumentationEnabled(false)
             }
@@ -118,7 +118,7 @@ android {
                 enable = true
             }
             // Ship the R8 mapping to Crashlytics so release stack traces arrive deobfuscated.
-            // Item 05 attaches the same file to each GitHub Release; the two serve different
+            // release.yml attaches the same file to each GitHub Release; the two serve different
             // readers and both are worth having.
             configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
                 mappingFileUploadEnabled = true

@@ -18,12 +18,12 @@ import kotlin.system.measureTimeMillis
 
 /**
  * What one browse emission costs on a full-sized library, measured on the device rather than
- * argued about — the input to item 12's verdict on whether the list is worth projecting.
+ * argued about — the input to the verdict on whether the list is worth projecting.
  *
  * Timings over the same 10,000 rows:
  *  1. `observeAll()` — the query plus Room's type converters (three JSON parses per row),
  *  2. the same through `VideoEntity::toDomain`, which is what the repository emitted *before*
- *     `20260731-browse-projection-plan`, and still emits on the ranked-search path,
+ *     the browse projection landed, and still emits on the ranked-search path,
  *  3. `observeAllBrowse()` through `VideoBrowseRow::toDomain` — what a browse emission costs now,
  *  4. a throwaway projected query listing only the ten columns a row renders,
  *  5. two raw-cursor reads that decompose the difference.

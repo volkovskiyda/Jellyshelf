@@ -18,7 +18,7 @@ green test run having never contacted the server.
 ## What `add` does
 
 ```bash
-scripts/worktree.sh add player-fixes --device 192.168.11.111:5555
+scripts/worktree.sh add player-fixes --device 192.168.100.20:5555
 ```
 
 1. Creates `../Jellyshelf-worktrees/player-fixes`, a **sibling** of the repo. Never inside it:
@@ -49,19 +49,19 @@ warns you at the point of the pass. `add` reports it as `MISSING` and says so ex
 keeps reporting it.
 
 Symlinks rather than copies, so there is one source of truth: rotating a credential or editing a
-plan doc lands in every worktree at once. `internal/` has a second reason — plan folders carry
-status trackers that `/plan-implement` writes to, and two divergent copies means half the ticked
-items go missing. The cost is that a worktree cannot point at a *different* Jellyfin or SDK.
-Replace the link with a real file in that one worktree if you ever need that.
+plan doc lands in every worktree at once. `internal/` has a second reason — its notes are edited
+in place, and two divergent copies means half the edits go missing. The cost is that a worktree
+cannot point at a *different* Jellyfin or SDK. Replace the link with a real file in that one
+worktree if you ever need that.
 
 ## `list`
 
 ```
-/Users/wolf/Develop/AndroidStudioProjects/Jellyshelf  [main]
-/Users/wolf/.../Jellyshelf-worktrees/player-fixes  [player-fixes]
+~/src/Jellyshelf  [main]
+~/src/Jellyshelf-worktrees/player-fixes  [player-fixes]
     TESTING NOW — holds the device lock (pid 48120)
-    device 192.168.11.111:5555
-/Users/wolf/.../Jellyshelf-worktrees/search-tweaks  [search-tweaks]
+    device 192.168.100.20:5555
+~/src/Jellyshelf-worktrees/search-tweaks  [search-tweaks]
     device —   MISSING: .test.env
 ```
 
@@ -81,8 +81,8 @@ finds it held **waits**, and asks nothing:
 
 ```
 BUSY:    another test run is already driving a device:
-           worktree /Users/wolf/.../Jellyshelf-worktrees/player-fixes
-           device   192.168.11.111:5555
+           worktree ~/src/Jellyshelf-worktrees/player-fixes
+           device   192.168.100.20:5555
            started  2026-08-08 20:31:04  (pid 48120)
          Running both at once means two LiveUiJourneyTests on one Jellyfin account.
          Waiting for it to finish. Ctrl-C to give up, --concurrent to skip the wait.
@@ -119,8 +119,8 @@ across two devices took max(13s, 5s), not the sum), which with `.test.env` fille
 So the behavior layer splits in two whenever more than one device is in play:
 
 ```
--- behavior tests (offline, on 192.168.11.111:5555 emulator-5554) --   both at once
--- live tests (on 192.168.11.111:5555) --                              one at a time,
+-- behavior tests (offline, on 192.168.100.20:5555 emulator-5554) --   both at once
+-- live tests (on 192.168.100.20:5555) --                              one at a time,
 -- live tests (on emulator-5554) --                                    ANDROID_SERIAL pinned
 ```
 

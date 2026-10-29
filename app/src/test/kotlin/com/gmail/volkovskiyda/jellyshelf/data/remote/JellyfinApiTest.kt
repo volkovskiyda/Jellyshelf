@@ -256,7 +256,7 @@ class JellyfinApiTest {
         assertEquals(42L, resp.items[0].userData?.playbackPositionTicks)
     }
 
-    // --- 4. Error mapping (item 06: expectSuccess -> Response exceptions -> isPermanentFailure) ---
+    // --- 4. Error mapping (expectSuccess -> Response exceptions -> isPermanentFailure) ---
 
     @Test
     fun status401_throwsClientRequestException_classifiedPermanent() = runTest {

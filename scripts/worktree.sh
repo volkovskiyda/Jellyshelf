@@ -34,8 +34,8 @@ set -uo pipefail
 # is that a worktree cannot point at a different Jellyfin or a different SDK — replace the link with
 # a real file in that one worktree if you ever need that.
 #
-# internal/ is linked for a second reason beyond convenience: plan folders carry status trackers
-# that /plan-implement writes to. Two divergent copies means half the ticked items go missing.
+# internal/ is linked for a second reason beyond convenience: its notes are edited in place, and
+# two divergent copies means half the edits go missing.
 #
 # --device writes .device, the standing answer to run-tests.sh's "which device" question. Worth
 # setting: the live suite signs into the same Jellyfin as the same user and drives the same item,

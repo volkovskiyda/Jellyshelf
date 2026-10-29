@@ -18,10 +18,10 @@ import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
 
 /**
- * [SyncScheduler]'s enqueue policies (the plan's item 02). These are the rules that decide whether
- * a double-tapped "Sync now" runs one sync or two, whether a changed period reaches an
- * already-scheduled worker, and whether Sign out's wipe genuinely stops background syncing —
- * none of which is visible in the app until it misbehaves.
+ * [SyncScheduler]'s enqueue policies. These are the rules that decide whether a double-tapped "Sync
+ * now" runs one sync or two, whether a changed period reaches an already-scheduled worker, and
+ * whether Sign out's wipe genuinely stops background syncing — none of which is visible in the app
+ * until it misbehaves.
  *
  * Uses `WorkManagerTestInitHelper`, which swaps in a test driver and a synchronous executor, so no
  * worker actually executes here; only the enqueued work is inspected.

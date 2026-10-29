@@ -17,7 +17,7 @@ private val REASK_MILLIS = TimeUnit.DAYS.toMillis(7)
  * The difference is measured, not assumed. On an API 36 emulator the app op defaults to `allow`,
  * LAN traffic flows, and a request for the permission is answered by the platform with "No
  * requestable permission in the request": `checkSelfPermission` says denied, but nothing is
- * blocked and nothing can be granted. On the API 37 tablet the same op reads `ignore`, connections
+ * blocked and nothing can be granted. On an API 37 tablet the same op reads `ignore`, connections
  * to the LAN are dropped, and a request reaches a real dialog the user can answer. Asking on 36
  * would therefore mean a weekly dialog whose "Allow" changes nothing — the exact failure mode
  * [LocalNetworkPrompt.due] refuses to produce for a permission Android has locked.

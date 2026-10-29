@@ -4,8 +4,8 @@
 #
 # Usage: scripts/baseline-profile-metrics.sh [dir]
 #   dir holds baseline-prof.txt and startup-prof.txt; defaults to the committed pair under
-#   app/src/release/generated/baselineProfiles. Point it at a kept run (internal/runs/...) to
-#   compare an older generation.
+#   app/src/release/generated/baselineProfiles. Point it at a kept copy of an older pair to
+#   compare generations.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

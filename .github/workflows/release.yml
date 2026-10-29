@@ -135,8 +135,8 @@ jobs:
             --release-notes "$NOTES"
 
       # The mapping is not optional: R8 is on, so without the file from this exact build no crash
-      # report from this release can be read. Crashlytics holds its own copy (item 07); this one is
-      # for anyone reading a stack trace out of a GitHub issue.
+      # report from this release can be read. Crashlytics holds its own copy (the build uploads it);
+      # this one is for anyone reading a stack trace out of a GitHub issue.
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

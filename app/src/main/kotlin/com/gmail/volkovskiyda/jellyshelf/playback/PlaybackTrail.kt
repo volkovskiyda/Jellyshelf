@@ -11,7 +11,7 @@ import java.time.format.DateTimeFormatter
  *
  * **Why a buffer and not just logcat.** Release plants no Timber tree and R8 strips every Timber
  * call (`src/main/keepRules`), so a release install has nothing to say about a stall after the
- * fact. On 2026-10-27 the tablet's release build finished a video, advanced the queue, and sat on
+ * fact. On 2026-10-27 a tablet's release build finished a video, advanced the queue, and sat on
  * the next one's spinner for nearly three minutes; the server had logged the finished video's stop
  * and nothing else, and the app had logged nothing at all. Every playback line that used to go to
  * logcat alone goes here as well, and [StallReporter] hands the buffer to Crashlytics when a stall

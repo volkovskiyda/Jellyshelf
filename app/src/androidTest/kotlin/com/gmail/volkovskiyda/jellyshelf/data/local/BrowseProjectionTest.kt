@@ -110,7 +110,7 @@ class BrowseProjectionTest {
         assertTrue(video.missingFromServer)
         // …and jellyfinItemId is what VideoRow branches on to send a thumbnail tap to the player
         // rather than to the detail screen. Projecting it away cost every row its play affordance,
-        // silently, and only the live journey noticed (see the plan's 2026-08-06 decision).
+        // silently, and only the live journey noticed.
         assertEquals(seeded.jellyfinItemId, video.jellyfinItemId)
     }
 

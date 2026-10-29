@@ -40,8 +40,8 @@ import java.time.ZoneOffset
 /**
  * Behavior tests for the detail screen's stateless content. Instrumented, because
  * `ui-test-junit4` needs a real Android runtime to dispatch input and there is no Robolectric in
- * this codebase (a deliberate decision — see the plan's item 17). The
- * `connectedDebugAndroidTest` task skips itself when no device is attached.
+ * this codebase (a deliberate decision). The `connectedDebugAndroidTest` task skips itself when no
+ * device is attached.
  *
  * `createAndroidComposeRule<ComponentActivity>` is what gives the test access to string
  * resources, so assertions match on the real user-visible text.

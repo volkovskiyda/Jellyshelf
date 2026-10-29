@@ -151,7 +151,7 @@ private fun LibraryPopulated() {
     }
 }
 
-/** Search matched nothing: the count reads shown/total and the message names the query (item 05). */
+/** Search matched nothing: the count reads shown/total and the message names the query. */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
 @Composable
@@ -1238,7 +1238,7 @@ private fun SettingsSignedIn() {
     }
 }
 
-/** Sync succeeded but the metadata index was unreachable — the degraded status line from item 09. */
+/** Sync succeeded but the metadata index was unreachable — the degraded status line. */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
 @Composable

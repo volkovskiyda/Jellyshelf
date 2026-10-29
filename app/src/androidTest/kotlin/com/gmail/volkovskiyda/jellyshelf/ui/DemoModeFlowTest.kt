@@ -30,9 +30,10 @@ import org.koin.core.context.GlobalContext
 
 /**
  * The whole demo-mode journey through the **real app**: the real Koin graph, the real DataStore,
- * the real Room database and the real bundled asset. Items 01-03 each test their own slice against
- * fakes; nothing else joins them up, and the joins are where a feature like this breaks — a seed
- * that works but never navigates, a sign-out that clears rows but leaves the flag.
+ * the real Room database and the real bundled asset. The seed, sign-in and sign-out tests each
+ * cover their own slice against fakes; nothing else joins them up, and the joins are where a
+ * feature like this breaks — a seed that works but never navigates, a sign-out that clears rows but
+ * leaves the flag.
  *
  * It is also, deliberately, the click path the baseline profile generator replays when no live
  * server is configured (`BaselineProfileGenerator`, its no-`.test.env` fallback): launch →

@@ -55,9 +55,9 @@ import java.util.concurrent.TimeUnit
  * every one of these rules silently deletes or downgrades user-visible data when it breaks.
  *
  * Instrumented rather than host-side because Room needs a real Android runtime and there is no
- * Robolectric here (a deliberate decision — see the plan's item 17). The Jellyfin side is a mock
- * *engine*, not a fake data source: `JellyfinDataSource` is a concrete class, and driving real
- * HTTP + real kotlinx decoding through it exercises the paging loop and DTO mapping too.
+ * Robolectric here (a deliberate decision). The Jellyfin side is a mock *engine*, not a fake data
+ * source: `JellyfinDataSource` is a concrete class, and driving real HTTP + real kotlinx decoding
+ * through it exercises the paging loop and DTO mapping too.
  *
  * yt-dlp is the one dependency that is faked outright ([FakeYtDlp]) — the real one shells out to a
  * Python runtime, and the auto-fill cases below would otherwise hit YouTube from a test.
@@ -254,7 +254,7 @@ class SyncInstrumentedTest {
         assertTrue("$categories", categories.contains("ytcat:Music"))
     }
 
-    // --- item 09: a failed index fetch is reported, never silently swallowed ---
+    // --- a failed index fetch is reported, never silently swallowed ---
 
     @Test
     fun sync_reportsIndexDegradedWhenTheIndexCannotBeFetched() = runBlocking {
@@ -367,7 +367,7 @@ class SyncInstrumentedTest {
         assertEquals("Indexed A", row.title)
     }
 
-    // --- item 03: the delete grace period ---
+    // --- the delete grace period ---
 
     @Test
     fun sync_countsAMissBeforeDeletingAVideoTheServerStoppedListing() = runBlocking {
@@ -440,7 +440,7 @@ class SyncInstrumentedTest {
         assertEquals(present.take(2).sorted(), storedIds())
     }
 
-    // --- item 20: the sync auto-fill ---
+    // --- the sync auto-fill ---
 
     @Test
     fun sync_autoFillsASmallMetadataGapWithYtDlp() = runBlocking {
