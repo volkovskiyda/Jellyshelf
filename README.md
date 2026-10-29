@@ -660,10 +660,10 @@ in turn, so two journeys never hit the server at once. The layers can also be ru
   Kotzilla and Firebase like a tester's would.
 - **Instrumentation tests** (`src/androidTest`) run in a real APK: Compose behavior tests, Room
   DAO round-trips, the on-device kotlinx.serialization path, and a browse-cost benchmark over a
-  10k-row library. Compose tests run the accessibility checks, so an unlabelled control, an
-  undersized touch target or low contrast fails the suite. There is no Robolectric on purpose.
-  With no device attached these layers **skip** rather than fail, in Gradle and in the script
-  both.
+  10k-row library. Compose tests run the accessibility checks on API 34 and up, where the library
+  supports them, so an unlabelled control, an undersized touch target or low contrast fails the
+  suite. There is no Robolectric on purpose. With no device attached these layers **skip** rather
+  than fail, in Gradle and in the script both.
 - **Live tests** (`src/androidTest/…/live/`) hit a real Jellyfin and are **opt-in via `.test.env`**.
   See [Demo and live tests](#demo-and-live-tests) below for what they cover and how to run each.
 

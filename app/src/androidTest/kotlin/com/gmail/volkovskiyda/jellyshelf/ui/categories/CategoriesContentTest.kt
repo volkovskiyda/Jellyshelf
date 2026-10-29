@@ -2,7 +2,6 @@ package com.gmail.volkovskiyda.jellyshelf.ui.categories
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -14,6 +13,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.CATEGORY_TYPE_OTHERS
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Category
 import com.gmail.volkovskiyda.jellyshelf.domain.model.CategoryWithCount
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeScrollPositionRepository
+import com.gmail.volkovskiyda.jellyshelf.ui.enableAccessibilityChecksWhereSupported
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -45,7 +45,7 @@ class CategoriesContentTest {
      */
     @Before
     fun enableAccessibilityChecks() {
-        composeRule.enableAccessibilityChecks()
+        composeRule.enableAccessibilityChecksWhereSupported()
     }
 
     private fun category(id: String, name: String, type: String, count: Int = 3) =

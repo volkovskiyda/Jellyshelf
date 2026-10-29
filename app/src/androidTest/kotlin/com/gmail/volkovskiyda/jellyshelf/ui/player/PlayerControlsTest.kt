@@ -24,7 +24,6 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -42,6 +41,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.Chapter
 import com.gmail.volkovskiyda.jellyshelf.domain.model.PlaybackSpeed
 import com.gmail.volkovskiyda.jellyshelf.domain.model.VideoScaleMode
 import com.gmail.volkovskiyda.jellyshelf.domain.model.WatchState
+import com.gmail.volkovskiyda.jellyshelf.ui.enableAccessibilityChecksWhereSupported
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -85,7 +85,7 @@ class PlayerControlsTest {
      */
     @Before
     fun enableAccessibilityChecks() {
-        composeRule.enableAccessibilityChecks()
+        composeRule.enableAccessibilityChecksWhereSupported()
     }
 
     private fun setControls(

@@ -3,7 +3,6 @@ package com.gmail.volkovskiyda.jellyshelf.ui.library
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -15,6 +14,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.ui.FakeScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.LocalZoneId
+import com.gmail.volkovskiyda.jellyshelf.ui.enableAccessibilityChecksWhereSupported
 import com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -48,7 +48,7 @@ class LibraryContentTest {
      */
     @Before
     fun enableAccessibilityChecks() {
-        composeRule.enableAccessibilityChecks()
+        composeRule.enableAccessibilityChecksWhereSupported()
     }
 
     private fun video(id: String, title: String) = Video(
