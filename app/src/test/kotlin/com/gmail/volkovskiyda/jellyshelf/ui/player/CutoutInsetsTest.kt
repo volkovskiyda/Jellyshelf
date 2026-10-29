@@ -5,9 +5,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Which rows of the player step around a display cutout, and by how much. The geometry is the
- * Pixel 10 Pro emulator's (2856 × 1280 in landscape, a 156 px cutout strip around a centred
- * punch-hole) plus a Pixel 5-style corner hole, each in the row's own coordinates.
+ * Which rows of the player step around a display cutout, and by how much. The geometry is a
+ * large-phone emulator's (2856 × 1280 in landscape, a 156 px cutout strip around a centred
+ * punch-hole) plus a corner hole, each in the row's own coordinates.
  */
 class CutoutInsetsTest {
 

@@ -24,7 +24,7 @@ import kotlin.math.ceil
  * landscape a centred punch-hole costs every full-width row a ~50 dp gutter down its whole length,
  * even rows at the top and bottom of the screen that are nowhere near the hole. This reads the
  * cutouts' real bounds instead, so the player's top bar and seek bar run edge to edge past a
- * mid-height camera and still step around a corner one (the Pixel 5's), which does overlap them.
+ * mid-height camera and still step around a corner one, which does overlap them.
  *
  * The bounds are only readable during placement, so a change (a rotation, the element moving) is
  * picked up there and applied on the next measure — at most a frame late, and the player's controls

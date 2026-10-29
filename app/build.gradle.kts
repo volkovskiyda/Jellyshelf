@@ -284,7 +284,7 @@ androidComponents {
 
 baselineProfile {
     // A release build must never need a device. Generation is the deliberate manual step described
-    // in :baselineprofile's BaselineProfileGenerator — run against the physical Pixel 5, with its
+    // in :baselineprofile's BaselineProfileGenerator — run against a physical device, with its
     // output committed — because the arm64-only APK installs on nothing CI can offer. Leaving this
     // at its default true would make assembleRelease try to generate, and CI would fail.
     automaticGenerationDuringBuild = false
@@ -325,13 +325,13 @@ tasks.named { it.startsWith("connected") && it.endsWith("AndroidTest") }
 
 // AGP 9.4.1's device-test runner fails the connected task for any device attached over adb Wi-Fi,
 // with every test passing. The engine names each device in a JUnit unique id, which escapes the
-// colon in a serial like 192.168.11.111:5555 to %3A. The runner then looks each device up by its
+// colon in a serial like 192.168.100.20:5555 to %3A. The runner then looks each device up by its
 // raw serial, misses, and counts the miss as a failed device: "There were failing tests", while
 // the XML and HTML reports show nothing failed. USB and emulator serials have no colon, so only
-// Wi-Fi devices hit it. Found on 2026-10-14 with the Pixel 5 at 192.168.11.111:5555.
+// Wi-Fi devices hit it. Found on 2026-10-14 with a phone on Wi-Fi ADB.
 //
 // The 9.5 runner decodes the id first. It runs under AGP 9.4.1 unchanged: verified on 2026-10-14
-// that the Pixel 5 run goes green and a deliberately failing test still fails the task. The
+// that the Wi-Fi run goes green and a deliberately failing test still fails the task. The
 // configuration name is AGP's own; the versions live in the catalog.
 val utpWorkActionVersion = libs.versions.utpWorkAction.get()
 val androidTestEngineVersion = libs.versions.androidTestEngine.get()

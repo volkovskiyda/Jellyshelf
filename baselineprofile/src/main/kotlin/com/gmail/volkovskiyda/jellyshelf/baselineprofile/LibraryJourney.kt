@@ -181,8 +181,8 @@ internal fun MacrobenchmarkScope.syncIfLibraryEmpty() {
  * checks the app is gone the instant macrobenchmark force-stops it, and WorkManager's
  * `ForceStopRunnable` restarts the process to reschedule what is queued, so the check loses a race
  * it does not know it is in and reports `Package … must not be running prior to cold start!`. On a
- * Pixel 5 the first sync was still running seven seconds after the rows arrived, which is where
- * this was found; the tablet had finished by then and passed, twice.
+ * mid-range phone the first sync was still running seven seconds after the rows arrived, which is
+ * where this was found; a tablet had finished by then and passed, twice.
  *
  * The first wait is for the line to *appear*, because a tap that has not reached WorkManager yet
  * would otherwise look exactly like a sync that has already finished.
@@ -479,7 +479,7 @@ private fun MacrobenchmarkScope.scrollScreen(direction: Direction): Boolean =
  * produces one. Same gesture as [scrollScreen] otherwise, over far fewer steps.
  *
  * Not [UiObject2.fling], which is the dead end [swipeScreen] describes for [UiObject2.scroll] — on
- * the Pixel Tablet it returns without moving the list. Its return value makes that worse rather
+ * a physical tablet it returns without moving the list. Its return value makes that worse rather
  * than catching it: it answers "can this still scroll", so a gesture that never happened is
  * indistinguishable from a library too short to scroll, and both read as a fast benchmark.
  */
@@ -661,9 +661,9 @@ internal const val SIGN_IN_TIMEOUT_MS = 35_000L
  *
  * Five minutes rather than the two that fitted one device, because a generation run drives every
  * attached device at once and they all sync the same library from the same server at the same
- * moment — while one of them is also streaming a video from it. The Pixel 5 ran past two minutes
- * doing that and failed the run on the very first test; nothing is lost by waiting longer, since
- * the budget only ever elapses on a sync that is not going to finish.
+ * moment — while one of them is also streaming a video from it. A mid-range phone ran past two
+ * minutes doing that and failed the run on the very first test; nothing is lost by waiting longer,
+ * since the budget only ever elapses on a sync that is not going to finish.
  */
 internal const val SYNC_TIMEOUT_MS = 300_000L
 
@@ -726,9 +726,9 @@ internal fun MacrobenchmarkScope.openFirstVideoDetails() {
     repeat(TAP_ATTEMPTS) {
         val rows = device.findObjects(By.res(ROW_DETAILS)).mapNotNull { it.boundsOrGone() }
         // The tallest row on screen is the yardstick for a whole one, because a fixed pixel
-        // count only ever fits one device: the same two lines of text measure 96 px on the
-        // Pixel Tablet in landscape and half again as much on the Pixel 5, so a threshold
-        // generous enough to keep the phone's rows rejected every row the tablet had.
+        // count only ever fits one device: the same two lines of text measure 96 px on a
+        // tablet in landscape and half again as much on a phone, so a threshold generous enough to
+        // keep the phone's rows rejected every row the tablet had.
         val whole = rows.maxOfOrNull { it.height() } ?: 0
         val target = rows.filter { it.height() * UNCLIPPED_PARTS >= whole }.minByOrNull { it.top }
         if (target != null) {

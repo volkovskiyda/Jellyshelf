@@ -13,12 +13,12 @@ import org.junit.Test
 class DeviceInfoTest {
 
     private val info =
-        DeviceInfo(clientName = "Jellyshelf Android", deviceName = "Wolf Pixel 5", version = "1.2.3")
+        DeviceInfo(clientName = "Jellyshelf Android", deviceName = "Spare phone", version = "1.2.3")
 
     @Test
     fun `builds the four identity fields Jellyfin expects, in order`() {
         assertEquals(
-            """MediaBrowser Client="Jellyshelf Android", Device="Wolf Pixel 5", """ +
+            """MediaBrowser Client="Jellyshelf Android", Device="Spare phone", """ +
                 """DeviceId="abc-123", Version="1.2.3"""",
             mediaBrowserAuthHeader(info, "abc-123"),
         )
@@ -31,7 +31,7 @@ class DeviceInfoTest {
     @Test
     fun `appends the credential as a trailing Token field`() {
         assertEquals(
-            """MediaBrowser Client="Jellyshelf Android", Device="Wolf Pixel 5", """ +
+            """MediaBrowser Client="Jellyshelf Android", Device="Spare phone", """ +
                 """DeviceId="abc-123", Version="1.2.3", Token="TOK"""",
             mediaBrowserAuthHeader(info, "abc-123", token = "TOK"),
         )
@@ -55,9 +55,9 @@ class DeviceInfoTest {
     /** A quote would close the field early and corrupt every field after it. */
     @Test
     fun `strips quotes and backslashes that would break the header`() {
-        val header = mediaBrowserAuthHeader(info.copy(deviceName = """Pixel "5"\x"""), "abc-123")
+        val header = mediaBrowserAuthHeader(info.copy(deviceName = """FP "5"\x"""), "abc-123")
 
-        assertTrue(header, header.contains("""Device="Pixel 5x""""))
+        assertTrue(header, header.contains("""Device="FP 5x""""))
         assertEquals(8, header.count { it == '"' }) // exactly the four field delimiters
     }
 
@@ -80,21 +80,21 @@ class DeviceInfoTest {
 
     @Test
     fun `prefers the name the owner gave the device`() {
-        assertEquals("Wolf P7", deviceDisplayName("Wolf P7", "Google", "Pixel 7 Pro"))
+        assertEquals("Spare phone", deviceDisplayName("Spare phone", "Fairphone", "FP5"))
     }
 
     @Test
     fun `qualifies the model with the manufacturer when there is no owner name`() {
-        assertEquals("Google Pixel 7 Pro", deviceDisplayName(null, "Google", "Pixel 7 Pro"))
-        assertEquals("Google Pixel 7 Pro", deviceDisplayName("", "Google", "Pixel 7 Pro"))
-        assertEquals("Google Pixel 7 Pro", deviceDisplayName("   ", "Google", "Pixel 7 Pro"))
+        assertEquals("Fairphone FP5", deviceDisplayName(null, "Fairphone", "FP5"))
+        assertEquals("Fairphone FP5", deviceDisplayName("", "Fairphone", "FP5"))
+        assertEquals("Fairphone FP5", deviceDisplayName("   ", "Fairphone", "FP5"))
     }
 
     /** Android pre-fills the setting with the model, which is not an owner choice worth keeping. */
     @Test
     fun `treats an owner name equal to the model as unset`() {
-        assertEquals("Google Pixel 7 Pro", deviceDisplayName("pixel 7 PRO", "Google", "Pixel 7 Pro"))
-        assertEquals("Google Pixel 7 Pro", deviceDisplayName(" Pixel 7 Pro ", "Google", "Pixel 7 Pro"))
+        assertEquals("Fairphone FP5", deviceDisplayName("fp5", "Fairphone", "FP5"))
+        assertEquals("Fairphone FP5", deviceDisplayName(" FP5 ", "Fairphone", "FP5"))
     }
 
     /** Plenty of vendors already put their name in the model; "Xiaomi Xiaomi 14" reads as a bug. */
@@ -104,7 +104,7 @@ class DeviceInfoTest {
         assertEquals("XIAOMI 14", deviceDisplayName(null, "Xiaomi", "XIAOMI 14"))
     }
 
-    /** `Build.MANUFACTURER` is "Google" on a Pixel but "samsung" on a Galaxy. */
+    /** `Build.MANUFACTURER` is "Fairphone" on a Fairphone but "samsung" on a Galaxy. */
     @Test
     fun `capitalizes a lowercase manufacturer`() {
         assertEquals("Samsung SM-S911B", deviceDisplayName(null, "samsung", "SM-S911B"))

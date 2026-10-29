@@ -259,7 +259,7 @@ class MainActivity : ComponentActivity() {
      * through `setPictureInPictureParams`. The rect because it is what the platform's enter
      * animation shrinks from and its exit animation grows back into: without one, the transition
      * covers the task with a content overlay and scales the whole window, and that is the path
-     * that has left the video surface behind at an intermediate size (2026-09-02, Pixel 7 Pro).
+     * that has left the video surface behind at an intermediate size (2026-09-02, Android 17).
      * It is restated on every layout change, as the platform documentation asks, so it is right
      * for the exit as well as the entry.
      *
@@ -553,8 +553,8 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // Collected as a State and never read whole in this scope: the service rewrites it once a
     // second while a video plays, for the bar's progress line, and a read here recomposed this
     // entire app root on every tick — on the player screen too, where no bar is shown (four scopes
-    // and ~5.5 ms of main thread a second on the Pixel 5, measured 2026-10-29). Up here only the
-    // parts that change with the video are read, each through a derivedStateOf that invalidates
+    // and ~5.5 ms of main thread a second on a mid-range phone, measured 2026-10-29). Up here only
+    // the parts that change with the video are read, each through a derivedStateOf that invalidates
     // when its own answer does; the bar reads its own two below, inside its slot.
     val nowPlaying = nowPlayingState.nowPlaying.collectAsStateWithLifecycle()
     val playingId by remember {
@@ -564,8 +564,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // the tick changes and nothing else on the bar depends on; and that position as a function its
     // line calls while drawing. A tick then redraws a 2 dp line and recomposes nothing — the bar
     // recomposed whole on every one before, and on the charger, where the CPUs run slower, the
-    // frame that carried it came in late about once a second under a scrolling list (Pixel 5,
-    // 2026-10-29).
+    // frame that carried it came in late about once a second under a scrolling list (2026-10-29).
     val barPlaying = remember {
         derivedStateOf(structuralEqualityPolicy()) { nowPlaying.value?.copy(positionMs = 0L) }
     }

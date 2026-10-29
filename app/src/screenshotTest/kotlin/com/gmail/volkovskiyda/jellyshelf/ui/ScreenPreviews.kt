@@ -63,9 +63,9 @@ private const val LANDSCAPE_WIDTH = PHONE_HEIGHT
 private const val LANDSCAPE_HEIGHT = PHONE_WIDTH
 
 /**
- * A Pixel Tablet in landscape, in dp: the README's tablet screenshots are shot at this size. Turned
- * upright it is still 800 dp wide — past the medium breakpoint — so it keeps the rail and the two
- * panes, which the portrait goldens below are there to show.
+ * A 10-inch tablet in landscape, in dp: the README's tablet screenshots are shot at this size.
+ * Turned upright it is still 800 dp wide — past the medium breakpoint — so it keeps the rail and
+ * the side-by-side header, which the portrait goldens below are there to show.
  */
 private const val TABLET_WIDTH = 1280
 private const val TABLET_HEIGHT = 800
@@ -800,9 +800,9 @@ private fun QueuePanelPreview() {
 
 /**
  * The chapter list with the playing chapter marked, under a scheme whose `primary` is near-white —
- * what Android's monochrome theme hands a dynamic-colour app (the Pixel 5's palette, 2026-10-06).
- * The marker used to be the primary colour alone and vanished there; the tinted row and bold title
- * must still single out "Main part".
+ * what Android's monochrome theme hands a dynamic-colour app (read off an API 34 phone,
+ * 2026-10-06). The marker used to be the primary colour alone and vanished there; the tinted row
+ * and bold title must still single out "Main part".
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)

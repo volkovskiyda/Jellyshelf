@@ -29,9 +29,9 @@ const val METADATA_SOURCE_API_INDEX = "API_INDEX"
  * to the compiler, so every list a Room flow re-emits — freshly mapped instances, every one — used
  * to recompose every visible row, compared by reference rather than by value. While a video plays
  * that is every ten seconds (the position save rewrites one row), and on the Library tab it cost a
- * ~15 ms recomposition of the whole visible list each time on the Pixel 5 (2026-10-29). Compared
- * by value, only the row that changed recomposes. Every field is a `val`, and the lists are built
- * once by the mappers and never mutated.
+ * ~15 ms recomposition of the whole visible list each time on a mid-range phone (2026-10-29).
+ * Compared by value, only the row that changed recomposes. Every field is a `val`, and the lists
+ * are built once by the mappers and never mutated.
  */
 @Immutable
 data class Video(

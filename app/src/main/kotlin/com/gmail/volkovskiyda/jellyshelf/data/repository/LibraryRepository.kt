@@ -146,9 +146,9 @@ private val AUTO_FILL_BUDGET = 5.minutes
  * How long the sync auto-fill leaves a video alone after yt-dlp failed on it. The pass rides every
  * periodic sync, and the commonest failure in an archive is the permanent one — the video is gone
  * from YouTube — so retrying on each sync spent a whole extraction (~8 s, ~4.5 s of CPU in yt-dlp's
- * Python on a Pixel 5, measured 2026-10-29) twelve times a day per such video, for an answer that
- * does not change. A day still catches a transient failure by tomorrow, and the deliberate fetches
- * (the detail screen's, the Uncategorized bulk run) retry at once regardless.
+ * Python on a mid-range phone, measured 2026-10-29) twelve times a day per such video, for an
+ * answer that does not change. A day still catches a transient failure by tomorrow, and the
+ * deliberate fetches (the detail screen's, the Uncategorized bulk run) retry at once regardless.
  */
 private val AUTO_FILL_RETRY_AFTER = 1.days
 

@@ -67,12 +67,12 @@ TEST_APK=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 #     the offer dialog never arriving; giving it an explicit 5 s wait made it worse rather than
 #     better, so the cause is not simply that the image is slow. Worth another look on its own,
 #     not while moving the matrix.
-#   frankel 36 — a physical Pixel 10: real silicon, and so real hardware codecs behind the playback
-#     tests, which no emulator exercises. It offers API 36 and nothing else, the newest level any
-#     physical device in the catalogue runs — there is no physical 37, against 67 physical models
-#     at 36. Replaces shiba (Pixel 8) at 35, which was pinned there only by the input-injection bug
-#     below; frankel was the model that bug hit hardest, so it is also the strongest evidence the
-#     fix holds on real hardware.
+#   frankel 36 — a physical flagship phone: real silicon, and so real hardware codecs behind the
+#     playback tests, which no emulator exercises. It offers API 36 and nothing else, the newest
+#     level any physical device in the catalogue runs — there is no physical 37, against 67
+#     physical models at 36. Replaces shiba at 35, which was pinned there only by the
+#     input-injection bug below; frankel was the model that bug hit hardest, so it is also the
+#     strongest evidence the fix holds on real hardware.
 #
 # release.yml's three, on a tag — chosen for what the CI three do not carry, since the tagged commit
 # already went green on them when it landed on main:
@@ -80,7 +80,7 @@ TEST_APK=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 #     completes the form-factor × API-level square, the last corner being MediumPhone.arm below.
 #   MediumPhone.arm 31 — phone layout at minSdk, which ci.yml deliberately gives up when it pairs
 #     API 31 with the tablet to save an execution. A release is where that gap is worth closing.
-#   tangorpro 33 — a physical Pixel Tablet: real silicon behind a tablet layout, so hardware codecs
+#   tangorpro 33 — a physical tablet: real silicon behind a tablet layout, so hardware codecs
 #     and a large screen at once, which no other device in either matrix has together.
 #
 # There is no tablet at API 36 to be had. MediumTablet.arm's images stop at 35 (`gcloud firebase
@@ -98,14 +98,14 @@ TEST_APK=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 # Why API 36 was off limits until 2026-08-09, and what changed. Every UI test could fail with
 # `NoSuchMethodException: android.hardware.input.InputManager.getInstance` — the test framework's
 # input injection, not this app: it took down exactly the tests that inject touches and left every
-# DAO, sync and serialization test passing. Measured 2026-08-06: frankel (Pixel 10) failed; tokay
-# (Pixel 9) passed 205/205 and then failed the same way eight minutes later on the same APK. That
-# looked like Test Lab serving whichever unit is free, some Android 16 units having dropped the
-# method — so the matrix pinned physical to 35 and kept API 37 out entirely.
+# DAO, sync and serialization test passing. Measured 2026-08-06: frankel failed; tokay passed
+# 205/205 and then failed the same way eight minutes later on the same APK. That looked like Test
+# Lab serving whichever unit is free, some Android 16 units having dropped the method — so the
+# matrix pinned physical to 35 and kept API 37 out entirely.
 #
 # The real cause was in this repo's dependency graph. Nothing declared espresso-core, so Compose
 # ui-test's request for 3.4.0 resolved to 3.5.0 (December 2022), which reflects on that method.
-# Declaring 3.7.0 fixed it: the local Pixel_9 AVD at API 36 went from 135 of 285 failing to 285 of
+# Declaring 3.7.0 fixed it: a local phone AVD at API 36 went from 135 of 285 failing to 285 of
 # 285 passing, with no mention of the method anywhere in the run. Since the pin existed only to
 # dodge that bug, it goes. If this ever comes back, check the resolved espresso-core version before
 # blaming the device pool:

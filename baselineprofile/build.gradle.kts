@@ -60,8 +60,8 @@ androidComponents {
 baselineProfile {
     // A physical device, never a managed one: the app APK is arm64-only (youtubedl-android bundles
     // a Python runtime per ABI), so the x86_64 emulator images Gradle-managed devices use cannot
-    // install it. This is the same constraint that sends item 06's instrumented suite to Firebase
-    // Test Lab. Generation therefore runs over adb against the connected Pixel 5.
+    // install it. This is the same constraint that sends the instrumented suite to Firebase Test
+    // Lab. Generation therefore runs over adb against a connected physical device.
     useConnectedDevices = true
 }
 

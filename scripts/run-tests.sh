@@ -207,7 +207,7 @@ attached_devices() {
   "$adb" devices 2>/dev/null | tail -n +2 | awk '$2 == "device" { print $1 }'
 }
 
-# "Pixel 5, API 34" beside the serial: emulator-5554 and 192.168.11.111:5555 are not names anyone
+# "<model>, API 34" beside the serial: emulator-5554 and 192.168.100.20:5555 are not names anyone
 # recognises under pressure. One adb round trip per device, and an unreachable device just loses
 # its label rather than holding up the menu.
 describe_device() {

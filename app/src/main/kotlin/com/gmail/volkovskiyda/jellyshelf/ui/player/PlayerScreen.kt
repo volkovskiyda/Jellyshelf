@@ -454,7 +454,7 @@ private fun PlayerWithControls(
     // Poll position/duration while RESUMED and while something shows them — the controls or the
     // chapter list; 500 ms is smooth enough for a seek bar and labels. Hidden, nothing reads them,
     // yet each tick still recomposed this screen, twice a second for the length of every video
-    // (Pixel 5 trace, 2026-10-29). A restart reads before it waits, so controls coming back fade in
+    // (system trace, 2026-10-29). A restart reads before it waits, so controls coming back fade in
     // over the current position rather than the one they were hidden at.
     val lifecycleOwner = LocalLifecycleOwner.current
     val positionShown = controlsVisible || chaptersOpen
@@ -583,7 +583,7 @@ private fun PlayerWithControls(
         }
     }
 
-    // A PiP window's surface can be left behind at an intermediate size (2026-09-02, Pixel 7 Pro
+    // A PiP window's surface can be left behind at an intermediate size (2026-09-02, a phone
     // on Android 17: the whole frame at ~70 % of the window, top-left, until a pinch resized it).
     // The shell settles the window in steps — the emulator's own log shows an entry size and then
     // a bounds change right after — and the surface's geometry is what a real bounds change
@@ -596,11 +596,11 @@ private fun PlayerWithControls(
     // The way out is the same shape — the window grows to the screen in steps, with the system
     // bars showing for the first of them — so the nudge follows every change of PiP mode and of
     // window size, not only those inside PiP. Prompted by, not proven against, a user screenshot
-    // of 2026-10-25 (Pixel 7 Pro, Android 17): the full-screen player with the video held in a
-    // rounded, pillarboxed rect and the window background around it, which is what a surface
-    // left at a transitional geometry on the way out would look like, and which the nudge on the
-    // way in never reached. The extra runs — one at first composition, one per rotation — are
-    // the same invisible one-pixel inset.
+    // of 2026-10-25 (Android 17): the full-screen player with the video held in a rounded,
+    // pillarboxed rect and the window background around it, which is what a surface left at a
+    // transitional geometry on the way out would look like, and which the nudge on the way in never
+    // reached. The extra runs — one at first composition, one per rotation — are the same invisible
+    // one-pixel inset.
     val windowSize = LocalWindowInfo.current.containerSize
     var surfaceNudge by remember { mutableStateOf(0.dp) }
     LaunchedEffect(isInPip, windowSize) {
@@ -1473,9 +1473,9 @@ private fun PlayerPanel(
  * The background that marks a panel's current row — the playing video, the current chapter — with
  * its title set bold beside it. Colour alone is not a marker here: the app takes its palette from
  * the wallpaper, and under Android's monochrome theme `primary` renders as near-white, the very
- * colour of every other row's text (measured on the Pixel 5, 2026-10-06), so a primary-only title
- * vanished. A tint of `primary` reads as a grey band in that palette and as a coloured one in all
- * the others.
+ * colour of every other row's text (measured on an API 34 phone, 2026-10-06), so a primary-only
+ * title vanished. A tint of `primary` reads as a grey band in that palette and as a coloured one in
+ * all the others.
  */
 @Composable
 private fun currentRowTint(): Color = MaterialTheme.colorScheme.primary.copy(alpha = CURRENT_ROW_TINT_ALPHA)
@@ -1755,12 +1755,12 @@ private fun QueueEntryDetails(channel: String?, durationMs: Long?) {
  * screen, a Custom Tab, another app over this one, a system dialog, and Picture-in-Picture, which
  * disposes this effect on the way in and re-runs it on the way out, where the one `hide()` lands in
  * the middle of the expand transition. A player left like that stays laid out under a status bar
- * and a navigation bar it believes are gone: user screenshots 2026-10-25, Pixel 7 Pro on Android
- * 17, the title under the status icons and the seek bar row past a pillarboxed video. Which trip
- * got it there is not known — none of the above does it on the API 36 and 37 emulators — so rather
- * than guard one route the hide is restated whenever the bars are *reporting insets* (which
- * transient, swiped-in bars never do, so a swipe reveal still runs its course) and the window has
- * focus, which is when a hide can take effect.
+ * and a navigation bar it believes are gone: user screenshots 2026-10-25 on Android 17, the title
+ * under the status icons and the seek bar row past a pillarboxed video. Which trip got it there is
+ * not known — none of the above does it on the API 36 and 37 emulators — so rather than guard one
+ * route the hide is restated whenever the bars are *reporting insets* (which transient, swiped-in
+ * bars never do, so a swipe reveal still runs its course) and the window has focus, which is when a
+ * hide can take effect.
  *
  * Off while the app is a Picture-in-Picture window: there are no system bars in that window to
  * hide, and the swipe behaviour it sets belongs to the full-screen activity it will be again.

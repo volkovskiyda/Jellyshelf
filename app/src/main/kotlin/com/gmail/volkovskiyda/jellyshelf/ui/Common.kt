@@ -356,8 +356,8 @@ fun VideoRow(
     val contentAlpha = if (skipped && !playing) SKIPPED_ROW_ALPHA else 1f
     val startSelectionLabel = stringResource(R.string.select_videos)
     // The two labels below that carry the title are formatted when their semantics are read, not
-    // here: a formatted string resource cost ~70 µs on a Pixel 5, two of them per row, and a
-    // composition of a row is mostly read by nothing — a scroll composes rows by the screenful
+    // here: a formatted string resource cost ~70 µs on a mid-range phone, two of them per row, and
+    // a composition of a row is mostly read by nothing — a scroll composes rows by the screenful
     // (composition trace, 2026-10-29). TalkBack and the tests read the same words either way.
     val resources = LocalResources.current
     Row(

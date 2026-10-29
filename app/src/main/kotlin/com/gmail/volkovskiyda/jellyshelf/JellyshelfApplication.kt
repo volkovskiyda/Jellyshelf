@@ -83,19 +83,20 @@ class JellyshelfApplication : Application(), SingletonImageLoader.Factory {
         // previous answer.
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!isDebug)
         FirebasePerformance.getInstance().isPerformanceCollectionEnabled = !isDebug
+        // Remote Config's kill switch for the tester sign-in, fetched before anything can ask for
+        // it. Fire-and-forget; see RemoteUpdateFlags.
+        get<UpdateFlags>().refresh()
         // The cold-start update check, here rather than in a composable's LaunchedEffect(Unit):
         // onCreate runs exactly once per process, while "once per composition" is a weaker promise
-        // than it looks under configuration changes and the theme reveal's uiMode handling. It
-        // returns immediately unless a release build has opted into a channel, and never blocks —
-        // it only launches work on the application scope. UpdateChecker documents every gate.
-        get<UpdateFlags>().refresh()
+        // than it looks under configuration changes and the theme reveal's uiMode handling.
+        // UpdateChecker documents every gate.
+        //
         // Resolved off the main thread on purpose. Creating UpdateChecker builds the shared Ktor
         // HttpClient over OkHttp and touches WorkManager.getInstance. Kotzilla measured ~170 ms of
-        // main thread for it on a Pixel 7 Pro release build (1.10.413) and 200–800 ms in debug,
-        // and nothing below needs any of it before the first frame: both calls only launch work
-        // on the application scope. Koin creates a single under a lock, so if MainActivity
-        // injects the checker before this finishes it waits for this creation rather than making
-        // a second one.
+        // main thread for it in a release build (1.10.413) and 200–800 ms in debug, and nothing
+        // below needs any of it before the first frame: both calls only launch work on the
+        // application scope. Koin creates a single under a lock, so if MainActivity injects the
+        // checker before this finishes it waits for this creation rather than making a second one.
         val dispatchers = get<DispatcherProvider>()
         dispatchers.applicationScope.launch(dispatchers.io) {
             // A download interrupted by the process dying leaves a part-file nothing else will

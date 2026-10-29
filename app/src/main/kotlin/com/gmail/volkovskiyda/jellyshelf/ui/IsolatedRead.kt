@@ -11,7 +11,7 @@ import androidx.compose.runtime.State
  * browse flows re-emit on every write to the library — every ten seconds while a video plays, when
  * its position is saved, and in a stream during a sync — and read in the screen's own body, each
  * emission re-ran all of it, a dozen flow collections, the ViewModel lookup and every effect
- * included, only to hand one new list to the content below (Pixel 5 composition trace, 2026-10-29).
+ * included, only to hand one new list to the content below (composition trace, 2026-10-29).
  */
 @Composable
 fun <T> IsolatedRead(state: State<T>, content: @Composable (T) -> Unit) {

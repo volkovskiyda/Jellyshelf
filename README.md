@@ -20,7 +20,7 @@ Taken in [demo mode](#demo-mode--try-it-without-a-server), so the library is the
 rather than a real archive. Each section is collapsed on purpose — expand one and the images
 download then, not on every visit to this page.
 
-<!-- Regenerate on the Pixel_9 and Pixel_Tablet_API_37 emulators (a physical device brings its own
+<!-- Regenerate on a phone and a tablet emulator (a physical device brings its own
      notifications into the status bar, and demo mode cannot hide them on Android 17):
      install the debug build, Settings -> Try demo, then `adb exec-out screencap -p`.
      Naming is <device>-<theme>-<screen>.png.
@@ -36,7 +36,7 @@ download then, not on every visit to this page.
      install a release build to avoid that step: it replaces a real install, credentials and all. -->
 
 <details>
-<summary><b>Phone</b> — Pixel 9, 1080×2424</summary>
+<summary><b>Phone</b> — 1080×2424</summary>
 <br>
 
 |  | Library | Categories | Video detail | Settings |
@@ -47,7 +47,7 @@ download then, not on every visit to this page.
 </details>
 
 <details>
-<summary><b>Tablet</b> — Pixel Tablet, 2560×1600 landscape</summary>
+<summary><b>Tablet</b> — 2560×1600 landscape</summary>
 <br>
 
 |  | Library | Categories | Video detail | Settings |

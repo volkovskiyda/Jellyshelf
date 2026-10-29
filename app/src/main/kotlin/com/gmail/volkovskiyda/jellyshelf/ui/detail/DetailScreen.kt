@@ -551,10 +551,11 @@ internal fun PlayButton(
  *
  * Its text arrives a frame after the rest of the screen. It is the one expensive measure here: a
  * YouTube description runs to thousands of characters, often with emoji that pull in a fallback
- * font, and laying it out took 3–11 ms of the main thread on a Pixel 5 — inside the screen's
- * opening frame, which composes and measures everything above it too and was coming in at 17–30 ms
- * against an 11 ms budget (2026-10-29). It sits last, so nothing above it moves when it lands.
- * Previews and screenshot goldens render a single frame and run no effects, so there it is at once.
+ * font, and laying it out took 3–11 ms of the main thread on a mid-range phone — inside the
+ * screen's opening frame, which composes and measures everything above it too and was coming in at
+ * 17–30 ms against an 11 ms budget (2026-10-29). It sits last, so nothing above it moves when it
+ * lands. Previews and screenshot goldens render a single frame and run no effects, so there it is
+ * at once.
  */
 @Composable
 private fun DescriptionSection(current: Video) {

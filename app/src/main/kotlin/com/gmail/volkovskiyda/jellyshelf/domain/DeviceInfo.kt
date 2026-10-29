@@ -28,7 +28,7 @@ data class DeviceInfo(
  * [userDeviceName] is the owner's own name for the device (`Settings.Global.DEVICE_NAME`), which
  * is what the official Jellyfin clients report and what a dashboard shows to identify one session
  * among several. Android pre-fills it with the bare model, so that case falls through to the
- * manufacturer-qualified form: "Pixel 7 Pro" alone says less than "Google Pixel 7 Pro".
+ * manufacturer-qualified form: "FP5" alone says less than "Fairphone FP5".
  */
 fun deviceDisplayName(userDeviceName: String?, manufacturer: String, model: String): String {
     val owned = userDeviceName?.trim().orEmpty()

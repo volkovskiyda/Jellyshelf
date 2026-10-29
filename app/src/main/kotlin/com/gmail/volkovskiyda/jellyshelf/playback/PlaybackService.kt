@@ -309,9 +309,9 @@ class PlaybackService : MediaSessionService(), KoinComponent {
             // extrapolates from the last state it was sent — position, speed and when — and each
             // push woke them all: the player screen's, the platform session's listeners behind the
             // notification, SystemUI and Bluetooth's AVRCP target, which alone spent ~35 ms per push
-            // on the Pixel 5, ~7 s of CPU per ten minutes of playback (2026-10-29). Whatever moves
-            // the position other than playing on — a seek, a pause, buffering, a speed change —
-            // still reaches them the moment it happens.
+            // on a mid-range phone, ~7 s of CPU per ten minutes of playback (2026-10-29). Whatever
+            // moves the position other than playing on — a seek, a pause, buffering, a speed change
+            // — still reaches them the moment it happens.
             .setPeriodicPositionUpdateEnabled(false)
             .build()
     }

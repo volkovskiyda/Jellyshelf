@@ -290,10 +290,10 @@ class JourneyBenchmark {
         // Back out to the library before the iteration ends, which is not tidiness: the app is
         // otherwise left sitting in the player, and the next iteration's cold start does not land
         // on the library — its [awaitLibrary] then fails and takes the whole run with it. Measured
-        // on a Pixel 5: iteration 1 passed, iteration 2 died on exactly that.
+        // on a physical phone: iteration 1 passed, iteration 2 died on exactly that.
         //
         // Inside the measured block rather than in [setupBlock] because setupBlock runs before the
-        // process kill, and because the three metrics here are named trace sections — work after
+        // process kill, and because the four metrics here are named trace sections — work after
         // the last of them closes costs wall-clock, not accuracy.
         returnToTopLevel()
         // Backing out only pauses since the player kept its queue on Back (101b205): the bar stays
@@ -513,9 +513,9 @@ class JourneyBenchmark {
  * itself stays up — it goes on asking for flushes — but its data stops reaching the file, and
  * the trace ends with Macrobenchmark's own `measureBlock` slice still open (`dur = -1`). A
  * launch fits in that window, which is why [startup] and [libraryScroll] were never affected
- * and why this went unnoticed until something was measured 30 s in. Measured on a Pixel 5
- * (API 34) on 2026-08-27: `traced_flushes_requested = 6`, `traced_flushes_failed = 4`,
- * 572 chunks discarded, and every app slice inside the first 523 ms.
+ * and why this went unnoticed until something was measured 30 s in. Measured on an API 34
+ * phone on 2026-08-27: `traced_flushes_requested = 6`, `traced_flushes_failed = 4`, 572 chunks
+ * discarded, and every app slice inside the first 523 ms.
  *
  * Two differences from the default, both taken from a hand-driven `adb shell perfetto` capture
  * that recorded the same APK on the same device for 45 s without losing anything:

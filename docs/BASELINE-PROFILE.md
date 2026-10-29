@@ -27,7 +27,7 @@ stays `false` so `assembleRelease` never asks for a device.
 ## What you need
 
 - **A physical arm64 device**, API 33 or newer — `BaselineProfileRule` needs root below 33. The
-  reference device is a Pixel 5 (arm64-v8a, API 34). An x86_64 emulator fails with
+  reference device is an arm64-v8a phone on API 34. An x86_64 emulator fails with
   `INSTALL_FAILED_NO_MATCHING_ABIS`.
 - **The screen awake and unlocked for the whole run.** A device that dozes mid-run produces a
   failure that reads like a broken test, not a sleeping screen:
@@ -154,10 +154,10 @@ itself.
 ## Verify before committing
 
 Both failure modes below produce a *plausible-looking* file, so check rather than assume. Figures in
-the last column were measured on **the profile currently committed** (generated live on the Pixel 5,
-2026-08-26) — successive runs vary by a few hundred entries either way, so a new profile should land
-in the same ballpark rather than match exactly. Refresh them here when you commit a profile that
-moves them materially.
+the last column were measured on **the profile currently committed** (generated live on the
+reference device, 2026-08-26) — successive runs vary by a few hundred entries either way, so a new
+profile should land in the same ballpark rather than match exactly. Refresh them here when you
+commit a profile that moves them materially.
 
 Start with what the run itself prints — the plugin compares the new profile against the one it
 replaces:
@@ -198,10 +198,10 @@ cd app/src/release/generated/baselineProfiles
 **The network row, and what it can and cannot tell you.** It used to read
 `grep -c Lokhttp3 startup-prof.txt`, expecting *"over a thousand (1,402), where a demo run leaves
 around 110"*. **That was wrong, and it failed in the direction that matters: it reads a live run as a
-demo one.** Corrected 2026-08-27 after two separate live runs on the Pixel 5 — real sign-in, real
-sync, real stream — left that count at **96** and **98**. The profile committed before them, also
-generated live, has 98. The >1,000 figure belongs to `baseline-prof.txt` (1,512 on the current
-reference, 1,527 on the one before it), so the row simply named the wrong file.
+demo one.** Corrected 2026-08-27 after two separate live runs on the reference device — real
+sign-in, real sync, real stream — left that count at **96** and **98**. The profile committed before
+them, also generated live, has 98. The >1,000 figure belongs to `baseline-prof.txt` (1,512 on the
+current reference, 1,527 on the one before it), so the row simply named the wrong file.
 
 `grep -ci ktor` sits beside it because since `1801dbd` every byte the app moves — API, thumbnails
 and now video — goes over Ktor on the OkHttp engine. Moving media onto it took `baseline-prof.txt`
@@ -214,7 +214,7 @@ Then commit both files. They are regenerated wholesale rather than edited, which
 
 ### Telling a live profile from a demo one
 
-Measured 2026-08-27 by generating both on the same Pixel 5, same commit, `.test.env` moved aside for
+Measured 2026-08-27 by generating both on the same device, same commit, `.test.env` moved aside for
 the demo half. **Only the network counts on `baseline-prof.txt` separate them**; everything else is
 either identical or within run-to-run noise.
 
@@ -407,9 +407,9 @@ WM-ForceStopRunnable: Application was force-stopped, rescheduling.
 java.lang.IllegalStateException: Package … must not be running prior to cold start!
 ```
 
-The message names neither WorkManager nor the sync. On a Pixel 5 the first sync was still running
-seven seconds after the library filled; a faster device finishes sooner and the same run passes,
-which is what makes this look like a device problem rather than a timing one.
+The message names neither WorkManager nor the sync. On the reference device the first sync was still
+running seven seconds after the library filled; a faster device finishes sooner and the same run
+passes, which is what makes this look like a device problem rather than a timing one.
 
 Two things it reports beyond the framework's startup timings:
 
