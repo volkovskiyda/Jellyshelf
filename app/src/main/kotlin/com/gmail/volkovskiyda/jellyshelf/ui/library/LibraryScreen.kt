@@ -33,6 +33,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionRun
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Video
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionRepository
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
+import com.gmail.volkovskiyda.jellyshelf.ui.IsolatedRead
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.SearchField
 import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
@@ -71,7 +72,8 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = koinViewModel(),
 ) {
-    val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
+    // A State, read only inside IsolatedRead below — see there for why.
+    val videos = viewModel.videos.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
     val selection = viewModel.selection
@@ -85,34 +87,36 @@ fun LibraryScreen(
     val playlistResult by selection.playlistResult.collectAsStateWithLifecycle()
     ToastOnMessage(playlistResult?.let { playlistMessage(it) }, selection::consumePlaylistResult)
 
-    LibraryContent(
-        videosOrNull = videosOrNull,
-        query = query,
-        totalCount = totalCount,
-        onQueryChange = viewModel::onQueryChange,
-        onPlayVideo = onPlayVideo,
-        onOpenDetails = onOpenDetails,
-        selectionActive = selectionActive,
-        selectedIds = selectedIds,
-        selectionRun = selectionRun,
-        demoMode = demoMode,
-        onStartSelection = selection::start,
-        onToggleSelection = selection::toggle,
-        onSelectAll = selection::selectAll,
-        onDeselectAll = selection::deselectAll,
-        onExitSelection = selection::exit,
-        onSelectionAction = selection::startAction,
-        onCancelSelectionRun = selection::cancelRun,
-        onAcknowledgeSelectionRun = selection::acknowledgeRun,
-        // Always offered here. Every list this screen shows is one a playlist can be built from —
-        // the one filter that cannot (Missing from server) lives on the Categories tab.
-        onCreatePlaylist = selection::openPlaylistDialog,
-        playlistDialogOpen = playlistDialogOpen,
-        creatingPlaylist = creatingPlaylist,
-        onDismissPlaylistDialog = selection::dismissPlaylistDialog,
-        onConfirmPlaylist = selection::createPlaylist,
-        modifier = modifier,
-    )
+    IsolatedRead(videos) { videosOrNull ->
+        LibraryContent(
+            videosOrNull = videosOrNull,
+            query = query,
+            totalCount = totalCount,
+            onQueryChange = viewModel::onQueryChange,
+            onPlayVideo = onPlayVideo,
+            onOpenDetails = onOpenDetails,
+            selectionActive = selectionActive,
+            selectedIds = selectedIds,
+            selectionRun = selectionRun,
+            demoMode = demoMode,
+            onStartSelection = selection::start,
+            onToggleSelection = selection::toggle,
+            onSelectAll = selection::selectAll,
+            onDeselectAll = selection::deselectAll,
+            onExitSelection = selection::exit,
+            onSelectionAction = selection::startAction,
+            onCancelSelectionRun = selection::cancelRun,
+            onAcknowledgeSelectionRun = selection::acknowledgeRun,
+            // Always offered here. Every list this screen shows is one a playlist can be built from
+            // — the one filter that cannot (Missing from server) lives on the Categories tab.
+            onCreatePlaylist = selection::openPlaylistDialog,
+            playlistDialogOpen = playlistDialogOpen,
+            creatingPlaylist = creatingPlaylist,
+            onDismissPlaylistDialog = selection::dismissPlaylistDialog,
+            onConfirmPlaylist = selection::createPlaylist,
+            modifier = modifier,
+        )
+    }
 
     // Both hosted out here rather than inside [LibraryContent], so the content stays renderable on
     // its own: the prompt keeps the screenshot goldens showing a screen with nothing on top of it,
@@ -194,6 +198,10 @@ internal fun LibraryContent(
                 onCreatePlaylist = onCreatePlaylist,
             )
         } else {
+            // The size, not the list, inside the actions below: a lambda holding the list is a new
+            // lambda on every emission, and the bar recomposed with it, its plural formatted again,
+            // every ten seconds while a video plays — when the position save re-emits the list.
+            val shownCount = videos.size
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name)) },
                 actions = {
@@ -202,9 +210,9 @@ internal fun LibraryContent(
                         // search is a hard filter (SearchRanking drops non-matches as well as
                         // reordering), so the shown list is the narrowed set and its size is the
                         // numerator — matching the contentDescription below.
-                        val label = if (pristine) "$totalCount" else "${videos.size}/$totalCount"
+                        val label = if (pristine) "$totalCount" else "$shownCount/$totalCount"
                         val shownDescription =
-                            pluralStringResource(R.plurals.shown_of_total, totalCount, videos.size, totalCount)
+                            pluralStringResource(R.plurals.shown_of_total, totalCount, shownCount, totalCount)
                         Text(
                             label,
                             style = MaterialTheme.typography.labelLarge,
@@ -214,7 +222,7 @@ internal fun LibraryContent(
                     }
                     // Offered only once there is something to select. Long-pressing a row is the
                     // other way in, and the one most users will find first.
-                    if (videos.isNotEmpty()) {
+                    if (shownCount > 0) {
                         IconButton(onClick = { onStartSelection(null) }) {
                             Icon(
                                 Icons.Filled.Checklist,

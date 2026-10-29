@@ -39,6 +39,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionReposit
 import com.gmail.volkovskiyda.jellyshelf.ui.BackButton
 import com.gmail.volkovskiyda.jellyshelf.ui.BulkActionHeader
 import com.gmail.volkovskiyda.jellyshelf.ui.EmptyState
+import com.gmail.volkovskiyda.jellyshelf.ui.IsolatedRead
 import com.gmail.volkovskiyda.jellyshelf.ui.LoadingState
 import com.gmail.volkovskiyda.jellyshelf.ui.ToastOnMessage
 import com.gmail.volkovskiyda.jellyshelf.ui.VideoList
@@ -82,7 +83,8 @@ fun CategoryVideosScreen(
     val viewModel: CategoryVideosViewModel = koinViewModel { parametersOf(categoryId) }
     val playingId by viewModel.playingId.collectAsStateWithLifecycle()
     val skippedIds by viewModel.skippedIds.collectAsStateWithLifecycle()
-    val videosOrNull by viewModel.videos.collectAsStateWithLifecycle()
+    // A State, read only inside IsolatedRead below — see there for why.
+    val videos = viewModel.videos.collectAsStateWithLifecycle()
     val bulkFetch by viewModel.bulkFetch.collectAsStateWithLifecycle()
     val bulkRemove by viewModel.bulkRemove.collectAsStateWithLifecycle()
     val demoMode by viewModel.demoMode.collectAsStateWithLifecycle()
@@ -98,56 +100,59 @@ fun CategoryVideosScreen(
     val playlistResult by selection.playlistResult.collectAsStateWithLifecycle()
     ToastOnMessage(playlistResult?.let { playlistMessage(it) }, selection::consumePlaylistResult)
 
-    CategoryVideosContent(
-        title = title,
-        videosOrNull = videosOrNull,
-        bulkFetch = bulkFetch,
-        bulkRemove = bulkRemove,
-        demoMode = demoMode,
-        isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
-        isSkippedFilter = viewModel.isSkippedFilter,
-        onUnskip = viewModel::unskip,
-        isNowPlayingFilter = viewModel.isNowPlayingFilter,
-        playingId = playingId,
-        skippedIds = skippedIds,
-        removeKind = viewModel.removeKind,
-        scrollKey = "category.$categoryId",
-        showRemoveDialog = showRemoveDialog,
-        onShowRemoveDialog = { showRemoveDialog = true },
-        onDismissRemoveDialog = { showRemoveDialog = false },
-        // Either tap on a Now playing row plays it where it stands in the queue: replacing the queue
-        // with this list would be pointless at best, and the details are a long-press away anywhere.
-        onPlayVideo = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onPlayVideo,
-        onOpenDetails = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onOpenDetails,
-        onBack = onBack,
-        onStartFetchMissing = viewModel::startFetchMissing,
-        onCancelFetchMissing = viewModel::cancelFetchMissing,
-        onAcknowledgeBulkFetch = viewModel::acknowledgeBulkFetch,
-        onConfirmRemove = {
-            showRemoveDialog = false
-            viewModel.startRemove()
-        },
-        onCancelRemove = viewModel::cancelRemove,
-        onAcknowledgeBulkRemove = viewModel::acknowledgeBulkRemove,
-        selectionActive = selectionActive,
-        selectedIds = selectedIds,
-        selectionRun = selectionRun,
-        onStartSelection = selection::start,
-        onToggleSelection = selection::toggle,
-        onSelectAll = selection::selectAll,
-        onDeselectAll = selection::deselectAll,
-        onExitSelection = selection::exit,
-        onSelectionAction = selection::startAction,
-        onCancelSelectionRun = selection::cancelRun,
-        onAcknowledgeSelectionRun = selection::acknowledgeRun,
-        onCreatePlaylist = selection::openPlaylistDialog,
-        playlistDialogOpen = playlistDialogOpen,
-        creatingPlaylist = creatingPlaylist,
-        playlistDefaultName = title,
-        onDismissPlaylistDialog = selection::dismissPlaylistDialog,
-        onConfirmPlaylist = selection::createPlaylist,
-        modifier = modifier,
-    )
+    IsolatedRead(videos) { videosOrNull ->
+        CategoryVideosContent(
+            title = title,
+            videosOrNull = videosOrNull,
+            bulkFetch = bulkFetch,
+            bulkRemove = bulkRemove,
+            demoMode = demoMode,
+            isUncategorized = categoryId == VIRTUAL_CATEGORY_UNCATEGORIZED,
+            isSkippedFilter = viewModel.isSkippedFilter,
+            onUnskip = viewModel::unskip,
+            isNowPlayingFilter = viewModel.isNowPlayingFilter,
+            playingId = playingId,
+            skippedIds = skippedIds,
+            removeKind = viewModel.removeKind,
+            scrollKey = "category.$categoryId",
+            showRemoveDialog = showRemoveDialog,
+            onShowRemoveDialog = { showRemoveDialog = true },
+            onDismissRemoveDialog = { showRemoveDialog = false },
+            // Either tap on a Now playing row plays it where it stands in the queue: replacing the
+            // queue with this list would be pointless at best, and the details are a long-press away
+            // anywhere.
+            onPlayVideo = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onPlayVideo,
+            onOpenDetails = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onOpenDetails,
+            onBack = onBack,
+            onStartFetchMissing = viewModel::startFetchMissing,
+            onCancelFetchMissing = viewModel::cancelFetchMissing,
+            onAcknowledgeBulkFetch = viewModel::acknowledgeBulkFetch,
+            onConfirmRemove = {
+                showRemoveDialog = false
+                viewModel.startRemove()
+            },
+            onCancelRemove = viewModel::cancelRemove,
+            onAcknowledgeBulkRemove = viewModel::acknowledgeBulkRemove,
+            selectionActive = selectionActive,
+            selectedIds = selectedIds,
+            selectionRun = selectionRun,
+            onStartSelection = selection::start,
+            onToggleSelection = selection::toggle,
+            onSelectAll = selection::selectAll,
+            onDeselectAll = selection::deselectAll,
+            onExitSelection = selection::exit,
+            onSelectionAction = selection::startAction,
+            onCancelSelectionRun = selection::cancelRun,
+            onAcknowledgeSelectionRun = selection::acknowledgeRun,
+            onCreatePlaylist = selection::openPlaylistDialog,
+            playlistDialogOpen = playlistDialogOpen,
+            creatingPlaylist = creatingPlaylist,
+            playlistDefaultName = title,
+            onDismissPlaylistDialog = selection::dismissPlaylistDialog,
+            onConfirmPlaylist = selection::createPlaylist,
+            modifier = modifier,
+        )
+    }
 
     // Out here rather than inside the content, which is rendered on its own by previews and by the
     // behavior tests: the snackbar needs the Scaffold's host, and only MainActivity has one.
