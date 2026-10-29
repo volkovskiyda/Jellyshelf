@@ -171,6 +171,7 @@ import java.text.NumberFormat
 import java.util.Formatter
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The elapsed-position label, tagged so the baseline-profile generator can read it: it is the only
@@ -426,18 +427,6 @@ private fun PlayerWithControls(
         }
     }
 
-    // Poll position/duration while RESUMED; 500 ms is smooth enough for a seek bar and labels.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(controller, lifecycleOwner) {
-        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            while (true) {
-                positionMs = controller.currentPosition.coerceAtLeast(0)
-                durationMs = controller.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: 0
-                delay(POSITION_POLL_MS)
-            }
-        }
-    }
-
     // Keep the screen awake exactly while playing; view state, so it must reset on dispose.
     val view = LocalView.current
     DisposableEffect(isPlaying) {
@@ -461,6 +450,24 @@ private fun PlayerWithControls(
     var chaptersOpen by remember { mutableStateOf(false) }
     var queueOpen by remember { mutableStateOf(false) }
     var speedMenuOpen by remember { mutableStateOf(false) }
+
+    // Poll position/duration while RESUMED and while something shows them — the controls or the
+    // chapter list; 500 ms is smooth enough for a seek bar and labels. Hidden, nothing reads them,
+    // yet each tick still recomposed this screen, twice a second for the length of every video
+    // (Pixel 5 trace, 2026-10-29). A restart reads before it waits, so controls coming back fade in
+    // over the current position rather than the one they were hidden at.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val positionShown = controlsVisible || chaptersOpen
+    LaunchedEffect(controller, lifecycleOwner, positionShown) {
+        if (!positionShown) return@LaunchedEffect
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                positionMs = controller.currentPosition.coerceAtLeast(0)
+                durationMs = controller.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: 0
+                delay(POSITION_POLL_MS.milliseconds)
+            }
+        }
+    }
     // A PiP window is a thumbnail of the video and nothing else. Anything overlaid on it is
     // unreadable at that size and unusable through the platform's own tap handling, so the panels
     // are closed on the way in rather than merely hidden — reopening the window should not
