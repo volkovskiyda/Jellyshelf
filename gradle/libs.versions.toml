@@ -29,7 +29,7 @@ composeBom = "2026.09.00"
 # Paired with the kotlin ref above, not bumped on its own: KSP embeds a Kotlin compiler, and each
 # release targets one Kotlin version (2.3.11 -> 2.4.10, 2.3.12 -> 2.4.20).
 googleDevtoolsKsp = "2.3.12"
-kotlinxSerializationJson = "1.11.0"
+kotlinxSerializationJson = "1.12.0"
 navigation3 = "1.2.0"
 adaptive = "1.3.0"
 roomRuntime = "2.8.5"
@@ -50,7 +50,7 @@ androidxTestRunner = "1.7.0"
 # android.hardware.input.InputManager.getInstance, which Android 16 no longer has, so every test
 # that touches the screen dies with NoSuchMethodException on an API 36 device.
 androidxTestEspresso = "3.7.0"
-datastorePreferences = "1.2.1"
+datastorePreferences = "1.3.0"
 material = "1.14.0"
 media3 = "1.11.1"
 workRuntimeKtx = "2.12.0"
@@ -86,7 +86,7 @@ composeScreenshot = "0.0.1-alpha16"
 # mapping file, perf-plugin weaves network/@AddTrace instrumentation into release bytecode
 # (2.0.1 is the first release compatible with AGP 9).
 googleServices = "4.5.0"
-firebaseBom = "35.0.2"
+firebaseBom = "35.1.0"
 # App Distribution is the exception to the BoM rule above: firebase-bom 34.17.0 lists 28 artifacts
 # and none of them is an App Distribution one (verified 2026-08-06), so these two pin their own
 # version — and need their own bump, which nothing else here does. Still upstream beta after years.
@@ -110,7 +110,7 @@ uiautomator = "2.4.0"
 # 2.0.0, but its classes.jar holds nothing but a version marker (checked, not assumed), so
 # `trace("label") { }` and `traceAsync` now come from `tracing` itself. Declaring both would add a
 # dependency that contributes no code.
-androidxTracing = "2.0.4"
+androidxTracing = "2.0.5"
 # Frame timings for the per-screen visit trace Firebase Performance carries. Perf's own screen
 # rendering is measured per Activity, and this app has one — so the only way a Compose destination
 # gets a frame count in that console is for the app to count frames itself, which is what JankStats
