@@ -14,8 +14,9 @@ data class UpdateInfo(
     val versionName: String,
     val releaseNotes: String,
     /**
-     * Where "Update" sends the user. Empty for [UpdateSource.APP_DISTRIBUTION], which downloads and
-     * installs in-app through the SDK rather than opening anything.
+     * Where the release's APK lives: what `ApkInstaller` downloads for a GitHub release with a
+     * digest, and what "Update" opens in the browser for one without. Empty for
+     * [UpdateSource.APP_DISTRIBUTION], whose SDK downloads and installs it itself.
      */
     val downloadUrl: String,
     /**

@@ -13,9 +13,10 @@
 # It builds the debug APK and its test APK itself, so one command is the whole step. What it
 # installs is the debug APK, which means R8's output is never instrumented anywhere: a keep-rule
 # regression survives this gate and first shows up in a tester's crash report. run-tests.sh's
-# release layer builds the minified APK and runs lintVital over it, which is as far as any gate goes;
-# closing it for real needs testBuildType = "release" plus keep rules for the test APK — a change of
-# its own. Worth knowing when reading a green run: it says nothing about the minified build.
+# release layer builds the minified APK, runs lintVital over it and cold-launches it on a device,
+# which is as far as any gate goes; closing it for real needs testBuildType = "release" plus keep
+# rules for the test APK — a change of its own. Worth knowing when reading a green run: it says
+# nothing about the minified build.
 #
 # Authentication: in GitHub Actions the FIREBASE_SERVICE_ACCOUNT secret (a JSON key for the
 # firebase-ci service account, see docs/RELEASING.md) is activated for the run. Locally the variable
@@ -34,7 +35,8 @@
 # The live tests skip themselves here on every matrix: their .test.env instrumentation extras are
 # absent from a runner's build, and the server is not reachable from Google's network anyway — a
 # local build with a filled .test.env carries the extras, but the server is still out of reach, so
-# the outcome is the same skip. BrowseCostBenchmark is @Ignore'd and costs no quota.
+# the outcome is the same skip. BrowseCostBenchmark is not @Ignore'd: app/build.gradle.kts filters
+# it with a `notClass` runner argument that only Gradle's connected tasks pass, not this command.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

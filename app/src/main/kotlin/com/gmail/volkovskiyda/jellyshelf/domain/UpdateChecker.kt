@@ -34,7 +34,8 @@ private val SNOOZE_MILLIS = TimeUnit.DAYS.toMillis(7)
  * `0` means "never" for all three stored timestamps, and `now - 0` is enormous, so a fresh install
  * passes every window rather than being muted for its first day.
  *
- * `internal` rather than `private` only so the class below reaches it without a synthetic accessor.
+ * `internal` because the two permission prompts ([NotificationPrompt], [LocalNetworkPrompt]) snooze
+ * by the same rule.
  */
 internal fun elapsed(now: Long, since: Long, window: Long): Boolean = now - since >= window
 
@@ -79,12 +80,12 @@ internal fun elapsed(now: Long, since: Long, window: Long): Boolean = now - sinc
  * *older* than the dismissed one takes the same path as the same one and waits the snooze out.
  */
 // TooManyFunctions: this is one policy object, and its surface is the vocabulary the UI speaks —
-// two ways to start a check, three ways an offer can end (dismiss, take it, be shown), the channel
-// switch, and the install with its own outcome. Splitting it would put rules that read each other's
-// state in two files. Suppressed at the declaration rather than baselined, so the finding stays
-// visible if the class grows for a worse reason.
-// LongParameterList: eight collaborators, every one of them injected and named at the use site.
-// Bundling them into a holder would hide which rules depend on what, for one fewer line here.
+// three ways to start a check (cold start, the background worker, Check now), three ways an offer
+// can end (dismiss, take it, be shown), the channel switch, and the install with its own outcome.
+// Splitting it would put rules that read each other's state in two files. Suppressed at the
+// declaration rather than baselined, so the finding stays visible if the class grows for a worse
+// reason. LongParameterList: nine collaborators, every one of them injected and named at the use
+// site. Bundling them into a holder would hide which rules depend on what, for one fewer line here.
 @Suppress("TooManyFunctions", "LongParameterList")
 class UpdateChecker(
     private val settingsRepository: SettingsRepository,
@@ -138,7 +139,7 @@ class UpdateChecker(
 
     private val _signingIn = MutableStateFlow(false)
 
-    /** A tester sign-in is in flight, from [selectSource]. The Custom Tab is a separate task. */
+    /** A tester sign-in is in flight, from [selectSource]. */
     val signingIn: StateFlow<Boolean> = _signingIn.asStateFlow()
 
     /** Whether the whole feature should be hidden from the UI — see [checkOnStart]'s first gate. */
@@ -406,11 +407,11 @@ class UpdateChecker(
      * Switching *away* deliberately does not sign the tester out. Re-selecting should stay one tap,
      * and the signed-in state is Firebase-global rather than this feature's to clear.
      *
-     * **Runs on the application scope, not the caller's** — this is not a style choice. The Custom
-     * Tab is a separate task, and returning from it through `SignInResultActivity` recreates the
-     * activity, which clears the settings screen's `ViewModelStore`. On `viewModelScope` the
-     * coroutine was therefore cancelled between a *successful* sign-in and the write, so the
-     * channel silently stayed Off: verified on-device 2026-08-06, twice, before this was moved.
+     * **Runs on the application scope, not the caller's** — this is not a style choice. Returning
+     * from the Custom Tab through `SignInResultActivity` can recreate the activity, which clears
+     * the settings screen's `ViewModelStore`. On `viewModelScope` the coroutine was therefore
+     * cancelled between a *successful* sign-in and the write, so the channel silently stayed Off:
+     * verified on-device 2026-08-06, twice, before this was moved.
      */
     fun selectSource(source: UpdateSource) = dispatchers.applicationScope.launch {
         _error.value = null

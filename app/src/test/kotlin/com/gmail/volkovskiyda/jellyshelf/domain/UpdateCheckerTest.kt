@@ -313,8 +313,9 @@ class UpdateCheckerTest {
     }
 
     /**
-     * The default, and the only thing keeping Test Lab, the live journey and the profiling
-     * variants off the network — none of which is a debug build.
+     * The default, and the only thing keeping the profiling variants (`nonMinifiedRelease`,
+     * `benchmarkRelease`) off the network — they report `isDebug = false` and a real version code,
+     * so no earlier gate catches them.
      */
     @Test
     fun noChannelSelected_asksNothing() = runTest {

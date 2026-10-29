@@ -41,7 +41,8 @@ fun deviceDisplayName(userDeviceName: String?, manufacturer: String, model: Stri
 }
 
 /**
- * The `Authorization: MediaBrowser …` header — the *only* way Jellyfin 12 accepts a credential.
+ * The `Authorization: MediaBrowser …` header — the *only* way Jellyfin 12 accepts a credential on
+ * an API call. (A URL handed to an image loader or a player carries the `ApiKey` parameter.)
  *
  * Up to 12.0 a token could also travel as `X-Emby-Token`, `X-MediaBrowser-Token` or an `api_key`
  * query parameter. All three now answer 401 (measured against a 12.0.0 server on 2026-09-16); the

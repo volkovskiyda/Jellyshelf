@@ -9,8 +9,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
 /**
- * A player frozen at a fixed position, for the previews and behaviour tests that render
- * [PlayerControls] without a real one.
+ * A player frozen at a fixed position, for the behaviour tests that render [PlayerControls]
+ * without a real one. The screenshot previews compile their own copy in src/screenshotTest;
+ * keep the two in sync.
  *
  * media3's control layouts take a `Player` rather than plain values, so the position and duration
  * labels, the progress slider and the play/pause and seek button states all read off this instead

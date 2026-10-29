@@ -813,10 +813,10 @@ class PlayerControlsTest {
      * The position label reads `"00:00"` at zero, not `"0:00"`.
      *
      * This is the one assertion standing under the baseline profile's whole playback leg.
-     * `BaselineProfileGenerator.playing()` waits for this label to say anything *other* than
-     * `ZERO_POSITION`, so if that constant and this format ever disagree the wait passes the
-     * instant the label appears — before a byte has streamed — and the profile silently stops
-     * covering playback while still generating cleanly.
+     * `playing()` in the baseline profile's `LibraryJourney.kt` waits for this label to say
+     * anything *other* than `ZERO_POSITION`, so if that constant and this format ever disagree the
+     * wait passes the instant the label appears — before a byte has streamed — and the profile
+     * silently stops covering playback while still generating cleanly.
      *
      * The format is media3's: `PositionText` goes through `Util.getStringForTime`, which pads to
      * `"%02d:%02d"` below an hour, unlike our own `formatPosition`. Checking it here rather than

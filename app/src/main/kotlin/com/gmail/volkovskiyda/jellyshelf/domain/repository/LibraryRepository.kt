@@ -86,8 +86,8 @@ interface LibraryRepository : PlaystateRepository {
     val bulkRemoveMissing: StateFlow<BulkProgress>
 
     /**
-     * The multi-selection run in flight, or null when there is none. One runner for all four
-     * [SelectionAction]s and for both video lists: only one selection run can be going at a time,
+     * The multi-selection run in flight, or null when there is none. One runner for every
+     * [SelectionAction] and for both video lists: only one selection run can be going at a time,
      * so a single header describes it and a single Cancel stops it, wherever the user walks to
      * while it works.
      */
@@ -130,7 +130,7 @@ interface LibraryRepository : PlaystateRepository {
      * the local row once the server has confirmed it — except for a video the server no longer has
      * (never matched to an item, or already dropped from its listings), which has nothing to
      * delete there and is removed locally instead. That is the one destructive action here; the
-     * other three are recoverable by acting again.
+     * others are recoverable by acting again.
      */
     fun startSelectionAction(action: SelectionAction, youtubeIds: List<String>)
     fun cancelSelectionAction()

@@ -16,8 +16,8 @@ data class BuildInfo(
     val sdkInt: Int,
     /**
      * `BuildConfig.VERSION_CODE` — the git commit count CI passes as `-PbuildNumber`
-     * (`app/build.gradle.kts:37-48`), and the same integer space both distribution channels publish
-     * into, so an update check can compare the two directly.
+     * (see `buildNumber` in `app/build.gradle.kts`), and the same integer space both distribution
+     * channels publish into, so an update check can compare the two directly.
      *
      * Defaults to `1` for the same reason a locally assembled build reports `1`: neither workflow
      * ran, so there is no commit count. Tests that don't care about versions inherit it, and since
@@ -28,7 +28,7 @@ data class BuildInfo(
     /**
      * `BuildConfig.VERSION_NAME` — `"<latest tag>.<buildNumber>"` for a CI build (e.g. `"1.3.348"`),
      * the bare fallback base version (`"1.0"`) for a locally assembled one, plus the `-debug` /
-     * `-benchmark` suffix its build type appends (`app/build.gradle.kts:44-49`).
+     * `-benchmark` suffix its build type appends (`versionNameSuffix` in `app/build.gradle.kts`).
      *
      * Display only: it is the string the Settings screen shows so a user can name the build they
      * are running when reporting something. Nothing branches on it — [versionCode] is what the

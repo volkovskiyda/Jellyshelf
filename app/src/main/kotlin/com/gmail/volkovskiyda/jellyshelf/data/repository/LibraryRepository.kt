@@ -117,7 +117,7 @@ internal fun isPermanentFailure(e: Throwable): Boolean {
 
 /**
  * How many consecutive syncs may miss a video before it is deleted locally. At the sync worker's
- * 3h cadence that is roughly 9h of continuous absence — long enough to ride out a Jellyfin library
+ * 2h cadence that is roughly 6h of continuous absence — long enough to ride out a Jellyfin library
  * rescan or a paging hiccup, short enough that genuinely deleted videos don't linger for days.
  */
 private const val MAX_MISSED_SYNCS = 3
@@ -277,7 +277,7 @@ private fun demoWatchState(index: Int, durationSeconds: Long, now: Long): DemoWa
 
 /**
  * Whether a demo entry carries any of the metadata an index match supplies. Entries with none are
- * seeded as Jellyfin-sourced — see [DefaultLibraryRepository.demoVideo].
+ * seeded as Jellyfin-sourced — see [demoVideo].
  */
 internal val IndexEntry.hasIndexMetadata: Boolean
     get() = channel != null || duration != null || uploadDate != null || uploadTimestamp != null ||
@@ -651,9 +651,10 @@ class DefaultLibraryRepository private constructor(
     /**
      * One stored video, whole.
      *
-     * Read by five callers, only one of which is a screen: the detail screen and the player screen
-     * collect it, while the service reads it to restore the last item, to find a resume position on
-     * every queue advance, and to look up an id for the transcode fallback. That is why
+     * Read by six callers, two of them screens: the detail screen and the player screen collect it,
+     * the service reads it to restore the last item, to find a resume position on every queue
+     * advance, and to look up an id for the transcode fallback, and the application watches it to
+     * lower the media-button resume flag once that video leaves the library. That is why
      * [Spans.DETAIL_LOAD] is applied by the detail screen's own ViewModel rather than here — a span
      * on this flow would report a screen opening every time the queue moved on.
      */

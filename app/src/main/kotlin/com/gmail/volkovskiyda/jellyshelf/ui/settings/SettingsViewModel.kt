@@ -101,7 +101,7 @@ data class SettingsUiState(
     val password: String = "",
     /** True once a user token is held: the default, user-scoped auth path. */
     val signedIn: Boolean = false,
-    /** Advanced playback handoff: credential in the URL query rather than an intent header. */
+    /** Playback handoff: credential in the URL query rather than an intent header. */
     val tokenInQuery: Boolean = false,
     val users: List<User> = emptyList(),
     val selectedUserId: String = "",
@@ -128,7 +128,7 @@ data class SettingsUiState(
      * the far end of a scrolling column is an error nobody reads.
      */
     val authStatus: StatusLine? = null,
-    /** The advanced API-key connect's line, under its own button. */
+    /** The API-key connect's line, under its own button. */
     val connectStatus: StatusLine? = null,
     /** The sync-scope section's line: folder-browser failures, and the "check the scope" nudge. */
     val scopeStatus: StatusLine? = null,
@@ -194,8 +194,8 @@ data class SettingsUiState(
     /**
      * Whether the metadata index URL is offered at all: it is a power-user field whose value only
      * means anything once the app can reach the server, so it stays hidden until there are
-     * credentials. Either path counts — a signed-in user token, or an API key from the advanced
-     * section — because both leave the app able to sync.
+     * credentials. Either path counts — a signed-in user token, or an API key from Alternative
+     * sign in — because both leave the app able to sync.
      */
     val canEditIndex: Boolean get() = signedIn || apiKey.isNotBlank()
 
@@ -295,7 +295,7 @@ class SettingsViewModel(
     private val _sync = MutableStateFlow<SyncUi?>(null)
 
     /**
-     * The update half of the screen's state, combined separately so [state] stays a three-way
+     * The update half of the screen's state, combined separately so [state] stays a four-way
      * merge — `combine` runs out of typed overloads at five, which is also why the sixth flow is
      * folded in with a trailing `combine` rather than joining the list.
      */
@@ -678,8 +678,8 @@ class SettingsViewModel(
     }
 
     /**
-     * Advanced: force the credential into the stream URL for players that ignore the headers
-     * extra. Persisted immediately — it isn't part of the connect/sign-in form.
+     * Forces the credential into the stream URL for players that ignore the headers extra.
+     * Persisted immediately — it isn't part of the connect/sign-in form.
      */
     fun onTokenInQueryChange(enabled: Boolean) {
         _state.value = _state.value.copy(tokenInQuery = enabled)
@@ -978,7 +978,7 @@ class SettingsViewModel(
 
     /**
      * The **API-key** connect path: save server + key, load the server-wide user list, auto-select
-     * the saved/first user. Only reachable from the advanced section — a signed-in user has no use
+     * the saved/first user. Only reachable from Alternative sign in — a signed-in user has no use
      * for it, since their token already names them.
      */
     fun connect(silent: Boolean = false) {

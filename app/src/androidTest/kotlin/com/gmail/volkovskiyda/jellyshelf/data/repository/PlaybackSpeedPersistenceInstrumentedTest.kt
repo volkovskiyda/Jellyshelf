@@ -20,9 +20,9 @@ import org.junit.runner.RunWith
  * point of persisting the speed at all is that the next launch starts at it.
  *
  * No `awaitPersisted` poll like [FilterPersistenceInstrumentedTest] has, deliberately: that helper
- * exists because the filter holders write fire-and-forget on `applicationScope`, so a read straight
- * afterwards races the disk. Here the test awaits the suspend `ds.edit` itself, and `first()` on a
- * *fresh* collection always sees the current value.
+ * exists because `CategoriesFilterState` writes fire-and-forget on `applicationScope`, so a read
+ * straight afterwards races the disk. Here the test awaits the suspend `ds.edit` itself, and
+ * `first()` on a *fresh* collection always sees the current value.
  */
 @RunWith(AndroidJUnit4::class)
 class PlaybackSpeedPersistenceInstrumentedTest {

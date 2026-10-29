@@ -180,9 +180,9 @@ class SignOutInstrumentedTest {
     }
 
     /**
-     * Sync is cancelled *before* the wipe, and both workers with it: a manual one running through
-     * the wipe would refill the tables, and the periodic one would go on doing it against
-     * credentials that no longer exist.
+     * Sync is cancelled *before* the wipe, and every sync worker with it: a manual or repair one
+     * running through the wipe would refill the tables, and the periodic one would go on doing it
+     * against credentials that no longer exist.
      */
     @Test
     fun signOut_stopsSyncingFirst() = runTest {

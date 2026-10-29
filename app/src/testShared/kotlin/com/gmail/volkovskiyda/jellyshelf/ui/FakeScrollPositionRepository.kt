@@ -8,8 +8,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.ScrollPositionReposit
  * In-memory [ScrollPositionRepository] for host-side rendering — no DataStore, no disk, and
  * already seeded so nothing suspends waiting for a read that will never happen.
  *
- * Lives in `src/testShared`, which both the `test` and `screenshotTest` source sets compile (see
- * app/build.gradle.kts): behavior tests and screenshot previews need the same stand-in.
+ * Lives in `src/testShared`, which the `test` and `androidTest` source sets compile (see
+ * app/build.gradle.kts). The screenshot previews need the same stand-in but cannot reach this
+ * directory, so src/screenshotTest carries a copy — keep the two in sync.
  */
 class FakeScrollPositionRepository(
     private val positions: MutableMap<String, ScrollPosition> = mutableMapOf(),

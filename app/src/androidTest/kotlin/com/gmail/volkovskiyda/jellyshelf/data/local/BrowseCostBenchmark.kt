@@ -32,8 +32,8 @@ import kotlin.system.measureTimeMillis
  * was priced against before anything was built. Keep it: (3) is the shipped path and (4) is the
  * ceiling on what a *full* projection could still buy, and the verdict is the gap between them.
  * Note they are not the same shape — (4) is a hand-written ten-column cursor read, (3) goes
- * through Room and carries twelve columns (`metadataSource` and `jellyfinItemId`, both `TEXT` with
- * no converter).
+ * through Room and carries thirteen columns (`metadataSource`, `jellyfinItemId` and
+ * `uploadTimestamp`, none with a converter; twelve when the medians below were measured).
  *
  * The numbers are printed rather than asserted — this is a measurement, and a threshold assertion
  * would turn a slow CI machine into a build failure. The assertions that *are* here only confirm
@@ -114,7 +114,7 @@ class BrowseCostBenchmark {
         )
     }
 
-    /** The ten fields `VideoRow` actually renders — what a projection POJO would hold. */
+    /** The ten fields `VideoRow` rendered when this was measured: what a projection POJO holds. */
     private data class BrowseItem(
         val youtubeId: String,
         val fileName: String,
@@ -182,7 +182,7 @@ class BrowseCostBenchmark {
         }
         // What a browse emission costs *after* the projection landed — the number the verdict
         // turns on. The line above is a raw-cursor floor of ten hand-listed columns; this is the
-        // shipped path: Room, twelve columns, and VideoBrowseRow::toDomain on top.
+        // shipped path: Room, thirteen columns, and VideoBrowseRow::toDomain on top.
         val browse = medianMillis("observeAllBrowse + toDomain (what the repository emits now)") {
             runBlocking { dao.observeAllBrowse().first().map(VideoBrowseRow::toDomain).size }
         }

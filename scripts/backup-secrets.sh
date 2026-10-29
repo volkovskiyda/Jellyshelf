@@ -10,8 +10,8 @@
 # encryption — .env is exactly as sensitive as the keystore password and the Jellyfin test-user
 # password that .test.env carries.
 #
-#   ./scripts/backup-secrets.sh backup           # three files -> .env
-#   ./scripts/backup-secrets.sh restore [--force]  # .env -> three files
+#   ./scripts/backup-secrets.sh backup           # four files -> .env
+#   ./scripts/backup-secrets.sh restore [--force]  # .env -> four files
 #   ./scripts/backup-secrets.sh verify           # compare .env against the files on disk
 #
 set -euo pipefail
@@ -21,8 +21,8 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE=.env
 
 # key:file — the keys match the CI secret names (KEYSTORE_* in docs/RELEASING.md)
-# (KEYSTORE_* exist as repo secrets today; TEST_ENV_BASE64 is reserved, no workflow reads it),
-# so .env doubles as the source for `gh secret set`.
+# (KEYSTORE_* and KOTZILLA_JSON_BASE64 exist as repo secrets today; TEST_ENV_BASE64 is reserved,
+# no workflow reads it), so .env doubles as the source for `gh secret set`.
 PAIRS=(
     "TEST_ENV_BASE64:.test.env"
     "KEYSTORE_PROPERTIES_BASE64:keystore.properties"

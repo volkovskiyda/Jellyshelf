@@ -28,7 +28,7 @@ import org.koin.core.context.GlobalContext
 
 private const val TITLE = "Minimized video"
 
-/** The bar is a window, like the update dialog: it lands a frame or two after the composition. */
+/** Waited for, not asserted at once: the bar lands a frame or two after the state that shows it. */
 private const val BAR_TIMEOUT_MS = 5_000L
 
 /**

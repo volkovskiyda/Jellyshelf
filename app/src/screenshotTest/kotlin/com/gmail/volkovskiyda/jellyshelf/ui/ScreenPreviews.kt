@@ -56,8 +56,9 @@ private const val PHONE_HEIGHT = 800
 
 /**
  * The same phone on its side. 800 dp wide is past Material's 600 dp medium breakpoint, so this is
- * the narrowest window that gets the rail and the two-pane detail — and the shortest, which is
- * what makes it the one to watch: whatever does not fit here is below the fold on a real phone.
+ * the narrowest window that gets the rail and the side-by-side detail header — and the shortest,
+ * which is what makes it the one to watch: whatever does not fit here is below the fold on a real
+ * phone.
  */
 private const val LANDSCAPE_WIDTH = PHONE_HEIGHT
 private const val LANDSCAPE_HEIGHT = PHONE_WIDTH
@@ -77,8 +78,8 @@ private const val TABLET_HEIGHT = 800
 private const val SETTINGS_UPDATES_HEIGHT = 1060
 
 /**
- * A pinned build version for the settings footer. Real in shape — `"1.0.<buildNumber>"` is what CI
- * stamps — and fixed, so the goldens don't move every time the commit count does.
+ * A pinned build version for the settings footer. Real in shape — `"<tag>.<buildNumber>"` is what
+ * CI stamps — and fixed, so the goldens don't move with every tag and commit.
  */
 private const val PREVIEW_VERSION_NAME = "1.0.294"
 
@@ -381,9 +382,9 @@ private fun DetailLoadedContent(
 }
 
 /**
- * The two-pane detail on a phone held sideways: the cover and the "Appears in" chips in the start
- * pane, the title, provenance, actions and description beside them. At 400 dp of height this is
- * the layout that used to be a screenful of thumbnail and nothing else.
+ * The wide detail on a phone held sideways: the cover beside the title, provenance and Play, with
+ * the actions, the "Appears in" chips and the description full width under them. At 400 dp of
+ * height this is the layout that used to be a screenful of thumbnail and nothing else.
  */
 @PreviewTest
 @Preview(widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT, showBackground = true)
@@ -406,7 +407,7 @@ private fun DetailLoadedTabletDark() {
     PreviewTheme(darkTheme = true) { DetailLoadedContent() }
 }
 
-/** The two panes on the tablet upright, where the cover pane is 300 dp wide. */
+/** The side-by-side header on the tablet upright, where the cover is about 300 dp wide. */
 @PreviewTest
 @Preview(widthDp = TABLET_HEIGHT, heightDp = TABLET_WIDTH, showBackground = true)
 @Composable
@@ -476,8 +477,8 @@ private fun DetailSkippedTabletPortraitDark() {
 }
 
 /**
- * The wide layout's one extra row: Remove keeps a full-width line of its own under the flowing
- * actions, so the destructive button never lines up beside Play.
+ * The missing-from-server state on the wide layout: Remove joins the flowing actions under the
+ * header, in the error colour, while Play stays up beside the cover.
  */
 @PreviewTest
 @Preview(widthDp = TABLET_WIDTH, heightDp = TABLET_HEIGHT, showBackground = true)
@@ -732,12 +733,11 @@ private fun PlayerControlsPreview(visible: Boolean, buffering: Boolean) {
 
 /**
  * The player's queue panel over a video, mid-queue: the playing row highlighted and scrolled so
- * the row before it stays in view, only the rows still to come ending in a remove button. Artwork is a
- * [previewCover], drawn locally so the golden never depends on the network; one row has no
- * channel, one an overlong title and
- * channel (the duration must survive the ellipsis), one no known duration. The played row carries
- * the watched tick, and the playing and one upcoming row a resume bar; that upcoming row is
- * skipped.
+ * the row before it stays in view, only the rows still to come ending in a skip toggle. Artwork is
+ * a [previewCover], drawn locally so the golden never depends on the network; one row has no
+ * channel, one an overlong title and channel (the duration must survive the ellipsis), one no known
+ * duration. The played row carries the watched tick, and the playing and one upcoming row a resume
+ * bar; that upcoming row is skipped.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true, backgroundColor = 0xFF000000)
@@ -945,10 +945,9 @@ private fun CategoriesEmpty() {
 /**
  * The three videos the sync has stopped seeing on the server, and the one action the filter adds.
  *
- * Three things this state and no other shows, which is what makes it worth a golden: the removal
- * button is red (it is destructive, even though it destroys nothing on the server), every row
- * carries the missing-from-server notice, and the top bar has *no* playlist button — a playlist
- * is built from Jellyfin item ids and these are exactly the ids the server no longer has.
+ * Two things this state and no other shows, which is what makes it worth a golden: the removal
+ * button is red (it is destructive, even though it destroys nothing on the server), and every
+ * row carries the missing-from-server notice.
  */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
@@ -1003,7 +1002,7 @@ private fun CategoryVideosMissingRemoved() {
     }
 }
 
-/** The Others tab with every virtual filter, including Last played in its slot after Continue. */
+/** The Others tab with its library filters, including Last played in its slot after Continue. */
 @PreviewTest
 @Preview(widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT, showBackground = true)
 @Composable
@@ -1025,7 +1024,10 @@ private fun CategoriesOthersWithMissing() {
     }
 }
 
-/** Every virtual filter, in the order `observeOthers` emits them — the tab renders it verbatim. */
+/**
+ * Six of the virtual filters, in the order `observeOthers` emits them — the tab renders it
+ * verbatim. Skipped (last) and Now playing (which the screen puts first) are left out.
+ */
 private val sampleOthers = listOf(
     category("virtual:uncategorized", "Uncategorized", CATEGORY_TYPE_OTHERS, 4),
     category("virtual:continue", "Continue watching", CATEGORY_TYPE_OTHERS, 6),

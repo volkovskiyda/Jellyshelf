@@ -18,10 +18,12 @@ import java.util.regex.Pattern
  * paths a user hits first: connecting to a server, the first sync, the library list and its scroll,
  * a video's detail screen, and playback.
  *
- * Run it by hand with a device attached, awake and unlocked — it is not part of any build:
+ * Run it by hand with a device attached, awake and unlocked — it is not part of any build, and not
+ * the plugin's `:app:generateReleaseBaselineProfile`, which leaves no profile under AGP 9.4.1 (the
+ * script's header says why):
  *
  * ```
- * ./gradlew :app:generateReleaseBaselineProfile
+ * scripts/generate-baseline-profile.sh
  * ```
  *
  * then commit what lands in `app/src/release/generated/baselineProfiles/` — but check it first:
@@ -50,9 +52,9 @@ import java.util.regex.Pattern
  * generating — the runbook says how.
  *
  * The steps that reach a populated library, and the selectors they steer by, live in
- * [LibraryJourney.kt][JourneyConfig] beside this file, because [JourneyBenchmark] needs the same
- * state before it can measure anything and cannot get there any other way. What stays here is what
- * only a profile wants: the browse, the detail screen and playback.
+ * `LibraryJourney.kt` beside this file, because [JourneyBenchmark] needs the same state before it
+ * can measure anything and cannot get there any other way. What stays here is what only a profile
+ * wants: the browse, the detail screen and playback.
  */
 @RunWith(AndroidJUnit4::class)
 // The three tests are one sequence — connect, then use, then measure a launch into what that left

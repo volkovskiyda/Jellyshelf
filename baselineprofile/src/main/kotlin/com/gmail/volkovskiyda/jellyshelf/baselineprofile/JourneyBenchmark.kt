@@ -455,12 +455,12 @@ class JourneyBenchmark {
          * The section names, repeated from `:app`'s `util/Traces.kt`.
          *
          * They have to be repeated: this is a `com.android.test` module targeting `:app`, so it
-         * cannot see a single class of it — the same reason [LibraryJourney.kt][JourneyConfig] holds
-         * its own copies of the resource ids it steers by. That makes these a contract rather than a
+         * cannot see a single class of it — the same reason `LibraryJourney.kt` holds its own
+         * copies of the resource ids it steers by. That makes these a contract rather than a
          * reference, and a one-sided rename does not fail to compile, it silently measures nothing.
          * `Traces` says so on the other side too.
          *
-         * That applies to the three player sections as much as to the launch ones — more so, since
+         * That applies to the four player sections as much as to the launch ones — more so, since
          * [playback] is the only thing that reads them and a zero there is indistinguishable from a
          * fast transition until someone opens the trace.
          */

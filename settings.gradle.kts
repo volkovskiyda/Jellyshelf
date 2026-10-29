@@ -32,6 +32,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "Jellyshelf"
 include(":app")
-// Macrobenchmark module whose only job is generating the committed baseline profile. It builds
-// nothing that ships and CI never invokes it (see app/build.gradle.kts, baselineProfile { }).
+// Macrobenchmark module: generates the committed baseline profile and measures the app against
+// it (JourneyBenchmark). It builds nothing that ships and CI never invokes it (see
+// app/build.gradle.kts, baselineProfile { }).
 include(":baselineprofile")

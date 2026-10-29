@@ -15,8 +15,8 @@ Two files ship, both under `app/src/release/generated/baselineProfiles/` and bot
 | `startup-prof.txt` | cold launch into a populated library, and nothing else | also laid out in the primary dex, read on **every** cold start |
 
 The split matters: the startup profile is read on every launch, so putting the player in it would
-cost startup rather than buy it. Keeping them apart is what the generator's two ordered tests are
-for.
+cost startup rather than buy it. Keeping them apart is what the generator's three ordered tests are
+for: only the last one feeds the startup profile.
 
 **Generation is not part of any build.** It runs a macrobenchmark against the real app on a real
 device, and the APK is arm64-only (`abiFilters += "arm64-v8a"` — youtubedl-android bundles a Python
@@ -285,12 +285,12 @@ before it reaches the network. The live tests check the same credentials in isol
 check them through the same form this run fills in.
 
 If the on-screen status reads `Request timeout has expired [url=…]` and the server is plainly up —
-a browser on the same device loads it — suspect **local network protection**. From Android 16, a
+a browser on the same device loads it — suspect **local network protection**. From Android 17, a
 connection to a private address (`10.*`, `172.16-31.*`, `192.168.*`, link-local, multicast) needs
 `ACCESS_LOCAL_NETWORK` on top of `INTERNET`, and an app without it is not refused, it is *dropped*:
-the request hangs until the client's own timeout fires and reports the server as unreachable. The
-app declares the permission, so the install grant carries it; a device where it was revoked by hand
-will not. Check, and grant:
+the request hangs until the client's own timeout fires and reports the server as unreachable.
+Declaring the permission does not grant it — a clean install sits at granted=false until something
+requests it — so a device the run never granted it on will not have it. Check, and grant:
 
 ```sh
 adb shell dumpsys package com.gmail.volkovskiyda.jellyshelf.benchmark | grep ACCESS_LOCAL_NETWORK
@@ -309,11 +309,11 @@ adb shell appops get com.gmail.volkovskiyda.jellyshelf.benchmark | grep ACCESS_L
 move, not for the player screen or the pause button, so the video really did not roll — or its
 controls were hidden from UiAutomator. In order of likelihood:
 
-1. **A permission dialog over the player.** `PlayerScreen` requests `POST_NOTIFICATIONS` the first
-   time it opens, and on the freshly installed APK a run uses, that dialog covers the controls while
-   playback continues behind it — so logcat shows ExoPlayer and MediaCodec starting normally and the
-   check still times out. The generator grants the permission up front and dismisses the dialog if
-   the grant did not take; if this reappears, check that
+1. **A permission dialog in the way.** The library screen requests `POST_NOTIFICATIONS` the first
+   time it has videos in it, and on the freshly installed APK a run uses, that dialog sits over the
+   list the journey steers through — everything carries on behind it, so nothing fails except the
+   checks, which wait out their timeouts. The generator grants the permission up front and dismisses
+   the dialog if the grant did not take; if this reappears, check that
    `pm grant com.gmail.volkovskiyda.jellyshelf.benchmark android.permission.POST_NOTIFICATIONS`
    succeeds on the device.
 2. **The playback mode is not in-app.** It is persisted, so an earlier session left on **External
@@ -343,10 +343,11 @@ com.gmail.volkovskiyda.jellyshelf.benchmark`, then re-run. Since that package be
 generator alone, uninstalling it costs a sign-in and a sync and nothing else — the release and
 `.debug` builds are separate packages and are never involved.
 
-**The library never fills.** The generator allows two minutes, which covers a real first sync as well
-as a demo seed (~60 videos and their categories into a real database). Against a real server, check
-that the scope in `JELLYFIN_SYNC_FOLDER` actually holds videos — an empty folder syncs successfully
-and leaves the list empty.
+**The library never fills.** The generator allows five minutes, which covers a real first sync —
+even with several devices syncing the same library at once — as well as a demo seed (~60 videos and
+their categories into a real database). Against a real server, check that the scope in
+`JELLYFIN_SYNC_FOLDER` actually holds videos — an empty folder syncs successfully and leaves the
+list empty.
 
 **Firebase errors in logcat during the run.** Only in the no-keystore fallback, and harmless there.
 The variant is not debuggable, so `JellyshelfApplication` switches Crashlytics collection on, and
@@ -362,9 +363,9 @@ network at all.
 
 `JourneyBenchmark`, beside the generator in this module, is where that question is answered. It
 replays a cold launch, a library scroll (bare, and again with a video playing on in the mini-player
-bar), and a playback journey against the same `benchmarkRelease` variant — minified,
-so it stays release-like, and carrying the same `.benchmark` application id for the same reason the
-profiling variant does: a measurement run must not cost you the app you actually use.
+bar), the Categories tab and a playback journey against the same `benchmarkRelease` variant —
+minified, so it stays release-like, and carrying the same `.benchmark` application id for the same
+reason the profiling variant does: a measurement run must not cost you the app you actually use.
 
 ```sh
 ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest
@@ -383,9 +384,10 @@ as the backstop rather than the instruction.
 This file used to say to run `generateReleaseBaselineProfile` first, which could not work — worth
 knowing, because the failure reads as a broken benchmark rather than as a missing prerequisite:
 
-- The generator's three tests are **skipped** outside `nonMinifiedRelease`, since `BaselineProfileRule`
-  only collects there. A `benchmarkRelease` run shows them as `<skipped/>` in the XML and drives
-  nothing.
+- The generator's three tests are **skipped** outside `nonMinifiedRelease`, since
+  `BaselineProfileRule` only collects there. A `benchmarkRelease` run records them as skipped —
+  under AGP 9.4's engine as a `<failure>` naming `AssumptionViolatedException`, not `<skipped/>` —
+  and drives nothing.
 - **AGP's connected-test teardown uninstalls the app under test.** So does the generation run's — the
   signed-in, synced `…jellyshelf.benchmark` install it leaves behind is gone before the benchmark's
   own run installs its variant, along with its credentials and its database. It is the same teardown

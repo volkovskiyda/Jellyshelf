@@ -18,7 +18,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_JELLYFIN
  * The leftmost-prefix rule keeps the list short: `["played", "fileName"]` also serves the bare
  * `WHERE played = …` counts, and `["played", "playbackPositionTicks", "fileName"]` serves
  * continue-watching without a second index. `youtubeId` is the primary key and needs none. The
- * write cost is these four B-trees per upsert, which is a sync-time cost paid once against a read
+ * write cost is these five B-trees per upsert, which is a sync-time cost paid once against a read
  * win paid continuously.
  *
  * Every index here is asserted on in `VideoDaoInstrumentedTest`, by `EXPLAIN QUERY PLAN` rather
@@ -90,8 +90,8 @@ data class VideoEntity(
     /**
      * Why the last in-app yt-dlp fetch for this video failed, or null if the last one succeeded
      * (or none has run). Kept so a video that never gets metadata can say why instead of just
-     * sitting in Uncategorized forever — the sync auto-fill retries it every sync, and without
-     * this the repeated failure is invisible.
+     * sitting in Uncategorized forever — the sync auto-fill retries it once a day (gated on
+     * [lastFetchErrorAt]), and without this the repeated failure is invisible.
      */
     val lastFetchError: String? = null,
     /** When [lastFetchError] was recorded, epoch millis; 0 when there is no error. */

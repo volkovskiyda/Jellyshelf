@@ -46,7 +46,7 @@ object SearchRanking {
     private val WHITESPACE = Regex("\\s+")
 
     /**
-     * The duration-filtered [videos] narrowed to those matching [rawQuery] and sorted most-relevant
+     * The whole library's [videos] narrowed to those matching [rawQuery] and sorted most-relevant
      * first. A blank query is a no-op: the list is returned untouched (already file-name ordered).
      */
     fun rankVideos(rawQuery: String, videos: List<VideoEntity>): List<VideoEntity> {

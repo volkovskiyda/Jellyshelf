@@ -47,7 +47,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * [DefaultLibraryRepository.startSelectionAction] — the four things a multi-selection can do.
+ * [DefaultLibraryRepository.startSelectionAction] — the five things a multi-selection can do.
  *
  * [SelectionAction.REMOVE] is what most of this class is about, because it is the only one whose
  * meaning depends on the video it lands on. A hand-made selection mixes videos the server still

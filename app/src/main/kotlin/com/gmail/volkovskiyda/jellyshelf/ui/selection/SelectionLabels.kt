@@ -13,8 +13,8 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
 
 /**
  * Every string one selection action needs, hung off the action itself the way `RemoveKind`
- * hangs the two category removals' labels off theirs. Five actions × five labels is exactly the kind of table
- * that goes wrong when it is spelled out at each of the three call sites — the menu, the
+ * hangs the two category removals' labels off theirs. Five actions × six labels is exactly the kind
+ * of table that goes wrong when it is spelled out at each of the three call sites — the menu, the
  * confirmation dialog and the progress header — instead of once here.
  */
 internal val SelectionAction.menuLabel: Int

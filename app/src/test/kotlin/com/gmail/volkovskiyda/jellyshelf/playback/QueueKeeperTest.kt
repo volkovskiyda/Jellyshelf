@@ -25,7 +25,7 @@ class QueueKeeperTest {
         assertEquals(listOf("a", "b", "e"), playableIds(queue, skipped = setOf("b", "c", "d"), playing = "b"))
     }
 
-    /** The edge the plan calls out: every video after the playing one skipped leaves it alone. */
+    /** The edge case: every video after the playing one skipped leaves it alone. */
     @Test
     fun `a queue whose every later video is skipped plays only the one`() {
         assertEquals(listOf("c"), playableIds(queue, skipped = setOf("a", "b", "d", "e"), playing = "c"))

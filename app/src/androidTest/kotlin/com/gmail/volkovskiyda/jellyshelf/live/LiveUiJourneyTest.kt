@@ -107,7 +107,7 @@ import java.util.UUID
  */
 @RunWith(AndroidJUnit4::class)
 // A journey is a sequence of named steps; inlining them into the test would bury the click path
-// this class exists to document — the same trade BaselineProfileGenerator makes.
+// this class exists to document — the same trade the baseline profile's LibraryJourney.kt makes.
 @Suppress("TooManyFunctions")
 class LiveUiJourneyTest : KoinTest {
 
@@ -129,9 +129,9 @@ class LiveUiJourneyTest : KoinTest {
      * queues composition coroutines on the test scheduler, which drains them on the thread running
      * `runTest` — the instrumentation thread, not the main one. This journey opens the player, and
      * media3's `MediaController` rejects every call made off the application thread, so the
-     * `listen` helper behind `rememberPlayerState` dies with "called from a wrong thread" the moment
-     * its effect is resumed. Unconfined resumes inline on the thread that composed, which is the
-     * main thread — the behaviour the deprecated v1 factories had.
+     * `listen` loop behind media3's `rememberPresentationState` dies with "called from a wrong
+     * thread" the moment its effect is resumed. Unconfined resumes inline on the thread that
+     * composed, which is the main thread — the behaviour the deprecated v1 factories had.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     @get:Rule(order = 1)

@@ -87,7 +87,8 @@ import kotlin.math.roundToInt
  * through UiAutomator and so cannot match on Compose semantics the way the instrumented tests do.
  * Named in resource-id style because that is what they become: MainActivity's root Scaffold sets
  * `testTagsAsResourceId`, which republishes every tag below it as an Android resource id. They have
- * no other meaning — nothing in the app or the test suite reads them.
+ * no other meaning in the app; `LiveUiJourneyTest` and `AuthAutofillTest` also find the fields by
+ * them.
  */
 internal const val SERVER_URL_FIELD_TAG = "server_url_field"
 internal const val USERNAME_FIELD_TAG = "username_field"
@@ -538,7 +539,7 @@ private fun UpdatesSection(
         )
     }
 
-    // Reuses formatSyncTime so this reads like the "synced …" line below rather than inventing a
+    // Reuses formatSyncTime so this reads like the "synced …" line above rather than inventing a
     // second time format on the same screen.
     Text(
         formatSyncTime(state.lastUpdateCheckAt, now)

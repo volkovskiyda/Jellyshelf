@@ -19,9 +19,9 @@ set -uo pipefail
 # worktree has none of them:
 #
 #   local.properties        the SDK location — without it the build fails outright
-#   keystore.properties     release signing config  ) both needed by scripts/release.sh, and both
-#   jellyshelf-release.jks  the release keystore    ) fail loudly when absent
-#   .env                    base64 backup of the three above (scripts/backup-secrets.sh)
+#   keystore.properties     release signing config  ) needed to sign a local assembleRelease;
+#   jellyshelf-release.jks  the release keystore    ) without them the APK comes out unsigned
+#   .env                    base64 backup of the secrets (scripts/backup-secrets.sh)
 #   .test.env              *fails silently* — see below
 #   internal/               plan folders, notes, screenshots
 #

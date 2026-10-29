@@ -107,7 +107,7 @@ Jellyfin  ──REST (MediaBrowser auth)──►  items + watch state  ──jo
 5. **The app can also skip the scripts entirely.** It bundles yt-dlp
    (youtubedl-android), so any video Jellyfin has but the feeds don't can be filled in
    from the device: per video from its detail screen, in bulk from the **Others →
-   Uncategorized** filter, and automatically during a sync while fewer than ten videos are
+   Uncategorized** filter, and automatically during a sync while fewer than 25 videos are
    missing metadata. Newest extraction wins, so an in-app fetch is not overwritten by a
    staler index entry on the next sync.
 
@@ -406,8 +406,8 @@ the External player mode.
   video is genuinely under way (a tenth of it, or one minute, whichever is smaller), so stepping
   through a queue can't overwrite a resume point you earned with one you didn't.
 
-The media notification needs `POST_NOTIFICATIONS` on API 33+, requested from the player screen.
-Denied, playback still works — the notification just stays hidden.
+The media notification needs `POST_NOTIFICATIONS` on API 33+, requested from the Library tab the
+first time it has videos in it. Denied, playback still works — the notification just stays hidden.
 
 ### Where the credential goes
 
@@ -543,11 +543,11 @@ The three readers want different things, which is why all three are worth writin
   real installs.
 
 **The benchmark** is what makes a regression measurable rather than anecdotal. `JourneyBenchmark`,
-beside the profile generator, replays a cold launch and a library scroll against the
-`benchmarkRelease` build — R8-minified, baseline profile required — and reports each section as a
-metric alongside the framework's startup and frame timings. It repeats the section names as
-constants of its own, because a `com.android.test` module cannot see app classes; renaming one side
-alone does not fail to compile, it silently measures nothing.
+beside the profile generator, replays a cold launch, a library scroll, the Categories tab and a
+playback journey against the `benchmarkRelease` build — R8-minified, baseline profile required — and
+reports each section as a metric alongside the framework's startup and frame timings. It repeats the
+section names as constants of its own, because a `com.android.test` module cannot see app classes;
+renaming one side alone does not fail to compile, it silently measures nothing.
 
 ```bash
 ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest   # same device rules as above

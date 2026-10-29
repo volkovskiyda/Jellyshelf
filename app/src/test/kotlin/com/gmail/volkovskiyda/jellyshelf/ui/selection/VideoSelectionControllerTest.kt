@@ -18,10 +18,10 @@ import org.junit.Test
  * The one rule [VideoSelectionController] adds on top of [VideoSelection]: what a finished run
  * does to the selection that started it.
  *
- * A removal's targets are gone from the list, so the mode goes with them; the other three leave
- * every selected video exactly where it was, and the user is often about to run a second action
- * over the same set. Getting that backwards is invisible in a screenshot and obvious in use, which
- * is precisely the kind of thing worth pinning down here.
+ * A removal's targets are gone from the list, and so are an unskip's on the Skipped filter, so the
+ * mode goes with them; the other three leave every selected video exactly where it was, and the
+ * user is often about to run a second action over the same set. Getting that backwards is invisible
+ * in a screenshot and obvious in use, which is precisely the kind of thing worth pinning down here.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class VideoSelectionControllerTest {

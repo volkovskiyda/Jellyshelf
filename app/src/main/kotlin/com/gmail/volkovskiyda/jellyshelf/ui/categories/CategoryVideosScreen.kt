@@ -119,8 +119,8 @@ fun CategoryVideosScreen(
             onShowRemoveDialog = { showRemoveDialog = true },
             onDismissRemoveDialog = { showRemoveDialog = false },
             // Either tap on a Now playing row plays it where it stands in the queue: replacing the
-            // queue with this list would be pointless at best, and the details are a long-press away
-            // anywhere.
+            // queue with this list would be pointless at best, and the video's details are a tap
+            // away on any other list.
             onPlayVideo = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onPlayVideo,
             onOpenDetails = if (viewModel.isNowPlayingFilter) onPlayFromQueue else onOpenDetails,
             onBack = onBack,

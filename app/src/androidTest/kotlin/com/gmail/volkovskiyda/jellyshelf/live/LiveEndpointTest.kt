@@ -28,8 +28,9 @@ import org.koin.test.inject
  * admin-only endpoint is touched (`GET /Users` needs admin), so the credentials can and should be
  * a dedicated non-admin test user.
  *
- * Uses the real [JellyfinClient]/[JellyfinDataSource] from `appModule` (tuned base Ktor client +
- * ContentNegotiation + kotlinx `Json` + timeouts), so it exercises the actual migrated stack.
+ * Uses a real [JellyfinClient]/[JellyfinDataSource], built by [liveJellyfinClient] over
+ * `appModule`'s tuned base Ktor client (ContentNegotiation + kotlinx `Json` + timeouts), so it
+ * exercises the actual migrated stack.
  *
  * Read-only by design: every call here leaves the server exactly as it found it, so this class can
  * run against any configured server without a thought. The write endpoints (setPlayed, the session
@@ -65,9 +66,9 @@ class LiveEndpointTest : KoinTest {
 
     /**
      * The app's sign-in exchange, verbatim — the `MediaBrowser` header included, which the data
-     * source now builds itself off the install's persisted DeviceId. That id is stable for the
-     * life of the install, so Jellyfin's dashboard still shows one "device" across live runs, and
-     * it is the same one the app itself signs in with.
+     * source builds itself. It signs in as this suite's own fixed [DEVICE_ID] rather than the
+     * install's (see [liveJellyfinClient]), so the dashboard shows one stable device across live
+     * runs and the app's own session is never touched.
      */
     private suspend fun signIn(): AuthenticationResult = dataSource.authenticate(
         serverUrl = config.serverUrl,

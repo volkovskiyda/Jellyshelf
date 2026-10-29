@@ -50,10 +50,10 @@ internal fun NotificationPermissionPrompt(
     // The permission asked for, at every step that names one — the readout and the system request
     // "Allow" fires. One value threaded through rather than three spellings of the same constant,
     // so pointing this prompt at another permission is a parameter, not an edit. The dialog copy
-    // and [NotificationPrompt]'s policy are notification-specific today; they are the seams to
-    // generalize next if a second permission ever needs this flow.
+    // and [NotificationPrompt]'s policy are notification-specific; local network access, the
+    // second permission to need this flow, got its own prompt and policy instead.
     permission: String = Manifest.permission.POST_NOTIFICATIONS,
-    // Below API 33 (minSdk is 30) notifications need no permission at all: nothing is shown and
+    // Below API 33 (minSdk is 31) notifications need no permission at all: nothing is shown and
     // nothing is requested. A parameter rather than a check made in here, so the composable itself
     // is not welded to one API level — the host (or a test) states whether the permission exists,
     // and the default states it the one true way. [NotificationPrompt.due] carries the same rule

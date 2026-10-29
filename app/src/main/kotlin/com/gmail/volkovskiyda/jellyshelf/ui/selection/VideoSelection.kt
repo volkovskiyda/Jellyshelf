@@ -81,8 +81,8 @@ class VideoSelection {
     }
 
     /**
-     * Selects every video in [youtubeIds] — the ones on screen, which under a search or a duration
-     * filter is not the whole library. The user can only judge what they are about to act on by
+     * Selects every video in [youtubeIds] — the ones on screen, which under a search or inside a
+     * category is not the whole library. The user can only judge what they are about to act on by
      * what is in front of them, and one of these actions deletes media on the server.
      *
      * Videos picked before a filter narrowed the list stay picked: this adds, it does not replace.

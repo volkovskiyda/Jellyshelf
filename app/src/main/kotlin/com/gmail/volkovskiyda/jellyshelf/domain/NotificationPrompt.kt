@@ -18,9 +18,10 @@ data class NotificationPromptState(val answeredAt: Long, val systemAsked: Boolea
  *
  * ## Why the app asks at all
  *
- * One consumer: the media notification `PlaybackService` posts while a video plays. Denied,
- * playback still works — there is just no way to control it, and no way back into it, once the
- * app is in the background.
+ * Two consumers: the media notification `PlaybackService` posts while a video plays, and the
+ * update notification the daily background check posts (`UpdateNotification`). Denied, playback
+ * still works — there is just no way to control it, and no way back into it, once the app is in
+ * the background — and an update waits for the next time the app is opened.
  *
  * ## Why it asks on the library screen
  *

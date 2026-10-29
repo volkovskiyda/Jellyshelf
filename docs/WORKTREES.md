@@ -37,9 +37,9 @@ scripts/worktree.sh add player-fixes --device 192.168.100.20:5555
 | Path | Absent means |
 |---|---|
 | `local.properties` | the build fails outright — no SDK location |
-| `keystore.properties` | `scripts/release.sh` fails loudly |
+| `keystore.properties` | a local `assembleRelease` comes out unsigned |
 | `jellyshelf-release.jks` | as above; the keystore exists on disk once, not once per worktree |
-| `.env` | base64 backup of the three above (`scripts/backup-secrets.sh`) |
+| `.env` | base64 backup of the secrets (`scripts/backup-secrets.sh`) |
 | `.test.env` | **nothing fails** — see below |
 | `internal/` | plan folders, notes, screenshots |
 

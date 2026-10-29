@@ -7,8 +7,10 @@ package com.gmail.volkovskiyda.jellyshelf.domain.model
  * a user who has switched the check on and sees nothing must be able to tell "you are current"
  * apart from "the API key forbids this call". Each case is a distinct reason with a distinct fix.
  *
- * Only the App Distribution channel produces most of these — GitHub is a plain HTTP GET, so it
- * fails as [Network] or [Unknown] and nothing else.
+ * A GitHub *check* is a plain HTTP GET, so it fails as [Network] or [Unknown] and nothing else;
+ * the sign-in and tester cases are App Distribution's alone. The install reasons come mostly from
+ * GitHub's in-app install (`ApkInstaller`, `InstallResultReceiver`), and [VerificationFailed]
+ * only from it.
  */
 sealed interface UpdateCheckError {
 
@@ -63,9 +65,10 @@ sealed interface UpdateCheckError {
     data object Interrupted : UpdateCheckError
 
     /**
-     * Only the API-only stub is linked, so nothing can be detected. Reachable in debug and in the
-     * profiling variants, where the Settings section that would show this does not exist — the case
-     * is kept anyway because it is what makes the mapping's exhaustive `when` honest.
+     * Only the API-only stub is linked, so nothing can be detected. Reachable only in debug, where
+     * the Settings section that would show this does not exist — the profiling variants link the
+     * full SDK like release. The case is kept anyway because it is what makes the mapping's
+     * exhaustive `when` honest.
      */
     data object NotSupported : UpdateCheckError
 

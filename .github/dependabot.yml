@@ -9,9 +9,9 @@
 # Majors are deliberately left ungrouped: they arrive one per PR, because a major is the kind of
 # bump that wants its own build, its own test run and its own place in the history.
 #
-# What this does NOT cover: the Gradle wrapper (gradle/wrapper/gradle-wrapper.properties, 9.7.0
-# today). Dependabot's gradle ecosystem reads the version catalogue and the build files, not the
-# wrapper, so the wrapper — and anything else Dependabot cannot see — stays on the manual
+# What this does NOT cover: the Gradle wrapper (gradle/wrapper/gradle-wrapper.properties).
+# Dependabot's gradle ecosystem reads the version catalogue and the build files, not the wrapper, so
+# the wrapper — and anything else Dependabot cannot see — stays on the manual
 # `./gradlew dependencyUpdates` channel.
 version: 2
 updates:

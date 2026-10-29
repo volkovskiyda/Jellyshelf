@@ -104,7 +104,7 @@ class BrowseProjectionTest {
         assertEquals(seeded.played, video.played)
         assertEquals(seeded.playbackPositionTicks, video.playbackPositionTicks)
         assertEquals(seeded.metadataSource, video.metadataSource)
-        // The two least obvious of the twelve, and the two that broke when they were missing.
+        // The two least obvious of the thirteen, and the two that broke when they were missing.
         // missedSyncs is the only input to missingFromServer, which the row renders as a notice…
         assertEquals(seeded.missedSyncs, video.missedSyncs)
         assertTrue(video.missingFromServer)

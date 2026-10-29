@@ -230,10 +230,10 @@ class PlayerViewModel(
      * because a sync landed mid-video is worse than a slightly stale one.
      *
      * The library case reads the list the screen last rendered rather than re-querying, because
-     * that emission carries the search query and duration filter the user had applied — going
-     * back to the repository would queue videos they had filtered away. It falls back to the
-     * unnarrowed library only when there is no such emission, which today means a player restored
-     * into a process that never rendered the library tab.
+     * that emission carries the search query the user had applied — going back to the repository
+     * would queue videos they had searched away. It falls back to the unnarrowed library only when
+     * there is no such emission, which today means a player restored into a process that never
+     * rendered the library tab.
      */
     private suspend fun originIds(): List<String> = when (origin) {
         PlayerOrigin.None -> emptyList()

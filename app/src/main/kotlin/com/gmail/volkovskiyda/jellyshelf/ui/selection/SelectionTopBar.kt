@@ -41,9 +41,9 @@ import com.gmail.volkovskiyda.jellyshelf.domain.model.SelectionAction
  * tick and its struck-through twin: a pair that differs in shape rather than only in fill, which
  * is what keeps two adjacent buttons meaning opposite things from looking alike.
  *
- * The four actions sit behind the overflow rather than on the bar. Three of them are recoverable
- * by acting again; the fourth deletes media on the Jellyfin server, and a one-tap target for that
- * next to the "select everything" button is a mistake waiting to be made.
+ * The actions sit behind the overflow rather than on the bar. All but one are recoverable by
+ * acting again; Delete from server deletes media on the Jellyfin server, and a one-tap target for
+ * that next to the "select everything" button is a mistake waiting to be made.
  *
  * [canAct] closes that menu when there is nothing to act on *or* a run is already in flight — the
  * repository takes one selection run at a time, so a second confirmation would otherwise be
@@ -178,7 +178,7 @@ private fun SelectionMenuItem(action: SelectionAction, onClick: () -> Unit) {
 }
 
 /**
- * Confirms one selection action before it runs. Every action gets one — including the three that
+ * Confirms one selection action before it runs. Every action gets one — including the ones that
  * are recoverable — because a selection is easy to get wrong in a way a single video is not: the
  * count is the only evidence of what is about to happen, and this dialog is where the user reads
  * it back before committing.

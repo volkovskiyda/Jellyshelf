@@ -33,12 +33,12 @@ internal const val ID_CHUNK = 900
  * as [applyTo] — so nothing about *how* a video is marked, fetched or deleted moves out of the one
  * place that knows how to talk to Room, Jellyfin and yt-dlp.
  *
- * One runner, not four: only one selection run can be in flight, which is what lets a single
- * progress header describe it and a single Cancel stop it. A video that fails is counted and the
- * run moves on, exactly as the library-wide runs do — one unreachable video must never strand the
- * rest of a fifty-video selection.
+ * One runner, not one per action: only one selection run can be in flight, which is what lets a
+ * single progress header describe it and a single Cancel stop it. A video that fails is counted and
+ * the run moves on, exactly as the library-wide runs do — one unreachable video must never strand
+ * the rest of a fifty-video selection.
  *
- * @param loadTargets resolves the selected ids to rows, chunked by [runIn]; ids whose row has
+ * @param loadTargets resolves the selected ids to rows, [ID_CHUNK] at a time; ids whose row has
  *   since gone (a sync deleted it, an earlier run removed it) simply do not come back, and the
  *   run's total is what was actually found.
  * @param applyTo performs one video's share of [SelectionAction], returning whether it succeeded.

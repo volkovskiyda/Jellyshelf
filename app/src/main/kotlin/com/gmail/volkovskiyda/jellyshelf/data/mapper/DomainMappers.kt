@@ -16,7 +16,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.uploadInstantFromFileName
 import com.gmail.volkovskiyda.jellyshelf.data.local.CategoryWithCount as RoomCategoryWithCount
 
 // Boundary mappers: the data layer maps its Room rows and network DTOs to domain models so nothing
-// above it depends on Room or Moshi. Applied at each repository's public Flow boundary.
+// above it depends on Room or the wire types. Applied at each repository's public Flow boundary.
 
 // The upload instant the UI shows: the feed's `uploadTimestamp` when one reached the row, else the
 // one the file name carries (see [uploadInstantFromFileName]) — the index and the metadata API

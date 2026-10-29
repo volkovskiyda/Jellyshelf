@@ -244,8 +244,9 @@ object Playback {
     }
 
     /**
-     * Opens an arbitrary URL in whatever handles it — the update dialog's "Update" for the GitHub
-     * channel, which links out to the release asset rather than installing in-app.
+     * Opens an arbitrary URL in whatever handles it — the update dialog's "Update" for a GitHub
+     * release with no published digest, which links out to the release asset rather than
+     * installing in-app.
      *
      * Routed through [launch] so the "no app found" toast is the same one every other handoff on
      * this screen shows, rather than a second copy of the same `runCatching`.

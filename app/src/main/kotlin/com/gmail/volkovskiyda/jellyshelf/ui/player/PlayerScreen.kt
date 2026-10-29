@@ -546,8 +546,8 @@ private fun PlayerWithControls(
     // whatever the swipe walks it to after that (see HoldSpeedTracker). PlaybackSpeedState
     // remembers the speed to go back to, so a hold started at 1.5× returns to 1.5× however far the
     // swipe wandered. Its release half runs in the pointer handler below, which only exists while
-    // this composition does — so a hold interrupted by the composable going away (rotating with
-    // the finger still down recreates the activity) would leave the *session* sped up with nothing
+    // this composition does — so a hold interrupted by the composable going away (the screen
+    // leaving with the finger still down) would leave the *session* sped up with nothing
     // holding it there. The player outlives this screen, so undoing the hold has to be tied to the
     // screen's lifetime as well as to the finger's.
     DisposableEffect(playbackSpeed) {
@@ -1072,7 +1072,7 @@ internal fun PlayerControls(
                     // The tag the baseline profile's playback leg waits on. PositionText formats
                     // through Util.getStringForTime — "%02d:%02d" below an hour, so zero reads
                     // "00:00", not the "0:00" our own formatPosition produces. That is what
-                    // BaselineProfileGenerator.ZERO_POSITION has to match.
+                    // LibraryJourney's ZERO_POSITION (in :baselineprofile) has to match.
                     //
                     // While the thumb is down the label previews where it will land instead:
                     // PositionText reads only the player's live position and ProgressSlider seeks
@@ -1819,8 +1819,8 @@ internal fun formatPosition(ms: Long): String =
 /**
  * [ms] in the "%02d:%02d" shape media3's [PositionText] shows, through the same
  * [Util.getStringForTime], so the scrub preview neither changes width nor style against the label
- * it temporarily replaces. [formatPosition]'s single-digit minutes belong to the gesture overlay's
- * large indicator, which never sits beside a media3-formatted duration.
+ * it temporarily replaces. [formatPosition]'s single-digit minutes belong to the chapter list and
+ * the queue rows, which never sit beside a media3-formatted duration.
  */
 private fun formatPlayerTime(ms: Long): String {
     val builder = StringBuilder()

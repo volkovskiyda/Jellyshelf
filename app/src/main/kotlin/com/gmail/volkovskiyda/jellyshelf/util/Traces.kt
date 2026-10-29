@@ -63,8 +63,8 @@ object Traces {
      *
      * Its own name because it was not distinguishable before. Both lists end in the same helper, so
      * a recording — and `JourneyBenchmark`'s `Mode.Sum` over [LIBRARY_BROWSE] — counted a category's
-     * emissions as the library's. The benchmark's journey never opens a category, which is the only
-     * reason that number was ever right.
+     * emissions as the library's. That number was only right while the journey never opened a
+     * category, which `JourneyBenchmark.categories` now does.
      */
     const val CATEGORY_VIDEOS = "Jellyshelf.category.videos"
 
@@ -95,8 +95,9 @@ object Traces {
     const val CATEGORIES_SEARCH = "Jellyshelf.categories.search"
 
     /**
-     * One emission of the "Others" tab: six count queries combined into virtual categories. Cheap
-     * per row and six flows wide, so what this measures is the fan-in, not the mapping.
+     * One emission of the "Others" tab: one count query per virtual filter, combined into virtual
+     * categories. Cheap per row and as many flows wide as there are filters, so what this measures
+     * is the fan-in, not the mapping.
      */
     const val CATEGORIES_OTHERS = "Jellyshelf.categories.others"
 
@@ -134,7 +135,7 @@ object Traces {
      * discontinuity is the only place every seek shows up. The resume-seeding seek the service
      * performs itself is excluded: nobody waited for it.
      *
-     * Async, like the two below, and closed by the same rendered frame.
+     * Async, like [PLAYER_RESOLVE] and [PLAYER_STARTUP], and closed by the same rendered frame.
      */
     const val PLAYER_SEEK = "Jellyshelf.player.seek"
 
@@ -148,7 +149,7 @@ object Traces {
      * measured here: counting it would make every startup also report a transition, and the two
      * metrics would stop being independent.
      *
-     * Async, like the two above, and for the same reason.
+     * Async, like the three above, and for the same reason.
      */
     const val PLAYER_TRANSITION = "Jellyshelf.player.transition"
 }

@@ -27,8 +27,8 @@ class SyncWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        // No credentials yet is a configuration state, not a transient failure — retrying with
-        // backoff would spin forever, since the worker is scheduled before setup completes.
+        // No credentials is a configuration state, not a transient failure — retrying with
+        // backoff would spin forever. An expired token clears the session, not the schedule.
         if (!settingsRepository.snapshot().isConnected) return Result.success()
         return when (val result = libraryRepository.sync()) {
             is SyncResult.Success -> Result.success(

@@ -316,7 +316,7 @@ class MainActivity : ComponentActivity() {
      *
      * Only promotes an offer that is already in hand. A tap can easily outlive the process that
      * found the update — the notification is the surface for exactly that user — and in that case
-     * the cold-start check running a few lines above finds it again, which is why this needs no
+     * the cold-start check JellyshelfApplication runs finds it again, which is why this needs no
      * fallback of its own.
      */
     private fun forwardShowUpdate(intent: Intent?) {

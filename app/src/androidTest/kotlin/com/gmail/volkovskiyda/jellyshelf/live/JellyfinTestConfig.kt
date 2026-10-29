@@ -15,9 +15,10 @@ import kotlinx.coroutines.runBlocking
 import org.koin.dsl.module
 
 /**
- * Live-endpoint test config, read once from the instrumentation runner arguments that Gradle's
- * `loadEnv(".test.env")` feeds into `testInstrumentationRunnerArguments`. The values are never
- * compiled into any BuildConfig — they arrive as runtime `am instrument -e` extras.
+ * Live-endpoint test config, read once from the instrumentation runner arguments that the
+ * `jellyshelf.android` build-logic plugin reads from `.test.env` (`envFile`) and adds to each
+ * test APK's `instrumentationRunnerArguments`. The values are never compiled into any BuildConfig —
+ * they arrive as runtime `am instrument -e` extras.
  *
  * Credentials are a real username + password — the app's primary sign-in path — not a Jellyfin
  * API key: a key is server-wide and admin-scoped, which is both a needless credential to keep on
@@ -89,8 +90,9 @@ data class JellyfinTestConfig(
 /**
  * Koin module that provides [JellyfinTestConfig] to the live tests. Reading the runner arguments
  * here — once, in the module — keeps one source of truth and keeps `InstrumentationRegistry` out of
- * every test. Live tests `loadKoinModules(liveTestModule)` and `by inject` this alongside the real
- * `JellyfinClient` from `appModule`, so they exercise the migrated Ktor stack end-to-end.
+ * every test. Live tests `loadKoinModules(liveTestModule)` and `by inject` this alongside
+ * `appModule`'s base Ktor client and DeviceInfo, which [liveJellyfinClient] turns into a real
+ * `JellyfinClient`, so they exercise the shipped Ktor stack end-to-end.
  */
 val liveTestModule = module {
     single {

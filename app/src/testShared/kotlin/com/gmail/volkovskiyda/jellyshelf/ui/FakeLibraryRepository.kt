@@ -168,7 +168,7 @@ class FakeLibraryRepository(
     var clears = 0
         private set
 
-    /** Calls to [seedDemoLibrary] and [clearLocalData] in order, for asserting which came first. */
+    /** Calls to [seedDemoLibrary], [clearLocalData] and [sync], in the order they came. */
     val writeOrder = mutableListOf<String>()
 
     override suspend fun seedDemoLibrary() {

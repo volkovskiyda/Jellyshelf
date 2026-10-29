@@ -21,10 +21,9 @@ class MainViewModel(
 
     // Tolerate stacks written by an older schema (e.g. a renamed key field) by dropping them
     // rather than crashing the launch; decode failures fall back to a plain Library start.
-    // coerceInputValues keeps that fallback from being needed for the one schema change that has
-    // already happened: stacks written while AppNavKey.origin was nullable hold an explicit
-    // `"origin": null`, which now reads back as PlayerOrigin.None instead of failing the decode
-    // and losing the screen the user left on.
+    // coerceInputValues is a cheap guard for the next nullable-to-default field; the one such
+    // change so far, AppNavKey.Player.origin, never reached disk, since the player is not
+    // persisted (see saveBackStack).
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true

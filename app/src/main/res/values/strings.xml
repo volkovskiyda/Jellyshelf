@@ -233,9 +233,9 @@
     <string name="scale_mode_zoom">Zoom</string>
     <string name="scale_mode_stretch">Stretch</string>
     <!--
-      The mini-player bar. None of its three targets carries a visible label, so each needs its
+      The mini-player bar. None of its four targets carries a visible label, so each needs its
       own description: the row's is a click label (it says what the tap does, not what the row
-      is), the two buttons' are ordinary content descriptions.
+      is), the three buttons' are ordinary content descriptions.
     -->
     <string name="mini_player_open">Open the player</string>
     <string name="mini_player_play" tools:ignore="DuplicateStrings">Play</string>
@@ -343,8 +343,8 @@
     <!--
       The in-app update check. Nothing here is reachable in a debug build: the whole section is
       hidden, because a debug install is a different package at versionCode 1 and every published
-      release would read as newer. Note that update_metadata (line 99) is an unrelated sync action
-      — do not reuse or shadow it.
+      release would read as newer. Note that update_metadata (under Detail) is an unrelated sync
+      action — do not reuse or shadow it.
     -->
     <string name="updates">Updates</string>
     <string name="update_source_off">Off</string>
@@ -420,7 +420,8 @@
     <string name="notification_permission_dismiss" tools:ignore="DuplicateStrings">Not now</string>
 
     <!--
-      The rationale shown before Android's own ACCESS_LOCAL_NETWORK dialog, on API 36+ only.
+      The rationale shown before Android's own ACCESS_LOCAL_NETWORK dialog, on API 37+ only, where
+      the permission is enforced (see LocalNetworkPrompt).
 
       This permission is unusual in that its absence produces no error: Android drops the
       connection rather than refusing it, so the app waits out its own request timeout and reports

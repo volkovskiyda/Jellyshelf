@@ -569,7 +569,7 @@ restore_instrumented_results() {
 
 # True when the live tests whose XML is on disk actually ran. Every live test guards itself with
 # assumeTrue — no .test.env, no sync scope, server unreachable — and a skip is not a failure, so a
-# run where all of them skip is a *green* invocation that touched nothing. On API 36+ that is the
+# run where all of them skip is a *green* invocation that touched nothing. On API 37+ that is the
 # ordinary outcome for a device whose app has not been granted ACCESS_LOCAL_NETWORK: the
 # reachability probe is dropped rather than refused, times out, and the whole package assumes itself
 # away. Counting testcases in the live package rather than whole files keeps this usable from the

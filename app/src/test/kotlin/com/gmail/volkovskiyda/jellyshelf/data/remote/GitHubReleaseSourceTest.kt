@@ -115,8 +115,8 @@ class GitHubReleaseSourceTest {
 
     /**
      * The real payload carries dozens of fields (author, reactions, per-asset uploader…) that the
-     * four-field DTO does not model. `ignoreUnknownKeys` is what makes that safe, so a change to
-     * the shared Json config that dropped it would fail here rather than in the field.
+     * DTO does not model. `ignoreUnknownKeys` is what makes that safe, so a change to the shared
+     * Json config that dropped it would fail here rather than in the field.
      */
     @Test
     fun fieldsTheDtoDoesNotModel_doNotBreakTheDecode() = runTest {

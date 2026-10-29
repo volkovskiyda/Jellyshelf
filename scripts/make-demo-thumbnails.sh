@@ -13,8 +13,8 @@
 # Rendered as PNG and encoded by cwebp rather than ffmpeg: Homebrew's ffmpeg ships without
 # libwebp. Requires ffmpeg and cwebp (`brew install ffmpeg webp`).
 #
-# The output belongs in plain git, not LFS: the release workflows check out without LFS, and
-# pointer files would ship in place of the images.
+# The output belongs in plain git, not LFS: the Test Lab jobs check out without LFS, and pointer
+# files would ship in place of the images in the APKs they test.
 set -euo pipefail
 OUT="${1:?usage: $0 <output-directory>}"
 TMP="$(mktemp -d)"

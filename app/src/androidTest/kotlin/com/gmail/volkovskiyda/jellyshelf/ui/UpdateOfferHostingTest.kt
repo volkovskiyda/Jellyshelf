@@ -59,12 +59,13 @@ private const val OFFER_TIMEOUT_MS = 5_000L
 /**
  * Where an update offer is allowed to appear, through the real [MainActivity] wiring.
  *
- * This is the one place the update feature is exercised end to end on a device, and it needs a DI
- * override to exist at all: instrumented tests run the **debug** variant, where the checker returns
- * before doing anything, the Settings section is hidden, and the App Distribution SDK is the
- * API-only stub. Replacing the [UpdateChecker] single with one built on a release-shaped
- * [BuildInfo] and a stub GitHub source lifts exactly those three gates and nothing else — the
- * activity, the navigation and the dialog are all the real ones.
+ * This is where the update offer is exercised end to end on a device ([InstallFlowTest] does the
+ * same for the install that follows), and it needs a DI override to exist at all: instrumented
+ * tests run the **debug** variant, where the checker returns before doing anything, the Settings
+ * section is hidden, and the App Distribution SDK is the API-only stub. Replacing the
+ * [UpdateChecker] single with one built on a release-shaped [BuildInfo] and a stub GitHub source
+ * lifts exactly those three gates and nothing else — the activity, the navigation and the dialog
+ * are all the real ones.
  *
  * The rule under test is asymmetric on purpose. An offer nobody asked for interrupts, so it waits
  * for the Library tab; one the user asked for is the answer to a question they just posed, and

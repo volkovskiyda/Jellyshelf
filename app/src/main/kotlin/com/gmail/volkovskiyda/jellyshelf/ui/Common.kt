@@ -125,8 +125,7 @@ internal fun resolveThumbnailModel(url: String?, settings: Settings?): String? =
  * settings snapshot actually changes.
  *
  * Host-side rendering (previews, screenshot tests) has no Koin container and passes its own
- * lambda instead — the same seam as [com.gmail.volkovskiyda.jellyshelf.ui.theme.JellyshelfTheme]'s
- * injected buildInfo.
+ * lambda instead.
  */
 @Composable
 fun rememberVideoThumbnailResolver(): (Video) -> String? {
@@ -272,7 +271,7 @@ private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> Stri
  * Handle for the baseline-profile generator (`:baselineprofile`), which opens a detail screen
  * through UiAutomator: the row split into two click targets, so the row-level tag alone no longer
  * names anything clickable. Published as a resource id by `testTagsAsResourceId`, same as the
- * library tags; nothing else reads it.
+ * library tags; `LiveUiJourneyTest` also finds rows by it.
  */
 internal const val VIDEO_ROW_DETAILS_TAG = "video_row_details"
 
@@ -655,7 +654,7 @@ fun SearchField(
 
 /**
  * An action that deletes something: outlined rather than filled, in the error color. The weight
- * is deliberate — these sit next to ordinary buttons ("Sync now", "Fetch metadata") and must not
+ * is deliberate — these sit next to ordinary buttons ("Sign in", "Get metadata") and must not
  * read as one of them, but they are also not the primary action of any screen.
  */
 @Composable
@@ -681,8 +680,8 @@ fun DestructiveButton(
  * Shows each one-shot [message] a ViewModel emits as a toast and hands it back as consumed, so a
  * recomposition (or a rotation) can't show it twice.
  *
- * [onConsumed] rather than a repository call, because the screens do different things with the
- * same signal — Category videos also closes its dialog on it.
+ * [onConsumed] rather than a repository call, because each screen consumes from its own holder —
+ * the detail ViewModel's message, or the selection controller's playlist result.
  */
 @Composable
 fun ToastOnMessage(message: String?, onConsumed: () -> Unit) {

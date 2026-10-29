@@ -76,10 +76,10 @@ private const val FAILURE_TIMEOUT_MS = 15_000L
 @RunWith(AndroidJUnit4::class)
 class InstallFlowTest {
 
-    /** What the stubbed download does when asked; each test sets its own before overriding. */
+    /** What the stubbed download does when asked; each test sets its own before the offer. */
     private var installBehaviour: suspend ((InstallState.Running) -> Unit) -> Unit = {}
 
-    /** Held open by the progress test, released in [restoreTheRealChecker] so nothing leaks. */
+    /** Held open by the progress test, released in [koinOverride]'s `after` so nothing leaks. */
     private val installGate = CompletableDeferred<Unit>()
 
     private val appDistribution = object : AppDistributionSource(InertTesterSignIn, FakeUpdateFlags()) {

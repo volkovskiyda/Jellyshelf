@@ -15,8 +15,8 @@ import java.io.IOException
  * device: the SDK's singleton cannot be faked usefully on the JVM, so nothing here instantiates it.
  * That is why the mapping is a function over the enum and nothing else.
  *
- * The live path — a real tester, a real release, a real install — is verified by hand once the API
- * key allows `firebaseapptesters.googleapis.com`; `docs/RELEASING.md` carries that checklist.
+ * The live path — a real tester, a real release, a real install — is verified by hand on a release
+ * build; `docs/RELEASING.md` carries that checklist.
  */
 class UpdateCheckErrorTest {
 
@@ -51,7 +51,7 @@ class UpdateCheckErrorTest {
     }
 
     /**
-     * The single most likely failure until the API key allows the App Testers API — and the one
+     * What the restricted API key produces if an edit ever drops the App Testers API — and the one
      * that must not read as "no update available", since nothing was ever asked.
      */
     @Test
@@ -59,7 +59,7 @@ class UpdateCheckErrorTest {
         assertEquals(UpdateCheckError.ApiDisabled, Status.API_DISABLED.toUpdateCheckError())
     }
 
-    /** What the API-only stub returns on every call: debug and the profiling variants. */
+    /** What the API-only stub returns on every call: debug, the only build that links it. */
     @Test
     fun theStub_saysItIsNotSupported() {
         assertEquals(UpdateCheckError.NotSupported, Status.NOT_IMPLEMENTED.toUpdateCheckError())

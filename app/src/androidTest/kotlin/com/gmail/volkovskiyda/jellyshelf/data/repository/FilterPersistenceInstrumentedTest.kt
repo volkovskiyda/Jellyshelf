@@ -64,7 +64,7 @@ class FilterPersistenceInstrumentedTest {
     /**
      * Waits for a fire-and-forget write to reach disk.
      *
-     * The holders persist on [DispatcherProvider.applicationScope] without awaiting the result —
+     * The holder persists on [DispatcherProvider.applicationScope] without awaiting the result —
      * deliberately, since nothing in the UI should block on a preference write — so a test that
      * reads straight back is racing the disk rather than testing anything.
      *

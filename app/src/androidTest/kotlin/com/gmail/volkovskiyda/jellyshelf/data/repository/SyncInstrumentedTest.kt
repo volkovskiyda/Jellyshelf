@@ -175,8 +175,9 @@ class SyncInstrumentedTest {
                         headers = headersOf(HttpHeaders.ContentType, "application/json"),
                     )
                 }
-                // Honour StartIndex so the paging loop terminates the way it does in production:
-                // the first page carries everything, the second comes back short (empty).
+                // Honour StartIndex the way a real server does. Every listing here is shorter than
+                // one page, so the loop stops after the first — a short page is its only
+                // terminator.
                 url.contains("/Items") -> {
                     val startIndex = request.url.parameters["startIndex"]?.toInt() ?: 0
                     val page = serverIds.drop(startIndex).joinToString(",") { itemJson(it) }

@@ -7,17 +7,18 @@ import androidx.test.platform.app.InstrumentationRegistry
  * to drive it against.
  *
  * All of it arrives as instrumentation runner arguments rather than as anything compiled in, so
- * editing `.test.env` needs no rebuild — see `baselineprofile/build.gradle.kts`, which fills them
- * from that file and from the built APK's own metadata. Read once here so
- * [BaselineProfileGenerator] and [JourneyBenchmark] cannot drift into disagreeing about it.
+ * editing `.test.env` needs no rebuild — see `jellyshelf.android` (build-logic/), which fills them
+ * from that file, and `baselineprofile/build.gradle.kts`, which adds the app id from the built
+ * APK's own metadata. Read once here so [BaselineProfileGenerator] and [JourneyBenchmark] cannot
+ * drift into disagreeing about it.
  */
 internal object JourneyConfig {
 
     private val args = InstrumentationRegistry.getArguments()
 
     /**
-     * Live-server config, from the values Gradle's `loadEnv(".test.env")` feeds in. Blank when the
-     * file is absent, which is what selects the demo fallback.
+     * Live-server config, from the values `jellyshelf.android`'s `envFile(".test.env")` feeds in.
+     * Blank when the file is absent, which is what selects the demo fallback.
      */
     val serverUrl: String = args.getString("jellyfinServerUrl").orEmpty()
     val username: String = args.getString("jellyfinUsername").orEmpty()

@@ -62,7 +62,7 @@ data class PlaylistCreationResult(
 
 /**
  * Body for POST /Playlists — a minimal CreatePlaylistDto. Item ids travel in the JSON body
- * (not the query string), so large categories can't overflow URL length limits.
+ * (not the query string), so a large selection can't overflow URL length limits.
  */
 @Serializable
 data class CreatePlaylistBody(

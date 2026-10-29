@@ -87,8 +87,8 @@ open class GitHubReleaseSource(
             ?.let { (versionCode, asset) ->
                 UpdateInfo(
                     versionCode = versionCode,
-                    // `-PreleaseVersion` is fed the tag without its leading v (release.yml:40), so
-                    // stripping it here reproduces the versionName the APK actually reports.
+                    // The tag without its leading v, the `-PbaseVersion` release.yml builds with;
+                    // the APK's own versionName appends `.<versionCode>` (app/build.gradle.kts).
                     versionName = release.tagName.removePrefix("v"),
                     releaseNotes = release.body.orEmpty().trim(),
                     downloadUrl = asset.browserDownloadUrl,

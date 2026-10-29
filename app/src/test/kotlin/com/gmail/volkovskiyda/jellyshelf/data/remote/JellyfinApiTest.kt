@@ -173,8 +173,9 @@ class JellyfinApiTest {
     // --- 2. URL / param / header construction ---
 
     /**
-     * Jellyfin 12 accepts a credential in the `Authorization` header and nowhere else: the
-     * `X-Emby-Token` this used to send, and the `api_key` query parameter, both answer 401.
+     * Jellyfin 12 accepts a credential in the `Authorization` header — or, on a URL that cannot
+     * carry one, the capitalised `ApiKey` query parameter: the `X-Emby-Token` this used to send,
+     * and the lowercase `api_key` parameter, both answer 401.
      */
     @Test
     fun getUsers_normalizesBaseUrlAndSendsAuthAndAcceptHeaders() = runTest {

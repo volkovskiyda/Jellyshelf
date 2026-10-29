@@ -980,9 +980,9 @@ private fun Context.sessionActivity(youtubeId: String?): PendingIntent {
  * at the call site, where the wrong thread actually entered.
  *
  * Every caller today is on the main thread, which is the service's and the player's application
- * looper (audited 2026-08-21: the bar's buttons come from Compose via MainActivity, and the one
- * application-scope launch in that file touches no player state). This is what keeps that true as
- * coroutines are added to it.
+ * looper (audited 2026-08-21: the bar's buttons come from Compose via MainActivity, and the
+ * application-scope launches in that file — the last-played write and the unskip — touch no
+ * player state). This is what keeps that true as coroutines are added to it.
  *
  * Debug-only on purpose: a release build should not crash someone's playback over it, and media3's
  * own accessors already throw if it ever matters. Top-level rather than a member because it needs

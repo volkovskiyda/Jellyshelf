@@ -55,7 +55,8 @@ import org.koin.compose.koinInject
  * UiAutomator and so cannot match on Compose semantics the way the instrumented tests do. Named in
  * resource-id style because that is what they become: MainActivity's root Scaffold sets
  * `testTagsAsResourceId`, which republishes every tag below it as an Android resource id. They have
- * no other meaning — nothing in the app or the test suite reads them.
+ * no other meaning in the app; besides the generator, only `LiveUiJourneyTest` waits on the row
+ * tag.
  */
 internal const val LIBRARY_LIST_TAG = "library_list"
 internal const val LIBRARY_ROW_TAG = "library_row"
@@ -174,8 +175,8 @@ internal fun LibraryContent(
 
     // The action a confirmation dialog is currently standing in front of. Local rather than
     // hoisted: nothing outside this screen opens or closes it — confirming does, and so does
-    // dismissing — unlike the playlist dialog on the category screen, which a finished creation
-    // has to be able to close from the ViewModel.
+    // dismissing — unlike the playlist dialog, which a finished creation has to be able to close
+    // from the selection controller.
     var pendingAction by rememberSaveable { mutableStateOf<SelectionAction?>(null) }
 
     // Back leaves selection mode instead of the screen. Registered below NavDisplay's own handler,

@@ -49,9 +49,9 @@ private const val SWIPE_TIMEOUT_MS = 2_000L
  * What the install snackbar says, and what dismissing it does.
  *
  * Rendered through a bare `Scaffold` rather than the whole app: the effect and the host are the
- * unit under test, and [UpdateOfferHostingTest] already covers that `MainActivity` wires them
- * together. `installState` is driven by hand here because the SDK's progress callbacks cannot be
- * produced on a device without an actual App Distribution download.
+ * unit under test, and [InstallFlowTest] already covers that `MainActivity` wires them together.
+ * `installState` is driven by hand here because the SDK's progress callbacks cannot be produced on
+ * a device without an actual App Distribution download.
  *
  * Instrumented, per this project's no-Robolectric convention.
  */

@@ -25,8 +25,9 @@ class DeviceInfoTest {
     }
 
     /**
-     * Since Jellyfin 12 this header is the only carrier for a credential — `X-Emby-Token` and the
-     * `api_key` query parameter both answer 401 — so every authenticated call appends `Token`.
+     * Since Jellyfin 12 this header is the only carrier for an API call's credential —
+     * `X-Emby-Token` and the lowercase `api_key` query parameter both answer 401 — so every
+     * authenticated call appends `Token`.
      */
     @Test
     fun `appends the credential as a trailing Token field`() {

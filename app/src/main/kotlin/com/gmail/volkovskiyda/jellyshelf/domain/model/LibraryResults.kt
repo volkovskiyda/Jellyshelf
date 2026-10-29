@@ -82,8 +82,8 @@ sealed interface BulkProgress {
 }
 
 /**
- * What a multi-selection of videos is being acted on with. One enum rather than four repository
- * entry points, because a selection run is one runner: only one can be in flight at a time, and
+ * What a multi-selection of videos is being acted on with. One enum rather than a repository entry
+ * point per action, because a selection run is one runner: only one can be in flight at a time, and
  * every label its progress header and confirmation dialog need rides on the action.
  *
  * [REMOVE] is the destructive one, and the only one whose meaning depends on the video it lands

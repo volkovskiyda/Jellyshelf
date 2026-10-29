@@ -1,6 +1,6 @@
 // The steps below are one journey split into named clicks, and every one of them is load-bearing
 // for both tests in this module. Inlining them to satisfy the threshold would bury the click path
-// this file exists to document — the same trade BaselineProfileGenerator already makes.
+// this file exists to document.
 @file:Suppress("TooManyFunctions")
 
 package com.gmail.volkovskiyda.jellyshelf.baselineprofile
@@ -255,11 +255,12 @@ internal fun MacrobenchmarkScope.awaitLibrary(rowsTimeoutMs: Long = SYNC_TIMEOUT
  * it is answered. Everything carries on behind them, so nothing fails except the checks, which then
  * wait out their timeouts looking at a dialog.
  *
- * `ACCESS_LOCAL_NETWORK`: from Android 16, reaching a Jellyfin on the same LAN needs it on top of
+ * `ACCESS_LOCAL_NETWORK`: from Android 17, reaching a Jellyfin on the same LAN needs it on top of
  * `INTERNET`, and without it the connection is dropped rather than refused — sign-in hangs until
- * Ktor's own 30-second timeout and reports the server as unreachable. The app declares it, so the
- * install grant normally carries it; this makes a run deterministic on a device where it was
- * revoked by hand. Unknown below API 36, where `pm grant` fails and the run is unaffected.
+ * Ktor's own 30-second timeout and reports the server as unreachable. Declaring it does not grant
+ * it — a clean install sits at granted=false until something requests it — and the app's own
+ * prompt would put a dialog over the journey. Unknown below API 36, where `pm grant` fails and the
+ * run is unaffected.
  *
  * Neither dialog belongs to what is being profiled or measured. Both grants are idempotent, and
  * no-ops once granted.

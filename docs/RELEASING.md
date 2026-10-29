@@ -204,8 +204,8 @@ the UI journey included. Do this before tagging, so the manual pass below only h
 
 A green run means sign-in, the sync-scope picker, sync, the watched toggle, playback with a resume
 point, and every undo held up against the real server. `0 skipped` in the output is the part to
-check: a blank or unreachable `.test.env` makes both tests skip rather than fail, which is easy to
-mistake for a pass.
+check: a blank or unreachable `.test.env` makes every live test skip rather than fail, which is easy
+to mistake for a pass.
 
 **Test Lab before the push, if the quota allows.** Both workflows' device matrices run through one
 script, `scripts/testlab.sh`, which also runs locally on your own gcloud login (`gcloud auth login`;
@@ -316,8 +316,9 @@ exactly as before. Only the delivery jobs restore any of this, which is why a bu
 is the only one that reports sessions or uploads a mapping.
 
 `debug.keystore` is different: it *is* committed, so every machine and CI sign debug builds with the
-same certificate. The Firebase API key is restricted to this project's two package names and their
-signing certificates, which only works if that certificate is stable.
+same certificate. The Firebase API key is restricted to this project's three package names (the
+release id, `.debug` and `.benchmark`) and their signing certificates, which only works if that
+certificate is stable.
 
 ## Baseline profile
 

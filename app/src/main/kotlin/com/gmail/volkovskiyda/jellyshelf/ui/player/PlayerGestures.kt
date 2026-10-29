@@ -183,7 +183,7 @@ internal sealed interface GestureIndicator {
     data class ScaleMode(val mode: VideoScaleMode) : GestureIndicator
 }
 
-/** The transient feedback pill for a hold in progress. */
+/** The transient feedback pill: a hold's speed, or the scale mode a tap just picked. */
 @Composable
 internal fun GestureIndicatorPill(indicator: GestureIndicator, modifier: Modifier = Modifier) {
     Row(

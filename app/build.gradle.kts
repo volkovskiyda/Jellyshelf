@@ -463,7 +463,8 @@ tasks.register("testSummary") {
         // first, so both move from the failed column to the skipped one, or a run with no server in
         // reach would report red for tests that ran nothing. (No class here is @Ignore'd any more:
         // 9.4.1 fails the task on one, which is why BrowseCostBenchmark is filtered out by a runner
-        // argument in defaultConfig instead. The rule stays for the next one somebody adds.)
+        // argument in androidComponents (onVariants, above) instead. The rule stays for the next
+        // one somebody adds.)
         val skipsRecordedAsFailures = { lines: List<String> ->
             lines.count {
                 it.contains("<failure") &&

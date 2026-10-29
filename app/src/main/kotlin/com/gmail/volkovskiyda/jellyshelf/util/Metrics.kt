@@ -81,7 +81,7 @@ object Spans {
     /** One ranked search of the categories, per debounced query. */
     val CATEGORIES_SEARCH = Span(Traces.CATEGORIES_SEARCH, "categories_search")
 
-    /** The "Others" tab's six counts. */
+    /** The "Others" tab's per-filter counts. */
     val CATEGORIES_OTHERS = Span(Traces.CATEGORIES_OTHERS, "categories_others")
 
     /**

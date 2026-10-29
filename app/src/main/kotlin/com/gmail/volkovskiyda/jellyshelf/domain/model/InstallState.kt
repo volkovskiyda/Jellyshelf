@@ -1,12 +1,10 @@
 package com.gmail.volkovskiyda.jellyshelf.domain.model
 
 /**
- * How far the in-app install has got. App Distribution only — the GitHub channel hands the download
- * to a browser, which reports its own progress and is not ours to narrate.
- *
- * The SDK reports ten `UpdateStatus` values; these are the three that describe work still in
- * flight. Everything else is terminal and arrives as the task succeeding or failing, which is
- * [InstallState] rather than a stage.
+ * How far the in-app install has got, on either channel: App Distribution's SDK reports ten
+ * `UpdateStatus` values and `ApkInstaller` narrates a GitHub download itself, and both map onto
+ * these three stages of work still in flight. Everything else is terminal and arrives as the task
+ * succeeding or failing, which is [InstallState] rather than a stage.
  */
 enum class InstallStage {
     /** Asked for, nothing downloading yet. There is no byte count to show at this point. */

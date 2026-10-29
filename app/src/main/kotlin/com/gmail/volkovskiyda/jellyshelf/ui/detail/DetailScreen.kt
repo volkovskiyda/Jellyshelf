@@ -666,10 +666,10 @@ private val ACTION_MIN_HEIGHT = 36.dp
 private val ACTION_MIN_WIDTH = 160.dp
 private val ACTION_CONTENT_PADDING = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
 
-// Hand-composed split-button halves: material3 1.4.0 (BOM 2026.06.01) ships only the SplitButton
-// design *tokens*, not the SplitButtonLayout composable. Pill outer corners, small inner corners
-// and a 2 dp gap are what read as "one button in two halves". The outer radius is half the
-// button's height rather than a number of its own, so the pill stays a pill at [PLAY_HEIGHT].
+// Hand-composed split-button halves: material3 1.4.0 ships only the SplitButton design *tokens*,
+// not the SplitButtonLayout composable. Pill outer corners, small inner corners and a 2 dp gap are
+// what read as "one button in two halves". The outer radius is half the button's height rather than
+// a number of its own, so the pill stays a pill at [PLAY_HEIGHT].
 private val SplitButtonStartShape = RoundedCornerShape(
     topStart = PLAY_HEIGHT / 2,
     bottomStart = PLAY_HEIGHT / 2,
@@ -689,7 +689,7 @@ private val SplitButtonEndShape = RoundedCornerShape(
  * buttons), acting with the tapped mode rather than the persisted flow value, which has not caught
  * up yet.
  *
- * Its own composable so demo mode can simply not render it — see [DetailContent], where the modes
+ * Its own composable so demo mode can simply not render it — see [PlayButton], where the modes
  * it offers are both unreachable without a server.
  */
 @Composable
