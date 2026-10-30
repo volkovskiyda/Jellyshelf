@@ -125,6 +125,10 @@ android {
             }
         }
     }
+    // AGP 9.5's generate<Variant>ComposePreviewRunfiles task fails at creation unless its variant's
+    // unit tests include Android resources (the other half, unit tests on every variant, is the
+    // beforeVariants block in androidComponents below).
+    testOptions.unitTests.isIncludeAndroidResources = true
     // Enables the screenshotTest source set (paired with the same flag in gradle.properties).
     experimentalProperties["android.experimental.enableScreenshotTest"] = true
     // Shared test fakes. Only the `test` source set can be extended this way: the
@@ -220,6 +224,12 @@ kotzilla {
 // build type after any configureEach there has run, so this has to be the last word. benchmarkRelease
 // is deliberately left minified — that variant exists to be release-like.
 androidComponents {
+    // AGP 9 gives unit tests to debug alone, and the baseline-profile plugin switches them off on
+    // its own variants, yet AGP 9.5's generate<Variant>ComposePreviewRunfiles task fails at creation
+    // on any variant without them. Registered after the plugin's callback, so this one wins.
+    beforeVariants { variant ->
+        variant.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = true
+    }
     // Measurements out of the default run. BrowseCostBenchmark seeds 10,000 rows and times six
     // paths (~50 s) and asserts nothing worth a suite run, so it is filtered out here rather than
     // `@Ignore`d: since AGP 9.4.1 the connected-test engine fails the whole task on an ignored
