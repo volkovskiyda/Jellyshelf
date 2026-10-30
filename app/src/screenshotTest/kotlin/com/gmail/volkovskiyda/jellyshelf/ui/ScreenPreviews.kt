@@ -78,8 +78,8 @@ private const val TABLET_HEIGHT = 800
 private const val SETTINGS_UPDATES_HEIGHT = 1060
 
 /**
- * A pinned build version for the settings footer. Real in shape — `"<tag>.<buildNumber>"` is what
- * CI stamps — and fixed, so the goldens don't move with every tag and commit.
+ * A pinned build version for the settings footer. Real in shape — `"<tag>.<commits since it>"` is
+ * what CI stamps — and fixed, so the goldens don't move with every tag and commit.
  */
 private const val PREVIEW_VERSION_NAME = "1.0.294"
 

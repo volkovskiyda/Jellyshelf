@@ -26,9 +26,10 @@ data class BuildInfo(
      */
     val versionCode: Int = 1,
     /**
-     * `BuildConfig.VERSION_NAME` — `"<latest tag>.<buildNumber>"` for a CI build (e.g. `"1.3.348"`),
-     * the bare fallback base version (`"1.0"`) for a locally assembled one, plus the `-debug` /
-     * `-benchmark` suffix its build type appends (`versionNameSuffix` in `app/build.gradle.kts`).
+     * `BuildConfig.VERSION_NAME` — `"<latest tag>.<commits since it>"` for a CI build (e.g.
+     * `"1.14.3"`, and `"1.14.0"` for the tagged release itself), the fallback `"1.0"` for a locally
+     * assembled one, plus the `-debug` / `-benchmark` suffix its build type appends
+     * (`versionNameSuffix` in `app/build.gradle.kts`).
      *
      * Display only: it is the string the Settings screen shows so a user can name the build they
      * are running when reporting something. Nothing branches on it — [versionCode] is what the

@@ -865,15 +865,16 @@ run_layer "unit tests" :app:testDebugUnitTest \
 run_layer "screenshot goldens" :app:validateDebugScreenshotTest \
   && SCREENSHOT_RESULT="passed" || SCREENSHOT_RESULT="FAILED"
 
-# Rationale in the header. The version properties mirror the workflows: versionCode is the commit
-# count and versionName is the latest tag plus that count, so a checkout with no tag yet falls back
-# to the build file's default rather than passing an empty base. Crashlytics' upload task exists in
-# every checkout; Kotzilla's exists only when the plugin is on, and naming a task Gradle cannot
-# find is an error, so that exclusion follows the same condition the build file uses.
-RELEASE_BUILD_NUMBER="$(git rev-list --count HEAD)"
+# Rationale in the header. The version properties come from scripts/version.sh, as in the workflows:
+# versionCode is the commit count and versionName is the latest tag plus the commits since it, so a
+# checkout with no usable tag yet falls back to the build file's default rather than passing an
+# empty name. Crashlytics' upload task exists in every checkout; Kotzilla's exists only when the
+# plugin is on, and naming a task Gradle cannot find is an error, so that exclusion follows the
+# same condition the build file uses.
+RELEASE_BUILD_NUMBER="$(scripts/version.sh code)"
 RELEASE_ARGS=("-PbuildNumber=$RELEASE_BUILD_NUMBER")
-RELEASE_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-[[ -n "$RELEASE_TAG" ]] && RELEASE_ARGS+=("-PbaseVersion=${RELEASE_TAG#v}")
+RELEASE_VERSION_NAME="$(scripts/version.sh name 2>/dev/null || true)"
+[[ -n "$RELEASE_VERSION_NAME" ]] && RELEASE_ARGS+=("-PversionName=$RELEASE_VERSION_NAME")
 RELEASE_ARGS+=(-x :app:uploadCrashlyticsMappingFileRelease)
 [[ -f app/kotzilla.json ]] && RELEASE_ARGS+=(-x :app:uploadMappingFileRelease)
 run_layer "release build" :app:assembleRelease "${RELEASE_ARGS[@]}" \

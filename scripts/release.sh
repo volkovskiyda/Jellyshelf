@@ -2,10 +2,12 @@
 # Cuts a release: asks for the version name, tags main as v<name>, pushes the tag. The Release
 # workflow does everything else — builds, signs, and publishes the APK and its R8 mapping.
 #
-# There is nothing to edit in build.gradle.kts: versionCode is the commit count and versionName is
-# the tag plus that count (v1.3 at commit 348 reports 1.3.348). Single-branch by design — no
-# develop, no merge flow.
+# There is nothing to edit in build.gradle.kts: scripts/version.sh derives both numbers from git.
+# versionCode is the commit count; versionName is the tag plus the commits since it, so the release
+# itself reports <name>.0 (v1.14 at commit 538 reports 1.14.0, versionCode 538). Single-branch by
+# design — no develop, no merge flow.
 set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 git fetch origin main
 
@@ -20,11 +22,19 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 echo "Last release:  $(git describe --tags --abbrev=0 2>/dev/null || echo '<none>')"
-echo "versionCode:   $(git rev-list --count HEAD)  (computed, not entered)"
-read -rp "New version name (without the leading v): " version
+echo "versionCode:   $(scripts/version.sh code)  (computed, not entered)"
+read -rp "New version name, <major>.<minor> (without the leading v): " version
 
 if [[ -z "$version" ]]; then
   echo "No version given." >&2
+  exit 1
+fi
+
+# The build adds the third part itself — the commits since the tag, 0 for the release — so a
+# three-part name would ship as a four-part version. scripts/version.sh refuses such a tag too, but
+# only once CI is already running on it.
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  echo "Version names are <major>.<minor>, e.g. 1.15 — the build adds the patch." >&2
   exit 1
 fi
 

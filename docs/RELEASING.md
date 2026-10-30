@@ -1,10 +1,13 @@
 # Releasing
 
-Two delivery channels, both driven by CI. Neither needs a version edit in `build.gradle.kts`:
-`versionCode` is always `git rev-list --count HEAD` — monotonic across both workflows, so a build
-from one can never install backwards over a build from the other — and `versionName` is
-`<latest tag>.<versionCode>` in both (the `distribute` job derives the tag with
-`git describe --tags --abbrev=0`; the Release workflow takes the pushed tag).
+Two delivery channels, both driven by CI. Neither needs a version edit in `build.gradle.kts`; both
+take their numbers from `scripts/version.sh`. `versionCode` is always `git rev-list --count HEAD` —
+monotonic across both workflows, so a build from one can never install backwards over a build from
+the other. `versionName` is `<latest tag>.<commits since the tag>` in both: `v1.14` builds as
+`1.14.0` and the commit after it as `1.14.1` (the `distribute` job takes the latest tag reachable
+from `HEAD`; the Release workflow takes the pushed tag). The two count different things on purpose
+— the name starts again at `.0` with every release, the code never does — and only the code is
+ever compared.
 
 ## Continuous — testers
 
@@ -14,7 +17,8 @@ Distribution** for the `testers` group. Nothing to run: it is the `distribute` j
 
 A pushed tag uploads to the same channel and group as well (a step in the Release workflow's
 `release` job). The tagged commit already reached testers when it landed on `main`, under the
-*previous* tag's name and the same versionCode — the in-app check only offers a strictly greater
+*previous* tag's name and the same versionCode (`v1.14`'s commit went out as `1.13.23` first, then
+as `1.14.0`, both versionCode 538) — the in-app check only offers a strictly greater
 versionCode, so testers on that build are not prompted again. The tag upload is for testers who are
 behind, and it keeps the build in circulation named after the tag it belongs to; its release notes
 are the commit subjects since the previous tag.
@@ -26,17 +30,28 @@ scripts/release.sh
 ```
 
 It checks that `HEAD` is `origin/main` with a clean tree, shows the versionCode the build will get,
-asks for the version name, then tags `v<name>` and pushes. The
-[Release workflow](../.github/workflows/release.yml) takes over and publishes a release with
-`jellyshelf-<version>.<versionCode>.apk` and `mapping-<version>.<versionCode>.txt` attached.
+asks for the version name — `<major>.<minor>`, since the build adds the third part — then tags
+`v<name>` and pushes. The [Release workflow](../.github/workflows/release.yml) takes over and
+publishes a release with `jellyshelf-<versionName>.<versionCode>.apk` and
+`mapping-<versionName>.<versionCode>.txt` attached.
 
-The APK's `versionName`, the asset filenames, and the release title all carry the versionCode —
-tag `v1.0` at commit 164 reports `1.0.164`, publishes `jellyshelf-1.0.164.apk`, and titles the
-release `v1.0.164` (the tag itself stays `v1.0`). The tag by itself does not identify a build, and
-versionCode is the only identifier shared with the App Distribution channel, which is what lets a
-mapping file be matched to a crash by hand.
+The asset filenames and the release title carry the versionCode as well as the versionName — tag
+`v1.15` at commit 560 reports `1.15.0`, publishes `jellyshelf-1.15.0.560.apk`, and titles the
+release `v1.15.0 (560)` (the tag itself stays `v1.15`). versionCode is the only identifier shared
+with the App Distribution channel, which is what lets a mapping file be matched to a crash by hand,
+and the in-app update check reads it out of the APK's filename.
 
-Plain `git tag v<version> && git push origin v<version>` does the same thing.
+**The dot before the versionCode is transitional.** `jellyshelf-1.15.0-560.apk` reads better, but
+builds up to `v1.14` parse the filename with `\.(\d+)\.apk$` only: to them a hyphenated release
+does not exist, and "Check now" would answer "You're up to date" for good. The parser accepts both
+from the first release after `v1.14`, so the switch takes two releases — that one still publishes
+the dotted names, and once it is out, the next switches both filenames in `release.yml` to
+`<versionName>-<versionCode>`. Anyone who skipped the transition release updates by hand, once.
+App Distribution is unaffected either way: Firebase reports the versionCode itself.
+
+Plain `git tag v<version> && git push origin v<version>` does the same thing, minus the checks. A
+tag that is not `v<major>.<minor>` fails the Release workflow's first job — and every later
+`distribute` run too, until it is deleted, since `scripts/version.sh` refuses it as the latest tag.
 
 ## In-app update check
 
@@ -240,7 +255,7 @@ After editing `.test.env`, refresh the local secrets snapshot so its `verify` st
 `./scripts/backup-secrets.sh backup` (maintainer-local; the snapshot it writes is git-ignored).
 
 **Keep the mapping file.** Release builds are R8-obfuscated, so a stack trace from a released APK is
-unreadable without the `mapping-<version>.<versionCode>.txt` from that exact build. Firebase
+unreadable without the `mapping-<versionName>.<versionCode>.txt` from that exact build. Firebase
 Crashlytics gets its own copy automatically, and so does Kotzilla, which tags each upload with its
 own per-build id; the release asset is for anyone reading a trace pasted into an issue.
 

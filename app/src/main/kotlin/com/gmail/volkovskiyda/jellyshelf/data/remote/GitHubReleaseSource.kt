@@ -27,18 +27,19 @@ private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO/relea
 private const val SHA256_PREFIX = "sha256:"
 
 /**
- * The published APK's name, as `release.yml` writes it:
+ * The published APK's name, as `release.yml` writes it — `jellyshelf-<versionName>.<versionCode>.apk`,
+ * e.g. `jellyshelf-1.15.0.560.apk` — so the trailing integer is exactly the `versionCode` the APK
+ * reports, the same integer the app compares against `BuildConfig.VERSION_CODE`. That is why no
+ * separate `version.json` is needed: the asset name already carries the identity. Anchored, and
+ * compiled once as a top-level `val`.
  *
- * ```
- * V="${GITHUB_REF_NAME#v}.$(git rev-list --count HEAD)"
- * cp app/build/outputs/apk/release/app-release.apk "jellyshelf-$V.apk"
- * ```
- *
- * so the trailing integer is exactly the `versionCode` the APK reports — the same integer the app
- * compares against `BuildConfig.VERSION_CODE`. That is why no separate `version.json` is needed:
- * the asset name already carries the identity. Anchored, and compiled once as a top-level `val`.
+ * A hyphen before the versionCode is accepted as well as a dot. The hyphen is the name the releases
+ * are moving to, and it cannot be published while builds that know only the dot still update
+ * themselves: up to v1.14 this pattern was `\.(\d+)\.apk$`, and to those builds a hyphenated
+ * release is no release at all, so they would answer "You're up to date" for good. The dot stays
+ * readable either way, which is what lets the switch happen without a step back.
  */
-private val APK_ASSET = Regex("""^jellyshelf-.*\.(\d+)\.apk$""")
+private val APK_ASSET = Regex("""^jellyshelf-.*[.-](\d+)\.apk$""")
 
 /**
  * The latest published GitHub release, for the update check. Plain HTTP against the public API with
@@ -87,8 +88,8 @@ open class GitHubReleaseSource(
             ?.let { (versionCode, asset) ->
                 UpdateInfo(
                     versionCode = versionCode,
-                    // The tag without its leading v, the `-PbaseVersion` release.yml builds with;
-                    // the APK's own versionName appends `.<versionCode>` (app/build.gradle.kts).
+                    // The tag without its leading v. The APK's own versionName appends the commits
+                    // since the tag, which on the tagged build release.yml publishes is `.0`.
                     versionName = release.tagName.removePrefix("v"),
                     releaseNotes = release.body.orEmpty().trim(),
                     downloadUrl = asset.browserDownloadUrl,

@@ -44,6 +44,10 @@ jobs:
             echo "::error::$GITHUB_REF_NAME points at ${GITHUB_SHA::7}, which is not on main. Tags are cut from main only — move the tag and push it again."
             exit 1
           fi
+      # The build adds the patch, so a v1.15.1 tag would publish 1.15.1.0. The release job would
+      # refuse it anyway, in the same script — this only moves the refusal ahead of the Test Lab run.
+      - name: Refuse a tag that is not v<major>.<minor>
+        run: scripts/version.sh name "$GITHUB_REF_NAME" > /dev/null
 
   # A second instrumented pass, on three devices ci.yml never runs. The tag always points at a commit
   # that already went green on main, so repeating that matrix would tell us nothing — every device
@@ -97,14 +101,15 @@ jobs:
           KOTZILLA_JSON_BASE64: ${{ secrets.KOTZILLA_JSON_BASE64 }}
         run: scripts/restore-signing.sh
 
-      # versionName is <tag>.<versionCode> — the same rule as the App Distribution builds — so a
-      # release needs no edit to build.gradle.kts and the tag can never drift from what the APK
-      # reports.
+      # versionName is <tag>.<commits since the tag> — the same rule as the App Distribution builds,
+      # and always <tag>.0 here, since this builds the tagged commit itself — so a release needs no
+      # edit to build.gradle.kts and the tag can never drift from what the APK reports. Assigned
+      # first for the reason ci.yml gives.
       - name: Build signed release APK
         run: |
-          ./gradlew :app:assembleRelease \
-            -PbuildNumber=$(git rev-list --count HEAD) \
-            -PbaseVersion=${GITHUB_REF_NAME#v}
+          CODE=$(scripts/version.sh code)
+          NAME=$(scripts/version.sh name "$GITHUB_REF_NAME")
+          ./gradlew :app:assembleRelease -PbuildNumber="$CODE" -PversionName="$NAME"
 
       # The same channel every main push feeds, and the same group. The tagged commit itself already
       # reached testers when it landed on main — under the previous tag's name and this same
@@ -122,12 +127,13 @@ jobs:
           set -euo pipefail
           : "${FIREBASE_SERVICE_ACCOUNT:?set the FIREBASE_SERVICE_ACCOUNT repository secret (see docs/RELEASING.md)}"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
-          V="${GITHUB_REF_NAME#v}.$(git rev-list --count HEAD)"
+          NAME=$(scripts/version.sh name "$GITHUB_REF_NAME")
+          CODE=$(scripts/version.sh code)
           # What the update dialog shows: the full version, then every commit subject since the
           # previous tag — the same ground --generate-notes covers on the release page below. The
           # first tag ever has no predecessor, in which case the whole history is the changelog.
           PREV=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
-          NOTES="v$V"$'\n\n'"$(git log ${PREV:+$PREV..}HEAD --pretty='- %s')"
+          NOTES="v$NAME ($CODE)"$'\n\n'"$(git log ${PREV:+$PREV..}HEAD --pretty='- %s')"
           npx firebase-tools@15 appdistribution:distribute \
             app/build/outputs/apk/release/app-release.apk \
             --app 1:967566106537:android:1b97dedaa2eec8bdbeeeb8 \
@@ -142,12 +148,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Assets and title carry the versionCode as well as the tag, matching the APK's own
-          # versionName. versionCode is the one identifier shared with the App Distribution builds,
-          # so mapping-1.0.164.txt can be matched to a crash by hand.
-          V="${GITHUB_REF_NAME#v}.$(git rev-list --count HEAD)"
-          cp app/build/outputs/apk/release/app-release.apk "jellyshelf-$V.apk"
-          cp app/build/outputs/mapping/release/mapping.txt "mapping-$V.txt"
-          gh release create "$GITHUB_REF_NAME" "jellyshelf-$V.apk" "mapping-$V.txt" \
-            --title "v$V" \
+          # Assets and title carry the versionCode as well as the APK's versionName. versionCode is
+          # the one identifier shared with the App Distribution builds, so mapping-1.15.0.560.txt can
+          # be matched to a crash by hand — and the app's update check reads the APK's versionCode
+          # out of its asset name (APK_ASSET in GitHubReleaseSource.kt).
+          #
+          # The separator before the versionCode is a dot, not the hyphen that would read better.
+          # Builds up to v1.14 parse only `\.(\d+)\.apk$`, and to them a hyphenated release does not
+          # exist: they would say "You're up to date" for good. The parser has accepted both since
+          # the release after v1.14, so once that release is out, switch both names to
+          # "$NAME-$CODE" — anyone still on v1.14 or older then updates by hand, once.
+          NAME=$(scripts/version.sh name "$GITHUB_REF_NAME")
+          CODE=$(scripts/version.sh code)
+          cp app/build/outputs/apk/release/app-release.apk "jellyshelf-$NAME.$CODE.apk"
+          cp app/build/outputs/mapping/release/mapping.txt "mapping-$NAME.$CODE.txt"
+          gh release create "$GITHUB_REF_NAME" "jellyshelf-$NAME.$CODE.apk" "mapping-$NAME.$CODE.txt" \
+            --title "v$NAME ($CODE)" \
             --generate-notes

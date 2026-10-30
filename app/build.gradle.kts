@@ -23,15 +23,14 @@ plugins {
 // runner arguments from .test.env inside jellyshelf.android, so this module reads only its own file.
 val keystoreEnv = loadEnv("keystore.properties")
 
-// Versioning is a CI concern; nothing here is edited per release. Both workflows pass
-// -PbuildNumber=$(git rev-list --count HEAD) — one monotonic versionCode shared by App Distribution
-// builds and tagged releases, so neither can ever install "over" the other backwards. (github.run_number
-// would not do: it counts per workflow.) Both also pass -PbaseVersion, the latest tag without its
-// "v" (ci.yml derives it with `git describe --tags --abbrev=0`, release.yml takes the pushed tag),
-// so every published build reports <tag>.<versionCode>. Local and IDE builds pass neither and stay
-// at 1 / the fallback base version.
-val baseVersion = (findProperty("baseVersion") as String?) ?: "1.0"
+// Versioning is a CI concern; nothing here is edited per release. Both workflows pass what
+// scripts/version.sh computes from git. -PbuildNumber is the commit count — one monotonic versionCode
+// shared by App Distribution builds and tagged releases, so neither can ever install "over" the other
+// backwards. (github.run_number would not do: it counts per workflow.) -PversionName is the latest
+// tag plus the commits since it, so v1.14 builds as 1.14.0 and the commit after it as 1.14.1. Local
+// and IDE builds pass neither and stay at 1 / the fallback version.
 val buildNumber = (findProperty("buildNumber") as String?)?.toIntOrNull()
+val publishedVersionName = (findProperty("versionName") as String?) ?: "1.0"
 
 android {
     namespace = "com.gmail.volkovskiyda.jellyshelf"
@@ -41,7 +40,7 @@ android {
         applicationId = "com.gmail.volkovskiyda.jellyshelf"
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = buildNumber ?: 1
-        versionName = buildNumber?.let { "$baseVersion.$it" } ?: baseVersion
+        versionName = publishedVersionName
 
         // The instrumentation runner and the live-test runner arguments (.test.env, with the
         // whitespace guard the unquoted `am instrument` line demands) are set by jellyshelf.android.
