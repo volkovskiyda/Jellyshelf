@@ -187,6 +187,12 @@ data class SettingsUiState(
      * the ViewModel — never read `BuildConfig` from a composable, which builds debug for previews.
      */
     val versionName: String = "",
+    /**
+     * The installed build's `versionCode`, printed in brackets after [versionName]: the name counts
+     * commits since a tag, the code is the number the update check and Crashlytics go by. Injected
+     * from `BuildInfo.versionCode` the same way.
+     */
+    val versionCode: Int = 0,
 ) {
     /** ParentId of the folder currently being browsed ("" == root). */
     val currentParentId: String get() = breadcrumb.lastOrNull()?.id ?: ROOT_SCOPE_ID
@@ -283,6 +289,7 @@ class SettingsViewModel(
 
     /** Likewise off the checker rather than `BuildConfig` — see [isDebugBuild]. */
     private val versionName = updateChecker.versionName
+    private val versionCode = updateChecker.versionCode
 
     /**
      * Local operations (connect, reset) only — sync lives in [_sync], see [state].
@@ -402,6 +409,7 @@ class SettingsViewModel(
         val base = SettingsUiState(
             isDebugBuild = isDebugBuild,
             versionName = versionName,
+            versionCode = versionCode,
             advancedExpanded = settingsCache.advancedExpanded,
         )
         val draft = settingsCache.formDraft ?: return base
@@ -953,6 +961,7 @@ class SettingsViewModel(
             _state.value = SettingsUiState(
                 isDebugBuild = isDebugBuild,
                 versionName = versionName,
+                versionCode = versionCode,
                 themeState = _state.value.themeState,
                 authStatus = StatusLine(
                     app.getString(if (leavingDemo) R.string.demo_left else R.string.signed_out),

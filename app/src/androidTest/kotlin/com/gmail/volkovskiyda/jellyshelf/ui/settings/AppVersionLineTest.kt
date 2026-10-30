@@ -43,14 +43,15 @@ class AppVersionLineTest {
         }
     }
 
-    private fun versionLabel(version: String) = composeRule.activity.getString(R.string.app_version, version)
+    private fun versionLabel(version: String, code: Int) =
+        composeRule.activity.getString(R.string.app_version, version, code)
 
     /** Last on a screen taller than the viewport, so the assertion has to scroll to it. */
     @Test
     fun theInstalledVersion_isPrintedAtTheBottom() {
-        setContent(SettingsUiState(versionName = VERSION))
+        setContent(SettingsUiState(versionName = VERSION, versionCode = VERSION_CODE))
 
-        composeRule.onNodeWithText(versionLabel(VERSION)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(versionLabel(VERSION, VERSION_CODE)).performScrollTo().assertIsDisplayed()
     }
 
     /**
@@ -59,10 +60,12 @@ class AppVersionLineTest {
      */
     @Test
     fun aDebugBuild_stillNamesItsVersion() {
-        setContent(SettingsUiState(isDebugBuild = true, versionName = DEBUG_VERSION))
+        setContent(SettingsUiState(isDebugBuild = true, versionName = DEBUG_VERSION, versionCode = DEBUG_VERSION_CODE))
 
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.updates)).assertDoesNotExist()
-        composeRule.onNodeWithText(versionLabel(DEBUG_VERSION)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(versionLabel(DEBUG_VERSION, DEBUG_VERSION_CODE))
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     /** Nothing to name means no line, rather than the word "Version" followed by a blank. */
@@ -70,11 +73,17 @@ class AppVersionLineTest {
     fun withNoVersion_thereIsNoLine() {
         setContent(SettingsUiState())
 
-        composeRule.onNodeWithText(versionLabel(""), substring = true).assertDoesNotExist()
+        // Whatever the label prints ahead of the name — "Version " — cut at a marker standing in
+        // for it, so the check does not depend on what follows the name.
+        val lead = versionLabel(NAME_MARKER, 0).substringBefore(NAME_MARKER)
+        composeRule.onNodeWithText(lead, substring = true).assertDoesNotExist()
     }
 
     private companion object {
-        const val VERSION = "1.0.294"
+        const val VERSION = "1.14.3"
+        const val VERSION_CODE = 541
         const val DEBUG_VERSION = "1.0-debug"
+        const val DEBUG_VERSION_CODE = 1
+        const val NAME_MARKER = "\u0000"
     }
 }

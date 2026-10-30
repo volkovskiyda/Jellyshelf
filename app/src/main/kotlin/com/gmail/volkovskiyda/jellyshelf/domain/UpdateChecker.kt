@@ -157,6 +157,12 @@ class UpdateChecker(
     val versionName: String = buildInfo.versionName
 
     /**
+     * The installed build's `versionCode`, which Settings prints after [versionName]. Passed
+     * through for the same reason; unlike the name, it is also what this class compares against.
+     */
+    val versionCode: Int = buildInfo.versionCode
+
+    /**
      * Brings the daily background check into line with the current channel — scheduled while there
      * is a channel to check, cancelled otherwise.
      *

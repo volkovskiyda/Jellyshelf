@@ -73,15 +73,19 @@ private const val TABLET_HEIGHT = 800
 
 /**
  * Tall enough to hold the whole Updates section and the version line under it, which sit at the
- * foot of the settings list.
+ * foot of the settings list. The tallest of the three, App Distribution with an error showing, ends
+ * near 1225dp. The screen grows above the section, so re-measure when a row is added: at 1060 the
+ * version line had already been cut off without any golden noticing.
  */
-private const val SETTINGS_UPDATES_HEIGHT = 1060
+private const val SETTINGS_UPDATES_HEIGHT = 1260
 
 /**
- * A pinned build version for the settings footer. Real in shape — `"<tag>.<commits since it>"` is
- * what CI stamps — and fixed, so the goldens don't move with every tag and commit.
+ * A pinned build version for the settings footer. Real in shape — `"<tag>.<commits since it>"` and
+ * the total commit count are what CI stamps — and fixed, so the goldens don't move with every tag
+ * and commit.
  */
-private const val PREVIEW_VERSION_NAME = "1.0.294"
+private const val PREVIEW_VERSION_NAME = "1.14.3"
+private const val PREVIEW_VERSION_CODE = 541
 
 /**
  * A pinned clock for the sync-time labels, which are relative for their first three hours. Read
@@ -1284,6 +1288,7 @@ private fun SettingsUpdatesOff() {
             state = SettingsUiState(
                 updateSource = UpdateSource.NONE,
                 versionName = PREVIEW_VERSION_NAME,
+                versionCode = PREVIEW_VERSION_CODE,
             ),
             videoCount = 0,
             actions = SettingsActions(),
@@ -1302,6 +1307,7 @@ private fun SettingsUpdatesGitHub() {
                 updateSource = UpdateSource.GITHUB,
                 lastUpdateCheckAt = PREVIEW_SYNCED_AT,
                 versionName = PREVIEW_VERSION_NAME,
+                versionCode = PREVIEW_VERSION_CODE,
             ),
             videoCount = 0,
             actions = SettingsActions(),
@@ -1322,6 +1328,7 @@ private fun SettingsUpdatesAppDistribution() {
                 lastUpdateCheckAt = PREVIEW_SYNCED_AT,
                 updateError = UpdateCheckError.ApiDisabled,
                 versionName = PREVIEW_VERSION_NAME,
+                versionCode = PREVIEW_VERSION_CODE,
             ),
             videoCount = 0,
             actions = SettingsActions(),

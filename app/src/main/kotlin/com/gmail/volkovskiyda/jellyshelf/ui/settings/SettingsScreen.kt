@@ -427,7 +427,7 @@ internal fun SettingsContent(
             // never set one renders no line rather than a bare "Version ".
             if (state.versionName.isNotBlank()) {
                 Text(
-                    stringResource(R.string.app_version, state.versionName),
+                    stringResource(R.string.app_version, state.versionName, state.versionCode),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

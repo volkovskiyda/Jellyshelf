@@ -25,10 +25,13 @@ import kotlinx.serialization.json.Json
  *
  * @param versionName what the settings screen's version line should print. Blank by default, which
  *   the screen renders as no line at all — set it only in a test that is about that line.
+ * @param versionCode the number that line prints in brackets after [versionName]. `1`, as
+ *   [BuildInfo] defaults it, unless a test is about the line.
  */
 fun inertUpdateChecker(
     settings: SettingsRepository = FakeSettingsRepository(),
     versionName: String = "",
+    versionCode: Int = 1,
 ) = UpdateChecker(
     settingsRepository = settings,
     // The engine is named rather than left to the ServiceLoader so this resolves identically in
@@ -40,7 +43,7 @@ fun inertUpdateChecker(
         override fun isTesterSignedIn() = false
         override suspend fun latestRelease(): UpdateInfo? = null
     },
-    buildInfo = BuildInfo(isDebug = true, sdkInt = 36, versionName = versionName),
+    buildInfo = BuildInfo(isDebug = true, sdkInt = 36, versionCode = versionCode, versionName = versionName),
     time = TimeProvider { 0L },
     dispatchers = TestDispatcherProvider(),
     updateCheckSchedule = RecordingUpdateCheckSchedule(),
