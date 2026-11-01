@@ -27,17 +27,17 @@ private const val LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO/relea
 private const val SHA256_PREFIX = "sha256:"
 
 /**
- * The published APK's name, as `release.yml` writes it — `jellyshelf-<versionName>.<versionCode>.apk`,
- * e.g. `jellyshelf-1.15.0.560.apk` — so the trailing integer is exactly the `versionCode` the APK
+ * The published APK's name, as `release.yml` writes it — `jellyshelf-<versionName>-<versionCode>.apk`,
+ * e.g. `jellyshelf-1.16.0-580.apk` — so the trailing integer is exactly the `versionCode` the APK
  * reports, the same integer the app compares against `BuildConfig.VERSION_CODE`. That is why no
  * separate `version.json` is needed: the asset name already carries the identity. Anchored, and
  * compiled once as a top-level `val`.
  *
- * A hyphen before the versionCode is accepted as well as a dot. The hyphen is the name the releases
- * are moving to, and it cannot be published while builds that know only the dot still update
- * themselves: up to v1.14 this pattern was `\.(\d+)\.apk$`, and to those builds a hyphenated
- * release is no release at all, so they would answer "You're up to date" for good. The dot stays
- * readable either way, which is what lets the switch happen without a step back.
+ * A dot before the versionCode is accepted as well as the hyphen: releases up to v1.15 used one
+ * (`jellyshelf-1.15.0.540.apk`). Builds up to v1.14 accept only the dot — this pattern was
+ * `\.(\d+)\.apk$` — so to them a hyphenated release is no release at all, and they answer "You're
+ * up to date" for good. v1.15 bridged the switch, with a dotted name and both separators here.
+ * Keep the dot: dropping it would gain nothing.
  */
 private val APK_ASSET = Regex("""^jellyshelf-.*[.-](\d+)\.apk$""")
 

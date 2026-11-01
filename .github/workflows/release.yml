@@ -149,19 +149,17 @@ jobs:
         run: |
           set -euo pipefail
           # Assets and title carry the versionCode as well as the APK's versionName. versionCode is
-          # the one identifier shared with the App Distribution builds, so mapping-1.15.0.560.txt can
+          # the one identifier shared with the App Distribution builds, so mapping-1.16.0-580.txt can
           # be matched to a crash by hand — and the app's update check reads the APK's versionCode
           # out of its asset name (APK_ASSET in GitHubReleaseSource.kt).
           #
-          # The separator before the versionCode is a dot, not the hyphen that would read better.
-          # Builds up to v1.14 parse only `\.(\d+)\.apk$`, and to them a hyphenated release does not
-          # exist: they would say "You're up to date" for good. The parser has accepted both since
-          # the release after v1.14, so once that release is out, switch both names to
-          # "$NAME-$CODE" — anyone still on v1.14 or older then updates by hand, once.
+          # A hyphen before the versionCode since v1.16; up to v1.15 it was a dot. Builds up to v1.14
+          # read only the dot, so to them no release from here on exists and they install a newer
+          # APK by hand, once. v1.15 bridged the switch: a dotted name, and a parser that reads both.
           NAME=$(scripts/version.sh name "$GITHUB_REF_NAME")
           CODE=$(scripts/version.sh code)
-          cp app/build/outputs/apk/release/app-release.apk "jellyshelf-$NAME.$CODE.apk"
-          cp app/build/outputs/mapping/release/mapping.txt "mapping-$NAME.$CODE.txt"
-          gh release create "$GITHUB_REF_NAME" "jellyshelf-$NAME.$CODE.apk" "mapping-$NAME.$CODE.txt" \
+          cp app/build/outputs/apk/release/app-release.apk "jellyshelf-$NAME-$CODE.apk"
+          cp app/build/outputs/mapping/release/mapping.txt "mapping-$NAME-$CODE.txt"
+          gh release create "$GITHUB_REF_NAME" "jellyshelf-$NAME-$CODE.apk" "mapping-$NAME-$CODE.txt" \
             --title "v$NAME ($CODE)" \
             --generate-notes

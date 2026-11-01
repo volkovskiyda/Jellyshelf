@@ -82,24 +82,27 @@ class GitHubReleaseSourceTest {
     }
 
     /**
-     * The name `release.yml` writes now that the versionName has a third part: the patch, then a
-     * dot, then the versionCode. The dot is what keeps the release visible to builds up to v1.14,
-     * whose parser accepts nothing else.
+     * The name `release.yml` writes since v1.16: the versionName with its patch, a hyphen, then the
+     * versionCode. Builds up to v1.14 cannot read it; v1.15 was the first that could.
      */
     @Test
-    fun aVersionNameWithAPatch_stillEndsInTheVersionCode() = runTest {
-        val info = source(release(asset("jellyshelf-1.15.0.560.apk"), tag = "v1.15")).latestRelease()
-
-        assertEquals(560, info?.versionCode)
-        assertEquals("1.15", info?.versionName)
-    }
-
-    /** The name `release.yml` switches to once every build that updates itself parses it. */
-    @Test
-    fun aHyphenBeforeTheVersionCode_isReadToo() = runTest {
+    fun aHyphenBeforeTheVersionCode_isRead() = runTest {
         val info = source(release(asset("jellyshelf-1.16.0-580.apk"), tag = "v1.16")).latestRelease()
 
         assertEquals(580, info?.versionCode)
+        assertEquals("1.16", info?.versionName)
+    }
+
+    /**
+     * The name v1.15 was published under, a dot where the hyphen now goes — the bridge release that
+     * builds up to v1.14 could still see. No new release uses it; the parser keeps reading it.
+     */
+    @Test
+    fun aDotBeforeTheVersionCode_isStillRead() = runTest {
+        val info = source(release(asset("jellyshelf-1.15.0.540.apk"), tag = "v1.15")).latestRelease()
+
+        assertEquals(540, info?.versionCode)
+        assertEquals("1.15", info?.versionName)
     }
 
     /** A notes-only release, or one whose APK upload failed: nothing to install, so no update. */

@@ -32,22 +32,22 @@ scripts/release.sh
 It checks that `HEAD` is `origin/main` with a clean tree, shows the versionCode the build will get,
 asks for the version name — `<major>.<minor>`, since the build adds the third part — then tags
 `v<name>` and pushes. The [Release workflow](../.github/workflows/release.yml) takes over and
-publishes a release with `jellyshelf-<versionName>.<versionCode>.apk` and
-`mapping-<versionName>.<versionCode>.txt` attached.
+publishes a release with `jellyshelf-<versionName>-<versionCode>.apk` and
+`mapping-<versionName>-<versionCode>.txt` attached.
 
 The asset filenames and the release title carry the versionCode as well as the versionName — tag
-`v1.15` at commit 560 reports `1.15.0`, publishes `jellyshelf-1.15.0.560.apk`, and titles the
-release `v1.15.0 (560)` (the tag itself stays `v1.15`). versionCode is the only identifier shared
+`v1.16` at commit 580 reports `1.16.0`, publishes `jellyshelf-1.16.0-580.apk`, and titles the
+release `v1.16.0 (580)` (the tag itself stays `v1.16`). versionCode is the only identifier shared
 with the App Distribution channel, which is what lets a mapping file be matched to a crash by hand,
 and the in-app update check reads it out of the APK's filename.
 
-**The dot before the versionCode is transitional.** `jellyshelf-1.15.0-560.apk` reads better, but
-builds up to `v1.14` parse the filename with `\.(\d+)\.apk$` only: to them a hyphenated release
-does not exist, and "Check now" would answer "You're up to date" for good. The parser accepts both
-from the first release after `v1.14`, so the switch takes two releases — that one still publishes
-the dotted names, and once it is out, the next switches both filenames in `release.yml` to
-`<versionName>-<versionCode>`. Anyone who skipped the transition release updates by hand, once.
-App Distribution is unaffected either way: Firebase reports the versionCode itself.
+**Releases up to `v1.15` put a dot before the versionCode** (`jellyshelf-1.15.0.540.apk`), and
+builds up to `v1.14` parse the filename with `\.(\d+)\.apk$` only. To them a hyphenated release
+does not exist: `releases/latest` answers with one, the parse finds nothing, and "Check now" says
+"You're up to date" for good. `v1.15` bridged the switch — it still published the dotted name, and
+its parser reads both — so anyone who installed it moves on normally, while anyone still on `v1.14`
+or older installs a newer APK by hand, once. The parser keeps accepting the dot; dropping it would
+gain nothing. App Distribution was never affected: Firebase reports the versionCode itself.
 
 Plain `git tag v<version> && git push origin v<version>` does the same thing, minus the checks. A
 tag that is not `v<major>.<minor>` fails the Release workflow's first job — and every later
@@ -255,7 +255,7 @@ After editing `.test.env`, refresh the local secrets snapshot so its `verify` st
 `./scripts/backup-secrets.sh backup` (maintainer-local; the snapshot it writes is git-ignored).
 
 **Keep the mapping file.** Release builds are R8-obfuscated, so a stack trace from a released APK is
-unreadable without the `mapping-<versionName>.<versionCode>.txt` from that exact build. Firebase
+unreadable without the `mapping-<versionName>-<versionCode>.txt` from that exact build. Firebase
 Crashlytics gets its own copy automatically, and so does Kotzilla, which tags each upload with its
 own per-build id; the release asset is for anyone reading a trace pasted into an issue.
 
