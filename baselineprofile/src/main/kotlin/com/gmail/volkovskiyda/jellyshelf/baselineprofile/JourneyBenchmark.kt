@@ -362,20 +362,18 @@ class JourneyBenchmark {
     }
 
     /**
-     * Opens the first video's details and gets it really playing — the tap half of [playback],
+     * Plays the first video from its row and gets it really playing — the tap half of [playback],
      * shared with [libraryScrollDuringPlayback], which needs the same state without the metrics.
+     *
+     * From the row's thumbnail, not from a detail screen's Play button: only a video opened from
+     * its list gets the list as its queue, and [advanceToNextItem] needs a queue with a next item.
+     * Through Detail — which is how this used to start — every run drove a one-video queue, the
+     * next button had nothing to advance to, and [PLAYER_TRANSITION] was never begun (0.0 in every
+     * iteration from the first run to 2026-11-03). The row is also the app's primary play
+     * affordance, so this is the startup users mostly pay.
      */
     private fun MacrobenchmarkScope.startFirstVideo() {
-        openFirstVideoDetails()
-
-        // The same reach-then-settle-then-reach the generator documents: the thumbnail above the
-        // button loads while this screen is being read, and the layout it settles into moves
-        // everything below it, so a tap aimed at where the button was lands on nothing.
-        scrollTo(By.text(PLAY)) { "The detail screen never offered playback." }
-        awaitContentStill()
-        await(By.text(PLAY), TIMEOUT_MS) {
-            "The Play button left the detail screen while it was being reached for."
-        }.click()
+        playFirstVideoFromRow()
         awaitPlaybackUnderway()
     }
 
@@ -445,9 +443,15 @@ class JourneyBenchmark {
         }
         next.click()
 
-        // The advance is not the measurement; the new item's first frame is. Reuse the same
-        // position-label signal the first item was waited on with.
+        // The advance is not the measurement; the new item's first frame is. The signal the first
+        // item was waited on with is not enough here: the next item opens at its seeded resume
+        // position, so its label reads non-zero before a byte has decoded, and a journey that
+        // backed out on that paused the player before it ever drew — the transition section was
+        // abandoned unclosed and reported 0.0 in every iteration (2026-10-29 and 2026-11-03). A
+        // label that *moves* is the frame: media3 advances the position off the renderer's clock,
+        // and that clock starts with the first rendered frame.
         awaitPlaybackUnderway()
+        awaitPositionAdvances()
     }
 
     private companion object {

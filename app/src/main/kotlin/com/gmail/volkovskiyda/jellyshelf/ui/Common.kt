@@ -276,6 +276,14 @@ private fun <T> List<T>.floorIndexOfAnchor(anchor: String, anchorOf: (T) -> Stri
 internal const val VIDEO_ROW_DETAILS_TAG = "video_row_details"
 
 /**
+ * The row's other target, the thumbnail that plays: `JourneyBenchmark` starts playback here rather
+ * than through a detail screen's Play button, because only a video opened *from its list* gets the
+ * list as its queue — Detail's Play opens a one-video queue (`PlayerOrigin.None`), on which there is
+ * no queue advance to measure. Same resource-id bridge as the tag above.
+ */
+internal const val VIDEO_ROW_PLAY_TAG = "video_row_play"
+
+/**
  * One of [VideoRow]'s two inner targets, in whichever of the row's two modes the list is in.
  *
  * While selecting, the target carries no click at all: the row itself is the single accessible
@@ -426,6 +434,7 @@ fun VideoRow(
                     longClickLabel = startSelectionLabel,
                     role = Role.Button,
                 )
+                .testTag(VIDEO_ROW_PLAY_TAG)
                 .then(
                     thumbnailLabelRes?.let { label ->
                         Modifier.semantics { contentDescription = resources.getString(label, video.title) }

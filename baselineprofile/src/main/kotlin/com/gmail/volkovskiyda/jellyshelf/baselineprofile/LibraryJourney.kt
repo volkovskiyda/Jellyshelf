@@ -173,8 +173,17 @@ internal fun MacrobenchmarkScope.syncIfLibraryEmpty() {
  * Waits for the sync to finish, not merely to have produced something.
  *
  * The screen reports it: `SettingsViewModel.observeSync` mirrors the worker's `WorkInfo.State` into
- * a status line that reads "Syncing…" while the work is enqueued, blocked or running, so the line
- * going away is WorkManager's own answer rather than a guess about elapsed time.
+ * `SettingsUiState.busy` while the work is enqueued, blocked or running, and the **Sync now** button
+ * is disabled for exactly that long — so the button coming back is WorkManager's own answer rather
+ * than a guess about elapsed time.
+ *
+ * The button, not the status line. The line reads "Syncing…" only until the repository reports a
+ * phase; from then on it says "Loading library…", "Fetching index…" or "Fetching metadata 3/120",
+ * so waiting for "Syncing…" to go returned the moment the first phase label replaced it, with the
+ * sync barely started. Measured 2026-11-03 on a fresh install: the first sync (auto-fill and all)
+ * ran on under the next three tests, WorkManager restarted the process after every force-stop to
+ * finish it — with a growing backoff, so `awaitStoppable` saw a quiet process each time — and
+ * `startup` failed its cold-start check while `categories` was timed against yt-dlp's threads.
  *
  * Waiting for it is not politeness. Rows appearing is the *middle* of a sync, and a benchmark that
  * starts while WorkManager still has live work fails in a way that names neither: `StartupMode.COLD`
@@ -184,12 +193,12 @@ internal fun MacrobenchmarkScope.syncIfLibraryEmpty() {
  * mid-range phone the first sync was still running seven seconds after the rows arrived, which is
  * where this was found; a tablet had finished by then and passed, twice.
  *
- * The first wait is for the line to *appear*, because a tap that has not reached WorkManager yet
- * would otherwise look exactly like a sync that has already finished.
+ * The first wait is for the button to *go disabled*, because a tap that has not reached WorkManager
+ * yet would otherwise look exactly like a sync that has already finished.
  */
 private fun MacrobenchmarkScope.awaitSyncFinished() {
-    device.wait(Until.hasObject(By.text(SYNCING)), TIMEOUT_MS)
-    check(device.wait(Until.gone(By.text(SYNCING)), SYNC_TIMEOUT_MS)) {
+    device.wait(Until.hasObject(By.text(SYNC_NOW).enabled(false)), TIMEOUT_MS)
+    check(device.wait(Until.hasObject(By.text(SYNC_NOW).enabled(true)), SYNC_TIMEOUT_MS)) {
         "The sync never finished — it is still running after ${SYNC_TIMEOUT_MS / MILLIS_PER_SECOND}s."
     }
 }
@@ -599,6 +608,7 @@ internal fun MacrobenchmarkScope.await(
 internal const val LIBRARY_LIST = "library_list"
 internal const val LIBRARY_ROW = "library_row"
 internal const val ROW_DETAILS = "video_row_details"
+internal const val ROW_PLAY = "video_row_play"
 internal const val CATEGORY_ROW = "category_row"
 internal const val CATEGORY_SEARCH = "category_search"
 internal const val CATEGORY_VIDEO_ROW = "category_video_row"
@@ -621,10 +631,9 @@ internal const val ADVANCED = "Advanced"
 internal const val SHOW_ADVANCED = "Advanced \u25BE"
 internal const val CHANGE_FOLDER = "Change folder…"
 internal const val USE_THIS_FOLDER = "Use this folder"
-internal const val SYNC_NOW = "Sync now"
 
-/** The status line the screen shows while WorkManager has the sync enqueued, blocked or running. */
-internal const val SYNCING = "Syncing…"
+/** Disabled for as long as WorkManager has the sync enqueued, blocked or running — see [awaitSyncFinished]. */
+internal const val SYNC_NOW = "Sync now"
 
 /**
  * Runtime permissions granted up front — see [grantJourneyPermissions] for why each one
@@ -707,7 +716,24 @@ internal const val MAX_BACK_PRESSES = 5
  * Opens the first video's detail screen.
  *
  * A row is two targets — the thumbnail plays, the text beside it opens the details — so this
- * clicks a details zone. The *topmost* one, by position rather than by match order: after a
+ * clicks a details zone; [playFirstVideoFromRow] clicks the other one. See [tapFirstWholeRow] for
+ * how the row is chosen.
+ */
+internal fun MacrobenchmarkScope.openFirstVideoDetails() = tapFirstWholeRow(ROW_DETAILS, "details zone")
+
+/**
+ * Starts the first video playing *from its row*, which is what gives it a queue.
+ *
+ * Only a video opened from a list is queued with that list behind it; a video opened from its
+ * detail screen's Play button plays alone (`PlayerOrigin.None`), with both transport arrows dead.
+ * The benchmark used to go through Detail, and so every one of its playback runs — 2026-08 through
+ * 2026-11-03 — drove a one-video queue whose next button had nothing to advance to: `player.item`
+ * ran unbroken through each iteration and `PLAYER_TRANSITION` was never even begun.
+ */
+internal fun MacrobenchmarkScope.playFirstVideoFromRow() = tapFirstWholeRow(ROW_PLAY, "play zone")
+
+/**
+ * Taps the topmost whole row's [tag] target — by position rather than by match order: after a
  * scroll the first match can be a row clipped by the top bar, whose centre falls outside both
  * targets and lands on nothing.
  *
@@ -717,15 +743,15 @@ internal const val MAX_BACK_PRESSES = 5
  * settle wait and the retry: both are cheaper than a generation run that fails at the last
  * step, which is what a bare `visibleBounds` read here cost on both devices.
  */
-internal fun MacrobenchmarkScope.openFirstVideoDetails() {
-    await(By.res(ROW_DETAILS), TIMEOUT_MS) {
-        "No details zone to open — the rows rendered but carry no $ROW_DETAILS tag."
+private fun MacrobenchmarkScope.tapFirstWholeRow(tag: String, what: String) {
+    await(By.res(tag), TIMEOUT_MS) {
+        "No $what to tap — the rows rendered but carry no $tag tag."
     }
     // The list arrives here still coasting from the fling above, and everything below reads it
     // over IPC one node at a time — see [awaitContentStill] for why waiting is not politeness.
     awaitContentStill()
     repeat(TAP_ATTEMPTS) {
-        val rows = device.findObjects(By.res(ROW_DETAILS)).mapNotNull { it.boundsOrGone() }
+        val rows = device.findObjects(By.res(tag)).mapNotNull { it.boundsOrGone() }
         // The tallest row on screen is the yardstick for a whole one, because a fixed pixel
         // count only ever fits one device: the same two lines of text measure 96 px on a
         // tablet in landscape and half again as much on a phone, so a threshold generous enough to
@@ -744,7 +770,7 @@ internal fun MacrobenchmarkScope.openFirstVideoDetails() {
         awaitContentStill()
     }
     error(
-        "No library row stayed still long enough to tap: every $ROW_DETAILS match was either " +
+        "No library row stayed still long enough to tap: every $tag match was either " +
             "clipped to a fraction of a whole row or left the tree while it was being measured.",
     )
 }
@@ -786,6 +812,57 @@ internal fun MacrobenchmarkScope.awaitPlaybackUnderway() {
         },
     )
 }
+
+/**
+ * Waits for the position label to read something other than it reads now: frames are flowing.
+ *
+ * [awaitPlaybackUnderway] asks only for a non-zero label, and a queue advance satisfies that at
+ * once — the next item opens at its seeded resume position, before anything has decoded. The
+ * position then stands still until the first frame renders, because media3 advances it off the
+ * renderer's clock; so a label that has changed is a frame that has been drawn, which is exactly
+ * what `PLAYER_TRANSITION` closes on.
+ *
+ * **Two changes, not one.** Read straight after the tap, the label still shows the item being
+ * left; its first change is the switch to the next item's seeded position, which says nothing
+ * about frames — one run waited on exactly that and still reported five zeros (2026-11-03). Of any
+ * two changes after the tap at most one is the switch, so the other is a tick of the clock.
+ *
+ * The controls hide three seconds into playing and take the label with them. That cannot preempt
+ * a moving label — it moves every second — but it can hide one read a moment before the hide, so
+ * a wait that runs out is given one reveal tap and a short second chance before it fails.
+ */
+internal fun MacrobenchmarkScope.awaitPositionAdvances() {
+    var seen = checkNotNull(positionLabel(TIMEOUT_MS)) {
+        "The player's position label is not on screen right after the advance, although the " +
+            "controls had to be up for the next button to be tapped."
+    }
+    repeat(POSITION_CHANGES) {
+        val moved = By.res(PLAYER_POSITION).text(Pattern.compile("(?!^${Pattern.quote(seen)}$).+"))
+        if (!device.wait(Until.hasObject(moved), PLAYBACK_TIMEOUT_MS)) {
+            if (!device.hasObject(By.res(PLAYER_POSITION))) {
+                device.click(device.displayWidth / 2, device.displayHeight / 2)
+            }
+            check(
+                device.wait(Until.hasObject(moved), TIMEOUT_MS),
+                diagnose {
+                    "The position stayed at $seen for ${PLAYBACK_TIMEOUT_MS / MILLIS_PER_SECOND}s " +
+                        "after the advance: the next item never rendered a frame, so there is no " +
+                        "transition here to measure."
+                },
+            )
+        }
+        seen = checkNotNull(device.findObject(moved)?.text ?: positionLabel(TIMEOUT_MS)) {
+            "The position label moved off $seen and then left the screen before it could be read."
+        }
+    }
+}
+
+/** Label changes [awaitPositionAdvances] needs: the item switch, and one that can only be a tick. */
+private const val POSITION_CHANGES = 2
+
+/** The player's elapsed-position label as shown, or null if the controls are hidden after [timeoutMs]. */
+private fun MacrobenchmarkScope.positionLabel(timeoutMs: Long): String? =
+    device.wait(Until.findObject(By.res(PLAYER_POSITION)), timeoutMs)?.text
 
 /**
  * Seeks the playing video 10 s back with the transport button, and proves it landed by watching
