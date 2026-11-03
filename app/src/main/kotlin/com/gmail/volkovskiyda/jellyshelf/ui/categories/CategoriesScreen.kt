@@ -31,8 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -173,9 +173,15 @@ internal fun CategoriesContent(
                         listState.scrollToItem(0)
                     }
                 }
+                val countLabel = rememberCountLabels()
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     items(categories, key = { it.category.id }) { item ->
-                        CategoryRow(item = item, showType = true, onClick = onCategoryClick)
+                        CategoryRow(
+                            item = item,
+                            countLabel = countLabel(item.videoCount),
+                            showType = true,
+                            onClick = onCategoryClick,
+                        )
                         HorizontalDivider()
                     }
                 }
@@ -307,18 +313,42 @@ private fun TabbedCategories(
                 }
             }
         }
+        val countLabel = rememberCountLabels()
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             items(tab.items, key = { it.category.id }) { item ->
-                CategoryRow(item = item, showType = false, onClick = onCategoryClick)
+                CategoryRow(
+                    item = item,
+                    countLabel = countLabel(item.videoCount),
+                    showType = false,
+                    onClick = onCategoryClick,
+                )
                 HorizontalDivider()
             }
         }
     }
 }
 
+/**
+ * "N videos" for a count, formatted once per distinct count rather than once per row: a plural
+ * string resource costs ~80 µs on a mid-range phone — about 30 % of a category row's composition —
+ * and a list of channels repeats the same handful of counts over and over, while every row of it is
+ * composed from scratch each time the tab arrives (composition trace, 2026-10-29). Keyed on the
+ * Resources so a locale change starts over.
+ */
+@Composable
+private fun rememberCountLabels(): (Int) -> String {
+    val resources = LocalResources.current
+    val labels = remember(resources) { HashMap<Int, String>() }
+    return { count ->
+        labels.getOrPut(count) { resources.getQuantityString(R.plurals.video_count, count, count) }
+    }
+}
+
 @Composable
 private fun CategoryRow(
     item: CategoryWithCount,
+    /** The row's video count, already worded — see [rememberCountLabels]. */
+    countLabel: String,
     showType: Boolean,
     onClick: (categoryId: String, title: String) -> Unit,
 ) {
@@ -330,11 +360,10 @@ private fun CategoryRow(
             .testTag(CATEGORY_ROW_TAG),
     ) {
         Text(item.category.name, style = MaterialTheme.typography.bodyLarge)
-        val count = pluralStringResource(R.plurals.video_count, item.videoCount, item.videoCount)
         val subtitle = if (showType) {
-            "${stringResource(categoryTypeLabelRes(item.category.type))}  •  $count"
+            "${stringResource(categoryTypeLabelRes(item.category.type))}  •  $countLabel"
         } else {
-            count
+            countLabel
         }
         Text(
             subtitle,
