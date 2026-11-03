@@ -72,6 +72,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -296,7 +297,7 @@ private fun Modifier.rowTarget(
     selecting: Boolean,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)?,
-    longClickLabel: String,
+    longClickLabel: String?,
     role: Role? = null,
 ): Modifier = when {
     selecting -> this
@@ -361,7 +362,10 @@ fun VideoRow(
     skipped: Boolean = false,
 ) {
     val contentAlpha = if (skipped && !playing) SKIPPED_ROW_ALPHA else 1f
-    val startSelectionLabel = stringResource(R.string.select_videos)
+    // Resolved only where [rowTarget] can use it: a row already selecting, or on a list without
+    // selection, has no long-press to label.
+    val startSelectionLabel =
+        if (selected == null && onStartSelection != null) stringResource(R.string.select_videos) else null
     // The two labels below that carry the title are formatted when their semantics are read, not
     // here: a formatted string resource cost ~70 µs on a mid-range phone, two of them per row, and
     // a composition of a row is mostly read by nothing — a scroll composes rows by the screenful
@@ -527,20 +531,30 @@ fun VideoRow(
             }
         }
 
+        // Both labels below are resolved when their semantics are read, like the ones at the top:
+        // the Skipped filter shows the formatted one on every row it composes.
         if (video.played) {
             Icon(
                 imageVector = Icons.Filled.CheckCircle,
-                contentDescription = stringResource(R.string.watched),
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier
+                    .size(20.dp)
+                    // What Icon itself publishes for a described icon.
+                    .semantics {
+                        contentDescription = resources.getString(R.string.watched)
+                        role = Role.Image
+                    },
             )
         }
         if (onUnskip != null) {
-            IconButton(onClick = onUnskip) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Undo,
-                    contentDescription = stringResource(R.string.unskip_named, video.title),
-                )
+            IconButton(
+                onClick = onUnskip,
+                modifier = Modifier.semantics {
+                    contentDescription = resources.getString(R.string.unskip_named, video.title)
+                },
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null)
             }
         }
     }
