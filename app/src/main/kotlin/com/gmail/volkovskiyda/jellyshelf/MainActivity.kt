@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -198,10 +199,10 @@ class MainActivity : ComponentActivity() {
             // The cached mode until the real one lands: it is what the window is already painted
             // in, so agreeing with it keeps the hand-over invisible.
             val darkTarget = (themeState?.mode ?: themeModeCache.peek()).isDark()
-            // Keeps the cache read by [cachedDarkTheme] honest for the next cold start.
-            LaunchedEffect(themeState) {
-                themeState?.let { themeModeCache.store(it.mode) }
-            }
+            // Keeps the cache read by [cachedDarkTheme] honest for the next cold start. Nothing to
+            // suspend on, so no coroutine: it runs as the composition that read the mode applies.
+            val mode = themeState?.mode
+            SideEffect(mode) { mode?.let(themeModeCache::store) }
 
             // The switch reaches this through [LocalThemeRevealController] rather than through
             // SettingsActions: where a tap landed is presentation detail the settings screen has no
@@ -217,12 +218,11 @@ class MainActivity : ComponentActivity() {
                     // window background have to flip in the same frame the snapshot overlay appears,
                     // not a frame earlier. (Bar *icons* are window state, not captured pixels, so
                     // they change at the start of a reveal rather than following its edge.)
-                    DisposableEffect(appliedDark) {
+                    SideEffect(appliedDark) {
                         window.setBackgroundDrawable(
                             themeBackgroundArgb(this@MainActivity, appliedDark).toDrawable(),
                         )
                         applyEdgeToEdge(appliedDark)
-                        onDispose {}
                     }
                     JellyshelfTheme(darkTheme = appliedDark) {
                         JellyshelfApp(viewModel)
