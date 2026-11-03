@@ -8,6 +8,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import com.gmail.volkovskiyda.jellyshelf.domain.model.ThemeMode
@@ -57,14 +58,19 @@ fun JellyshelfTheme(
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    // Remembered: a dynamic scheme is ~40 system-colour lookups into a new instance, and a
+    // ColorScheme has no equals — so a fresh one is a changed `staticCompositionLocalOf` to
+    // MaterialTheme, which turns skipping off for everything under it. The player wraps its whole
+    // screen in this theme, and recomposes the call on every queue advance and PiP change. New
+    // wallpaper colours arrive as a resources change the manifest's configChanges cannot claim, which
+    // recreates the activity, so these keys cover everything that changes the scheme in place.
+    val context = LocalContext.current
+    val colorScheme = remember(context, darkTheme, dynamicColor) {
+        when {
+            dynamicColor -> if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            darkTheme -> DarkColorScheme
+            else -> LightColorScheme
         }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
     }
     MaterialTheme(
         colorScheme = colorScheme,
