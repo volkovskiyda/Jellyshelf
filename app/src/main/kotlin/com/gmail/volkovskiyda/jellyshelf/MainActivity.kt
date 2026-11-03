@@ -137,6 +137,9 @@ private const val TABS_FADE_MS = 150
 // — long enough that everything that goes on during a transition is watched rather than glimpsed.
 private const val SCREEN_FADE_MS = 300
 
+// Material 3's NavigationRail never measures narrower (its NarrowContainerWidth token in 1.4).
+private val RAIL_MIN_WIDTH = 80.dp
+
 // The scrims androidx applies to a three-button navigation bar, redeclared because
 // SystemBarStyle.auto's defaults are internal. Only used when gesture navigation is off.
 private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
@@ -504,7 +507,11 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     // rail's width is measured for the same reason and read under the same rule.
     val density = LocalDensity.current
     var tabsHeight by remember { mutableStateOf(0.dp) }
-    var railWidth by remember { mutableStateOf(0.dp) }
+    // Seeded with the rail's minimum width (Material's narrow rail, 80 dp) rather than zero. The
+    // measurement lands a frame late — the rail is measured after the screens that read it — so
+    // from zero the first frame with a rail laid a tab screen out at full width beneath it, and it
+    // jumped sideways in the next. The measured value then only ever corrects a wider rail.
+    var railWidth by remember { mutableStateOf(RAIL_MIN_WIDTH) }
 
     // The update offer, hosted here because this is the only place that knows which tab is current.
     // The tab is the whole suppression rule for an offer nobody asked for: the player, detail and
