@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentDataType
@@ -58,6 +59,7 @@ import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.platform.LocalAutofillManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -350,87 +352,103 @@ internal fun SettingsContent(
                 )
             }
 
-            AdvancedSection(
-                state = state,
-                actions = actions,
-                initiallyExpanded = advancedExpanded,
-            )
-
-            if (state.selectedUserId.isNotBlank() && !state.demoUserSelected) {
-                // The wrapper exists only to carry the shake offset, so it has to repeat the
-                // parent's spacing — ScopeSection emits several siblings and was relying on it.
-                Column(
-                    modifier = Modifier.offset { IntOffset(scopeShake.value.roundToInt(), 0) },
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    ScopeSection(state = state, actions = actions)
-                }
+            // Everything below the sign-in form arrives a frame after it. Opening this tab composed
+            // the whole column at once — six outlined text fields, the sync scope, the update
+            // section, some forty string lookups — for 6–8 ms of main thread inside the frame that
+            // also tears the previous tab down, and that frame came in at 20–27 ms against an
+            // 11 ms budget on a mid-range phone (2026-10-29). Nothing above the fold moves when
+            // the rest lands, and most of it is below the fold on a phone anyway. The same split
+            // the detail screen makes for its description; previews and goldens render one frame
+            // and run no effects, so there the column is whole at once.
+            val inspecting = LocalInspectionMode.current
+            var lowerSectionsLaidOut by remember { mutableStateOf(inspecting) }
+            LaunchedEffect(Unit) {
+                withFrameNanos {}
+                lowerSectionsLaidOut = true
             }
+            if (lowerSectionsLaidOut) {
+                AdvancedSection(
+                    state = state,
+                    actions = actions,
+                    initiallyExpanded = advancedExpanded,
+                )
 
-            HorizontalDivider()
+                if (state.selectedUserId.isNotBlank() && !state.demoUserSelected) {
+                    // The wrapper exists only to carry the shake offset, so it has to repeat the
+                    // parent's spacing — ScopeSection emits several siblings and was relying on it.
+                    Column(
+                        modifier = Modifier.offset { IntOffset(scopeShake.value.roundToInt(), 0) },
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        ScopeSection(state = state, actions = actions)
+                    }
+                }
 
-            OutlinedButton(
-                onClick = actions.syncNow,
-                enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.sync_now)) }
-
-            if (state.busy) CircularProgressIndicator()
-
-            // Sync's own line, and the one slot fed from outside this screen: WorkManager replays
-            // the last sync here, so it can be describing one started on an earlier visit.
-            StatusText(state.syncStatus)
-
-            Text(
-                stringResource(
-                    R.string.library_summary,
-                    pluralStringResource(R.plurals.video_count, videoCount, videoCount),
-                ) + "  •  " +
-                    // The time itself, not just that one was recorded: relative while it is
-                    // recent, exact once it is not (see formatSyncTime).
-                    (
-                        formatSyncTime(state.lastSyncAt, now)
-                            ?.let { stringResource(R.string.synced_at, it) }
-                            ?: stringResource(R.string.never_synced)
-                        ),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            HorizontalDivider()
-
-            // Playback handoff. Out in the open rather than behind Advanced: it is the switch to
-            // reach for when playback fails, and a fix hidden behind an expander is one the user
-            // in that situation never finds. Independent of which credential is in use, so it is
-            // not gated on being signed in either.
-            TokenInQueryRow(state = state, actions = actions)
-
-            // Last on the screen, below the library summary: updating the app is the rarest thing
-            // anyone comes to Settings to do, and it has nothing to do with the server connection
-            // and sync scope above it.
-            //
-            // Hidden outright in a debug build rather than shown and inert: a debug install is a
-            // different package at versionCode 1, so there is nothing here that could work and
-            // nothing to explain. Gated on state, never on BuildConfig — previews and screenshot
-            // tests build the debug variant, and reading the flag here would blank every golden.
-            // The divider goes inside, so a debug build ends the screen on the summary line rather
-            // than on a rule with nothing under it.
-            if (!state.isDebugBuild) {
                 HorizontalDivider()
 
-                UpdatesSection(state = state, actions = actions, now = now)
-            }
+                OutlinedButton(
+                    onClick = actions.syncNow,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.sync_now)) }
 
-            // Truly last, under the Updates section on a release build and under the library
-            // summary on a debug one — it is reference material, not something anyone comes here
-            // to act on. Drawn only when there is a version to name, so a preview or test that
-            // never set one renders no line rather than a bare "Version ".
-            if (state.versionName.isNotBlank()) {
+                if (state.busy) CircularProgressIndicator()
+
+                // Sync's own line, and the one slot fed from outside this screen: WorkManager replays
+                // the last sync here, so it can be describing one started on an earlier visit.
+                StatusText(state.syncStatus)
+
                 Text(
-                    stringResource(R.string.app_version, state.versionName, state.versionCode),
+                    stringResource(
+                        R.string.library_summary,
+                        pluralStringResource(R.plurals.video_count, videoCount, videoCount),
+                    ) + "  •  " +
+                        // The time itself, not just that one was recorded: relative while it is
+                        // recent, exact once it is not (see formatSyncTime).
+                        (
+                            formatSyncTime(state.lastSyncAt, now)
+                                ?.let { stringResource(R.string.synced_at, it) }
+                                ?: stringResource(R.string.never_synced)
+                            ),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                HorizontalDivider()
+
+                // Playback handoff. Out in the open rather than behind Advanced: it is the switch to
+                // reach for when playback fails, and a fix hidden behind an expander is one the user
+                // in that situation never finds. Independent of which credential is in use, so it is
+                // not gated on being signed in either.
+                TokenInQueryRow(state = state, actions = actions)
+
+                // Last on the screen, below the library summary: updating the app is the rarest thing
+                // anyone comes to Settings to do, and it has nothing to do with the server connection
+                // and sync scope above it.
+                //
+                // Hidden outright in a debug build rather than shown and inert: a debug install is a
+                // different package at versionCode 1, so there is nothing here that could work and
+                // nothing to explain. Gated on state, never on BuildConfig — previews and screenshot
+                // tests build the debug variant, and reading the flag here would blank every golden.
+                // The divider goes inside, so a debug build ends the screen on the summary line rather
+                // than on a rule with nothing under it.
+                if (!state.isDebugBuild) {
+                    HorizontalDivider()
+
+                    UpdatesSection(state = state, actions = actions, now = now)
+                }
+
+                // Truly last, under the Updates section on a release build and under the library
+                // summary on a debug one — it is reference material, not something anyone comes here
+                // to act on. Drawn only when there is a version to name, so a preview or test that
+                // never set one renders no line rather than a bare "Version ".
+                if (state.versionName.isNotBlank()) {
+                    Text(
+                        stringResource(R.string.app_version, state.versionName, state.versionCode),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
