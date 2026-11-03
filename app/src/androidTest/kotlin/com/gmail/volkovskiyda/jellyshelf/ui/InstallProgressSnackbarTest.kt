@@ -71,14 +71,14 @@ class InstallProgressSnackbarTest {
             JellyshelfTheme(dynamicColor = false) {
                 val hostState = remember { SnackbarHostState() }
                 InstallProgressEffect(
-                    state = current,
+                    state = { current },
                     hostState = hostState,
                     onFailureDismissed = { dismissals++ },
                 )
                 // The empty body still has to consume the content padding, or lint reads the
                 // Scaffold as misused — there is simply nothing here to lay out but the host.
                 Scaffold(
-                    snackbarHost = { InstallSnackbarHost(hostState, current) },
+                    snackbarHost = { InstallSnackbarHost(hostState, state = { current }) },
                 ) { padding ->
                     Box(Modifier.padding(padding))
                 }

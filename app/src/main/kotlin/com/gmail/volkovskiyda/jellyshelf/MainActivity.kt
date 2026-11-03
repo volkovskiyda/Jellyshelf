@@ -537,10 +537,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
 
     // The install narrates itself app-wide: the dialog above closes the moment "Update" is tapped,
     // and the download outlives whatever screen the user moves to next.
-    val installState by updateChecker.installState.collectAsStateWithLifecycle()
+    // Kept as a State and read only through the providers here and in snackbarHost: a download
+    // emits once per network chunk, and a read in this function recomposed the whole app with each.
+    val installState = updateChecker.installState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     InstallProgressEffect(
-        state = installState,
+        state = { installState.value },
         hostState = snackbarHostState,
         onFailureDismissed = updateChecker::clearInstallState,
     )
@@ -665,7 +667,7 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             .semantics { testTagsAsResourceId = true },
         // The host reads installState too, not just the host state: that is what lets the download
         // percentage climb inside one snackbar instead of animating a new one in per tick.
-        snackbarHost = { InstallSnackbarHost(snackbarHostState, installState) },
+        snackbarHost = { InstallSnackbarHost(snackbarHostState, state = { installState.value }) },
         bottomBar = {
             // One slot, two things that can be in it. The bar sits above the tabs when both show;
             // on Detail and CategoryVideos there are no tabs, and then the bar is what has to

@@ -55,7 +55,7 @@ private val longFailure = InstallState.Failed(UpdateCheckError.ApiDisabled)
 @Composable
 private fun SnackbarNoAction() {
     PreviewTheme {
-        AppSnackbar(PreviewSnackbarData(installMessage(downloading)), state = null)
+        AppSnackbar(PreviewSnackbarData(installMessage(downloading)), state = { null })
     }
 }
 
@@ -64,7 +64,7 @@ private fun SnackbarNoAction() {
 @Composable
 private fun SnackbarNoActionDark() {
     PreviewTheme(darkTheme = true) {
-        AppSnackbar(PreviewSnackbarData(installMessage(downloading)), state = null)
+        AppSnackbar(PreviewSnackbarData(installMessage(downloading)), state = { null })
     }
 }
 
@@ -78,7 +78,7 @@ private fun SnackbarWithAction() {
                 stringResource(R.string.selected_count, 27),
                 stringResource(R.string.undo),
             ),
-            state = null,
+            state = { null },
         )
     }
 }
@@ -93,7 +93,7 @@ private fun SnackbarWithActionDark() {
                 stringResource(R.string.selected_count, 27),
                 stringResource(R.string.undo),
             ),
-            state = null,
+            state = { null },
         )
     }
 }
@@ -105,7 +105,7 @@ private fun SnackbarLongText() {
     PreviewTheme {
         AppSnackbar(
             PreviewSnackbarData(installMessage(longFailure), stringResource(R.string.dismiss)),
-            state = null,
+            state = { null },
         )
     }
 }
@@ -117,7 +117,7 @@ private fun SnackbarLongTextDark() {
     PreviewTheme(darkTheme = true) {
         AppSnackbar(
             PreviewSnackbarData(installMessage(longFailure), stringResource(R.string.dismiss)),
-            state = null,
+            state = { null },
         )
     }
 }

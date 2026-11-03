@@ -108,13 +108,17 @@ private class InstallFailureVisuals(
  * `Text` recomposes as bytes arrive. `visuals.message` stays the fallback for the moment before
  * [state] and the host agree, and is what the accessibility announcement on first show reads.
  *
+ * [state] is a provider, called only where the label is drawn. A download emits once per network
+ * chunk, many times a second, and a value parameter would have to be read by whoever calls this —
+ * the app's root composable, which then recomposed whole with every chunk.
+ *
  * Only for the install's own snackbars, which is what [InstallSnackbarVisuals] marks them as. This
  * is the app's single host — see `LocalSnackbarHostState` — and anything else posted through it
  * keeps the message it was given.
  */
 
 @Composable
-fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
+fun InstallSnackbarHost(hostState: SnackbarHostState, state: () -> InstallState?) {
     SnackbarHost(hostState) { data ->
         // Keyed on the data so each snackbar swipes from a fresh, settled state rather than
         // inheriting the dismissed one its predecessor ended in.
@@ -131,7 +135,7 @@ fun InstallSnackbarHost(hostState: SnackbarHostState, state: InstallState?) {
  * rendered preview frame cannot arrange.
  */
 @Composable
-internal fun AppSnackbar(data: SnackbarData, state: InstallState?) {
+internal fun AppSnackbar(data: SnackbarData, state: () -> InstallState?) {
     val swipeState = rememberSwipeToDismissBoxState()
     // A swipe is a dismissal like any other: it resolves showSnackbar, which is what
     // clears a failure upstream. It is also the only way out of a progress snackbar that
@@ -163,7 +167,7 @@ internal fun AppSnackbar(data: SnackbarData, state: InstallState?) {
                 data.visuals is InstallFailureVisuals
             Text(
                 if (isInstall) {
-                    state?.let { installMessage(it) } ?: data.visuals.message
+                    state()?.let { installMessage(it) } ?: data.visuals.message
                 } else {
                     data.visuals.message
                 },
@@ -188,20 +192,24 @@ internal fun AppSnackbar(data: SnackbarData, state: InstallState?) {
  *
  * Either way the failure is cleared upstream exactly once — the timeout, the action and a swipe all
  * resolve the same `showSnackbar` call.
+ *
+ * [state] is a provider for the reason [InstallSnackbarHost] gives: read here, every progress tick
+ * recomposes this effect alone, not the screen that hosts it.
  */
 @Composable
 fun InstallProgressEffect(
-    state: InstallState?,
+    state: () -> InstallState?,
     hostState: SnackbarHostState,
     onFailureDismissed: () -> Unit,
 ) {
+    val current = state()
     // Read outside the effect so the initial label is right; it is not a key, so later progress
     // does not restart the snackbar.
-    val message = state?.let { installMessage(it) }
+    val message = current?.let { installMessage(it) }
     val dismiss = stringResource(R.string.dismiss)
-    LaunchedEffect(installSnackbarKey(state)) {
+    LaunchedEffect(installSnackbarKey(current)) {
         if (message == null) return@LaunchedEffect
-        if (state !is InstallState.Failed) {
+        if (current !is InstallState.Failed) {
             hostState.showSnackbar(InstallSnackbarVisuals(message))
             return@LaunchedEffect
         }

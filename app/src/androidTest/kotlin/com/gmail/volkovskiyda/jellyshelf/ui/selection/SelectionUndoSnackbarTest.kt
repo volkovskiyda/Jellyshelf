@@ -75,7 +75,7 @@ class SelectionUndoSnackbarTest {
                     // The empty body still has to consume the content padding, or lint reads the
                     // Scaffold as misused — there is simply nothing here to lay out but the host.
                     Scaffold(
-                        snackbarHost = { InstallSnackbarHost(hostState, state = null) },
+                        snackbarHost = { InstallSnackbarHost(hostState, state = { null }) },
                     ) { padding ->
                         Box(Modifier.padding(padding))
                     }
