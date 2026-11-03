@@ -21,6 +21,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -334,7 +335,13 @@ internal fun CategoryVideosContent(
             isUncategorized = isUncategorized,
             isSkippedFilter = isSkippedFilter,
             onUnskip = onUnskip,
-            queueMarks = if (isNowPlayingFilter) QueueMarks(playingId, skippedIds) else null,
+            // Remembered: the list compares it by identity, so a new one per recomposition would
+            // re-run the whole list on the Now playing filter for changes that are not its own.
+            queueMarks = if (isNowPlayingFilter) {
+                remember(playingId, skippedIds) { QueueMarks(playingId, skippedIds) }
+            } else {
+                null
+            },
             removeKind = removeKind,
             scrollKey = scrollKey,
             onPlayVideo = onPlayVideo,
