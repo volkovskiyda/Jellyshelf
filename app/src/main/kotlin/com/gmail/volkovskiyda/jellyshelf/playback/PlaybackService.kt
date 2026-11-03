@@ -250,6 +250,7 @@ class PlaybackService : MediaSessionService(), KoinComponent {
         player.addListener(WatchStateListener())
         player.addListener(StartupTraceListener())
         player.addListener(TranscodeFallbackListener())
+        player.addListener(VideoOutputListener(player))
         // Last, so a transition has already been reported and re-tracked before this seeks.
         player.addListener(ResumeSeedingListener())
         // After that, and harmlessly so: it reads state rather than reacting to an order, and its
@@ -791,6 +792,38 @@ class PlaybackService : MediaSessionService(), KoinComponent {
     }
 
     /**
+     * Decodes video only while something shows it.
+     *
+     * The player keeps rendering video for as long as the item has a video track, whether or not a
+     * surface is attached: minimized to the bar, sent Home, or playing from the notification, every
+     * frame is still decoded and dropped. Measured 2026-11-03 on a mid-range phone with the library
+     * standing still under the bar: the decoder ran exactly as it does full screen — 1.1 cores of
+     * `media.swcodec` for an AV1 talk the phone has no hardware decoder for, plus 0.4 cores in the
+     * app's codec and player threads — for a picture nobody could see, at −238 mA against −127 for
+     * the same screen with nothing playing.
+     *
+     * The surface is the signal: media3 reports a zero size when the video output is cleared (the
+     * player screen left, or its SurfaceView was destroyed behind Home) and the real one when a
+     * surface is set, so the video track follows it. Disabling the track releases the decoder;
+     * enabling it again selects the track at the current position and the renderer joins the
+     * running audio — the poster shutter covers the moment until the first frame. Picture-in-picture
+     * keeps its surface and is untouched. The next item preloads without video while the track is
+     * off, which is the point of preloading it at all.
+     */
+    private inner class VideoOutputListener(created: ExoPlayer) : Player.Listener {
+        init {
+            // Off until a surface arrives: a session started from the notification or a Bluetooth
+            // button has nothing to draw into, and would otherwise decode for nobody until the
+            // screen is opened.
+            created.setVideoDecoding(shown = false, trail)
+        }
+
+        override fun onSurfaceSizeChanged(width: Int, height: Int) {
+            player?.setVideoDecoding(shown = width != 0 && height != 0, trail)
+        }
+    }
+
+    /**
      * Retries an undecodable direct-play item as the server's HLS transcode, at the position the
      * failure left off. The rebuilt item keeps its media id and metadata, so watch-state
      * tracking carries over untouched, and its playlist URL marks it as already-transcoding —
@@ -1053,6 +1086,18 @@ private fun NowPlayingState.pushProgress(player: ExoPlayer?) {
         positionMs = p.currentPosition,
         durationMs = p.duration.takeIf { it != C.TIME_UNSET } ?: 0L,
     )
+}
+
+/**
+ * Turns the video track on or off, once — a no-op when it already is. See `VideoOutputListener` in
+ * [PlaybackService] for why; top-level, like [pushProgress], because the service is at detekt's
+ * function threshold and this needs nothing of it but a trail to write to.
+ */
+private fun ExoPlayer.setVideoDecoding(shown: Boolean, trail: PlaybackTrail) {
+    val params = trackSelectionParameters
+    if ((C.TRACK_TYPE_VIDEO in params.disabledTrackTypes) == !shown) return
+    trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !shown).build()
+    trail.i(if (shown) "video decoding on: a surface is showing it" else "video decoding off: nothing shows it")
 }
 
 /**
