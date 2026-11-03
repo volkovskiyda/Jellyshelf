@@ -1455,12 +1455,15 @@ private fun PlayerPanel(
     note: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // The gesture loop below outlives recompositions (its key is Unit), so it calls whatever
+    // onDismiss is current rather than the one it started with.
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
     Box(
         modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = PANEL_SCRIM_ALPHA))
             // Scrim and tap-to-dismiss span everything.
-            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+            .pointerInput(Unit) { detectTapGestures { currentOnDismiss() } },
     ) {
         Column(
             Modifier
@@ -1807,13 +1810,18 @@ private fun ImmersiveWhileHere(enabled: Boolean) {
     }
     // The root window insets, not a padded-down copy: the chrome above consumes nothing for the
     // player, and WindowInsets.systemBars reads the window's own state regardless.
+    // Derived: the insets change on every frame of a bar animation, the answer only at its ends.
     val bars = WindowInsets.systemBars
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
-    val barsShown = bars.getTop(density) > 0 ||
-        bars.getBottom(density) > 0 ||
-        bars.getLeft(density, direction) > 0 ||
-        bars.getRight(density, direction) > 0
+    val barsShown by remember(bars, density, direction) {
+        derivedStateOf {
+            bars.getTop(density) > 0 ||
+                bars.getBottom(density) > 0 ||
+                bars.getLeft(density, direction) > 0 ||
+                bars.getRight(density, direction) > 0
+        }
+    }
     val focused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(activity, enabled, focused, barsShown) {
         if (!enabled || !focused || !barsShown) return@LaunchedEffect
