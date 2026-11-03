@@ -5,6 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.Locale
 
 class FormatTest {
 
@@ -26,6 +27,19 @@ class FormatTest {
         assertEquals("59:59", formatDuration(3599))
         assertEquals("1:00:00", formatDuration(3600))
         assertEquals("2:05:07", formatDuration(2 * 3600 + 5 * 60 + 7))
+    }
+
+    /** ASCII digits under a locale whose own are not, matching the timestamps beside them. */
+    @Test
+    fun `formatDuration keeps ASCII digits whatever the default locale`() {
+        val default = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.forLanguageTag("ar-EG"))
+            assertEquals("1:05:07", formatDuration(3600 + 5 * 60 + 7))
+            assertEquals("2026-07-25 10:15", formatTimestamp(1_784_974_530_000L, ZoneOffset.UTC))
+        } finally {
+            Locale.setDefault(default)
+        }
     }
 
     @Test

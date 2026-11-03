@@ -3,7 +3,6 @@ package com.gmail.volkovskiyda.jellyshelf.util
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /** Ticks are 100-nanosecond units (Jellyfin/.NET). 10,000,000 ticks == 1 second. */
 const val TICKS_PER_SECOND = 10_000_000L
@@ -15,17 +14,34 @@ private const val TICKS_PER_MILLI = TICKS_PER_SECOND / 1000
 fun millisToTicks(millis: Long): Long = millis * TICKS_PER_MILLI
 fun ticksToMillis(ticks: Long): Long = ticks / TICKS_PER_MILLI
 
-/** Formats a duration in seconds as H:MM:SS or M:SS. */
+/**
+ * Formats a duration in seconds as H:MM:SS or M:SS.
+ *
+ * Built by hand rather than with `String.format`, here and in [formatTimestamp]: both run for every
+ * video row a list composes, and a format call sets up a `java.util.Formatter` and boxes its
+ * arguments each time — the same machinery behind the ~67 µs a formatted string resource measured
+ * per row. The digits are ASCII whatever the locale, as the timestamps' always were.
+ */
 @Suppress("MagicNumber") // 3600/60 are the hour/minute bases of the H:MM:SS shape, not named values
 fun formatDuration(totalSeconds: Long): String {
     if (totalSeconds <= 0) return "--:--"
     val h = totalSeconds / 3600
     val m = (totalSeconds % 3600) / 60
     val s = totalSeconds % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+    return buildString(DURATION_CAPACITY) {
+        if (h > 0) append(h).append(':').appendTwoDigits(m) else append(m)
+        append(':').appendTwoDigits(s)
+    }
 }
 
-private val TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+private const val DURATION_CAPACITY = 8
+private const val TIMESTAMP_CAPACITY = 16
+
+@Suppress("MagicNumber") // 10 is the base of a zero-padded pair, not a named value
+private fun StringBuilder.appendTwoDigits(value: Long): StringBuilder {
+    if (value < 10) append('0')
+    return append(value)
+}
 
 /**
  * Renders an epoch-millis timestamp in [zone] as "yyyy-MM-dd HH:mm", matching the date shape
@@ -39,7 +55,16 @@ private val TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
  */
 fun formatTimestamp(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String? {
     if (epochMillis <= 0L) return null
-    return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), zone).format(TIMESTAMP_FORMAT)
+    val time = LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), zone)
+    // By hand, for the reason formatDuration gives; positive epoch millis keep the year at four
+    // digits, so this is exactly the "yyyy-MM-dd HH:mm" a DateTimeFormatter would print.
+    return buildString(TIMESTAMP_CAPACITY) {
+        append(time.year).append('-')
+        appendTwoDigits(time.monthValue.toLong()).append('-')
+        appendTwoDigits(time.dayOfMonth.toLong()).append(' ')
+        appendTwoDigits(time.hour.toLong()).append(':')
+        appendTwoDigits(time.minute.toLong())
+    }
 }
 
 /**
