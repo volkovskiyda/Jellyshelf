@@ -8,6 +8,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,13 +92,12 @@ import com.gmail.volkovskiyda.jellyshelf.util.formatDuration
 import com.gmail.volkovskiyda.jellyshelf.util.formatUploadTime
 import com.gmail.volkovskiyda.jellyshelf.util.isJellyfinImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.watchedFraction
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Resolves a stored thumbnail [url] to a loadable model against a [settings] snapshot. Stored URLs
@@ -143,7 +143,6 @@ fun rememberVideoThumbnailResolver(): (Video) -> String? {
  * covers the fast list → detail → back and configuration-change cases in memory; the store
  * seeds the initial value whenever that saved state has been discarded.
  */
-@OptIn(FlowPreview::class)
 @Composable
 fun rememberPersistedLazyListState(
     key: String,
@@ -173,12 +172,9 @@ fun rememberPersistedLazyListState(
     }
     // Both savers wait for [seedRestored]: until the restore above has run, the state still
     // reads (0, 0), and persisting that would overwrite the very position we are about to
-    // restore — a cold start plus a fast tab bounce, or a first content emission slower than
-    // the debounce, would otherwise wipe the saved position.
+    // restore — a cold start plus a fast tab bounce would otherwise wipe the saved position.
     LaunchedEffect(key, state) {
-        snapshotFlow { ScrollPosition(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset) }
-            .debounce(250)
-            .distinctUntilChanged()
+        settledPositions(state) { ScrollPosition(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset) }
             .collect { if (seedRestored) store.save(key, it) }
     }
     DisposableEffect(key, state) {
@@ -200,7 +196,6 @@ fun rememberPersistedLazyListState(
  * The anchor is an item, not a line, so it survives the grid changing its column count: the
  * position saved with one video per line restores to the line holding that video with two.
  */
-@OptIn(FlowPreview::class)
 @Composable
 fun <T> rememberAnchoredLazyGridState(
     key: String,
@@ -230,11 +225,9 @@ fun <T> rememberAnchoredLazyGridState(
         restored = true
     }
 
-    // Persist the first visible item's anchor as the user scrolls.
+    // Persist the first visible item's anchor wherever a scroll comes to rest.
     LaunchedEffect(key, state) {
-        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
-            .debounce(250.milliseconds)
-            .distinctUntilChanged()
+        settledPositions(state) { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
             .collect { (index, offset) ->
                 if (!restored) return@collect
                 val item = currentItems.getOrNull(index) ?: return@collect
@@ -254,6 +247,20 @@ fun <T> rememberAnchoredLazyGridState(
     }
     return state
 }
+
+/**
+ * [position] each time a scroll of [state] comes to rest, and on every change while it rests — a
+ * content change that moves the first visible item, a restore's own jump.
+ *
+ * While a scroll runs the block reads nothing but `isScrollInProgress`, so `snapshotFlow` has no
+ * reason to run it again until the scroll ends. The savers used to read the position itself, which
+ * emitted on every frame of a drag or a fling into a `debounce` — a channel hand-off and a timer
+ * re-armed on another thread, per frame, on every persisted list in the app.
+ */
+private fun <P : Any> settledPositions(state: ScrollableState, position: () -> P): Flow<P> =
+    snapshotFlow { if (state.isScrollInProgress) null else position() }
+        .filterNotNull()
+        .distinctUntilChanged()
 
 /**
  * Index of the last item whose anchor is `<=` [anchor] in a list sorted ascending by [anchorOf]
