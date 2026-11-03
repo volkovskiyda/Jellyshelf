@@ -558,6 +558,14 @@ deliberately no committed threshold to fail against: these numbers move with the
 library size and how warm the phone is, so a number in the repository would fail for reasons that
 have nothing to do with a commit.
 
+**Composable names in a trace.** The `debug` and `benchmarkRelease` builds carry Compose's
+composition tracing, so a system trace shows every composable as a slice of its own — which ones a
+long frame ran, and how many times a scroll composed a row. Android Studio's profiler records one,
+as does `JourneyBenchmark` given `androidx.benchmark.fullTracing.enable=true`, and
+`scripts/composition-trace.sh` does it from a terminal, cold launch included. `release` goes
+without: the library's startup check would cost every launch a binder call. Runbook:
+[docs/COMPOSITION-TRACING.md](docs/COMPOSITION-TRACING.md).
+
 **Monitoring the graph itself.** [Kotzilla](https://kotzilla.io), from the Koin authors, watches the
 dependency graph, screen timings and crashes from real sessions. The Gradle plugin adds the SDK and
 generates its config, and `monitoring()` attaches it to Koin last inside `startKoin`. Both build

@@ -66,6 +66,12 @@ baselineProfile {
 }
 
 dependencies {
+    // Also composition tracing's benchmark half, with nothing added: the Compose tracing guide says to
+    // declare androidx.tracing:tracing-perfetto and tracing-perfetto-binary here, but benchmark-macro
+    // already depends on both at runtime scope (1.0.1 as of 1.5.0). Under
+    // `androidx.benchmark.fullTracing.enable=true` it sideloads that binary into the app under test,
+    // whose own tracing-perfetto must be the same version — the handshake checks it and says so in
+    // logcat (`requiredVersion`) when a Compose BOM bump moves one without the other.
     implementation(libs.androidx.benchmark.macro.junit4)
     implementation(libs.androidx.test.ext.junit)
     implementation(libs.androidx.test.uiautomator)

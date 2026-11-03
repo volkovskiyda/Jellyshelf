@@ -274,6 +274,14 @@ androidComponents {
                 // written out twice.
                 android.sourceSets.getByName(buildType.name).res.directories += "src/benchmark/res"
             }
+        // Composable names in the benchmark's traces — benchmarkRelease only; the debugImplementation
+        // line in the dependencies block says why release goes without. Added here rather than there
+        // because the baseline-profile plugin creates this build type, and its configurations with it,
+        // only after the dependencies block has run. Not nonMinifiedRelease either: the generator
+        // profiles that variant, and the profile it writes should be the shipped app's startup.
+        android.buildTypes.filter { it.name.startsWith("benchmark") }.forEach { buildType ->
+            dependencies.addProvider("${buildType.name}Implementation", libs.androidx.compose.runtime.tracing)
+        }
         android.buildTypes.filter { it.name.startsWith("nonMinified") }.forEach { buildType ->
             buildType.optimization.enable = false
             // Signing is left exactly as inherited from release — the generator should profile a
@@ -872,6 +880,18 @@ dependencies {
     // compiles against rather than inheriting whichever one another library happens to want.
     implementation(libs.androidx.metrics.performance)
     implementation(libs.androidx.tracing)
+    // Composition tracing: each composable as a named slice in a system trace, beside the sections
+    // above, so a long frame says which composables it spent its time in. Android Studio's profiler
+    // and Macrobenchmark's `androidx.benchmark.fullTracing.enable` switch it on while they record
+    // (docs/COMPOSITION-TRACING.md); with nothing recording, a composable pays only the branch the
+    // Compose compiler already emits into every build.
+    //
+    // Debug, and benchmarkRelease through finalizeDsl above — never release. The artifact brings
+    // androidx.tracing:tracing-perfetto, whose androidx.startup initializer asks PackageManager on
+    // every cold start whether a cold-start trace was requested: a binder call on the main thread
+    // at each launch, plus a DUMP-protected exported receiver, for a capability only a developer
+    // uses. The composable names themselves are in every APK regardless — the compiler writes them.
+    debugImplementation(libs.androidx.compose.runtime.tracing)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.coil.compose)
     // Coil 3 registers no network fetcher on its own; di/AppModule.kt wires this one to a
