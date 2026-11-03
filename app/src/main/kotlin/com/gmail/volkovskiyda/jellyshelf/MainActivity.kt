@@ -393,6 +393,12 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
     val backStack = rememberNavBackStack(*startStack.toTypedArray())
     val saveableStateHolderDecorator = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
     val viewModelStoreDecorator = rememberViewModelStoreNavEntryDecorator<NavKey>()
+    // One list for the life of the decorators. NavDisplay is called again whenever the Scaffold's
+    // content recomposes — every frame of a system-bar animation, through innerPadding — and a fresh
+    // list there is a changed argument: it re-wraps every entry and re-keys the back stack's effects.
+    val entryDecorators = remember(saveableStateHolderDecorator, viewModelStoreDecorator) {
+        listOf(saveableStateHolderDecorator, viewModelStoreDecorator)
+    }
 
     // Persist the stack on every change so the app reopens on the exact screen the user left.
     // The first emission is the just-restored stack, so re-saving it is a harmless no-op.
@@ -856,10 +862,10 @@ private fun JellyshelfNav(startStack: List<AppNavKey>, viewModel: MainViewModel)
             Box(Modifier.fillMaxSize()) {
                 NavDisplay(
                     backStack = backStack,
-                    entryDecorators = listOf(saveableStateHolderDecorator, viewModelStoreDecorator),
+                    entryDecorators = entryDecorators,
                     // The player cuts in and out; everything else cross-fades.
-                    transitionSpec = cutting(Fade),
-                    popTransitionSpec = cutting(Fade),
+                    transitionSpec = CutOrFade,
+                    popTransitionSpec = CutOrFade,
                     predictivePopTransitionSpec = { edge ->
                         if (cutting()) Cut else defaultPredictivePopTransitionSpec<NavKey>()(this, edge)
                     },
@@ -1111,6 +1117,12 @@ private fun Scene<NavKey>.cuts(): Boolean = entries.any { CUT_TRANSITION in it.m
 
 private fun AnimatedContentTransitionScope<Scene<NavKey>>.cutting(): Boolean =
     initialState.cuts() || targetState.cuts()
+
+/**
+ * [Fade], except between screens that cut. Built once rather than at the call: a new lambda per
+ * call is a changed argument to `NavDisplay`, which then never skips.
+ */
+private val CutOrFade = cutting(Fade)
 
 /** [spec], except between screens that cut. */
 private fun cutting(
