@@ -351,6 +351,30 @@ class VideoMergeTest {
         )
     }
 
+    /**
+     * One chapter per start: the player's chapter list keys its rows on the start, and a lazy list
+     * given the same key twice throws the moment the panel opens. The first in index order wins.
+     */
+    @Test
+    fun `index chapters sharing a start collapse to the first`() {
+        val merged = mergeVideo(
+            existing = null,
+            youtubeId = youtubeId,
+            item = item(),
+            meta = indexMeta(
+                meta().copy(
+                    chapters = listOf(
+                        IndexChapter(startSeconds = 0.0, title = "Intro"),
+                        IndexChapter(startSeconds = 60.0, title = "Part one"),
+                        IndexChapter(startSeconds = 60.0004, title = "Part one, again"),
+                    ),
+                ),
+            ),
+            context = context(indexAvailable = true),
+        )
+        assertEquals(listOf(Chapter(0L, "Intro"), Chapter(60_000L, "Part one")), merged.chapters)
+    }
+
     /** No index entry means no structured chapters — Jellyfin has nothing to fall back to. */
     @Test
     fun `a row rebuilt without an index entry has no chapters`() {

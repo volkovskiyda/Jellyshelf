@@ -122,7 +122,9 @@ class PlayerViewModel(
      */
     val chapters: StateFlow<List<Chapter>> = combine(video, embeddedChapters) { video, embedded ->
         parseTimecodes(video?.description, video?.durationSeconds ?: 0L)
-            .ifEmpty { video?.chapters.orEmpty() }
+            // Deduplicated again for rows synced before toChapters dropped a repeated start: the
+            // chapter list keys its rows on it, and a repeated key throws when the list opens.
+            .ifEmpty { video?.chapters.orEmpty().distinctBy(Chapter::startMs) }
             .ifEmpty { embedded }
     }
         .stateIn(viewModelScope, WhileUiSubscribed, emptyList())

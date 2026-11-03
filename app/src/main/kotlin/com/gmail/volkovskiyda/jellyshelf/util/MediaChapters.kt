@@ -49,7 +49,8 @@ internal fun Tracks.embeddedChapters(): List<Chapter> = groups
     // Nero `chpl` atom *and* a QuickTime chapter track, which is what ffmpeg writes by default —
     // but media3 1.11.0 surfaces only one set. Verified 2026-08-27 by deleting this line and
     // re-running MediaChaptersTest against a fixture carrying both: still three chapters, not six.
-    // Kept because "which format wins" is media3's to change, and a doubled list fails silently.
+    // Kept because "which format wins" is media3's to change, and a doubled list does not fail
+    // quietly: the chapter list keys its rows on the start, and a repeated key throws when it opens.
     .distinctBy { it.startMs }
     .sortedBy { it.startMs }
     .toList()

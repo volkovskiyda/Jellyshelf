@@ -47,8 +47,10 @@ private const val MILLIS_PER_SECOND = 1_000
 
 /**
  * Wire chapters → domain [Chapter]s: milliseconds, non-blank titles only, entries with a
- * missing or negative start dropped, and sorted ascending — the player's current-chapter
- * lookup assumes order, and remote data doesn't get to break that assumption.
+ * missing or negative start dropped, sorted ascending and one per start — the player's
+ * current-chapter lookup assumes order, its chapter list keys rows on the start (a repeated key
+ * throws when the list opens), and remote data doesn't get to break either assumption. The sort is
+ * stable, so of two chapters on one millisecond the first in the index stays.
  */
 internal fun List<IndexChapter>?.toChapters(): List<Chapter> = orEmpty()
     .mapNotNull { chapter ->
@@ -57,3 +59,4 @@ internal fun List<IndexChapter>?.toChapters(): List<Chapter> = orEmpty()
         Chapter(startMs = (startSeconds * MILLIS_PER_SECOND).toLong(), title = title)
     }
     .sortedBy(Chapter::startMs)
+    .distinctBy(Chapter::startMs)
