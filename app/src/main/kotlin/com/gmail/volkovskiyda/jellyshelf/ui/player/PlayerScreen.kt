@@ -71,6 +71,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -452,10 +453,13 @@ private fun PlayerWithControls(
     var speedMenuOpen by remember { mutableStateOf(false) }
 
     // Poll position/duration while RESUMED and while something shows them — the controls or the
-    // chapter list; 500 ms is smooth enough for a seek bar and labels. Hidden, nothing reads them,
-    // yet each tick still recomposed this screen, twice a second for the length of every video
-    // (system trace, 2026-10-29). A restart reads before it waits, so controls coming back fade in
-    // over the current position rather than the one they were hidden at.
+    // chapter list; 500 ms is smooth enough for the chapter row and the scrub preview. Hidden,
+    // nothing reads them, yet each tick still recomposed this screen, twice a second for the length
+    // of every video (system trace, 2026-10-29). Shown, the position is read only through derived
+    // chapter lookups (PlayerControls' chapter step, the panel's highlight below), so a tick
+    // recomposes nothing until a chapter boundary passes — the seek bar and time labels read the
+    // player themselves. A restart reads before it waits, so controls coming back fade in over the
+    // current position rather than the one they were hidden at.
     val lifecycleOwner = LocalLifecycleOwner.current
     val positionShown = controlsVisible || chaptersOpen
     LaunchedEffect(controller, lifecycleOwner, positionShown) {
@@ -695,7 +699,7 @@ private fun PlayerWithControls(
                 visible = controlsVisible,
                 buffering = isBuffering,
                 title = title,
-                positionMs = positionMs,
+                positionMs = { positionMs },
                 durationMs = durationMs,
                 chapters = chapters,
                 speed = playbackSpeed.playbackSpeed,
@@ -770,9 +774,12 @@ private fun PlayerWithControls(
             )
         }
         if (chaptersOpen && !isInPip) {
+            // Derived for the same reason as PlayerControls' chapter step: the highlight moves at a
+            // chapter boundary, not on every tick.
+            val playingChapter by remember(chapters) { derivedStateOf { currentChapter(chapters, positionMs) } }
             ChaptersPanel(
                 chapters = chapters,
-                currentChapter = currentChapter(chapters, positionMs),
+                currentChapter = playingChapter,
                 onChapterClick = {
                     controller.logTransport("chapter panel seek to ${it.startMs}ms")
                     controller.seekTo(it.startMs)
@@ -860,7 +867,10 @@ private fun PlayerPoster(model: String?, modifier: Modifier = Modifier) {
  * Everything transport reads its state off [player] rather than off parameters, which is why
  * previews and tests hand it a `FakePlayer` instead of plain values; [positionMs] and [durationMs]
  * stay as parameters because the chapter-step row and the tick markers need a *scrub-aware*
- * position the player itself does not have.
+ * position the player itself does not have. The position is a provider, read only inside a derived
+ * [ChapterStep]: it moves on every poll tick and the scrub on every drag event, while what the row
+ * shows changes only at a chapter boundary — read here directly, either one recomposed the whole
+ * overlay, twice a second while playing and once per pointer move while scrubbing.
  *
  * Its only internal state is transient interaction — the in-flight scrub and the open speed menu —
  * each reported via its `on*Changed` callback so the caller can pin the overlay open while the user
@@ -873,7 +883,7 @@ internal fun PlayerControls(
     visible: Boolean,
     buffering: Boolean,
     title: String?,
-    positionMs: Long,
+    positionMs: () -> Long,
     durationMs: Long,
     chapters: List<Chapter>,
     speed: Float,
@@ -903,7 +913,11 @@ internal fun PlayerControls(
     // ProgressSlider's — it calls seekTo internally just before onValueChangeFinished — so scrubMs
     // exists only to feed ChapterStepRow and to report scrubbing upward.
     var scrubMs by remember { mutableStateOf<Long?>(null) }
-    val shownMs = scrubMs ?: positionMs
+    // Read only inside the row's slot, so a new step recomposes that slot and nothing around it. A
+    // chapterless video never reads it, and never computes it.
+    val chapterStep = remember(chapters, positionMs) {
+        derivedStateOf { chapterStep(chapters, scrubMs ?: positionMs()) }
+    }
 
     // No full-screen scrim: BottomControls paints its own gradient behind the seek bar, so more of
     // the video stays visible while the controls are up. The centre buttons and the top bar then
@@ -1065,7 +1079,7 @@ internal fun PlayerControls(
                     .padding(bottom = 12.dp),
                 above = {
                     if (chapters.isNotEmpty()) {
-                        ChapterStepRow(chapters, shownMs, onSeek, onFinish, onOpenChapters)
+                        ChapterStepRow(chapterStep.value, onSeek, onFinish, onOpenChapters)
                     }
                 },
                 left = {
@@ -1258,14 +1272,13 @@ private fun topControlsGradient(): Brush = Brush.verticalGradient(
  */
 @Composable
 private fun ChapterStepRow(
-    chapters: List<Chapter>,
-    shownMs: Long,
+    step: ChapterStep,
     onSeek: (Long) -> Unit,
     onFinish: () -> Unit,
     onOpenChapters: () -> Unit,
 ) {
-    val previousMs = previousChapterStartMs(chapters, shownMs)
-    val nextMs = nextChapterStartMs(chapters, shownMs)
+    val previousMs = step.previousMs
+    val nextMs = step.nextMs
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1289,7 +1302,7 @@ private fun ChapterStepRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                currentChapter(chapters, shownMs)?.title.orEmpty(),
+                step.title,
                 color = Color.White.copy(alpha = 0.8f),
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
@@ -1316,6 +1329,18 @@ private fun ChapterStepRow(
         }
     }
 }
+
+/**
+ * What [ChapterStepRow] shows at one position: the chapter's name and where each arrow goes. Equal
+ * from one poll tick to the next inside a chapter, which is what lets a derived state hold it back.
+ */
+private data class ChapterStep(val title: String, val previousMs: Long?, val nextMs: Long?)
+
+private fun chapterStep(chapters: List<Chapter>, atMs: Long) = ChapterStep(
+    title = currentChapter(chapters, atMs)?.title.orEmpty(),
+    previousMs = previousChapterStartMs(chapters, atMs),
+    nextMs = nextChapterStartMs(chapters, atMs),
+)
 
 /** White when it does something, visibly dimmed at the ends of a queue or at the first chapter. */
 private fun transportTint(enabled: Boolean): Color =

@@ -124,7 +124,7 @@ class PlayerControlsTest {
                     visible = true,
                     buffering = false,
                     title = "Sample video",
-                    positionMs = positionMs,
+                    positionMs = { positionMs },
                     durationMs = 600_000L,
                     chapters = chapters,
                     speed = speed,
