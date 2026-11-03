@@ -60,10 +60,16 @@ fun VideoList(
             state = state,
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(videos, key = { it.youtubeId }) { row(it, thumbnailWidth) }
+            // One content type today, so no reuse changes; named so that a header or a footer
+            // added later gets a reuse pool of its own rather than taking over a row's slots.
+            items(videos, key = { it.youtubeId }, contentType = { VIDEO_ROW_CONTENT_TYPE }) {
+                row(it, thumbnailWidth)
+            }
         }
     }
 }
+
+private const val VIDEO_ROW_CONTENT_TYPE = "video"
 
 /**
  * How many columns a grid [width] wide gets: the fewest that keep every cell within

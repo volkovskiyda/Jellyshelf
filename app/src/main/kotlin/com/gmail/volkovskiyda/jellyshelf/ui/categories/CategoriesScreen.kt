@@ -175,7 +175,7 @@ internal fun CategoriesContent(
                 }
                 val countLabel = rememberCountLabels()
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    items(categories, key = { it.category.id }) { item ->
+                    items(categories, key = { it.category.id }, contentType = { CATEGORY_ROW_CONTENT_TYPE }) { item ->
                         CategoryRow(
                             item = item,
                             countLabel = countLabel(item.videoCount),
@@ -315,7 +315,7 @@ private fun TabbedCategories(
         }
         val countLabel = rememberCountLabels()
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-            items(tab.items, key = { it.category.id }) { item ->
+            items(tab.items, key = { it.category.id }, contentType = { CATEGORY_ROW_CONTENT_TYPE }) { item ->
                 CategoryRow(
                     item = item,
                     countLabel = countLabel(item.videoCount),
@@ -343,6 +343,9 @@ private fun rememberCountLabels(): (Int) -> String {
         labels.getOrPut(count) { resources.getQuantityString(R.plurals.video_count, count, count) }
     }
 }
+
+/** Both category lists hold nothing else yet; see the video grid's own content type for why. */
+private const val CATEGORY_ROW_CONTENT_TYPE = "category"
 
 @Composable
 private fun CategoryRow(
