@@ -4,8 +4,8 @@ import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -207,7 +208,7 @@ private suspend fun captureRevealStart(
 @Composable
 private fun RevealOverlay(controller: ThemeRevealController) {
     val previousFrame = controller.overlayBitmap ?: return
-    Canvas(
+    Spacer(
         modifier = Modifier
             .fillMaxSize()
             .testTag(THEME_REVEAL_OVERLAY_TAG)
@@ -217,15 +218,20 @@ private fun RevealOverlay(controller: ThemeRevealController) {
                 awaitPointerEventScope {
                     while (true) awaitPointerEvent().changes.forEach { it.consume() }
                 }
+            }
+            // One Path for the whole reveal, rewound each frame rather than allocated per frame.
+            // The radius is read only in the draw block, so the cache itself is never rebuilt.
+            .drawWithCache {
+                val circle = Path()
+                onDrawBehind {
+                    circle.rewind()
+                    circle.addOval(Rect(controller.origin, controller.radius.value))
+                    // Going dark: the old light frame everywhere except a growing hole, through
+                    // which the new dark theme shows. Going light: the old dark frame only inside a
+                    // shrinking circle, collapsing into the origin over a UI that is already light.
+                    val clipOp = if (controller.expandToDark) ClipOp.Difference else ClipOp.Intersect
+                    clipPath(circle, clipOp) { drawImage(previousFrame) }
+                }
             },
-    ) {
-        val circle = Path().apply {
-            addOval(Rect(controller.origin, controller.radius.value))
-        }
-        // Going dark: the old light frame everywhere except a growing hole, through which
-        // the new dark theme shows. Going light: the old dark frame only inside a shrinking
-        // circle, collapsing into the origin over a UI that is already light.
-        val clipOp = if (controller.expandToDark) ClipOp.Difference else ClipOp.Intersect
-        clipPath(circle, clipOp) { drawImage(previousFrame) }
-    }
+    )
 }
