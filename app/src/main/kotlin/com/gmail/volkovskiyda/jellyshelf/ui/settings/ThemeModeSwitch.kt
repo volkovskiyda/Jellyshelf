@@ -20,16 +20,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -92,7 +91,7 @@ internal fun ThemeModeSwitch(
     // of the local's null default: the switch keeps working, it just changes the theme without the
     // animation.
     val revealController = LocalThemeRevealController.current
-    var centerInWindow by remember { mutableStateOf<Offset?>(null) }
+    val pill = remember { PillPosition() }
 
     // The target, not the drawing. The pill is only STATION_SIZE tall, which is under the 48.dp
     // minimum a touch target has to meet — so the click and the semantics live out here, on a box
@@ -111,7 +110,7 @@ internal fun ThemeModeSwitch(
                 // through the ViewModel and DataStore before it comes back as a new theme — by then
                 // the origin has to be waiting. A tap that changes nothing visible (light → auto
                 // under a light system) leaves the arming to expire unused; see [ThemeRevealController].
-                centerInWindow?.let { revealController?.armReveal(it) }
+                pill.centerInWindow()?.let { revealController?.armReveal(it) }
                 onClick()
             }
             // The control as a whole reports which mode is selected, so TalkBack announces the
@@ -123,7 +122,7 @@ internal fun ThemeModeSwitch(
             modifier = Modifier
                 .size(width = TRACK_WIDTH, height = STATION_SIZE)
                 // On the pill, not the target: the circular reveal grows from what the user sees.
-                .onGloballyPositioned { centerInWindow = it.boundsInWindow().center }
+                .onPlaced { pill.coordinates = it }
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                 .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
@@ -140,30 +139,50 @@ internal fun ThemeModeSwitch(
             )
             // Drawn after the thumb so the active icon sits on top of it rather than under.
             Row {
-                ThemeMode.entries.forEach { entry ->
-                    val tint by animateColorAsState(
-                        targetValue = if (entry == mode) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        label = "themeIconTint",
-                    )
-                    Box(
-                        modifier = Modifier.size(STATION_SIZE),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = entry.icon,
-                            // The control's state description already names the selected mode; a
-                            // description per icon would have TalkBack read all three every time.
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(ICON_SIZE),
-                        )
-                    }
-                }
+                ThemeMode.entries.forEach { entry -> StationIcon(entry, selected = entry == mode) }
             }
         }
     }
+}
+
+/**
+ * One mode's icon, cross-fading its tint as the thumb arrives or leaves. A composable of its own so
+ * the animation's per-frame reads recompose this icon alone: inside the switch's inline `Row` they
+ * recomposed the whole switch on every frame of the fade, alongside the theme reveal's heaviest.
+ */
+@Composable
+private fun StationIcon(entry: ThemeMode, selected: Boolean) {
+    val tint by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        label = "themeIconTint",
+    )
+    Box(
+        modifier = Modifier.size(STATION_SIZE),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = entry.icon,
+            // The control's state description already names the selected mode; a description per
+            // icon would have TalkBack read all three every time.
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(ICON_SIZE),
+        )
+    }
+}
+
+/**
+ * Where the pill sits, kept as its coordinates and turned into a window position only by the tap
+ * that needs one. A plain holder rather than state: nothing composes from it. The window position
+ * itself used to be state, written by `onGloballyPositioned` — which fires for every frame the
+ * Settings column scrolls, so each frame computed bounds and wrote a value only a tap ever read.
+ */
+private class PillPosition {
+    var coordinates: LayoutCoordinates? = null
+
+    fun centerInWindow(): Offset? = coordinates?.takeIf { it.isAttached }?.boundsInWindow()?.center
 }
