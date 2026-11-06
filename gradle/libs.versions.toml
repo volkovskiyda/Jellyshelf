@@ -100,7 +100,7 @@ firebasePerfPlugin = "2.0.2"
 # not pick it up by itself, and it versions independently of the benchmark family.
 androidxBaselineProfile = "1.5.0"
 profileinstaller = "1.4.1"
-uiautomator = "2.4.0"
+uiautomator = "2.4.1"
 # System tracing — the app-side half of the same measurement story the baseline profile serves.
 # The sections it writes are what `:baselineprofile`'s TraceSectionMetric reads back, and they cost
 # a branch when no trace is being captured, so they stay in every build type rather than being
