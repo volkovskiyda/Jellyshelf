@@ -42,7 +42,6 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.util.CrashReporter
 import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
-import com.gmail.volkovskiyda.jellyshelf.util.Traces
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
 import com.google.common.util.concurrent.ListenableFuture
@@ -57,8 +56,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
+import org.koin.android.ext.android.inject
 import org.koin.core.qualifier.named
 import timber.log.Timber
 import java.util.UUID
@@ -97,9 +95,11 @@ import java.util.UUID
 // service's behavior and share its single-threaded state; the synthetic accessors that
 // generates are negligible next to the session machinery itself.
 @SuppressLint("SyntheticAccessor")
-class PlaybackService : MediaSessionService(), KoinComponent {
+class PlaybackService : MediaSessionService() {
 
-    // Framework-instantiated, so dependencies resolve via Koin instead of the constructor.
+    // Framework-instantiated, so dependencies resolve via Koin instead of the constructor — through
+    // koin-android's ComponentCallbacks.inject, the API made for a Service, so the class needs no
+    // KoinComponent. The app's broadcast receivers do implement it: a receiver has no such API.
     private val repo: LibraryRepository by inject()
     private val settingsState: AppSettingsState by inject()
     private val nowPlaying: NowPlayingState by inject()
