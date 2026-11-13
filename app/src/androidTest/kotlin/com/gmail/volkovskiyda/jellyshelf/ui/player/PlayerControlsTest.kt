@@ -2,11 +2,18 @@ package com.gmail.volkovskiyda.jellyshelf.ui.player
 
 import android.content.ClipboardManager
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -34,6 +41,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gmail.volkovskiyda.jellyshelf.R
@@ -49,6 +60,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -112,10 +124,13 @@ class PlayerControlsTest {
         onBack: () -> Unit = {},
         onMinimize: () -> Unit = {},
         onEnterPip: () -> Unit = {},
+        // Composed beside the controls, for a test that has to read what they lay out against.
+        probe: @Composable () -> Unit = {},
     ) {
         composeRule.setContent {
             // The speed menu's open flag is hoisted out of the controls, so the harness holds it.
             var speedMenuOpen by remember { mutableStateOf(false) }
+            probe()
             JellyshelfTheme(dynamicColor = false) {
                 PlayerControls(
                     // Everything transport reads its state off the player now, so the harness
@@ -375,6 +390,63 @@ class PlayerControlsTest {
         )
 
         slider.performTouchInput { up() }
+    }
+
+    /**
+     * The seek bar sits wholly above the strip along the bottom edge where the system takes a
+     * swipe up for itself. The player hides the bars, but that strip stays live: with the slider
+     * inside it, a home swipe that began on the bar and leaned sideways scrubbed the video.
+     *
+     * The harness is set up the way the player runs: edge to edge, as MainActivity is, and with
+     * the bars hidden. With the navigation bar showing, its own inset already lifts the row clear
+     * on most devices, so the old layout would pass. A device without such a strip skips rather
+     * than passes, since the assertion would hold there for any layout.
+     */
+    @Test
+    fun theSeekBar_staysAboveTheHomeGestureStrip_withTheBarsHidden() {
+        val activity = composeRule.activity
+        val decor = activity.window.decorView
+        composeRule.runOnUiThread {
+            activity.enableEdgeToEdge()
+            WindowCompat.getInsetsController(activity.window, decor).apply {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        // Real-time waits: the bars and their insets belong to the window, not the test clock.
+        composeRule.waitUntil("the navigation bar is hidden", WINDOW_WAIT_MS) {
+            ViewCompat.getRootWindowInsets(decor)?.isVisible(WindowInsetsCompat.Type.navigationBars()) == false
+        }
+        val stripPx = ViewCompat.getRootWindowInsets(decor)!!
+            .getInsets(WindowInsetsCompat.Type.mandatorySystemGestures()).bottom
+        assumeTrue("no home-gesture strip along the bottom edge", stripPx > 0)
+
+        // What the controls lay out against, which follows the hide animation a frame at a time:
+        // the bar is measured only once that has ended.
+        var seenNavigationBarPx = -1
+        var seenStripPx = -1
+        setControls(
+            probe = {
+                val density = LocalDensity.current
+                val navigationBarPx = WindowInsets.navigationBars.getBottom(density)
+                val strip = WindowInsets.mandatorySystemGestures.getBottom(density)
+                SideEffect {
+                    seenNavigationBarPx = navigationBarPx
+                    seenStripPx = strip
+                }
+            },
+        )
+        composeRule.waitUntil("the controls see the bars hidden", WINDOW_WAIT_MS) {
+            seenNavigationBarPx == 0 && seenStripPx == stripPx
+        }
+
+        val slider = composeRule.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
+            .fetchSemanticsNode().boundsInWindow
+        val stripTop = decor.height - stripPx
+        assertTrue(
+            "the seek bar reaches down to ${slider.bottom}px, into the strip that starts at ${stripTop}px",
+            slider.bottom <= stripTop,
+        )
     }
 
     @Test
@@ -829,6 +901,9 @@ class PlayerControlsTest {
     }
 
     private companion object {
+        /** Ample for a bar-hide animation, a few hundred milliseconds on any device. */
+        const val WINDOW_WAIT_MS = 5_000L
+
         val queue = listOf(
             QueueEntry("aaaaaaaaaaa", "First video", "Channel A", null, durationMs = 754_000L),
             QueueEntry("bbbbbbbbbbb", "Second video", "Channel B", null),

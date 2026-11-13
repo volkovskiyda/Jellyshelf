@@ -27,10 +27,12 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.mandatorySystemGestures
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -928,8 +930,10 @@ internal fun PlayerControls(
     // — but not always: for the frames before the hide lands, and whenever the system has brought
     // them back and the re-hide has not yet caught up, they are real, and the rows pad for them
     // too (topBarInsets / bottomBarInsets) rather than sit under the status icons or the navigation
-    // bar. The video itself stays under the bars either way. The centre row takes no padding at
-    // all, so it stays centred on the video, not off by half an inset.
+    // bar. The bottom row also keeps clear of the home-gesture strip, which stays live with the
+    // bars hidden (see bottomBarInsets). The video itself stays under the bars either way. The
+    // centre row takes no padding at all, so it stays centred on the video, not off by half an
+    // inset.
     Box(modifier.fillMaxSize()) {
         // Each PlayerDefaults layout goes inside its own aligned Box rather than being handed a
         // Modifier.align: they apply the modifier they are given to the content *inside* their
@@ -1838,10 +1842,23 @@ private fun ImmersiveWhileHere(enabled: Boolean) {
 private fun Modifier.topBarInsets(): Modifier =
     windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
 
-/** The bottom-edge counterpart of [topBarInsets]: the navigation bar, below or at a side. */
+/**
+ * The bottom-edge counterpart of [topBarInsets]: the navigation bar, below or at a side, and the
+ * strip along the bottom edge where the system takes a swipe up for itself.
+ *
+ * Unlike the bars, that strip does not go away when the bars are hidden: a swipe from it still
+ * reveals them, or goes home. With the seek bar inside it, a home swipe began on the slider, and
+ * one that leaned sideways past the touch slop became a scrub and seeked the video. The union,
+ * not a sum, so the row does not jump when the bars come back: the navigation bar sits inside
+ * that strip.
+ */
 @Composable
 private fun Modifier.bottomBarInsets(): Modifier =
-    windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+    windowInsetsPadding(
+        WindowInsets.systemBars
+            .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+            .union(WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)),
+    )
 
 /** Position label: 0 is a real time here, unlike [formatDuration]'s "unknown" placeholder. */
 internal fun formatPosition(ms: Long): String =
