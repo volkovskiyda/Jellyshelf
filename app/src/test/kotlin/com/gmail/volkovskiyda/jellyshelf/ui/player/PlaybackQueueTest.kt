@@ -200,4 +200,32 @@ class PlaybackQueueTest {
     fun aClearedQueue_isNotAnEndToLeaveOn() {
         assertFalse(leavesOnPipExit(wasInPip = true, isInPip = false, Player.STATE_ENDED, mediaItemCount = 0))
     }
+
+    @Test
+    fun queueProgress_countsThePlayingVideoAmongWhatIsLeft() {
+        val ids = List(1020) { "v$it" }
+
+        assertEquals(QueueProgress(1015, 1020, 6), queueProgress(ids, emptySet(), currentIndex = 1014))
+    }
+
+    @Test
+    fun queueProgress_leavesSkippedVideosAheadOutOfWhatIsLeft() {
+        val ids = listOf("a", "b", "c", "d", "e")
+
+        // "a" is skipped behind the playhead: it takes nothing off the rest.
+        assertEquals(
+            QueueProgress(position = 2, total = 5, remaining = 3),
+            queueProgress(ids, skippedIds = setOf("a", "d"), currentIndex = 1),
+        )
+    }
+
+    @Test
+    fun queueProgress_ignoresSkippedVideosOutsideTheQueue() {
+        assertEquals(QueueProgress(1, 2, 2), queueProgress(listOf("a", "b"), setOf("z"), currentIndex = 0))
+    }
+
+    @Test
+    fun queueProgress_hasNoPositionBeforeThePlayingVideoIsKnown() {
+        assertNull(queueProgress(listOf("a", "b"), emptySet(), currentIndex = -1))
+    }
 }

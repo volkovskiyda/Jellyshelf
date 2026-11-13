@@ -102,7 +102,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -1451,7 +1450,7 @@ private fun PlayerPanel(
     title: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    /** A short note at the heading's far end, such as how many rows are skipped. */
+    /** A short note at the heading's far end, such as the queue's progress. */
     note: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -1579,8 +1578,9 @@ internal fun ChaptersPanel(
  *
  * A row in [skippedIds] is one playback passes over: it stays in its place, dimmed and labelled
  * "Skipped" — the label is the marker, the dimming only supports it, since a faded row alone reads
- * as a rendering glitch. The heading counts them, so a list that ends early because everything
- * after the playing video is skipped says so where the user looks for the reason.
+ * as a rendering glitch. The heading states the playing video's place and how many are left to
+ * play (see [QueueProgress]), skipped ones left out, so a list that ends early because everything
+ * after the playing video is skipped says "1 left" where the user looks for the reason.
  *
  * A tap jumps to that row ([onEntryClick] gets its index) — a skipped one too, which the caller
  * unskips on the way: tapping it is choosing it. Only the rows still to come end in a toggle for
@@ -1605,12 +1605,10 @@ internal fun QueuePanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val skippedCount = entries.count { it.mediaId in skippedIds }
-    val note = if (skippedCount > 0) {
-        pluralStringResource(R.plurals.queue_skipped_count, skippedCount, skippedCount)
-    } else {
-        null
+    val progress = remember(entries, skippedIds, currentIndex) {
+        queueProgress(entries.map(QueueEntry::mediaId), skippedIds, currentIndex)
     }
+    val note = progress?.let { stringResource(R.string.queue_progress, it.position, it.total, it.remaining) }
     PlayerPanel(stringResource(R.string.queue), onDismiss, modifier, note) {
         // The initial index rather than a scroll in an effect: the first frame is already in place.
         val listState = rememberLazyListState(

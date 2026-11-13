@@ -730,21 +730,20 @@ class PlayerControlsTest {
 
     /**
      * Where a list that ends early explains itself: everything after the playing video skipped
-     * leaves Next dimmed, and the heading says how many rows the queue is passing over.
+     * leaves Next dimmed, and the heading says only the playing video is left.
      */
     @Test
-    fun theHeading_countsTheSkippedRows() {
+    fun theHeading_leavesSkippedRowsOutOfWhatIsLeft() {
         setQueuePanel(currentIndex = 0, skippedIds = setOf("bbbbbbbbbbb", "ccccccccccc"))
 
-        val note = composeRule.activity.resources.getQuantityString(R.plurals.queue_skipped_count, 2, 2)
-        composeRule.onNodeWithText(note).assertIsDisplayed()
+        composeRule.onNodeWithText("1/${queue.size} · 1 left").assertIsDisplayed()
     }
 
     @Test
-    fun theHeading_saysNothingWhenNothingIsSkipped() {
+    fun theHeading_countsThePlayingVideoAmongWhatIsLeft() {
         setQueuePanel(currentIndex = 0)
 
-        composeRule.onNodeWithText("skipped", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("1/${queue.size} · ${queue.size} left").assertIsDisplayed()
     }
 
     /** The button beside it must not swallow the row's own click. */

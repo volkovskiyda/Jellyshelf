@@ -60,6 +60,31 @@ internal fun queueEntries(count: Int, itemAt: (Int) -> MediaItem): List<QueueEnt
     }
 
 /**
+ * The Now playing heading's numbers: where the playing video sits in the queue, and what is left.
+ *
+ * [position] and [total] count every row the panel lists, skipped ones included, so they match
+ * what the user can scroll through. [remaining] is what playback still has to get through — the
+ * playing video and the unskipped ones after it — which is why a skipped video ahead lowers it
+ * without moving [position]. Skipped videos are not counted on their own: the rows carry that.
+ */
+internal data class QueueProgress(val position: Int, val total: Int, val remaining: Int)
+
+/**
+ * The [QueueProgress] of a queue of [mediaIds] playing the row at [currentIndex]; null when that
+ * index is not in the queue — the moment between a queue loading and its first item being
+ * reported — since there is no position to state yet.
+ */
+internal fun queueProgress(mediaIds: List<String>, skippedIds: Set<String>, currentIndex: Int): QueueProgress? {
+    if (currentIndex !in mediaIds.indices) return null
+    val skippedAhead = (currentIndex + 1..mediaIds.lastIndex).count { mediaIds[it] in skippedIds }
+    return QueueProgress(
+        position = currentIndex + 1,
+        total = mediaIds.size,
+        remaining = mediaIds.size - currentIndex - skippedAhead,
+    )
+}
+
+/**
  * Whether a playback-state change means the player screen is done: the last video in the queue
  * reached its end, whether it ran out or the chapter row's next arrow skipped it there.
  *
