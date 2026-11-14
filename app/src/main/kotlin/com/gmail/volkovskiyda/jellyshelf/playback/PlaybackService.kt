@@ -21,6 +21,7 @@ import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ktor.KtorDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
@@ -221,20 +222,7 @@ class PlaybackService : MediaSessionService() {
         // above and behaves exactly as it did before, credential-at-creation-time included.
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
             .setTransferListener(stallWatchdog.transferListener)
-        val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                // handleAudioFocus: pause for calls, duck for notifications, like any video app.
-                true,
-            )
-            .setHandleAudioBecomingNoisy(true)
-            .setSeekBackIncrementMs(SEEK_BACK_INCREMENT_MS)
-            .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
-            .build()
+        val player = buildPlayer(this, dataSourceFactory)
         // What the loader and the player are doing, into the trail on every build type — the one
         // view of a stall that raises no player error. See [installPlaybackLogging]; first, so a load
         // that fails during the very first prepare is logged too.
@@ -806,7 +794,9 @@ class PlaybackService : MediaSessionService() {
      * player screen left, or its SurfaceView was destroyed behind Home) and the real one when a
      * surface is set, so the video track follows it. Disabling the track releases the decoder;
      * enabling it again selects the track at the current position and the renderer joins the
-     * running audio — the poster shutter covers the moment until the first frame. Picture-in-picture
+     * running audio — the poster shutter covers the moment until the first frame. That join needs
+     * the keyframe before the position still buffered, which media3's default buffering does not
+     * keep for a disabled track; [buildPlayer] has the rest. Picture-in-picture
      * keeps its surface and is untouched. The next item preloads without video while the track is
      * off, which is the point of preloading it at all.
      */
@@ -929,14 +919,6 @@ class PlaybackService : MediaSessionService() {
          * tap should reopen.
          */
         const val EXTRA_OPEN_PLAYER = "com.gmail.volkovskiyda.jellyshelf.playback.OPEN_PLAYER"
-
-        /**
-         * Deliberately asymmetric: skipping filler is the common case, re-hearing a line the rare
-         * one. The player screen's buttons and its double-tap read these through media3's
-         * seek-button states, so the two can never drift apart.
-         */
-        private const val SEEK_BACK_INCREMENT_MS = 10_000L
-        private const val SEEK_FORWARD_INCREMENT_MS = 30_000L
 
         // Unrelated to the seek increments despite matching one of them today.
         private const val POSITION_SAVE_INTERVAL_MS = 10_000L
@@ -1099,6 +1081,58 @@ private fun ExoPlayer.setVideoDecoding(shown: Boolean, trail: PlaybackTrail) {
     trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !shown).build()
     trail.i(if (shown) "video decoding on: a surface is showing it" else "video decoding off: nothing shows it")
 }
+
+/**
+ * The service's player before any of its listeners: where it loads from, how it buffers, and how it
+ * treats audio focus and the seek buttons. Top-level, like [pushProgress], because the service is at
+ * detekt's function threshold; internal, so a test can play on exactly this configuration.
+ *
+ * The buffering is media3's default except for one thing: every track keeps its buffer back to the
+ * keyframe before the playback position, rather than only to the position itself. That keyframe is
+ * what the video track restarts from when `VideoOutputListener` turns it back on. The default rules
+ * discard a disabled track's buffer right up to the position on every playback tick, so re-enabling
+ * video found nothing to decode from, and media3 answered by seeking the whole stream to where it
+ * already was: the load restarted from the server, the audio stopped and the player buffered.
+ * Measured 2026-11-13/14 reopening the player from the bar a few seconds after minimizing it, on an
+ * emulator and on a mid-range API 34 phone: every reopen buffered, with the audio silent for
+ * 0.3–1.8 s. With the keyframe kept, the video renderer joins the running audio instead — no
+ * buffering, no reload, no gap in the sound. The picture still waits for the decoder to work its way
+ * from the keyframe to the position, so its first frame lands 0.3–1.4 s after the tap, depending on
+ * how far back that keyframe is.
+ *
+ * What it costs is one keyframe interval of video held behind the position, a few seconds at most;
+ * audio frames are all keyframes, so the audio buffer is unchanged. The back buffer itself stays at
+ * zero, so a seek backwards still loads, exactly as before.
+ */
+internal fun buildPlayer(context: Context, dataSourceFactory: DataSource.Factory): ExoPlayer =
+    ExoPlayer.Builder(context)
+        .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        .setLoadControl(
+            DefaultLoadControl.Builder()
+                // No back buffer, as by default — but kept from the keyframe before the position.
+                .setBackBuffer(0, true)
+                .build(),
+        )
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build(),
+            // handleAudioFocus: pause for calls, duck for notifications, like any video app.
+            true,
+        )
+        .setHandleAudioBecomingNoisy(true)
+        .setSeekBackIncrementMs(SEEK_BACK_INCREMENT_MS)
+        .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
+        .build()
+
+/**
+ * Deliberately asymmetric: skipping filler is the common case, re-hearing a line the rare one. The
+ * player screen's buttons and its double-tap read these through media3's seek-button states, so the
+ * two can never drift apart.
+ */
+private const val SEEK_BACK_INCREMENT_MS = 10_000L
+private const val SEEK_FORWARD_INCREMENT_MS = 30_000L
 
 /**
  * How often the mini-player bar's progress line moves. One second, not the player screen's 500 ms:
