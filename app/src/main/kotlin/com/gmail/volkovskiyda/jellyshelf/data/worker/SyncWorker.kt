@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.data.worker
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -43,12 +44,8 @@ class SyncWorker(
                     KEY_AUTO_FILL_FAILED to result.autoFillFailed,
                 ),
             )
-            // A revoked key or deleted scope can't self-heal either — retrying such a failure
-            // would burn network/battery forever; the next manual sync surfaces the error.
-            // A manual sync never retries even when the failure is transient: the user is
-            // watching the screen and deserves the error now, with the button free to tap again.
             is SyncResult.Error ->
-                if (result.retryable && !inputData.getBoolean(KEY_MANUAL, false)) {
+                if (shouldRetrySync(result, inputData.getBoolean(KEY_MANUAL, false), runAttemptCount)) {
                     Result.retry()
                 } else {
                     Result.failure(workDataOf(KEY_ERROR to result.message))
@@ -69,6 +66,33 @@ class SyncWorker(
         const val KEY_ERROR = "error"
     }
 }
+
+/**
+ * How many times an unattended sync is run again after a transient failure before it gives up.
+ *
+ * Bounded because the commonest transient failure is not a blip but a state: the phone is away
+ * from the network the server lives on, the `CONNECTED` constraint is satisfied by any network at
+ * all, and every attempt then spends a full request timeout proving the server is still not
+ * there. Unbounded, the periodic sync kept doing that on WorkManager's default 30 s backoff —
+ * five full syncs in six minutes in a process the system had woken for nothing else.
+ */
+internal const val MAX_SYNC_RETRIES = 2
+
+/**
+ * Whether a failed sync should be handed back to WorkManager to run again, or reported as failed.
+ *
+ * A revoked key or deleted scope can't self-heal — retrying such a failure would burn network and
+ * battery forever; the next manual sync surfaces the error. A manual sync never retries even when
+ * the failure is transient: the user is watching the screen and deserves the error now, with the
+ * button free to tap again. And an unattended one stops after [MAX_SYNC_RETRIES]: giving up costs
+ * the periodic sync nothing but the wait for its next period, since a periodic request that fails
+ * stays scheduled, while the repair sync is simply asked for again by the next stale item.
+ *
+ * [runAttemptCount] is WorkManager's: zero on the first run, one more on each retry, and back to
+ * zero when a periodic request starts a new period.
+ */
+internal fun shouldRetrySync(error: SyncResult.Error, manual: Boolean, runAttemptCount: Int): Boolean =
+    error.retryable && !manual && runAttemptCount < MAX_SYNC_RETRIES
 
 /**
  * Owns every sync enqueue. Sync is WorkManager's job, not a ViewModel's: tab switches clear tab
@@ -105,6 +129,7 @@ class SyncScheduler(private val workManager: WorkManager) {
     fun repairSync() {
         val request = OneTimeWorkRequestBuilder<SyncWorker>()
             .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_BACKOFF_MINUTES, TimeUnit.MINUTES)
             .build()
         // KEEP: every queued item that 404s asks again, and one repair answers them all.
         workManager.enqueueUniqueWork(REPAIR_WORK_NAME, ExistingWorkPolicy.KEEP, request)
@@ -125,6 +150,7 @@ class SyncScheduler(private val workManager: WorkManager) {
         val request = PeriodicWorkRequestBuilder<SyncWorker>(SYNC_PERIOD_HOURS, TimeUnit.HOURS)
             .setConstraints(constraints)
             .setInitialDelay(SYNC_PERIOD_HOURS, TimeUnit.HOURS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_BACKOFF_MINUTES, TimeUnit.MINUTES)
             .build()
         workManager.enqueueUniquePeriodicWork(
             PERIODIC_WORK_NAME,
@@ -153,5 +179,10 @@ class SyncScheduler(private val workManager: WorkManager) {
         private const val MANUAL_WORK_NAME = "jellyshelf-manual-sync"
         private const val REPAIR_WORK_NAME = "jellyshelf-repair-sync"
         private const val SYNC_PERIOD_HOURS = 2L
+
+        // The first retry of an unattended sync, doubling after that — see [shouldRetrySync] for
+        // where it stops. Minutes rather than WorkManager's default 30 s: a server that did not
+        // answer is rarely back half a minute later, and each attempt costs a request timeout.
+        private const val RETRY_BACKOFF_MINUTES = 5L
     }
 }
