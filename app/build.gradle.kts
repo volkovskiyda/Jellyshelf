@@ -9,7 +9,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
-    alias(libs.plugins.compose.screenshot)
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.firebase.perf)
@@ -128,13 +127,50 @@ android {
     // unit tests include Android resources (the other half, unit tests on every variant, is the
     // beforeVariants block in androidComponents below).
     testOptions.unitTests.isIncludeAndroidResources = true
-    // Enables the screenshotTest source set (paired with the same flag in gradle.properties).
-    experimentalProperties["android.experimental.enableScreenshotTest"] = true
-    // Shared test fakes. Only the `test` source set can be extended this way: the
-    // screenshot plugin (alpha) registers no AndroidSourceSet of its own — neither
-    // "screenshotTest" nor "screenshotTestDebug" exists in this container — so its copy of the
-    // fake lives in src/screenshotTest/kotlin instead. Collapse the two when the plugin exposes
-    // its source set.
+    // Compose preview screenshot tests ("goldens"), run as an AGP test suite: @PreviewTest previews
+    // in src/screenshotTest/kotlin render host-side through LayoutLib and are compared with the
+    // reference PNGs in src/screenshotTestDefaultDebug/reference/. Needs the two
+    // android.experimental flags in gradle.properties. This replaced the standalone
+    // com.android.compose.screenshot plugin, which Google stopped maintaining at 0.0.1-alpha16.
+    //
+    // engineVersion picks the engine AGP resolves for the suite (the JUnit engine and the
+    // renderer, which in turn decides layoutlib); validation-api is its compile-time half and
+    // shares the same ref.
+    //
+    // imageDifferenceThreshold is the fraction of pixels that may differ (any channel, by any
+    // amount) before a preview fails. The default is 0, bit-exact, and bit-exact failed on
+    // 2026-10-09 (run 37941334336): 28 goldens, 1–30 pixels each, every one off by a single level
+    // in one channel, all inside the drawn stand-in covers (PreviewCovers.kt). The covers are
+    // rendered at 960×540 and downscaled into their cell, and that downscale rounds differently on
+    // the arm64 Mac that bakes the goldens and the x64 runner that checks them — the same covers
+    // passed bit-exact at the pre-grid cell sizes, up to 150fcaf. The worst case was 15 of 2.2M
+    // pixels (6.8e-6). This allows 6 pixels on a row golden (1050×278), 44 on a phone screen
+    // (1050×2100) and 141 on a tablet (3360×2100), while one changed glyph at this density is a
+    // few hundred pixels — a real change still fails, a rounding tie no longer does.
+    //
+    // Debug only: the previews need no minified code, and every extra variant would be a second
+    // copy of every golden to bake and keep in step.
+    testOptions.screenshotTests.create("screenshotTest") {
+        engineVersion = libs.versions.composeScreenshot.get()
+        imageDifferenceThreshold = 2e-5f
+        targetVariants.add("debug")
+        dependencies {
+            implementation(libs.androidx.compose.ui.tooling)
+            implementation(libs.screenshot.validation.api)
+            // The Kotzilla plugin puts its compiler plugin on every Kotlin compilation in this
+            // module, with instrumentation on — keyless checkouts included, where `enabled =
+            // false` below switches off the generated config but not that — and it rewrites
+            // Compose call sites into calls on its SDK (KotzillaScreenHost and friends). The
+            // plugin adds the SDK to every variant either way, so the unit and instrumented tests
+            // get it through the variant they extend; this suite's classpath does not, and
+            // without it compileDebugScreenshotTestKotlin fails ("KotzillaScreenHost has none or
+            // several references"). So it is named here, at the plugin's own ref.
+            implementation("io.kotzilla:kotzilla-sdk-compose:${libs.versions.kotzilla.get()}")
+        }
+    }
+    // Shared test fakes. Only the `test` and `androidTest` source sets can be extended this way:
+    // the screenshot suite registers no AndroidSourceSet of its own, so its copy of the fake
+    // lives in src/screenshotTest/kotlin instead.
     sourceSets {
         getByName("test") { kotlin.directories += "src/testShared/kotlin" }
         // Instrumented tests share them too — the sync suite needs the same in-memory
@@ -340,26 +376,14 @@ tasks.named { it.startsWith("connected") && it.endsWith("AndroidTest") }
         }
     }
 
-// Pixel tolerance for the screenshot goldens: the fraction of pixels that may differ (any channel,
-// by any amount) before a preview fails. The plugin's default is 0 — bit-exact — and in this version
-// (0.0.1-alpha16) nothing but the task's own input sets it: the documented `screenshotTests {}`
-// DSL is not in the plugin yet, and the value reaches the differ as the `ImageDiffer.threshold`
-// system property of the test engine.
-//
-// Bit-exact failed on 2026-10-09 (run 37941334336): 28 goldens, 1–30 pixels each, every one off by
-// a single level in one channel, all inside the drawn stand-in covers (PreviewCovers.kt). The
-// covers are rendered at 960×540 and downscaled into their cell, and that downscale rounds
-// differently on the arm64 Mac that bakes the goldens and the x64 runner that checks them — the
-// same covers passed bit-exact at the pre-grid cell sizes, up to 150fcaf. The worst case was 15 of
-// 2.2M pixels (6.8e-6). This allows 6 pixels on a row golden (1050×278), 44 on a phone screen
-// (1050×2100) and 141 on a tablet (3360×2100), while one changed glyph at this density is a few
-// hundred pixels — a real change still fails, a rounding tie no longer does.
-//
-// `withType`, not a name filter: the task class is the plugin's public type and there is exactly
-// one task of it per variant, so nothing else gets realised.
-tasks.withType<com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask>().configureEach {
-    testEngineInput.threshold.set(2e-5f)
-}
+// ktlint finds its files through android.sourceSets, and the screenshot suite's sources are not in
+// that container: the old standalone plugin added a screenshotTest source set there, the suite
+// does not. So src/screenshotTest/kotlin rides along with the unit tests' check and format tasks,
+// and its findings are reported under ktlintTestSourceSet*. detekt needs nothing of the kind — it
+// scans app/src as a whole.
+tasks.withType<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>()
+    .named { it == "runKtlintCheckOverTestSourceSet" || it == "runKtlintFormatOverTestSourceSet" }
+    .configureEach { source("src/screenshotTest/kotlin") }
 
 // Single HTML page summarising every test layer and all three static-analysis tools, written to
 // `app/build/test-summary/index.html`. Only reads XML that is already on disk — it never runs a
@@ -393,12 +417,15 @@ tasks.register("testSummary") {
         val outFile = buildDir.resolve("test-summary/index.html")
         val layers = listOf(
             Triple("Unit tests", "test-results/testDebugUnitTest", "reports/tests/testDebugUnitTest/index.html"),
-            // The screenshot plugin writes per-class HTML (with reference/actual/diff images on a
-            // failure) rather than an index.html, so the layer links to that directory's entry page.
+            // The screenshot suite's JUnit engine writes its XML under intermediates/, not
+            // test-results/: the task is a Gradle Test, but its own junitXml report stays empty
+            // even when required. The HTML report shows a failure's reference, rendered and diff
+            // images, linked by path from the project root, so they show when the page is opened
+            // inside the checkout that ran it.
             Triple(
                 "Screenshot goldens",
-                "test-results/validateDebugScreenshotTest",
-                "reports/screenshotTest/preview/debug/com.gmail.volkovskiyda.jellyshelf.ui.html",
+                "intermediates/test_suite_results/debug/testDebugScreenshotTestDefaultTestSuite",
+                "reports/tests/testDebugScreenshotTestDefaultTestSuite/index.html",
             ),
             Triple(
                 "Behavior tests (device)",
@@ -709,7 +736,7 @@ $more
         val screenshotHint = if (screenshotFailed) {
             """<p class="hint">Screenshot goldens differ. If the change is intentional """ +
                 """(a new feature, a fixed typo), re-bake the baselines and re-run:<br>""" +
-                """<code>./gradlew :app:updateDebugScreenshotTest</code></p>"""
+                """<code>./gradlew :app:updateDebugScreenshotTestDefaultTestSuite</code></p>"""
         } else {
             ""
         }
@@ -980,9 +1007,6 @@ dependencies {
     // checked-in schemas (app/schemas, on the androidTest assets path above).
     androidTestImplementation(libs.androidx.room.testing)
     debugImplementation(libs.androidx.compose.ui.tooling)
-    // Renders @PreviewTest previews host-side (LayoutLib) into reference images.
-    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
-    screenshotTestImplementation(libs.screenshot.validation.api)
     // Where generateBaselineProfile takes its profile from; consumed, not built, by normal builds.
     baselineProfile(project(":baselineprofile"))
     "ksp"(libs.androidx.room.compiler)

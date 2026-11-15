@@ -7,7 +7,7 @@ set -uo pipefail
 #
 #   1. Static analysis   (detekt, ktlintCheck, :app:lintDebug)  host-side, always runs
 #   2. Unit tests        (:app:testDebugUnitTest)           host-side, always runs
-#   3. Screenshot goldens(:app:validateDebugScreenshotTest) host-side, always runs
+#   3. Screenshot goldens(:app:testDebugScreenshotTestDefaultTestSuite) host-side, always runs
 #   4. Release build     (:app:assembleRelease)             host-side, always runs; then installed
 #                                                           and cold-launched on the device, if any
 #   5. Behavior tests    (:app:connectedDebugAndroidTest)   needs a device or emulator
@@ -862,7 +862,7 @@ fi
 run_layer "unit tests" :app:testDebugUnitTest \
   && UNIT_RESULT="passed" || UNIT_RESULT="FAILED"
 
-run_layer "screenshot goldens" :app:validateDebugScreenshotTest \
+run_layer "screenshot goldens" :app:testDebugScreenshotTestDefaultTestSuite \
   && SCREENSHOT_RESULT="passed" || SCREENSHOT_RESULT="FAILED"
 
 # Rationale in the header. The version properties come from scripts/version.sh, as in the workflows:
@@ -1091,7 +1091,8 @@ if [[ "$FAILED" -ne 0 ]]; then
   echo
   print_report_link
   echo "Per-layer detail: app/build/reports/tests/ (unit),"
-  echo "  app/build/reports/screenshotTest/ (goldens), app/build/reports/androidTests/ (behavior)."
+  echo "  app/build/reports/tests/testDebugScreenshotTestDefaultTestSuite/ (goldens),"
+  echo "  app/build/reports/androidTests/ (behavior)."
   if [[ "$CHECKS_RESULT" == "FAILED" ]]; then
     echo "If the static-analysis failure is ktlint (formatting), it is fixable in one command:"
     echo "  ./gradlew ktlintFormat"
@@ -1099,7 +1100,7 @@ if [[ "$FAILED" -ne 0 ]]; then
   if [[ "$SCREENSHOT_RESULT" == "FAILED" ]]; then
     echo "Screenshot goldens differ. If the change is intentional (new feature, fixed typo),"
     echo "re-bake the baselines and re-run:"
-    echo "  ./gradlew :app:updateDebugScreenshotTest"
+    echo "  ./gradlew :app:updateDebugScreenshotTestDefaultTestSuite"
   fi
   exit 1
 fi

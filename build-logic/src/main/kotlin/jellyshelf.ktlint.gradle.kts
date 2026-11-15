@@ -38,7 +38,7 @@ ktlint {
     }
     filter {
         // Generated Kotlin is on the variant source sets AGP hands the plugin — Room's and
-        // Koin's KSP output, and the screenshot plugin's — and none of it is ours to format.
+        // Koin's KSP output — and none of it is ours to format.
         exclude { it.file.path.contains("${File.separator}build${File.separator}") }
     }
 }

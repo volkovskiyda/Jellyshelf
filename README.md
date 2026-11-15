@@ -631,7 +631,7 @@ in turn, so two journeys never hit the server at once. The layers can also be ru
 ./gradlew detekt ktlintCheck :app:lintDebug  # static analysis
 ./gradlew ktlintFormat                    # fix the formatting half of it in place
 ./gradlew :app:testDebugUnitTest          # JVM unit tests incl. MockEngine networking tests
-./gradlew :app:validateDebugScreenshotTest  # Compose screenshot goldens (host-side, LayoutLib)
+./gradlew :app:testDebugScreenshotTestDefaultTestSuite  # Compose screenshot goldens (host-side, LayoutLib)
 ./gradlew :app:assembleRelease -PbuildNumber=$(git rev-list --count HEAD) \
   -x :app:uploadCrashlyticsMappingFileRelease -x :app:uploadMappingFileRelease  # release build
 ./gradlew :app:connectedDebugAndroidTest  # instrumentation tests (needs a device/emulator)
@@ -652,9 +652,11 @@ in turn, so two journeys never hit the server at once. The layers can also be ru
   unknown-key tolerance, and error mapping. The decision-heavy pieces — merge, prune policy,
   resume rules, chapter parsing, search ranking — are pure functions tested here rather than
   on a device.
-- **Screenshot goldens** (`src/screenshotTest`) render previews host-side. Reference PNGs live in
-  Git LFS, so a clone needs `git lfs install`. When a diff is an intentional UI change, re-bake
-  with `./gradlew :app:updateDebugScreenshotTest`.
+- **Screenshot goldens** (`src/screenshotTest`) render previews host-side, as an AGP screenshot
+  test suite (`testOptions.screenshotTests` in `app/build.gradle.kts`). Reference PNGs live in
+  `src/screenshotTestDefaultDebug/reference/`, in Git LFS, so a clone needs `git lfs install`. When
+  a diff is an intentional UI change, re-bake with
+  `./gradlew :app:updateDebugScreenshotTestDefaultTestSuite`.
 - **Release build** is `assembleRelease` with the versionCode the workflows pass, and nothing else
   runs R8, resource shrinking, `lintVital` or the baseline-profile expansion — each of which has
   failed a build that was green everywhere else. The two mapping uploads are excluded because a

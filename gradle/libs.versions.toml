@@ -62,7 +62,9 @@ koinBom = "4.2.2"
 # the Gradle plugin applies a Compose compiler plugin AND adds io.kotzilla:kotzilla-sdk-compose to
 # the module it is applied to, both at its own version. Declaring the runtime as well would be a
 # second place to bump and a chance for the two to disagree; the cost is that
-# `./gradlew dependencyUpdates` only ever offers the plugin.
+# `./gradlew dependencyUpdates` only ever offers the plugin. The one place the runtime is named is
+# the screenshot test suite, whose classpath the plugin does not reach — by coordinate, at this
+# ref, so there is still one version to move.
 kotzilla = "3.0.1"
 # Static analysis. 1.23.8 is the current stable line; it embeds its own Kotlin parser, so it lags
 # the project's Kotlin version without blocking it.
@@ -74,12 +76,17 @@ detekt = "1.23.8"
 # reformatting the codebase; both are ours to move deliberately.
 ktlint = "1.8.0"
 ktlintGradle = "14.2.0"
-# Compose Preview Screenshot Testing. Alpha and versioned independently of AGP; needs AGP 9.0+.
-# This ref also decides two transitives that dependencyUpdates keeps offering newer versions of:
-# layoutlib (the renderer behind the goldens) and the JUnit Platform line. Both are the plugin's
-# choice, not ours, and both move only when it publishes — forcing them means re-rendering every
-# LFS-tracked golden, or running an alpha compiled against JUnit Platform 1.x on 6.x.
-composeScreenshot = "0.0.1-alpha16"
+# Compose Preview Screenshot Testing: the engine of the AGP screenshot test suite in
+# app/build.gradle.kts (its engineVersion) and the validation-api the previews compile against, one
+# ref because they ship as a set. Alpha, versioned independently of AGP, and needs AGP 9.5+. There
+# is no Gradle plugin behind it any more: the standalone com.android.compose.screenshot plugin
+# stopped at 0.0.1-alpha16, and AGP now resolves the engine itself.
+# The engine also decides two transitives: layoutlib (the renderer behind the goldens) and the
+# JUnit Platform line. Both are the engine's choice, not ours, and both move only when it publishes
+# — forcing them means re-rendering every LFS-tracked golden, or running an alpha compiled against
+# JUnit Platform 1.x on 6.x. dependencyUpdates no longer offers them: under the standalone plugin
+# they were declared dependencies, under AGP they are transitives, which it does not report.
+composeScreenshot = "0.0.1-alpha17"
 # Firebase. The BoM pins every SDK member, so firebase-crashlytics and firebase-perf carry no
 # versions of their own. The three Gradle plugins version independently of the BoM and of each
 # other: google-services reads app/google-services.json, firebase-crashlytics uploads the R8
@@ -232,7 +239,6 @@ androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "and
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "googleDevtoolsKsp" }
 jetbrains-kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "composeScreenshot" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }

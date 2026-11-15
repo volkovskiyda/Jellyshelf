@@ -3,9 +3,10 @@
 # Tracked in LFS from the first golden onwards — converting later would mean rewriting history.
 # Requires `git lfs install` once per clone (git-lfs must be on PATH).
 #
-# The path is chosen by the com.android.compose.screenshot plugin: src/screenshotTest<Variant>/,
-# not the src/<variant>/screenshotTest/ that its own documentation implies. Verify with
-# `git check-attr filter -- <path>` after a plugin upgrade.
+# The path is chosen by AGP's screenshot test suite: src/<suite><Target><Variant>/reference/, so
+# src/screenshotTestDefaultDebug/ here (the standalone plugin before it used
+# src/screenshotTest<Variant>/; the pattern covers both). Verify with
+# `git check-attr filter -- <path>` after an AGP upgrade.
 app/src/screenshotTest*/reference/**/*.png filter=lfs diff=lfs merge=lfs -text
 
 # The generated baseline profile, tracked here for the same reason and with the same caveat: it is
