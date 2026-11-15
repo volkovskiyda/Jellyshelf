@@ -17,6 +17,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.Until
 import org.junit.After
 import org.junit.Before
@@ -427,21 +428,17 @@ class JourneyBenchmark {
      * button then advances to an item that loads paused, and the wait for its first frame either
      * burns its timeout or passes vacuously off a seeded resume position. When the controls are
      * hidden, one tap, never a loop: two in quick succession are a double tap, which seeks.
+     *
+     * The same auto-hide can also land *between* finding the button and reading it, and then the
+     * found node is gone: UiAutomator throws [StaleObjectException] from the enabled check, which
+     * failed the first iteration of a run on 2026-11-15. A second attempt starts over with the
+     * controls hidden, so its reveal tap is the only one — the first attempt cannot have tapped
+     * too, since controls it revealed stay up for three seconds.
      */
     private fun MacrobenchmarkScope.advanceToNextItem() {
-        if (!device.hasObject(By.desc(NEXT_VIDEO))) {
-            device.click(device.displayWidth / 2, device.displayHeight / 2)
+        check(tapNextVideo() || tapNextVideo()) {
+            "The next button vanished between being found and being tapped, twice in a row."
         }
-        val next = device.wait(Until.findObject(By.desc(NEXT_VIDEO)), TIMEOUT_MS)
-        checkNotNull(next) {
-            "The player never offered a next button, so there is no transition here to measure."
-        }
-        check(next.isEnabled) {
-            "The next button is disabled, so this queue holds one video. A transition benchmark " +
-                "needs a row that opens as a multi-video queue — check the library has more than " +
-                "one video and that the row was opened rather than a single video played directly."
-        }
-        next.click()
 
         // The advance is not the measurement; the new item's first frame is. The signal the first
         // item was waited on with is not enough here: the next item opens at its seeded resume
@@ -507,6 +504,32 @@ class JourneyBenchmark {
         /** Long enough for a launch to render its first rows, short enough to fail fast. */
         const val LIBRARY_TIMEOUT_MS = 10_000L
     }
+}
+
+/**
+ * One attempt at the player's next button: reveal the controls if they are hidden, find it, check
+ * it, tap it. False when the controls hid under the attempt and the node went stale before the tap
+ * — no tap was sent then, since a stale node fails before UiAutomator injects anything.
+ *
+ * Top-level for the same reason [playbackTraceConfig] is.
+ */
+private fun MacrobenchmarkScope.tapNextVideo(): Boolean = try {
+    if (!device.hasObject(By.desc(NEXT_VIDEO))) {
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
+    }
+    val next = device.wait(Until.findObject(By.desc(NEXT_VIDEO)), TIMEOUT_MS)
+    checkNotNull(next) {
+        "The player never offered a next button, so there is no transition here to measure."
+    }
+    check(next.isEnabled) {
+        "The next button is disabled, so this queue holds one video. A transition benchmark " +
+            "needs a row that opens as a multi-video queue — check the library has more than " +
+            "one video and that the row was opened rather than a single video played directly."
+    }
+    next.click()
+    true
+} catch (_: StaleObjectException) {
+    false
 }
 
 /**
