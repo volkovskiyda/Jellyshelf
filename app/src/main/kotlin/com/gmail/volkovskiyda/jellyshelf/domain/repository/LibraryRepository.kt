@@ -37,6 +37,10 @@ interface LibraryRepository : PlaystateRepository {
      * null: callers walk their own id list and decide what a miss means. Nothing here is a `Flow`
      * on purpose; the one existing per-id read is, and collecting one value from hundreds of them
      * is what this replaces.
+     *
+     * The videos are list-row shaped, as every browse list's are: description, chapters, tags and
+     * categories are not loaded (see `VideoBrowseRow.toDomain`). A library tap resolves the whole
+     * library through here before its first frame, and those four were most of the read.
      */
     suspend fun videosByIds(youtubeIds: List<String>): Map<String, Video>
 

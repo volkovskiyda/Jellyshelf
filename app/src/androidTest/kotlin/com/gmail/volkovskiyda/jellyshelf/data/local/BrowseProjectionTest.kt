@@ -114,6 +114,32 @@ class BrowseProjectionTest {
         assertEquals(seeded.jellyfinItemId, video.jellyfinItemId)
     }
 
+    /**
+     * The playback queue's batch read goes through the same projection: everything `resolve` turns
+     * into a stream URL, notification metadata and a resume position, and none of the four fields a
+     * list never renders. An id with no row is absent, which the resolve relies on.
+     */
+    @Test
+    fun theBatchRead_carriesWhatPlaybackResolves_andNothingAListNeverRenders() = runTest {
+        val seeded = seeded()
+        dao.upsert(seeded)
+
+        val rows = dao.getBrowseByIds(listOf("v1", "missing"))
+
+        val video = rows.single().toDomain()
+        assertEquals(seeded.youtubeId, video.youtubeId)
+        assertEquals(seeded.jellyfinItemId, video.jellyfinItemId)
+        assertEquals(seeded.title, video.title)
+        assertEquals(seeded.channel, video.channel)
+        assertEquals(seeded.thumbnailUrl, video.thumbnailUrl)
+        assertEquals(seeded.durationSeconds, video.durationSeconds)
+        assertEquals(seeded.playbackPositionTicks, video.playbackPositionTicks)
+        assertNull(video.description)
+        assertEquals(emptyList<Chapter>(), video.chapters)
+        assertEquals(emptyList<String>(), video.tags)
+        assertEquals(emptyList<String>(), video.youtubeCategories)
+    }
+
     @Test
     fun theSingleRowRead_stillCarriesWhatTheProjectionDropped() = runTest {
         dao.upsert(seeded())

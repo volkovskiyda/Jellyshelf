@@ -670,7 +670,7 @@ class DefaultLibraryRepository private constructor(
             // SQLite's 999 ceiling, while the demo seed and every fixture pass unchunked.
             youtubeIds.distinct()
                 .chunked(ID_CHUNK)
-                .flatMap { videoDao.getByIds(it) }
+                .flatMap { videoDao.getBrowseByIds(it) }
                 .associate { it.youtubeId to it.toDomain() }
         }
 

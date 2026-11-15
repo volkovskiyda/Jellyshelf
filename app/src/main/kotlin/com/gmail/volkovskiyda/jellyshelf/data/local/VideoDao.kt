@@ -20,7 +20,8 @@ import kotlinx.coroutines.flow.Flow
  * a field is added or removed — Room derives the list from the return type at compile time.
  *
  * The `suspend get*` reads are untouched by all of this: they serve sync, metadata backfill, bulk
- * removal and playlist creation, which need whole rows.
+ * removal and playlist creation, which need whole rows. The one exception is [getBrowseByIds], the
+ * playback queue's resolve, which reads list-row columns for a whole library at once.
  */
 @Dao
 @Suppress("TooManyFunctions") // a Room DAO is one function per query, by design
@@ -42,11 +43,10 @@ interface VideoDao {
     suspend fun getAll(): List<VideoEntity>
 
     /**
-     * The rows behind a batch of ids: a multi-selection's bulk run, and the playback queue's
-     * one-query resolve. The file-name order is for the bulk run, which works through them top to
-     * bottom the way the user sees them; a caller whose own order is load-bearing — the playback
-     * queue names its start item by index — maps the result by id instead, because **ids with no
-     * row simply do not appear** and a silently shorter list would shift every index after it.
+     * The rows behind a batch of ids, for a multi-selection's bulk run and playlist creation. The
+     * file-name order is for the bulk run, which works through them top to bottom the way the user
+     * sees them. **Ids with no row simply do not appear**, so a caller whose own order is
+     * load-bearing maps the result by id rather than trusting its length.
      *
      * Callers chunk the id list rather than passing it whole: SQLite caps how many variables one
      * statement may bind (999 on the platform versions this app supports, `ID_CHUNK` is the one
@@ -54,6 +54,21 @@ interface VideoDao {
      */
     @Query("SELECT * FROM videos WHERE youtubeId IN (:youtubeIds) ORDER BY fileName")
     suspend fun getByIds(youtubeIds: List<String>): List<VideoEntity>
+
+    /**
+     * [getByIds] through the list-row projection: the playback queue's one-query resolve, which
+     * needs a stream id, a title, a channel, a thumbnail, a length and a resume position per video
+     * — all [VideoBrowseRow] columns — and nothing that costs much to read. A tap on a library row
+     * queues the whole library, so this reads every row in it on the way to the first frame; whole
+     * rows meant every description and three JSON parses per video on that path.
+     *
+     * Unordered: the queue names its start item by index, so the caller maps the result by id
+     * against its own list, and ids with no row are absent exactly as for [getByIds]. Chunked by
+     * the caller, likewise.
+     */
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM videos WHERE youtubeId IN (:youtubeIds)")
+    suspend fun getBrowseByIds(youtubeIds: List<String>): List<VideoBrowseRow>
 
     /**
      * The watch state of every stored video among [youtubeIds], kept current — the player's queue
