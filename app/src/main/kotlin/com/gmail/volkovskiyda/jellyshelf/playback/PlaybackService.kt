@@ -46,6 +46,7 @@ import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -365,6 +366,17 @@ class PlaybackService : MediaSessionService() {
      * notification metadata, and — for a plain `setMediaItem` — the saved resume position.
      */
     private inner class SessionCallback : MediaSession.Callback {
+        /** Keeps the queue out of the platform session — see [notificationControllerConnection]. */
+        override fun onConnectAsync(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): ListenableFuture<MediaSession.ConnectionResult> =
+            if (session.isMediaNotificationController(controller)) {
+                Futures.immediateFuture(notificationControllerConnection(session, controller))
+            } else {
+                super.onConnectAsync(session, controller)
+            }
+
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
