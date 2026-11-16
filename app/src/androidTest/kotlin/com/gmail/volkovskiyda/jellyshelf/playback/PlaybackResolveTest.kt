@@ -1,6 +1,7 @@
 package com.gmail.volkovskiyda.jellyshelf.playback
 
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gmail.volkovskiyda.jellyshelf.domain.model.METADATA_SOURCE_INDEX
 import com.gmail.volkovskiyda.jellyshelf.domain.model.Settings
@@ -114,6 +115,26 @@ class PlaybackResolveTest {
         assertEquals(listOf("a", "b"), resolved.map { it.mediaId })
         assertNull(resolved[0].localConfiguration)
         assertNull(resolved[1].localConfiguration)
+    }
+
+    /**
+     * Every direct stream carries its container's MIME type, which is what keeps
+     * `DefaultMediaSourceFactory` from parsing each extension-less stream URL to guess one — on the
+     * main thread, once per queued video. The mapping itself is `ContainerMimeTypeTest`'s.
+     */
+    @Test
+    fun aDirectStreamCarriesItsContainer() {
+        val rows = mapOf(
+            "mp4" to video("mp4"),
+            "avi" to video("avi").copy(fileName = "talk.avi"),
+        )
+
+        val resolved = resolveQueue(items("mp4", "avi"), rows, settings)
+
+        assertEquals(
+            listOf(MimeTypes.VIDEO_MP4, null),
+            resolved.map { it.localConfiguration?.mimeType },
+        )
     }
 
     /** A duplicate id resolves twice: the map is deduped, the queue is not. */

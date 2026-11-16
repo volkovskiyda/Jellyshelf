@@ -12,6 +12,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -871,6 +872,10 @@ class PlaybackService : MediaSessionService() {
                             playSessionId = UUID.randomUUID().toString(),
                         ),
                     )
+                    // Named rather than left to inference: the item this is rebuilt from carries
+                    // the direct stream's container type, which would send the playlist down the
+                    // progressive path.
+                    .setMimeType(MimeTypes.APPLICATION_M3U8)
                     .build()
                 // setMediaItem replaces the whole playlist, so the queue is this one item now.
                 queue.replace(listOf(transcoded))
@@ -1184,13 +1189,15 @@ internal fun resolve(item: MediaItem, video: Video?, settings: Settings): MediaI
     // them plays the bundled clip. Keyed off the sentinel item id rather than the demoMode
     // setting: it is the row that is or isn't playable, and a row outliving the flag (a demo
     // half-cleared by a crash) must not turn into a request against a blank server URL.
-    val uri = if (jellyfinItemId == DEMO_ITEM_ID) {
+    val demo = jellyfinItemId == DEMO_ITEM_ID
+    val uri = if (demo) {
         DEMO_SAMPLE_URI
     } else {
         Playback.streamUrl(settings.serverUrl, jellyfinItemId, credential = null)
     }
     return item.buildUpon()
         .setUri(uri)
+        .setMimeType(if (demo) MimeTypes.VIDEO_MP4 else containerMimeType(video.fileName))
         .setMediaMetadata(
             MediaMetadata.Builder()
                 .setTitle(video.title)
