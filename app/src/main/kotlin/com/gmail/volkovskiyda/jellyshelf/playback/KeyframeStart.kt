@@ -81,18 +81,19 @@ internal class KeyframeStartSourceFactory(factory: MediaSource.Factory) : Forwar
         if (mediaItem.isHlsTranscode()) return source
         return KeyframeStartSource(source)
     }
-}
 
-/**
- * Told apart by the MIME type both kinds of item carry ([containerMimeType], and the HLS fallback's
- * own), and by the playlist's file name only when an item names none. This runs once per queued
- * video, on the main thread inside `setMediaItems`, and reading the file name parses the URL's whole
- * path: across a 1,245-video queue that was ~15 ms of the main thread (2026-11-15).
- */
-private fun MediaItem.isHlsTranscode(): Boolean {
-    val configuration = localConfiguration ?: return false
-    val mimeType = configuration.mimeType ?: return configuration.uri.lastPathSegment == Playback.HLS_PLAYLIST
-    return mimeType == MimeTypes.APPLICATION_M3U8
+    /**
+     * Told apart by the MIME type both kinds of item carry ([containerMimeType], and the HLS
+     * fallback's own), and by the playlist's file name only when an item names none. This runs once
+     * per queued video, on the main thread inside `setMediaItems`, and reading the file name parses
+     * the URL's whole path: across a 1,245-video queue that was ~15 ms of the main thread
+     * (2026-11-15).
+     */
+    private fun MediaItem.isHlsTranscode(): Boolean {
+        val configuration = localConfiguration ?: return false
+        val mimeType = configuration.mimeType ?: return configuration.uri.lastPathSegment == Playback.HLS_PLAYLIST
+        return mimeType == MimeTypes.APPLICATION_M3U8
+    }
 }
 
 private class KeyframeStartSource(source: MediaSource) : WrappingMediaSource(source) {

@@ -217,7 +217,7 @@
     <string name="skipped">Skipped</string>
     <!-- Beside the Now playing heading: the playing video's place in the queue, then how many are
          still to play, itself included and skipped ones left out: “1012/1020 · 9 left”. -->
-    <string name="queue_progress">%1$d/%2$d · %3$d left</string>
+    <string name="queue_progress" tools:ignore="PluralsCandidate">%1$d/%2$d · %3$d left</string>
     <string name="copy_chapter">Copy chapter</string>
     <string name="chapter_copied">Chapter copied</string>
     <string name="player_minimize">Minimize and show details</string>
