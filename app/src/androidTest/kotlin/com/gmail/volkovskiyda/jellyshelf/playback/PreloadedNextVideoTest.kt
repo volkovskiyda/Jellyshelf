@@ -26,8 +26,10 @@ import java.util.concurrent.CopyOnWriteArrayList
  * The video after the current one, as the service's own [buildPlayer] preloads it — and what a stop
  * does to it.
  *
- * Both items are `androidTest/assets/long-blank.mp4`: two minutes of 64×48 black at 5 fps, 15 KB in
- * all. Two minutes is longer than the player's 50-second buffer, so the current video is never fully
+ * Both items are `androidTest/assets/long-blank.mp4`: two minutes of 176×144 black at 5 fps, 15 KB in
+ * all. Not smaller: a phone's hardware decoder has a minimum frame size — 96×96 on a mid-range
+ * API 34 phone, whose decoder refused a 64×48 clip outright — and media3 picks it over the
+ * software one. Two minutes is longer than the player's 50-second buffer, so the current video is never fully
  * loaded and the next one stays in media3's preload pool rather than joining the queue. And media3's
  * loading check is cut from a megabyte to a kilobyte, so the preload stops partway through the file
  * with its stream still open, the way a real one stops a few seconds into a real video.
