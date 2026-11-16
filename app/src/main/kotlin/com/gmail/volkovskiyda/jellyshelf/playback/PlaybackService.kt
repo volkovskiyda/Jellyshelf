@@ -47,7 +47,6 @@ import com.gmail.volkovskiyda.jellyshelf.util.Metrics
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
 import com.gmail.volkovskiyda.jellyshelf.util.authorizedImageUrl
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToMillis
-import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -357,19 +356,16 @@ class PlaybackService : MediaSessionService() {
     /**
      * Resolves the bare media ids controllers send into playable items: the stream URL, the
      * notification metadata, and — for a plain `setMediaItem` — the saved resume position.
+     *
+     * Every controller connects with media3's defaults, the media notification's included, and that
+     * one's commands are what the platform session offers: play/pause, previous/next, seeking, and
+     * the timeline as its queue. A paired watch lists that queue and jumps within it, so
+     * `COMMAND_GET_TIMELINE` stays granted. It was taken away once, when the timeline was the whole
+     * queue and republishing 1,245 items cost ~15 ms of the main thread per timeline change; the
+     * timeline is [QueueKeeper]'s window now, 41 items at most. `PlatformSessionTest` pins the list
+     * and the jump.
      */
     private inner class SessionCallback : MediaSession.Callback {
-        /** Keeps the queue out of the platform session — see [notificationControllerConnection]. */
-        override fun onConnectAsync(
-            session: MediaSession,
-            controller: MediaSession.ControllerInfo,
-        ): ListenableFuture<MediaSession.ConnectionResult> =
-            if (session.isMediaNotificationController(controller)) {
-                Futures.immediateFuture(notificationControllerConnection(session, controller))
-            } else {
-                super.onConnectAsync(session, controller)
-            }
-
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
