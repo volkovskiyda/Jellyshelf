@@ -37,6 +37,10 @@ class QueueKeeperInstrumentedTest {
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
                 keeper.onTimelineChanged()
             }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (mediaItem != null) keeper.reconcile()
+            }
         })
     }
 
@@ -125,7 +129,91 @@ class QueueKeeperInstrumentedTest {
         assertEquals(listOf("z"), nowPlaying.items.value.map { it.mediaId })
     }
 
-    private fun start(startIndex: Int, skipped: Set<String>) {
+    @Test
+    fun aLongQueue_loadsAsAWindowAroundTheChosenVideo() = onMain {
+        start(startIndex = 50, skipped = emptySet(), queue = long)
+
+        assertEquals(ids(30..70), timeline())
+        assertEquals("v50", player.currentMediaItem?.mediaId)
+        // The screens still list all of it.
+        assertEquals(100, nowPlaying.items.value.size)
+    }
+
+    @Test
+    fun theWindow_movesWithPlayback() = onMain {
+        start(startIndex = 50, skipped = emptySet(), queue = long)
+
+        player.seekToNextMediaItem()
+        assertEquals(ids(31..71), timeline())
+        assertEquals("v51", player.currentMediaItem?.mediaId)
+
+        repeat(3) { player.seekToPreviousMediaItem() }
+        assertEquals(ids(28..68), timeline())
+        assertEquals("v48", player.currentMediaItem?.mediaId)
+    }
+
+    /** More Next taps than the window is wide, one after the other: it never runs out. */
+    @Test
+    fun theWindow_reachesTheEndOfTheQueueOnlyWhenPlaybackDoes() = onMain {
+        start(startIndex = 0, skipped = emptySet(), queue = long)
+        assertEquals(ids(0..20), timeline())
+
+        repeat(98) {
+            assertTrue(player.hasNextMediaItem())
+            player.seekToNextMediaItem()
+        }
+        assertEquals("v98", player.currentMediaItem?.mediaId)
+        assertTrue(player.hasNextMediaItem())
+
+        player.seekToNextMediaItem()
+        assertEquals("v99", player.currentMediaItem?.mediaId)
+        assertFalse(player.hasNextMediaItem())
+        assertEquals(ids(79..99), timeline())
+    }
+
+    @Test
+    fun jumpingOutsideTheWindow_movesTheWindowThere() = onMain {
+        start(startIndex = 50, skipped = emptySet(), queue = long)
+
+        assertTrue(keeper.jumpTo("v5", play = false))
+
+        assertEquals("v5", player.currentMediaItem?.mediaId)
+        assertEquals(ids(0..25), timeline())
+        assertTrue(player.hasPreviousMediaItem())
+    }
+
+    @Test
+    fun jumpingToASkippedVideoOutsideTheWindow_playsIt() = onMain {
+        start(startIndex = 10, skipped = setOf("v80"), queue = long)
+
+        assertTrue(keeper.jumpTo("v80", play = false))
+
+        assertEquals("v80", player.currentMediaItem?.mediaId)
+        assertEquals(ids(60..99), timeline())
+    }
+
+    @Test
+    fun aSkipInsideTheWindow_bringsInTheNextVideoBeyondIt() = onMain {
+        start(startIndex = 50, skipped = emptySet(), queue = long)
+
+        keeper.onSkippedChanged(setOf("v51", "v95"))
+
+        assertEquals(ids(30..71) - "v51", timeline())
+        assertEquals("v50", player.currentMediaItem?.mediaId)
+
+        // An unskip far from the playing video changes nothing the timeline holds.
+        keeper.onSkippedChanged(setOf("v51"))
+        assertEquals(ids(30..71) - "v51", timeline())
+
+        keeper.onSkippedChanged(emptySet())
+        assertEquals(ids(30..70), timeline())
+    }
+
+    private val long = List(100) { item("v$it") }
+
+    private fun ids(range: IntRange): List<String> = range.map { "v$it" }
+
+    private fun start(startIndex: Int, skipped: Set<String>, queue: List<MediaItem> = this.queue) {
         val playable = keeper.load(queue, startIndex, skipped)
         player.setMediaItems(playable.items, playable.startIndex, 0L)
     }

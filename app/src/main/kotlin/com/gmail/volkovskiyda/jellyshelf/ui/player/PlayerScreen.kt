@@ -529,6 +529,9 @@ private fun PlayerWithControls(
     // already listens for both the timeline landing and each transition. currentMediaItemIndex is
     // C.INDEX_UNSET until then, so both ends read false — as an empty-timeline read did before.
     //
+    // The timeline is a window of the queue around the playing video (see QueueKeeper), which is
+    // enough here: the window reaches an end of the queue whenever the playing video is near it.
+    //
     // hasPreviousMediaItem()/hasNextMediaItem() respect shuffle order and repeat mode; an index
     // comparison does not. Neither is exposed anywhere — no shuffle or repeat button, and
     // PlaybackService sets neither mode — so the two are equivalent here. Adding a repeat mode is
@@ -542,7 +545,10 @@ private fun PlayerWithControls(
     // list (or, without chapters, a bare heading over a scrim) or a menu where the last one's was.
     // The queue panel is left out on purpose: it is never stale after a transition, its highlight
     // just moves — so it stays up across an auto-advance.
-    LaunchedEffect(playlist.currentMediaItemIndex) {
+    //
+    // Keyed on the video, not on its index: the timeline is a window that moves with playback, so
+    // in the middle of a long queue every video plays at the same index.
+    LaunchedEffect(currentId) {
         chaptersOpen = false
         speedMenuOpen = false
     }

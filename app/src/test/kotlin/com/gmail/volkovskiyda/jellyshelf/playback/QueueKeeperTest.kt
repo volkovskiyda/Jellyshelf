@@ -91,6 +91,69 @@ class QueueKeeperTest {
     }
 
     @Test
+    fun `the timeline holds the playing video and the radius on either side`() {
+        val long = List(100) { "v$it" }
+
+        assertEquals(long.subList(30, 71), timelineWindow(long, playing = "v50"))
+        assertEquals(listOf("b", "c", "d"), timelineWindow(queue, playing = "c", radius = 1))
+    }
+
+    @Test
+    fun `the window stops at the ends of the queue`() {
+        val long = List(100) { "v$it" }
+
+        assertEquals(long.subList(0, 24), timelineWindow(long, playing = "v3"))
+        assertEquals(long.subList(78, 100), timelineWindow(long, playing = "v98"))
+        // A queue shorter than the window is all of it.
+        assertEquals(queue, timelineWindow(queue, playing = "c"))
+    }
+
+    @Test
+    fun `a window around nothing is the start of the queue`() {
+        assertEquals(listOf("a", "b"), timelineWindow(queue, playing = null, radius = 1))
+        assertEquals(emptyList<String>(), timelineWindow(emptyList(), playing = "a"))
+    }
+
+    @Test
+    fun `a long queue loads as the window around the chosen video`() {
+        val long = List(100) { "v$it" }
+        val keeper = QueueKeeper(NowPlayingQueue()) { null }
+
+        // v49 is skipped, so the window reaches one further back to make up its 20.
+        val playable = keeper.load(long.map(::item), startIndex = 50, skipped = setOf("v49", "v90"))
+
+        assertEquals(long.subList(29, 71) - "v49", playable.items.map { it.mediaId })
+        assertEquals("v50", playable.items[playable.startIndex].mediaId)
+    }
+
+    /** One step forward: one range dropped behind, one added ahead — two player calls, not 2 × n. */
+    @Test
+    fun `neighbouring edits are one run each`() {
+        val long = List(100) { "v$it" }
+        val edits = timelineEdits(timelineWindow(long, "v10"), timelineWindow(long, "v60"))!!
+
+        val runs = editRuns(edits)
+
+        assertEquals(2, runs.size)
+        assertEquals(List(31) { TimelineEdit.Remove(30 - it) }, runs[0])
+        assertEquals(List(41) { TimelineEdit.Insert(it, "v${40 + it}") }, runs[1])
+        assertEquals(emptyList<List<TimelineEdit>>(), editRuns(emptyList()))
+    }
+
+    @Test
+    fun `edits apart from each other are runs of their own`() {
+        assertEquals(
+            listOf(
+                listOf(TimelineEdit.Remove(3)),
+                listOf(TimelineEdit.Remove(0)),
+                listOf(TimelineEdit.Insert(0, "b")),
+                listOf(TimelineEdit.Insert(2, "d")),
+            ),
+            editRuns(timelineEdits(timeline = listOf("a", "c", "e", "x"), target = listOf("b", "c", "d", "e"))!!),
+        )
+    }
+
+    @Test
     fun `clearing the queue empties what the screens list`() {
         val nowPlaying = NowPlayingQueue()
         val keeper = QueueKeeper(nowPlaying) { null }

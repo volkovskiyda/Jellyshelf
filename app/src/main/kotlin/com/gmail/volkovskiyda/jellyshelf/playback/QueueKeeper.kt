@@ -22,6 +22,15 @@ import kotlinx.coroutines.launch
  * screen. The two are kept in step from here: a change to the skip list removes or re-inserts
  * items ([onSkippedChanged]), and a jump to a skipped row inserts it first ([jumpTo]).
  *
+ * Nor does the timeline hold every video that will play: only a window of them, the playing one
+ * and [TIMELINE_RADIUS] on either side ([timelineWindow]), moved along as playback moves
+ * ([reconcile]). media3 pays for the whole timeline on the main thread — a source per item when
+ * it is set, and a comparison and a copy to every controller each time it changes: ~70 ms as a
+ * 1,245-video queue arrived and 20–36 ms at every later change, measured 2026-11-15 on a mid-range
+ * API 34 phone. No transport looks further than one item either way, so a window is all any of
+ * them needs; the far end of the timeline is the far end of the queue only once playback is within
+ * the radius of it, which is exactly when it matters.
+ *
  * The timeline is always a subsequence of [items] in the same order; [timelineEdits] relies on it,
  * and [onTimelineChanged] adopts whatever timeline breaks it rather than editing one it does not
  * understand. Main thread only, like the player it edits.
@@ -43,7 +52,7 @@ internal class QueueKeeper(
     fun attach(scope: CoroutineScope, skippedIds: Flow<Set<String>>, unskip: (String) -> Unit) {
         scope.launch { skippedIds.collect(::onSkippedChanged) }
         nowPlaying.attach { youtubeId, play ->
-            val wasSkipped = isSkipped(youtubeId)
+            val wasSkipped = youtubeId in skipped
             if (jumpTo(youtubeId, play) && wasSkipped) unskip(youtubeId)
         }
     }
@@ -53,15 +62,17 @@ internal class QueueKeeper(
 
     /**
      * Takes a new queue — [queue] as the controller sent it, resolved — and returns what the
-     * timeline gets: everything not skipped, plus the item at [startIndex] whatever its mark, since
-     * that is the video the user asked to play.
+     * timeline gets: the window around the item at [startIndex] of everything not skipped, that
+     * item included whatever its mark, since it is the video the user asked to play.
      */
     fun load(queue: List<MediaItem>, startIndex: Int, skipped: Set<String>): Playable {
         items = queue
         this.skipped = skipped
         nowPlaying.show(queue)
         val start = queue.getOrNull(startIndex)
-        val playable = queue.filterIndexed { index, item -> index == startIndex || item.mediaId !in skipped }
+        val window = timelineWindow(playableIds(queue.map { it.mediaId }, skipped, start?.mediaId), start?.mediaId)
+            .toSet()
+        val playable = queue.filter { it.mediaId in window }
         return Playable(playable, playable.indexOf(start).coerceAtLeast(0))
     }
 
@@ -74,8 +85,6 @@ internal class QueueKeeper(
     /** The queue emptied: nothing is playing, so nothing is queued either. */
     fun clear() = replace(emptyList())
 
-    private fun isSkipped(mediaId: String): Boolean = mediaId in skipped
-
     /**
      * The skip list moved: drop newly skipped items from the timeline and put unskipped ones back
      * where they belong. The playing item stays whatever its mark — removing it is what Next does,
@@ -84,9 +93,26 @@ internal class QueueKeeper(
      */
     fun onSkippedChanged(skipped: Set<String>) {
         this.skipped = skipped
+        reconcile()
+    }
+
+    /**
+     * Edits the timeline into the window around the playing video. For the service to call when
+     * playback moves to another video: what fell out behind is dropped and what came into reach
+     * ahead is added (or the other way round, going back). Those edits are at the window's far ends,
+     * [TIMELINE_RADIUS] items from the playing one, so the next video — already preloaded — is
+     * never touched.
+     *
+     * Left alone when the playing video is not in the queue — a timeline about to be adopted or
+     * replaced — since the window would then be around nothing, and the edits would remove the
+     * very video that is playing.
+     */
+    fun reconcile() {
         val p = player() ?: return
         if (p.mediaItemCount == 0 || items.isEmpty()) return
-        val target = playableIds(items.map { it.mediaId }, skipped, p.currentMediaItem?.mediaId)
+        val playing = p.currentMediaItem?.mediaId
+        val target = timelineWindow(playableIds(items.map { it.mediaId }, skipped, playing), playing)
+        if (playing !in target) return
         timelineEdits(p.mediaIds(), target)?.let { p.apply(it) }
     }
 
@@ -103,9 +129,10 @@ internal class QueueKeeper(
     }
 
     /**
-     * Moves playback to [mediaId], inserting it into the timeline first when it was skipped out of
-     * it. False when the queue has no such video. Unskipping it is the caller's half: this only
-     * makes the jump possible.
+     * Moves playback to [mediaId], inserting it into the timeline first when it is not there —
+     * skipped out of it, or outside the window — and moving the window to it afterwards. False when
+     * the queue has no such video. Unskipping it is the caller's half: this only makes the jump
+     * possible.
      */
     fun jumpTo(mediaId: String, play: Boolean): Boolean {
         val p = player() ?: return false
@@ -123,16 +150,25 @@ internal class QueueKeeper(
             index = p.mediaIds().indexOf(mediaId)
         }
         p.seekToDefaultPosition(index)
+        // The service's transition listener does this too; here as well, so the window never
+        // depends on who is listening.
+        reconcile()
         if (play) p.play()
         return true
     }
 
+    /**
+     * One player call per run of neighbouring edits rather than one per item: each call is a
+     * timeline change of its own, sent to every controller, and a jump across the queue moves the
+     * whole window.
+     */
     private fun Player.apply(edits: List<TimelineEdit>) {
-        for (edit in edits) {
-            when (edit) {
-                is TimelineEdit.Remove -> removeMediaItem(edit.index)
+        val byId by lazy(LazyThreadSafetyMode.NONE) { items.associateBy { it.mediaId } }
+        for (run in editRuns(edits)) {
+            when (val first = run.first()) {
+                is TimelineEdit.Remove -> removeMediaItems(run.last().index, first.index + 1)
                 is TimelineEdit.Insert ->
-                    items.firstOrNull { it.mediaId == edit.mediaId }?.let { addMediaItem(edit.index, it) }
+                    addMediaItems(first.index, run.mapNotNull { byId[(it as TimelineEdit.Insert).mediaId] })
             }
         }
     }
@@ -147,14 +183,48 @@ internal class QueueKeeper(
 internal fun playableIds(queue: List<String>, skipped: Set<String>, playing: String?): List<String> =
     queue.filter { it == playing || it !in skipped }
 
+/**
+ * How many videos the timeline holds on either side of the playing one — see [QueueKeeper]. Far
+ * more than any transport reaches (one), so that a run of quick Next taps never outruns the window.
+ */
+internal const val TIMELINE_RADIUS = 20
+
+/**
+ * The part of [playable] the timeline holds: [playing] and up to [radius] videos on either side of
+ * it, in order. The first videos of the queue when [playing] is not among them.
+ */
+internal fun timelineWindow(playable: List<String>, playing: String?, radius: Int = TIMELINE_RADIUS): List<String> {
+    val center = playable.indexOf(playing).coerceAtLeast(0)
+    return playable.subList((center - radius).coerceAtLeast(0), (center + radius + 1).coerceAtMost(playable.size))
+}
+
 /** Whether [timeline] is [queue] with some items left out and nothing moved — the keeper's invariant. */
 internal fun isInOrderWithin(timeline: List<String>, queue: List<String>): Boolean =
     timelineEdits(timeline, queue)?.none { it is TimelineEdit.Remove } == true
 
 /** One edit to the player's timeline, by index into the timeline as the edits before it left it. */
 internal sealed interface TimelineEdit {
-    data class Remove(val index: Int) : TimelineEdit
-    data class Insert(val index: Int, val mediaId: String) : TimelineEdit
+    val index: Int
+
+    data class Remove(override val index: Int) : TimelineEdit
+    data class Insert(override val index: Int, val mediaId: String) : TimelineEdit
+}
+
+/**
+ * [edits] as [timelineEdits] orders them, cut into runs that are each one range: removes of
+ * neighbouring indices going down, inserts at neighbouring indices going up.
+ */
+internal fun editRuns(edits: List<TimelineEdit>): List<List<TimelineEdit>> {
+    val runs = mutableListOf<MutableList<TimelineEdit>>()
+    for (edit in edits) {
+        val last = runs.lastOrNull()?.last()
+        val continues = when (edit) {
+            is TimelineEdit.Remove -> last is TimelineEdit.Remove && edit.index == last.index - 1
+            is TimelineEdit.Insert -> last is TimelineEdit.Insert && edit.index == last.index + 1
+        }
+        if (continues) runs.last() += edit else runs += mutableListOf(edit)
+    }
+    return runs
 }
 
 /**

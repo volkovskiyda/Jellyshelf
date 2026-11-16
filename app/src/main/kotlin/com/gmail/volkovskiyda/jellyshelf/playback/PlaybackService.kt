@@ -414,8 +414,8 @@ class PlaybackService : MediaSessionService() {
                 // queued video at 0).
                 val index =
                     if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.items.indices)
-                // The timeline gets the queue minus its skipped videos; the keeper holds the whole of
-                // it for the screens that list it. Read fresh rather than from the keeper's own
+                // The timeline gets a window of the queue, minus its skipped videos; the keeper holds
+                // the whole of it for the screens that list it. Read fresh rather than from the keeper's own
                 // copy, which may not have had its first emission yet on a service just created.
                 val playable = queue.load(resolved.items, index, repo.observeSkippedIds().first())
                 if (startPositionMs != C.TIME_UNSET) {
@@ -557,6 +557,9 @@ class PlaybackService : MediaSessionService() {
                 health.onItemEnded(PlaybackHealth.END_STOPPED)
                 // Nothing playing, so nothing queued: the Now playing panel and filter empty too.
                 queue.clear()
+            } else {
+                // The timeline is a window of the queue around the playing video; move it along.
+                queue.reconcile()
             }
             watch.onItemChanged(
                 newMediaId = mediaItem?.mediaId,
