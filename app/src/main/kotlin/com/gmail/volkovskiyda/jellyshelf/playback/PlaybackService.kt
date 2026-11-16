@@ -25,6 +25,7 @@ import androidx.media3.datasource.ktor.KtorDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.gmail.volkovskiyda.jellyshelf.MainActivity
@@ -231,12 +232,6 @@ class PlaybackService : MediaSessionService() {
         player.installPlaybackLogging(trail, buildInfo.isDebug) {
             this.player?.let { stallReporter.report(StallReporter.TRIGGER_LONG, it) }
         }
-        // A few seconds of the *next* queued video, buffered while this one plays: pressing Next
-        // and reaching the end of a video both then start on a stream that is already open, which
-        // is the whole wait for anything the user did not have to choose. Only the next item is
-        // touched, however long the queue is, so a library-sized queue costs the same as a
-        // single-video one — and nothing at all when there is no next item.
-        player.preloadConfiguration = ExoPlayer.PreloadConfiguration(PRELOAD_TARGET_DURATION_US)
         player.addListener(WatchStateListener())
         player.addListener(StartupTraceListener())
         player.addListener(TranscodeFallbackListener())
@@ -277,14 +272,12 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun stop() {
-                // Exactly PlayerViewModel.stopPlayback: the pause is what makes the stop report
-                // carry the real position (the tracker only records one from a STATE_READY pause),
-                // and clearing the queue is what fires the single stop report. Anything else here
-                // either loses the position or reports twice.
+                // Exactly PlayerViewModel.stopPlayback — see stopForGood for why it is three steps
+                // in that order. Anything else here loses the position, reports twice, or leaves the
+                // preloaded next video holding its stream.
                 val p = this@PlaybackService.player ?: return
                 p.checkOnApplicationLooper(buildInfo.isDebug)
-                p.pause()
-                p.clearMediaItems()
+                p.stopForGood()
             }
         })
         // The application scope for the unskip, like the last-played write: the jump is already
@@ -944,28 +937,6 @@ class PlaybackService : MediaSessionService() {
         private const val POSITION_SAVE_INTERVAL_MS = 10_000L
 
         /**
-         * How much of the next queued video to buffer ahead of reaching it.
-         *
-         * Enough to cover opening the stream and decoding a first frame, which is what the wait
-         * at a queue advance is actually made of; more would be paid for on every video, in
-         * traffic and in memory, to shorten a wait that is already gone. Three seconds of a
-         * direct-played 1080p stream is a few megabytes against a server that is usually on the
-         * same network.
-         *
-         * **More is not better, and this was measured.** Fifteen seconds was tried twice while
-         * benchmarking queue advances: one run died in teardown with the session still alive, and
-         * the other produced a thirty-second stall. Raising this is not the way to make an advance
-         * faster.
-         *
-         * Note what preloading implies for the connection rather than the buffer: the next video's
-         * stream is opened here and then left untouched until the queue reaches it, so across a long
-         * pause it is the oldest idle socket in the player. [IdleReconnectDataSource] is what makes
-         * that safe — without it, preloading would hand every queue advance after a pause a
-         * connection that had been sitting unused for the whole of it.
-         */
-        private const val PRELOAD_TARGET_DURATION_US = 3_000_000L
-
-        /**
          * How often a paused session tells the server it is still there.
          *
          * The deadline it has to beat is Jellyfin's `CheckForIdlePlayback`: every 5 minutes the
@@ -1126,10 +1097,23 @@ private fun ExoPlayer.setVideoDecoding(shown: Boolean, trail: PlaybackTrail) {
  *
  * Direct-play sources also start a resumed video on the keyframe before its saved position rather
  * than exactly on it — see [RESUME_SEEK_PARAMETERS] for what that saves and what it replays.
+ *
+ * And a few seconds of the *next* queued video are buffered while this one plays
+ * ([PRELOAD_TARGET_DURATION_US]): pressing Next and reaching the end of a video both then start on
+ * a stream that is already open, which is the whole wait for anything the user did not have to
+ * choose. Only the next item is touched, however long the queue is, so a library-sized queue costs
+ * the same as a single-video one — and nothing at all when there is no next item.
+ *
+ * [mediaSourceFactory] is for tests, which need media3's loading check small enough to stop a tiny
+ * test clip partway, the way a real video stops a few seconds in; the app always takes the default.
  */
-internal fun buildPlayer(context: Context, dataSourceFactory: DataSource.Factory): ExoPlayer =
+internal fun buildPlayer(
+    context: Context,
+    dataSourceFactory: DataSource.Factory,
+    mediaSourceFactory: MediaSource.Factory = KeyframeStartSourceFactory(DefaultMediaSourceFactory(dataSourceFactory)),
+): ExoPlayer =
     ExoPlayer.Builder(context)
-        .setMediaSourceFactory(KeyframeStartSourceFactory(DefaultMediaSourceFactory(dataSourceFactory)))
+        .setMediaSourceFactory(mediaSourceFactory)
         .setLoadControl(
             DefaultLoadControl.Builder()
                 // No back buffer, as by default — but kept from the keyframe before the position.
@@ -1148,6 +1132,29 @@ internal fun buildPlayer(context: Context, dataSourceFactory: DataSource.Factory
         .setSeekBackIncrementMs(SEEK_BACK_INCREMENT_MS)
         .setSeekForwardIncrementMs(SEEK_FORWARD_INCREMENT_MS)
         .build()
+        .apply { preloadConfiguration = ExoPlayer.PreloadConfiguration(PRELOAD_TARGET_DURATION_US) }
+
+/**
+ * How much of the next queued video to buffer ahead of reaching it.
+ *
+ * Enough to cover opening the stream and decoding a first frame, which is what the wait at a queue
+ * advance is actually made of; more would be paid for on every video, in traffic and in memory, to
+ * shorten a wait that is already gone. Three seconds of a direct-played 1080p stream is a few
+ * megabytes against a server that is usually on the same network.
+ *
+ * **More is not better, and this was measured.** Fifteen seconds was tried twice while benchmarking
+ * queue advances: one run died in teardown with the session still alive, and the other produced a
+ * thirty-second stall. Raising this is not the way to make an advance faster.
+ *
+ * Note what preloading implies for the connection rather than the buffer: the next video's stream is
+ * opened here and then left untouched until the queue reaches it, so across a long pause it is the
+ * oldest idle socket in the player. [IdleReconnectDataSource] is what makes that safe — without it,
+ * preloading would hand every queue advance after a pause a connection that had been sitting unused
+ * for the whole of it. And until the queue reaches it, that stream goes on arriving: over HTTP/2
+ * nothing pushes back on an unread stream until OkHttp's 16 MB stream window is full, so a preload
+ * holds up to that much of the next video in the heap (13 MB measured 2026-11-16).
+ */
+private const val PRELOAD_TARGET_DURATION_US = 3_000_000L
 
 /**
  * Deliberately asymmetric: skipping filler is the common case, re-hearing a line the rare one. The

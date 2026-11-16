@@ -20,6 +20,7 @@ import com.gmail.volkovskiyda.jellyshelf.domain.repository.SettingsRepository
 import com.gmail.volkovskiyda.jellyshelf.navigation.AppNavKey
 import com.gmail.volkovskiyda.jellyshelf.navigation.PlayerOrigin
 import com.gmail.volkovskiyda.jellyshelf.playback.PlaybackService
+import com.gmail.volkovskiyda.jellyshelf.playback.stopForGood
 import com.gmail.volkovskiyda.jellyshelf.ui.WhileUiSubscribed
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.util.Playback
@@ -258,18 +259,15 @@ class PlayerViewModel(
      * The leave once the queue has played out: stop, let the service file the one stop report, drop
      * the notification.
      *
-     * The pause is what makes that report carry the real position rather than one up to the
-     * service's save interval stale — [PlaybackService] only records the position on a pause that
-     * finds the player `STATE_READY`, and after a bare stop it is `IDLE`. Clearing the queue then
-     * fires `onMediaItemTransition(null)`, which is the *single* stop report; reporting from here
-     * as well would double-report, since the repository call is fire-and-forget and undeduped.
-     * (Leaving a video that played to its end reports nothing here — its completion was already
-     * filed when it ended; see [com.gmail.volkovskiyda.jellyshelf.playback.WatchStateTracker].)
+     * [stopForGood] is the same stop as the mini-player bar's, and its KDoc says why it is a pause,
+     * a clear and a stop, in that order: the pause keeps the real position in the report
+     * [PlaybackService] files, the clear fires that report exactly once, and the stop is what lets
+     * the preloaded next video go. (Leaving a video that played to its end reports nothing here —
+     * its completion was already filed when it ended; see
+     * [com.gmail.volkovskiyda.jellyshelf.playback.WatchStateTracker].)
      */
     fun stopPlayback() {
-        val controller = _controller.value ?: return
-        controller.pause()
-        controller.clearMediaItems()
+        _controller.value?.stopForGood()
     }
 
     /**
