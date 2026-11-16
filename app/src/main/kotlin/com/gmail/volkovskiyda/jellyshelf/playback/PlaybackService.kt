@@ -753,7 +753,7 @@ class PlaybackService : MediaSessionService() {
                 if (player !== p || p.currentMediaItem?.mediaId != mediaId) return@launch
                 Timber.tag(Playback.TAG).d("resuming $mediaId at ${seekMs}ms")
                 seedingSeekFor = mediaId
-                p.seekTo(seekMs)
+                p.resumeSeekTo(seekMs)
             }
         }
     }
@@ -1120,10 +1120,13 @@ private fun ExoPlayer.setVideoDecoding(shown: Boolean, trail: PlaybackTrail) {
  * What it costs is one keyframe interval of video held behind the position, a few seconds at most;
  * audio frames are all keyframes, so the audio buffer is unchanged. The back buffer itself stays at
  * zero, so a seek backwards still loads, exactly as before.
+ *
+ * Direct-play sources also start a resumed video on the keyframe before its saved position rather
+ * than exactly on it — see [RESUME_SEEK_PARAMETERS] for what that saves and what it replays.
  */
 internal fun buildPlayer(context: Context, dataSourceFactory: DataSource.Factory): ExoPlayer =
     ExoPlayer.Builder(context)
-        .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        .setMediaSourceFactory(KeyframeStartSourceFactory(DefaultMediaSourceFactory(dataSourceFactory)))
         .setLoadControl(
             DefaultLoadControl.Builder()
                 // No back buffer, as by default — but kept from the keyframe before the position.
