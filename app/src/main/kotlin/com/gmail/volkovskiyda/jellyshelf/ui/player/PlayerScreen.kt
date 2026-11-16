@@ -186,6 +186,13 @@ import kotlin.time.Duration.Companion.milliseconds
 internal const val PLAYER_POSITION_TAG = "player_position"
 
 /**
+ * The controls' title — the playing video's file name — which is how the benchmark tells a queue
+ * advance from a tap that only revealed the controls: the position label moves either way, the
+ * title only when the queue does. Published like [PLAYER_POSITION_TAG].
+ */
+internal const val PLAYER_TITLE_TAG = "player_title"
+
+/**
  * In-app player: full-bleed video over black with hand-built Compose controls on the session's
  * [MediaController].
  *
@@ -971,6 +978,7 @@ internal fun PlayerControls(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .weight(1f)
+                            .testTag(PLAYER_TITLE_TAG)
                             .clickable(
                                 enabled = title != null,
                                 onClickLabel = stringResource(R.string.copy_file_name),

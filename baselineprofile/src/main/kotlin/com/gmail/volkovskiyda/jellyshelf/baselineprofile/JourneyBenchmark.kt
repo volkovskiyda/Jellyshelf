@@ -24,6 +24,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.regex.Pattern
 
 /**
  * What the app costs, measured on the device rather than argued about — and measured the same way
@@ -434,10 +435,22 @@ class JourneyBenchmark {
      * failed the first iteration of a run on 2026-11-15. A second attempt starts over with the
      * controls hidden, so its reveal tap is the only one — the first attempt cannot have tapped
      * too, since controls it revealed stay up for three seconds.
+     *
+     * Or the hide lands *after* the read, and the tap meets a button that is already going: no
+     * ripple, no advance, the controls gone (2026-11-16, one iteration of five). Nothing downstream
+     * notices — the position label keeps ticking on the video that never left, so both of
+     * [awaitPositionAdvances]'s changes arrive and [PLAYER_TRANSITION] reports a zero. Hence the
+     * title check: only a queue advance changes the file name the controls show, and an attempt
+     * whose tap did not move it is tried again.
      */
     private fun MacrobenchmarkScope.advanceToNextItem() {
-        check(tapNextVideo() || tapNextVideo()) {
-            "The next button vanished between being found and being tapped, twice in a row."
+        var advanced = false
+        repeat(NEXT_TAP_ATTEMPTS) {
+            if (!advanced) advanced = tapNextVideo()?.let { left -> titleMovedOff(left) } == true
+        }
+        check(advanced) {
+            "The player stayed on the same video through $NEXT_TAP_ATTEMPTS attempts at the next " +
+                "button: each either went stale before the tap or tapped without advancing."
         }
 
         // The advance is not the measurement; the new item's first frame is. The signal the first
@@ -508,12 +521,13 @@ class JourneyBenchmark {
 
 /**
  * One attempt at the player's next button: reveal the controls if they are hidden, find it, check
- * it, tap it. False when the controls hid under the attempt and the node went stale before the tap
- * — no tap was sent then, since a stale node fails before UiAutomator injects anything.
+ * it, read the title, tap it. Returns the title the tap left, or null when the controls hid under
+ * the attempt and a node went stale before the tap — no tap was sent then, since a stale node fails
+ * before UiAutomator injects anything.
  *
  * Top-level for the same reason [playbackTraceConfig] is.
  */
-private fun MacrobenchmarkScope.tapNextVideo(): Boolean = try {
+private fun MacrobenchmarkScope.tapNextVideo(): String? = try {
     if (!device.hasObject(By.desc(NEXT_VIDEO))) {
         device.click(device.displayWidth / 2, device.displayHeight / 2)
     }
@@ -526,11 +540,33 @@ private fun MacrobenchmarkScope.tapNextVideo(): Boolean = try {
             "needs a row that opens as a multi-video queue — check the library has more than " +
             "one video and that the row was opened rather than a single video played directly."
     }
+    val title = checkNotNull(device.findObject(By.res(PLAYER_TITLE))?.text) {
+        "The controls show a next button but no title — the two are drawn together."
+    }
     next.click()
-    true
+    title
 } catch (_: StaleObjectException) {
-    false
+    null
 }
+
+/**
+ * Whether the controls' title has moved off [left], i.e. the queue really advanced. The controls
+ * may hide before the new title is read — a tap that missed the button can toggle them off too — so
+ * a title that is not on screen gets one reveal tap (never a loop: two are a double tap, a seek).
+ */
+private fun MacrobenchmarkScope.titleMovedOff(left: String): Boolean {
+    val moved = By.res(PLAYER_TITLE).text(Pattern.compile("(?!^${Pattern.quote(left)}$).+"))
+    if (device.wait(Until.hasObject(moved), TIMEOUT_MS)) return true
+    if (device.hasObject(By.res(PLAYER_TITLE))) return false
+    device.click(device.displayWidth / 2, device.displayHeight / 2)
+    return device.wait(Until.hasObject(moved), TIMEOUT_MS)
+}
+
+/** Next-button attempts before the advance is called failed: two stale nodes and one missed tap. */
+private const val NEXT_TAP_ATTEMPTS = 3
+
+/** The player controls' title (the file name), by its test tag — `PLAYER_TITLE_TAG` in `:app`. */
+private const val PLAYER_TITLE = "player_title"
 
 /**
  * The Perfetto config [playback] records with, replacing Macrobenchmark's default.
