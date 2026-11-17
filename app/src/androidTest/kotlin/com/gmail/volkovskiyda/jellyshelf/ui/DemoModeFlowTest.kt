@@ -21,6 +21,7 @@ import com.gmail.volkovskiyda.jellyshelf.data.repository.dataStore
 import com.gmail.volkovskiyda.jellyshelf.domain.repository.LibraryRepository
 import com.gmail.volkovskiyda.jellyshelf.grantJourneyPermissions
 import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
+import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
@@ -74,6 +75,11 @@ class DemoModeFlowTest {
      * [LibraryFilterState] is a process-lifetime singleton holding the library's search query and
      * its last emission, neither of which lives in a database: a query left by an earlier test
      * filters this one's demo library down to "no videos match".
+     *
+     * [SettingsCache] is the same kind of singleton, holding the sign-in form's unsaved draft. A
+     * draft left by an earlier test — the live journey ends with one, holding the real server URL —
+     * reopens Settings with that URL already in the field, and the sign-in test's typed "jellyfin"
+     * lands in front of it rather than in an empty field.
      */
     @Before
     fun resetAppState() {
@@ -88,6 +94,7 @@ class DemoModeFlowTest {
             query.value = ""
             lastVideos.value = null
         }
+        GlobalContext.get().get<SettingsCache>().clear()
         runBlocking {
             GlobalContext.get().get<LibraryRepository>().clearLocalData()
             // After clearLocalData, which writes to this same store.

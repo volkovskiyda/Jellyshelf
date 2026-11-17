@@ -49,6 +49,7 @@ import com.gmail.volkovskiyda.jellyshelf.ui.library.LibraryFilterState
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.INDEX_URL_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.PASSWORD_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.SERVER_URL_FIELD_TAG
+import com.gmail.volkovskiyda.jellyshelf.ui.settings.SettingsCache
 import com.gmail.volkovskiyda.jellyshelf.ui.settings.USERNAME_FIELD_TAG
 import com.gmail.volkovskiyda.jellyshelf.util.ticksToSeconds
 import io.ktor.client.HttpClient
@@ -151,6 +152,7 @@ class LiveUiJourneyTest : KoinTest {
     private val library by inject<LibraryRepository>()
     private val syncScheduler by inject<SyncScheduler>()
     private val libraryFilterState by inject<LibraryFilterState>()
+    private val settingsCache by inject<SettingsCache>()
     private val settings by inject<SettingsRepository>()
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
@@ -746,6 +748,12 @@ class LiveUiJourneyTest : KoinTest {
      * process, not in Room or DataStore. Left behind, the query filters the *next* test's library
      * down to nothing and the cached rows flash a real server's videos into it.
      *
+     * [SettingsCache] is on it for the same reason. The index URL is typed after sign-in, so the
+     * journey ends with an unsaved draft — the real server URL and user among it — and the next
+     * Settings screen in the process opens on that draft instead of blank fields. A test that then
+     * types its own URL appends to the real one: `DemoModeFlowTest` signed in to
+     * `jellyfinhttps://…`, got a malformed-URL error instead of its 401, and timed out.
+     *
      * The work history is pruned as well as cancelled, and that is not belt and braces: cancelling
      * leaves a *finished* WorkInfo in place, WorkManager replays the last one for a unique name to
      * whoever asks, and `SettingsViewModel` turns that replay into the Settings status line. A
@@ -758,6 +766,7 @@ class LiveUiJourneyTest : KoinTest {
         workManager.pruneWork().result.get()
         libraryFilterState.query.value = ""
         libraryFilterState.lastVideos.value = null
+        settingsCache.clear()
         runBlocking {
             library.clearLocalData()
             // After clearLocalData, which writes to this same store.
