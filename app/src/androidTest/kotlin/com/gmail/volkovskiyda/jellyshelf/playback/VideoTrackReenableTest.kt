@@ -40,6 +40,11 @@ class VideoTrackReenableTest {
     fun setUp() = onMain {
         val context = instrumentation.targetContext
         player = buildPlayer(context, DefaultDataSource.Factory(context))
+        // Without audio focus, which is not what this test is about. A test has no activity on
+        // screen, and a platform that enforces audio hardening — API 35 does, API 36 only logs
+        // what it would have done — refuses focus to such a process: the player then never starts
+        // and the position stays at zero.
+        player.setAudioAttributes(player.audioAttributes, false)
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_BUFFERING) events += "buffering"

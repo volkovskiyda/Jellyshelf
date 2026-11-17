@@ -68,6 +68,9 @@ class PreloadedNextVideoTest {
                 ProgressiveMediaSource.Factory(recording).setContinueLoadingCheckIntervalBytes(CHECK_INTERVAL_BYTES),
             ),
         )
+        // Without audio focus, for the reason VideoTrackReenableTest gives: where the platform
+        // refuses it to a test, the current video would sit paused rather than play.
+        player.setAudioAttributes(player.audioAttributes, false)
         // Into the same log, so a failure says what the player was doing as well as the streams.
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
