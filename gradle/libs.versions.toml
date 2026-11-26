@@ -11,7 +11,7 @@ targetSdk = "37"
 # One ref per artifact family (navigation3, adaptive, coroutines, room, ktor): the members ship as
 # a set and must be bumped together, so a separate ref per artifact holding the same value is only
 # a chance to update one and forget the others.
-agp = "9.5.1"
+agp = "9.5.3"
 # Was held at 2.4.10 from 2026-09-11 to 2026-10-07 for Kotzilla: 2.4.20 deleted the K1
 # `ComponentRegistrar` interface, and Kotzilla's compiler plugin up to 2.3.6 declared it as a
 # supertype, so every compileKotlin died with NoClassDefFoundError. Kotzilla 3.0.0 moved that to a
@@ -25,7 +25,7 @@ activityCompose = "1.13.0"
 # Custom Tabs. Already present transitively through firebase-appdistribution, but that artifact is
 # releaseImplementation-only, so the sign-in launcher would not compile on debug without this.
 androidxBrowser = "1.10.0"
-composeBom = "2026.09.00"
+composeBom = "2026.11.01"
 # Paired with the kotlin ref above, not bumped on its own: KSP embeds a Kotlin compiler, and each
 # release targets one Kotlin version (2.3.11 -> 2.4.10, 2.3.12 -> 2.4.20).
 googleDevtoolsKsp = "2.3.14"
